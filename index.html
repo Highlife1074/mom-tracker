@@ -143,7 +143,26 @@ const cloudStore = {
   }
 };
 
-const SK="records"; const LK="library"; const TK="tasks"; const PK="people"; const GK="tags"; const RK="tagrules"; const QK="pkgrules"; const XK="trackers";
+const SK="records"; const LK="library"; const TK="tasks"; const PK="people"; const GK="tags"; const RK="tagrules"; const QK="pkgrules"; const XK="trackers"; const DK="tenders";
+const TENDER_STEPS=[
+  {key:"acc",label:"ACC / Aconex",opts:["À faire","Signature interne","Signature client","Approuvé","À refaire"]},
+  {key:"contrat",label:"Contrat",opts:["Request to do","Request done","Contract to do","Contract to be signed","Signé"]},
+  {key:"mar",label:"MAR",opts:["Not done","Done","On Aconex","Approved A","Approved B","Not approved"]},
+  {key:"itp",label:"ITP",opts:["Not done","Done","On Aconex","Approved A","Approved B","Not approved"]},
+  {key:"wms",label:"WMS",opts:["Not done","Done","On Aconex","Approved A","Approved B","Not approved"]}
+];
+const TENDER_COLORS={
+  "Approuvé":"#e8f5e9|#2e7d32","Approved A":"#e8f5e9|#2e7d32","Approved B":"#e0f2f1|#00796b",
+  "Done":"#e8f5e9|#2e7d32","Signature client":"#e3f2fd|#1565c0","Contract to be signed":"#e3f2fd|#1565c0",
+  "Signé":"#e8f5e9|#2e7d32","On Aconex":"#e3f2fd|#1565c0",
+  "À faire":"#fff8e1|#f57f17","Request to do":"#fff8e1|#f57f17","Not done":"#fafafa|#aaa",
+  "À refaire":"#fce4ec|#c62828","Not approved":"#fce4ec|#c62828",
+  "Signature interne":"#f3e5f5|#7b1fa2","Request done":"#f3e5f5|#7b1fa2",
+  "Contract to do":"#fff3e0|#e65100"
+};
+function tenderStepColor(val){const p=(TENDER_COLORS[val]||"#f5f4f0|#888").split("|");return{bg:p[0],color:p[1]};}
+function newTenderRow(){return{id:uuid(),name:"",resp:"",acc:"",contrat:"",mar:"",itp:"",wms:"",note:""};}
+function newTender(){return{id:uuid(),title:"",createdAt:new Date().toISOString().slice(0,10),description:"",hiddenSteps:[],rows:[newTenderRow()]};}
 
 const DIRECTIONS=["outgoing","incoming_boss","incoming_dept"];
 const DIR_LABELS={outgoing:"📤 Sent to Team",incoming_boss:"📥 From Boss",incoming_dept:"🔄 From Department"};
@@ -254,8 +273,11 @@ function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,t
           sAct(pi,ai,"tags",[...(ac.tags||[]),newTag]);
         }}/>
       </div>}
-      <textarea placeholder="Détails…" value={ac.details||""} onChange={e=>sAct(pi,ai,"details",e.target.value)}
-        style={{width:"100%",marginTop:4,padding:"5px 8px",border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",fontSize:12,color:"#555",resize:"vertical",minHeight:36,outline:"none",background:"#fafaf8",boxSizing:"border-box"}}/>
+      <div style={{paddingLeft:2,marginTop:5}}>
+        <div style={{fontSize:10,fontWeight:700,color:"#bbb",textTransform:"uppercase",letterSpacing:".4px",marginBottom:3}}>Détails</div>
+        <textarea placeholder="Ajouter des détails, contexte, remarques…" value={ac.details||""} onChange={e=>sAct(pi,ai,"details",e.target.value)}
+          style={{width:"100%",padding:"6px 9px",border:"1.5px solid #e8e6df",borderRadius:7,fontFamily:"inherit",fontSize:12,color:"#555",resize:"vertical",minHeight:44,outline:"none",background:"#fafaf8",boxSizing:"border-box",display:"block"}}/>
+      </div>
     </div>)}
     <button className="btn bgho" style={{fontSize:12,color:"#777",marginTop:3}} onClick={()=>aAct(pi)}>＋ Action</button>
   </div>;
@@ -334,6 +356,9 @@ function App(){
   const [tags,setTags]=useState([]);
   const [rules,setRules]=useState({}); // { tagName: [person, ...] }
   const [pkgRules,setPkgRules]=useState({}); // { pkgName: [person, ...] }
+  const [tenders,setTenders]=useState([]);
+  const [selTender,setSelTender]=useState(null);
+  const [tenderForm,setTenderForm]=useState(null);
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok"); // ok | syncing | error
   const [view,setView]=useState("dashboard");
@@ -349,6 +374,7 @@ function App(){
   const [showBak,setShowBak]=useState(false);
   const [showEmail,setShowEmail]=useState(false);
   const [showEmailOut,setShowEmailOut]=useState(false);
+  const [emailSource,setEmailSource]=useState(null); // null = use filtA, otherwise array of actions
   const [scoreEditMode,setScoreEditMode]=useState(false);
   const [libSearch,setLibSearch]=useState("");
   const [libDel,setLibDel]=useState(null);
@@ -368,14 +394,14 @@ function App(){
   useEffect(()=>{
     const load=async()=>{
       try {
-        const [r,l,t,p,g,rv,qv,xv]=await Promise.all([cloudStore.get(SK),cloudStore.get(LK),cloudStore.get(TK),cloudStore.get(PK),cloudStore.get(GK),cloudStore.get(RK),cloudStore.get(QK),cloudStore.get(XK)]);
+        const [r,l,t,p,g,rv,qv,xv,dv]=await Promise.all([cloudStore.get(SK),cloudStore.get(LK),cloudStore.get(TK),cloudStore.get(PK),cloudStore.get(GK),cloudStore.get(RK),cloudStore.get(QK),cloudStore.get(XK),cloudStore.get(DK)]);
         // Normalize importance/urgence on existing data that predates this feature
         const normAc=ac=>({importance:1,urgence:1,...ac});
         const normPkgs=pkgs=>(pkgs||[]).map(p=>({...p,actions:(p.actions||[]).map(normAc)}));
         const rNorm=(r||[]).map(rec=>({...rec,packages:normPkgs(rec.packages)}));
         const tNorm=(t||[]).map(tk=>({importance:1,urgence:1,...tk}));
         const xNorm=(xv||[]).map(tr=>({...tr,packages:normPkgs(tr.packages)}));
-        setRecords(rNorm);setLibrary(l||SEED_LIBRARY);setTasks(tNorm);setPeople(p||SEED_PEOPLE);setTags(g||SEED_TAGS);setRules(rv||{});setPkgRules(qv||{});setTrackers(xNorm);
+        setRecords(rNorm);setLibrary(l||SEED_LIBRARY);setTasks(tNorm);setPeople(p||SEED_PEOPLE);setTags(g||SEED_TAGS);setRules(rv||{});setPkgRules(qv||{});setTrackers(xNorm);setTenders(dv||[]);
         if(!l) await cloudStore.set(LK,SEED_LIBRARY);
         if(!p) await cloudStore.set(PK,SEED_PEOPLE);
         if(!g) await cloudStore.set(GK,SEED_TAGS);
@@ -395,6 +421,7 @@ function App(){
   const saveR=d=>{setRecords(d);sync(SK,d);};
   const saveT=d=>{setTasks(d);sync(TK,d);};
   const saveX=d=>{setTrackers(d);sync(XK,d);};
+  const saveD=d=>{setTenders(d);sync(DK,d);};
   const saveL=d=>{setLibrary(d);sync(LK,d);};
   const saveP=d=>{setPeople(d);sync(PK,d);};
   const saveG=d=>{setTags(d);sync(GK,d);};
@@ -577,8 +604,8 @@ function App(){
   // ── Backup Modal ─────────────────────────────────────────────
   function BakModal(){
     const [err,setErr]=useState("");const [ok,setOk]=useState(false);const fRef=useRef();
-    const exp=()=>{const b=new Blob([JSON.stringify({version:6,exportedAt:new Date().toISOString(),records,tasks,trackers,library,people,tags,rules,pkgRules},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`mom-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(u);};
-    const imp=async text=>{setErr("");setOk(false);try{const d=JSON.parse(text);if(!d.records||!Array.isArray(d.records))throw new Error("Format invalide.");if(d.records)saveR(d.records);if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.library)saveL(d.library);if(d.people)saveP(d.people);if(d.tags)saveG(d.tags);if(d.rules)saveRules(d.rules);if(d.pkgRules)savePkgRules(d.pkgRules);setOk(true);setTimeout(()=>setShowBak(false),1400);}catch(e){setErr("Erreur : "+e.message);}};
+    const exp=()=>{const b=new Blob([JSON.stringify({version:7,exportedAt:new Date().toISOString(),records,tasks,trackers,tenders,library,people,tags,rules,pkgRules},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`mom-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(u);};
+    const imp=async text=>{setErr("");setOk(false);try{const d=JSON.parse(text);if(!d.records||!Array.isArray(d.records))throw new Error("Format invalide.");if(d.records)saveR(d.records);if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveD(d.tenders);if(d.library)saveL(d.library);if(d.people)saveP(d.people);if(d.tags)saveG(d.tags);if(d.rules)saveRules(d.rules);if(d.pkgRules)savePkgRules(d.pkgRules);setOk(true);setTimeout(()=>setShowBak(false),1400);}catch(e){setErr("Erreur : "+e.message);}};
     return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowBak(false)}}>
       <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
         <div style={{padding:"18px 22px 14px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -776,6 +803,89 @@ function App(){
   }
 
   // ── Tracker Form Modal ────────────────────────────────────────
+  // ── Tender Form Modal ──────────────────────────────────────────
+  function TenderFormModal(){
+    const [td,setTd]=useState(tenderForm);
+    const isNew=!tenders.find(x=>x.id===td.id);
+    const toggleStep=key=>{
+      const h=td.hiddenSteps||[];
+      setTd({...td,hiddenSteps:h.includes(key)?h.filter(k=>k!==key):[...h,key]});
+    };
+    const addRow=()=>setTd({...td,rows:[...td.rows,newTenderRow()]});
+    const remRow=i=>setTd({...td,rows:td.rows.filter((_,idx)=>idx!==i)});
+    const setRow=(i,f,v)=>setTd({...td,rows:td.rows.map((r,idx)=>idx===i?{...r,[f]:v}:r)});
+    const save=()=>{
+      const d=isNew?[td,...tenders]:tenders.map(x=>x.id===td.id?td:x);
+      saveD(d);setTenderForm(null);
+      if(isNew||!(selTender&&selTender.id===td.id))setSelTender(td);
+      setView("tender-detail");
+    };
+    const visSteps=TENDER_STEPS.filter(s=>!(td.hiddenSteps||[]).includes(s.key));
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:12}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:1200,maxHeight:"94vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+        <div style={{padding:"16px 22px 12px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div>
+            <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18}}>{isNew?"Nouveau Tender":"Modifier le Tender"}</div>
+            <div style={{fontSize:11,color:"#aaa",marginTop:2}}>Tableau de suivi des étapes de soumission</div>
+          </div>
+          <button onClick={()=>setTenderForm(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div style={{padding:"14px 22px 8px",borderBottom:"1px solid #f0ede6"}}>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+            <div style={{flex:2,minWidth:200}}><label style={{fontSize:11,fontWeight:700,color:"#888",display:"block",marginBottom:4}}>Titre *</label>
+              <input type="text" value={td.title} onChange={e=>setTd({...td,title:e.target.value})} placeholder="ex: Façade Package, Structure…"
+                style={{width:"100%",padding:"7px 10px",border:"1.5px solid #ddd",borderRadius:7,fontFamily:"inherit",fontSize:13,outline:"none",boxSizing:"border-box"}}/></div>
+            <div style={{flex:1,minWidth:120}}><label style={{fontSize:11,fontWeight:700,color:"#888",display:"block",marginBottom:4}}>Date</label>
+              <input type="date" value={td.createdAt} onChange={e=>setTd({...td,createdAt:e.target.value})}
+                style={{width:"100%",padding:"7px 10px",border:"1.5px solid #ddd",borderRadius:7,fontFamily:"inherit",fontSize:13,outline:"none"}}/></div>
+            <div style={{flex:3,minWidth:200}}><label style={{fontSize:11,fontWeight:700,color:"#888",display:"block",marginBottom:4}}>Description</label>
+              <input type="text" value={td.description||""} onChange={e=>setTd({...td,description:e.target.value})} placeholder="Contexte…"
+                style={{width:"100%",padding:"7px 10px",border:"1.5px solid #ddd",borderRadius:7,fontFamily:"inherit",fontSize:13,outline:"none",boxSizing:"border-box"}}/></div>
+          </div>
+          <div style={{marginTop:10,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"#aaa"}}>Colonnes visibles :</span>
+            {TENDER_STEPS.map(s=>{const hidden=(td.hiddenSteps||[]).includes(s.key);return <button key={s.key} onClick={()=>toggleStep(s.key)}
+              style={{padding:"3px 10px",borderRadius:20,border:"1.5px solid "+(hidden?"#ddd":"#b45309"),background:hidden?"#fff":"#fff8f0",color:hidden?"#bbb":"#b45309",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {hidden?"○":"●"} {s.label}</button>;})}
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",overflowX:"auto",padding:"10px 22px 10px"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+            <thead><tr style={{background:"#fafaf8"}}>
+              <th style={{padding:"8px 10px",fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",textAlign:"left",borderBottom:"1.5px solid #e8e6df",minWidth:200}}>Package</th>
+              <th style={{padding:"8px 10px",fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",textAlign:"left",borderBottom:"1.5px solid #e8e6df",minWidth:120}}>Responsable</th>
+              {visSteps.map(s=><th key={s.key} style={{padding:"8px 10px",fontSize:10,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".5px",textAlign:"center",borderBottom:"1.5px solid #e8e6df",minWidth:130}}>{s.label}</th>)}
+              <th style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",width:32}}></th>
+            </tr></thead>
+            <tbody>{td.rows.map((row,i)=><tr key={row.id||i} style={{borderBottom:"1px solid #f5f4f0"}}>
+              <td style={{padding:"6px 8px"}}><input type="text" value={row.name} onChange={e=>setRow(i,"name",e.target.value)} placeholder="Nom du package…"
+                style={{width:"100%",padding:"5px 8px",border:"1.5px solid #e8e6df",borderRadius:6,fontFamily:"inherit",fontSize:12,outline:"none",boxSizing:"border-box"}}/></td>
+              <td style={{padding:"6px 8px"}}><input type="text" value={row.resp||""} onChange={e=>setRow(i,"resp",e.target.value)} placeholder="Responsable…"
+                style={{width:"100%",padding:"5px 8px",border:"1.5px solid #e8e6df",borderRadius:6,fontFamily:"inherit",fontSize:12,outline:"none",boxSizing:"border-box"}}/></td>
+              {visSteps.map(s=><td key={s.key} style={{padding:"6px 8px",textAlign:"center"}}>
+                <select value={row[s.key]||""} onChange={e=>setRow(i,s.key,e.target.value)}
+                  style={{padding:"4px 6px",border:"1.5px solid #e8e6df",borderRadius:6,fontFamily:"inherit",fontSize:11,outline:"none",background:"#fff",cursor:"pointer",width:"100%"}}>
+                  <option value="">—</option>
+                  {s.opts.map(o=><option key={o} value={o}>{o}</option>)}
+                </select>
+              </td>)}
+              <td style={{padding:"6px 4px",textAlign:"center"}}><button onClick={()=>remRow(i)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,padding:"2px 4px"}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}>✕</button></td>
+            </tr>)}</tbody>
+          </table>
+          <button onClick={addRow} style={{marginTop:8,padding:"6px 14px",background:"none",border:"1.5px dashed #ddd",borderRadius:8,fontFamily:"inherit",fontSize:12,color:"#aaa",cursor:"pointer"}}>＋ Package</button>
+        </div>
+        <div style={{padding:"12px 22px 16px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
+          {!isNew&&<button className="btn bdgr" onClick={()=>{if(confirm("Supprimer ce Tender ?")){saveD(tenders.filter(x=>x.id!==td.id));setSelTender(null);setTenderForm(null);setView("tenders");}}}>🗑️ Supprimer</button>}
+          <button className="btn bout" onClick={()=>setTenderForm(null)}>Annuler</button>
+          <button className="btn" disabled={!td.title.trim()} onClick={save}
+            style={{background:td.title.trim()?"#b45309":"#ccc",color:"#fff",fontWeight:700}}>
+            {isNew?"Créer le Tender":"Sauvegarder"}
+          </button>
+        </div>
+      </div>
+    </div>;
+  }
+
   function TrackerFormModal(){
     const [t,setT]=useState(trackerForm);
     const isNew=!trackers.find(x=>x.id===t.id);
@@ -814,59 +924,66 @@ function App(){
   // ── Email Output Modal ────────────────────────────────────────
   function EmailOutModal(){
     const [copied,setCopied]=useState(false);
+    const actions=emailSource||filtA;
+    const sourceLabel=emailSource?"Ce document":"filtres actifs";
 
-    // Build email text from current filtA
     const buildEmail=()=>{
       const today=new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
-      // Group by source meeting / task
       const bySource={};
-      filtA.forEach(ac=>{
-        const key=ac.source==="task"?"📌 Tâches standalone":ac.source==="tracker"?`📊 ${ac.meetingTitle}`:ac.meetingTitle;
+      actions.forEach(ac=>{
+        const key=ac.source==="task"?"📌 Tâches standalone":ac.source==="tracker"?"📊 "+ac.meetingTitle:ac.meetingTitle;
         if(!bySource[key]) bySource[key]=[];
         bySource[key].push(ac);
       });
 
-      // Subject line
       const filterDesc=[];
-      if(fOwner!=="all") filterDesc.push(fOwner);
-      if(fPkg!=="all") filterDesc.push(fPkg);
-      if(fTag!=="all") filterDesc.push(`[${fTag}]`);
-      if(fStatus!=="all") filterDesc.push(fStatus);
+      if(!emailSource){
+        if(fOwner!=="all") filterDesc.push(fOwner);
+        if(fPkg!=="all") filterDesc.push(fPkg);
+        if(fTag!=="all") filterDesc.push("["+fTag+"]");
+        if(fStatus!=="all") filterDesc.push(fStatus);
+      } else if(emailSource.length>0){
+        filterDesc.push(emailSource[0].meetingTitle||"");
+      }
       const subject=filterDesc.length>0
-        ?`Suivi actions — ${filterDesc.join(" · ")} — ${today}`
-        :`Suivi actions — ${today}`;
+        ?"Suivi actions — "+filterDesc.join(" · ")+" — "+today
+        :"Suivi actions — "+today;
 
-      let body=`Bonjour,\n\nVeuillez trouver ci-dessous le récapitulatif des actions${filterDesc.length>0?" ("+filterDesc.join(", ")+")":""} au ${today}.\n\n`;
-      body+=`${"─".repeat(60)}\n\n`;
+      let body="Bonjour,\n\nVeuillez trouver ci-dessous le récapitulatif des actions"+(filterDesc.length>0?" ("+filterDesc.join(", ")+")":"")+" au "+today+".\n\n";
+      body+="─".repeat(60)+"\n\n";
 
-      Object.entries(bySource).forEach(([src,actions])=>{
-        body+=`${src}\n${"─".repeat(src.length)}\n\n`;
-        // Group by package within each source
+      Object.entries(bySource).forEach(function(entry){
+        const src=entry[0];
+        const srcActions=entry[1];
+        body+=src+"\n"+"─".repeat(src.length)+"\n\n";
         const byPkg={};
-        actions.forEach(ac=>{
+        srcActions.forEach(ac=>{
           const k=ac.package||"—";
           if(!byPkg[k]) byPkg[k]=[];
           byPkg[k].push(ac);
         });
-        Object.entries(byPkg).forEach(([pkg,acts])=>{
-          if(pkg!=="—") body+=`  📦 ${pkg}\n`;
+        Object.entries(byPkg).forEach(function(pe){
+          const pkg=pe[0];
+          const acts=pe[1];
+          if(pkg!=="—") body+="  📦 "+pkg+"\n";
           acts.forEach(ac=>{
             const status={"pending":"⏳","in progress":"🔄","done":"✅","blocked":"🚫"}[ac.status]||"•";
-            const owner=ac.owner?` @${ac.owner.split(",")[0]}`:"";
-            const due=ac.due?` → échéance ${new Date(ac.due).toLocaleDateString("fr-FR")}`:"";
-            const tags=(ac.tags||[]).length>0?` [${ac.tags.join(", ")}]`:"";
+            const owner=ac.owner?" @"+ac.owner.split(",")[0]:"";
+            const due=ac.due?" → échéance "+new Date(ac.due).toLocaleDateString("fr-FR"):"";
+            const tags=(ac.tags||[]).length>0?" ["+ac.tags.join(", ")+"]":"";
             const sc=calcScore(ac.importance||1,ac.urgence||1);
-            const scoreStr=sc>1?` {Score ${sc} — I${ac.importance||1}×U${ac.urgence||1}}`:"";
+            const scoreStr=sc>1?" {Score "+sc+" — I"+(ac.importance||1)+"×U"+(ac.urgence||1)+"}":"";
             const ccs=[...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")].filter((v,i,a)=>a.indexOf(v)===i);
-            const ccStr=ccs.length>0?" ("+ccs.map((p,ci)=>`CC${ci+1}: ${p.split(",")[0]}`).join(", ")+")" :"";
-            body+=`    ${status} ${ac.text}${owner}${due}${scoreStr}${tags}${ccStr}\n`;
+            const ccStr=ccs.length>0?" ("+ccs.map((p,ci)=>"CC"+(ci+1)+": "+p.split(",")[0]).join(", ")+")" :"";
+            const details=ac.details?" ["+ac.details+"]":"";
+            body+="    "+status+" "+ac.text+owner+due+scoreStr+tags+ccStr+details+"\n";
           });
           body+="\n";
         });
       });
 
-      body+=`${"─".repeat(60)}\n`;
-      body+=`Total : ${filtA.length} action${filtA.length>1?"s":""} · Généré le ${today}\n`;
+      body+="─".repeat(60)+"\n";
+      body+="Total : "+actions.length+" action"+(actions.length>1?"s":"")+" · Généré le "+today+"\n";
       return {subject,body};
     };
 
@@ -877,14 +994,14 @@ function App(){
       navigator.clipboard.writeText(full).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
     };
 
-    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowEmailOut(false)}}>
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget){setShowEmailOut(false);setEmailSource(null);}}}>
       <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:680,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
         <div style={{padding:"18px 22px 14px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
           <div>
             <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18}}>📋 Email de suivi</div>
-            <div style={{fontSize:12,color:"#aaa",marginTop:3}}>{filtA.length} action{filtA.length>1?"s":""} · basé sur les filtres actifs</div>
+            <div style={{fontSize:12,color:"#aaa",marginTop:3}}>{actions.length} action{actions.length>1?"s":""} · {sourceLabel}</div>
           </div>
-          <button onClick={()=>setShowEmailOut(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb",flexShrink:0}}>×</button>
+          <button onClick={()=>{setShowEmailOut(false);setEmailSource(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb",flexShrink:0}}>×</button>
         </div>
         <div style={{padding:"14px 22px 8px"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".5px",marginBottom:4}}>Objet</div>
@@ -949,6 +1066,7 @@ function App(){
     {showEmailOut&&<EmailOutModal/>}
     {showEmail&&<EmailModal/>}
     {trackerForm&&<TrackerFormModal/>}
+    {tenderForm&&<TenderFormModal/>}
     {showBak&&<BakModal/>}
     {showLib&&<LibModal/>}
     {showPpl&&<PplModal/>}
@@ -962,6 +1080,7 @@ function App(){
         <span title={syncTitle} style={{fontSize:14,cursor:"default"}}>{syncLabel}</span>
         <button className={`nb${view==="dashboard"?" on":""}`} onClick={()=>setView("dashboard")}>Dashboard</button>
         <button className={`nb${view==="trackers"||view==="tracker-detail"?" on":""}`} onClick={()=>setView("trackers")}>Trackers{trackers.length>0&&<span style={{background:"#00796b",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:10,marginLeft:2}}>{trackers.length}</span>}</button>
+        <button className={`nb${view==="tenders"||view==="tender-detail"?" on":""}`} onClick={()=>setView("tenders")} style={{background:view==="tenders"||view==="tender-detail"?"#b45309":"transparent",color:view==="tenders"||view==="tender-detail"?"#fff":"inherit"}}>Tenders{tenders.length>0&&<span style={{background:"#b45309",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:10,marginLeft:2}}>{tenders.length}</span>}</button>
         <button className={`nb${view==="tasks"?" on":""}`} onClick={()=>setView("tasks")}>Tâches{tasks.filter(t=>t.status!=="done").length>0&&<span style={{background:"#3949ab",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:10,marginLeft:2}}>{tasks.filter(t=>t.status!=="done").length}</span>}</button>
         <button className={`nb${view==="actions"?" on":""}`} onClick={()=>{resetF();setView("actions");}}>Vue globale</button>
         <button className="nb lib" onClick={()=>setShowLib(true)}>📦 {library.length}</button>
@@ -971,6 +1090,7 @@ function App(){
         <button className="nb email-cta" onClick={()=>setShowEmail(true)}>📧 Email</button>
         <button className="nb task-cta" onClick={()=>setTaskForm(newTask())}>＋ Tâche</button>
         <button className="nb" style={{background:"#00796b",color:"#fff",fontWeight:700}} onClick={()=>setTrackerForm(newTrackerForm())}>＋ Tracker</button>
+        <button className="nb" style={{background:"#b45309",color:"#fff",fontWeight:700}} onClick={()=>setTenderForm(newTender())}>＋ Tender</button>
         <button className="nb cta" onClick={()=>{setForm(defForm);setView("new");}}>＋ MoM</button>
       </div>
     </div>
@@ -1291,33 +1411,89 @@ function App(){
         })}
       </div>}
 
+      {/* ── TENDERS LIST ── */}
+      {view==="tenders"&&<div>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:2}}>
+          <div><div className="stitle">Tenders</div><div className="ssub">Suivi des étapes de soumission par package.</div></div>
+          <button className="btn" style={{background:"#b45309",color:"#fff",flexShrink:0,fontWeight:700}} onClick={()=>setTenderForm(newTender())}>＋ Nouveau Tender</button>
+        </div>
+        {tenders.length===0?<div className="empty"><div className="eico">📑</div><div className="etxt">Aucun Tender. Créez-en un pour suivre vos soumissions.</div></div>
+        :<div className="rlist">{tenders.map(td=>{
+          const vis=TENDER_STEPS.filter(s=>!(td.hiddenSteps||[]).includes(s.key));
+          const total=(td.rows||[]).length;
+          const approved=(td.rows||[]).filter(r=>vis.some(s=>r[s.key]==="Approuvé"||r[s.key]==="Approved A"||r[s.key]==="Approved B"||r[s.key]==="Done"||r[s.key]==="Signé")).length;
+          return <div className="rcard" key={td.id} onClick={()=>{setSelTender(td);setView("tender-detail");}}>
+            <div className="rhdr"><div className="rtit">{td.title}</div><span className="badge" style={{background:"#fff8f0",color:"#b45309"}}>📑 Tender</span></div>
+            <div className="rmeta"><span>📅 {td.createdAt}</span><span>📦 {total} package{total>1?"s":""}</span><span>✅ {approved} avancés</span></div>
+            {td.description&&<div style={{fontSize:12,color:"#888",marginTop:4,fontStyle:"italic"}}>{td.description}</div>}
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{vis.map(s=><span key={s.key} style={{fontSize:10,padding:"2px 8px",borderRadius:12,background:"#fff8f0",color:"#b45309",fontWeight:700,border:"1px solid #fed7aa"}}>{s.label}</span>)}</div>
+          </div>;
+        })}</div>}
+      </div>}
+
+      {/* ── TENDER DETAIL ── */}
+      {view==="tender-detail"&&selTender&&<div>
+        <button className="bbtn" onClick={()=>setView("tenders")}>← Retour</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:12}}>
+          <div>
+            <span className="badge" style={{background:"#fff8f0",color:"#b45309",marginBottom:7,display:"inline-flex"}}>📑 Tender</span>
+            <div className="dtit">{selTender.title}</div>
+            <div className="dmeta"><span>📅 {selTender.createdAt}</span><span>📦 {(selTender.rows||[]).length} packages</span></div>
+            {selTender.description&&<div style={{fontSize:13,color:"#888",fontStyle:"italic",marginTop:2}}>{selTender.description}</div>}
+          </div>
+        </div>
+        <div style={{overflowX:"auto",background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+            <thead><tr style={{background:"#fafaf8"}}>
+              <th style={{padding:"10px 14px",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",textAlign:"left",borderBottom:"1.5px solid #e8e6df"}}>Package</th>
+              <th style={{padding:"10px 14px",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",textAlign:"left",borderBottom:"1.5px solid #e8e6df"}}>Responsable</th>
+              {TENDER_STEPS.filter(s=>!(selTender.hiddenSteps||[]).includes(s.key)).map(s=><th key={s.key} style={{padding:"10px 14px",fontSize:11,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".5px",textAlign:"center",borderBottom:"1.5px solid #e8e6df",whiteSpace:"nowrap"}}>{s.label}</th>)}
+            </tr></thead>
+            <tbody>{(selTender.rows||[]).map((row,i)=>{
+              const visSteps=TENDER_STEPS.filter(s=>!(selTender.hiddenSteps||[]).includes(s.key));
+              return <tr key={row.id||i} style={{borderBottom:"1px solid #f5f4f0"}}>
+                <td style={{padding:"10px 14px",fontSize:13,fontWeight:600}}>{row.name||<span style={{color:"#ccc"}}>—</span>}</td>
+                <td style={{padding:"10px 14px",fontSize:12,color:"#666"}}>{row.resp||<span style={{color:"#ddd"}}>—</span>}</td>
+                {visSteps.map(s=>{
+                  const val=row[s.key]||"";
+                  const cl=tenderStepColor(val);
+                  return <td key={s.key} style={{padding:"8px 10px",textAlign:"center"}}>
+                    <select value={val} onChange={e=>{
+                      const updated={...selTender,rows:selTender.rows.map((r,ri)=>ri===i?{...r,[s.key]:e.target.value}:r)};
+                      saveD(tenders.map(t=>t.id===updated.id?updated:t));setSelTender(updated);
+                    }} style={{padding:"4px 8px",borderRadius:20,border:"1.5px solid "+cl.color,background:cl.bg,color:cl.color,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",minWidth:110}}>
+                      <option value="">—</option>
+                      {s.opts.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </td>;
+                })}
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      </div>}
+
       {/* ── Sticky bottom bar ── */}
       {view==="detail"&&selected&&!editMode&&<div className="sticky-bar">
         <span className="sb-title">📋 {selected.title}</span>
         <button className="btn" style={{background:"#2a2a2a",color:"#ccc",border:"1px solid #444",fontSize:12}} onClick={()=>setEditMode(true)}>✏️ Modifier</button>
-        <button className="btn" style={{background:"#3949ab",color:"#fff",fontWeight:700,fontSize:12}} title="Convertir toutes les actions en tâches standalone" onClick={()=>{
+        <button className="btn" style={{background:"#1c1c1e",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>{
+          const acts=(selected.packages||[]).flatMap(pkg=>(pkg.actions||[]).map(ac=>({...ac,package:pkg.name,owner:pkg.owner,pkgId:pkg.id,meetingTitle:selected.title,meetingId:selected.id,direction:selected.direction,source:"mom"})));
+          setEmailSource(acts);setShowEmailOut(true);
+        }}>📋 Email</button>
+        <button className="btn" style={{background:"#3949ab",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>{
           const today=new Date().toISOString().slice(0,10);
           const newTasks=(selected.packages||[]).flatMap(pkg=>
             (pkg.actions||[]).map(ac=>({
-              id:uuid(),
-              text:ac.text,
-              owner:pkg.owner||"",
-              package:pkg.name||"",
-              status:ac.status||"pending",
-              importance:ac.importance||1,
-              urgence:ac.urgence||1,
-              due:ac.due||"",
-              note:`Issu du MoM : ${selected.title} (${selected.date||today})`,
-              photos:[],
-              tags:ac.tags||[],
-              completedAt:ac.completedAt||"",
-              createdAt:today,
+              id:uuid(),text:ac.text,owner:pkg.owner||"",package:pkg.name||"",
+              status:ac.status||"pending",importance:ac.importance||1,urgence:ac.urgence||1,
+              due:ac.due||"",note:"Issu du MoM : "+selected.title+" ("+(selected.date||today)+")",
+              photos:[],tags:ac.tags||[],completedAt:ac.completedAt||"",createdAt:today,
             }))
           );
           if(newTasks.length===0){alert("Ce MoM ne contient aucune action.");return;}
-          if(!confirm(`Créer ${newTasks.length} tâche${newTasks.length>1?"s":""} à partir de "${selected.title}" ?\n\nLe MoM restera intact.`))return;
-          saveT([...newTasks,...tasks]);
-          setView("tasks");
+          if(!confirm("Créer "+newTasks.length+" tâche"+(newTasks.length>1?"s":"")+" à partir de \""+selected.title+"\" ?\n\nLe MoM restera intact."))return;
+          saveT([...newTasks,...tasks]);setView("tasks");
         }}>📌 → Tâches ({(selected.packages||[]).reduce((s,p)=>s+(p.actions||[]).length,0)})</button>
         <button className="btn" style={{background:"#00796b",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>{
           const tr={id:uuid(),title:selected.title,description:selected.summary||"",createdAt:selected.date||new Date().toISOString().slice(0,10),packages:(selected.packages||[]).map(p=>({...p,id:uuid(),actions:(p.actions||[]).map(a=>({...a,id:uuid(),completedAt:a.status==="done"?a.completedAt||"":""}))}))}
@@ -1349,8 +1525,19 @@ function App(){
           saveX(trackers.map(t=>t.id===selTracker.id?updated:t));setSelTracker(updated);
         }}>＋ Groupe</button>
         <div style={{flex:1}}/>
-        <button className="btn" style={{background:"transparent",color:"#f87171",border:"1px solid #7f1d1d",fontSize:12}} onClick={()=>{if(confirm(`Supprimer "${selTracker.title}" ?`))delTracker(selTracker.id);}}>🗑️ Supprimer</button>
+        <button className="btn" style={{background:"#1c1c1e",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>{
+          const acts=(selTracker.packages||[]).flatMap(pkg=>(pkg.actions||[]).map(ac=>({...ac,package:pkg.name,owner:pkg.owner,pkgId:pkg.id,meetingTitle:selTracker.title,meetingId:selTracker.id,source:"tracker"})));
+          setEmailSource(acts);setShowEmailOut(true);
+        }}>📋 Email</button>
+        <button className="btn" style={{background:"transparent",color:"#f87171",border:"1px solid #7f1d1d",fontSize:12}} onClick={()=>{if(confirm("Supprimer \""+selTracker.title+"\" ?"))delTracker(selTracker.id);}}>🗑️ Supprimer</button>
         <button className="btn" style={{background:"#00796b",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>setTrackerForm({...selTracker})}>✏️ Modifier</button>
+      </div>}
+
+      {view==="tender-detail"&&selTender&&<div className="sticky-bar">
+        <span className="sb-title">📑 {selTender.title}</span>
+        <div style={{flex:1}}/>
+        <button className="btn" style={{background:"transparent",color:"#f87171",border:"1px solid #7f1d1d",fontSize:12}} onClick={()=>{if(confirm("Supprimer \""+selTender.title+"\" ?")){saveD(tenders.filter(x=>x.id!==selTender.id));setSelTender(null);setView("tenders");}}}>🗑️ Supprimer</button>
+        <button className="btn" style={{background:"#b45309",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>setTenderForm({...selTender})}>✏️ Modifier</button>
       </div>}
 
     </div>
