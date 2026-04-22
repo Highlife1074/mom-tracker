@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MoM & Actions</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="module" id="firebase-init">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCs-tnK2RfDn9I1gDTZNwMs3hkyNghDbRo",
+    authDomain: "rt-mom.firebaseapp.com",
+    projectId: "rt-mom",
+    storageBucket: "rt-mom.firebasestorage.app",
+    messagingSenderId: "210967214795",
+    appId: "1:210967214795:web:c4ccc7b00fb7039b57f94e"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // Expose db helpers globally for Babel/React code
+  window._db = {
+    get: async (key) => {
+      try {
+        const snap = await getDoc(doc(db, "mom_data", key));
+        return snap.exists() ? snap.data().value : null;
+      } catch(e) { console.error("FB get error", e); return null; }
+    },
+    set: async (key, value) => {
+      try {
+        await setDoc(doc(db, "mom_data", key), { value });
+      } catch(e) { console.error("FB set error", e); }
+    }
+  };
+  window._dbReady = true;
+  window.dispatchEvent(new Event("db-ready"));
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#f5f4f0;color:#1a1a1a}
+.app{min-height:100vh;background:#f5f4f0}
+.hdr{background:#1c1c1e;color:#f5f4f0;padding:0 16px;display:flex;align-items:center;justify-content:space-between;height:54px;position:sticky;top:0;z-index:100;gap:8px}
+.hdr h1{font-family:'DM Serif Display',serif;font-size:16px;white-space:nowrap}.hdr h1 span{color:#c9a84c}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#4caf50;flex-shrink:0;transition:background .3s}
+.sync-dot.syncing{background:#f57f17;animation:pulse 1s infinite}
+.sync-dot.error{background:#c62828}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.nav{display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap;align-items:center}
+.nb{background:transparent;border:none;color:#999;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;padding:5px 9px;border-radius:20px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.nb.on,.nb:hover{background:#333;color:#f5f4f0}
+.nb.cta{background:#c9a84c;color:#1c1c1e;font-weight:700}.nb.cta:hover{background:#e0be6a}
+.nb.task-cta{background:#3949ab;color:#fff;font-weight:700}.nb.task-cta:hover{background:#5c6bc0}
+.nb.email-cta{background:#6a1b9a;color:#fff;font-weight:700}.nb.email-cta:hover{background:#8e24aa}
+.nb.lib{background:#2a2a2a;color:#ccc;border:1px solid #444}
+.nb.bkp{background:#1b5e20;color:#a5d6a7;border:1px solid #2e7d32;font-weight:700}
+.main{max-width:1040px;margin:0 auto;padding:20px 14px 80px 14px}.main-wide{max-width:100%;margin:0;padding:20px 20px 80px 20px}
+.stitle{font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:2px}.ssub{color:#888;font-size:13px;margin-bottom:18px}
+.stats{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:18px}
+.sc{background:#fff;border-radius:10px;padding:12px 13px;border:1.5px solid #e8e6df}
+.sn{font-family:'DM Serif Display',serif;font-size:24px;line-height:1}.sl{font-size:10px;color:#aaa;margin-top:2px;text-transform:uppercase;letter-spacing:.4px}
+.sc.warn .sn{color:#bf360c}.sc.ok .sn{color:#2e7d32}.sc.info .sn{color:#1565c0}.sc.purple .sn{color:#6a1b9a}
+.filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.si{flex:1;min-width:130px;padding:7px 11px;border:1.5px solid #ddd;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;outline:none}.si:focus{border-color:#1c1c1e}
+select{padding:7px 10px;border:1.5px solid #ddd;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;background:#fff;cursor:pointer;outline:none}select:focus{border-color:#1c1c1e}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .15s}
+.bpri{background:#1c1c1e;color:#f5f4f0}.bpri:hover{background:#333}
+.bdgr{background:#fff;color:#c62828;border:1.5px solid #f5c6c6}.bdgr:hover{background:#ffeaea}
+.bout{background:#fff;color:#1c1c1e;border:1.5px solid #ddd}.bout:hover{border-color:#1c1c1e}
+.bgho{background:transparent;color:#bbb;border:none;padding:3px 6px;font-size:11px;cursor:pointer;border-radius:4px}.bgho:hover{color:#c62828;background:#ffeaea}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.rlist{display:flex;flex-direction:column;gap:8px}
+.rcard{background:#fff;border-radius:11px;border:1.5px solid #e8e6df;padding:14px 16px;cursor:pointer;transition:all .15s}.rcard:hover{border-color:#1c1c1e;box-shadow:0 2px 10px rgba(0,0,0,.07)}
+.rhdr{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px}.rtit{font-family:'DM Serif Display',serif;font-size:15px}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}
+.rmeta{font-size:11px;color:#aaa;display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.pbar{height:3px;background:#e8e6df;border-radius:3px;margin-bottom:7px}.pfill{height:100%;background:#2e7d32;border-radius:3px;transition:width .3s}
+.ppills{display:flex;flex-wrap:wrap;gap:4px}.ppill{font-size:11px;padding:2px 7px;border-radius:6px;background:#f0ede6;color:#666;border:1px solid #e8e6df}
+.ostrip{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}.ochip{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:700}
+.bbtn{display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:#888;font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;margin-bottom:14px;padding:0}.bbtn:hover{color:#1c1c1e}
+.dtit{font-family:'DM Serif Display',serif;font-size:21px;line-height:1.2;margin-bottom:4px}.dmeta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#aaa;margin-bottom:15px}
+.tabs{display:flex;gap:0;border-bottom:2px solid #e8e6df;margin-bottom:15px}
+.tab{padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer;border:none;background:transparent;color:#bbb;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}.tab.on{color:#1c1c1e;border-bottom-color:#1c1c1e}
+.pkgblock{background:#fff;border-radius:10px;border:1.5px solid #e8e6df;margin-bottom:10px;overflow:hidden}
+.pkghdr{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1.5px solid #f0ede6}
+.pkgname{font-weight:700;font-size:13px;display:flex;align-items:center;gap:7px}
+.pkgtbl{width:100%;border-collapse:collapse}
+.pkgtbl td{padding:9px 14px;font-size:13px;border-bottom:1px solid #f5f4f0;vertical-align:top}
+.pkgtbl tr:last-child td{border-bottom:none}.pkgtbl td:first-child{width:100%}.pkgtbl td:last-child{white-space:nowrap;vertical-align:middle}
+.stsel{border:1.5px solid #ddd;border-radius:6px;padding:3px 6px;font-size:11px;font-family:'DM Sans',sans-serif;background:#fff;cursor:pointer}
+.atext{line-height:1.5}.adue{font-size:11px;color:#bbb;margin-top:1px}
+.sttchip{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:12px;font-size:11px;font-weight:700}
+.sc-pending{background:#fff8e1;color:#f57f17}.sc-done{background:#e8f5e9;color:#2e7d32}.sc-blocked{background:#ffeaea;color:#c62828}.sc-inprogress{background:#e3f2fd;color:#1565c0}
+.fcard{background:#fff;border-radius:12px;border:1.5px solid #e8e6df;padding:22px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fg{display:flex;flex-direction:column;gap:5px}.fg.full{grid-column:1/-1}
+label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px}
+input[type=text],input[type=date],input[type=password],textarea{width:100%;padding:8px 11px;border:1.5px solid #ddd;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border .15s;background:#fff}
+input:focus,textarea:focus{border-color:#1c1c1e}textarea{resize:vertical;min-height:65px}
+.dirsel{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.dirop{padding:7px 8px;border-radius:8px;border:2px solid #e8e6df;cursor:pointer;font-size:11px;font-weight:700;text-align:center;transition:all .15s;color:#666}.dirop.on{border-color:#1c1c1e;background:#f0ede6;color:#1c1c1e}
+.fpkg{background:#fafaf8;border-radius:8px;border:1.5px solid #e8e6df;padding:12px;margin-top:9px}
+.fpkghdr{display:flex;gap:8px;align-items:flex-end;margin-bottom:9px}.fpkghdr .fg{flex:1;margin:0}
+.farow{display:grid;grid-template-columns:1fr auto auto auto;gap:5px;align-items:center;margin-bottom:5px}
+.farow input[type=text]{font-size:12px;padding:5px 8px}.farow input[type=date]{font-size:12px;padding:5px 8px;width:115px}.farow select{font-size:11px;padding:5px 7px}
+.fbtns{display:flex;gap:7px;justify-content:flex-end;margin-top:18px}
+.sticky-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(28,28,30,.97);backdrop-filter:blur(10px);border-top:1px solid #333;padding:10px 16px;display:flex;align-items:center;gap:8px;z-index:200;box-shadow:0 -4px 20px rgba(0,0,0,.25)}
+.sticky-bar .sb-title{font-size:12px;color:#888;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.atwrap{background:#fff;border-radius:10px;border:1.5px solid #e8e6df;overflow-x:auto;display:flex;flex-direction:column-reverse}.atwrap-inner{overflow-x:auto}
+.attbl{width:100%;border-collapse:collapse}
+.attbl th{font-size:10px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:.4px;padding:8px 9px;text-align:left;border-bottom:1.5px solid #e8e6df;background:#fafaf8;white-space:nowrap;position:sticky;top:0}
+.attbl td{padding:7px 9px;font-size:12px;border-bottom:1px solid #f5f4f0;vertical-align:middle}
+.attbl tr:last-child td{border-bottom:none}.attbl tr:hover td{background:#fafaf8}
+.tcard{background:#fff;border-radius:10px;border:1.5px solid #e8e6df;padding:13px 15px;display:flex;align-items:flex-start;gap:11px;transition:all .15s;margin-bottom:7px}
+.tcard:hover{border-color:#aaa;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.empty{text-align:center;padding:44px 0;color:#ccc}.eico{font-size:32px;margin-bottom:8px}.etxt{font-size:14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:640px){.stats{grid-template-columns:repeat(3,1fr)}.fgrid{grid-template-columns:1fr}.fg.full{grid-column:1}.dirsel{grid-template-columns:1fr}.fpkghdr{flex-direction:column}.farow{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="error-display" style="display:none;padding:20px;font-family:monospace;background:#fff;color:red;white-space:pre-wrap;font-size:13px"></div>
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  document.getElementById('error-display').style.display='block';
+  document.getElementById('error-display').textContent = 'JS ERROR:\n' + msg + '\nLine: ' + line + '\n' + (err&&err.stack||'');
+  return false;
+};
+</script>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+// ── Firebase storage (cloud) ──────────────────────────────────
+const cloudStore = {
+  get: async (key) => {
+    if (!window._db) return null;
+    const val = await window._db.get(key);
+    if (val === null) return null;
+    try { return typeof val === 'string' ? JSON.parse(val) : val; } catch { return val; }
+  },
+  set: async (key, value) => {
+    if (!window._db) return;
+    await window._db.set(key, JSON.stringify(value));
+  }
+};
+
+const SK="records"; const LK="library"; const TK="tasks"; const PK="people"; const GK="tags"; const RK="tagrules"; const QK="pkgrules"; const XK="trackers";
+
+const DIRECTIONS=["outgoing","incoming_boss","incoming_dept"];
+const DIR_LABELS={outgoing:"📤 Sent to Team",incoming_boss:"📥 From Boss",incoming_dept:"🔄 From Department"};
+const DIR_COLORS={outgoing:{bg:"#e8f5e9",accent:"#2e7d32",badge:"#c8e6c9"},incoming_boss:{bg:"#e3f2fd",accent:"#1565c0",badge:"#bbdefb"},incoming_dept:{bg:"#fff3e0",accent:"#e65100",badge:"#ffe0b2"}};
+const STATUS_OPTIONS=["pending","in progress","done","blocked"];
+const STATUS_ICONS={pending:"⏳","in progress":"🔄",done:"✅",blocked:"🚫"};
+// ── Importance × Urgence → Score 1-9 ─────────────────────────
+// importance: 1=low 2=medium 3=high  urgence: 1=low 2=medium 3=high
+// score = importance × urgence (1–9)
+function calcScore(imp,urg){return (imp||1)*(urg||1);}
+function scoreStyle(s){
+  if(s>=7) return {bg:"#ffeaea",color:"#c62828",label:`🔥 ${s}`,border:"#c62828"};
+  if(s>=4) return {bg:"#fff8e1",color:"#f57f17",label:`⚡ ${s}`,border:"#f57f17"};
+  return      {bg:"#f5f4f0",color:"#888",   label:`${s}`,border:"#ddd"};
+}
+const IMP_LABELS=["","Importance 1","Importance 2","Importance 3"];
+const URG_LABELS=["","Urgence 1","Urgence 2","Urgence 3"];
+const OWNER_COLORS=[{bg:"#e8eaf6",accent:"#3949ab"},{bg:"#fce4ec",accent:"#c2185b"},{bg:"#e0f2f1",accent:"#00796b"},{bg:"#fff3e0",accent:"#e65100"},{bg:"#f3e5f5",accent:"#7b1fa2"},{bg:"#e1f5fe",accent:"#0277bd"},{bg:"#f9fbe7",accent:"#827717"},{bg:"#fbe9e7",accent:"#bf360c"}];
+function ownerColor(n){let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%OWNER_COLORS.length;return OWNER_COLORS[h];}
+function uuid(){return Math.random().toString(36).slice(2)+Date.now().toString(36);}
+function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(f);});}
+
+const SEED_LIBRARY=["Acoustic Ceiling & Panels — Kvadras","AVRA Stone","Brickworks","Brushed Concrete","Concrete Blocks","Cover for Manholes","EPS","Exposed Aggregates","Fence","Fire Joint","Glazed Door","Granite","Grolla / Pool","Joinery LO","Manholes","Mirror Ceiling","MOCA","Open Channels","Paint","Plastering","Playground","Rainwater Channel & Other Channels","Repair Car Park","Resilient Flooring","SFS in Lobby","Special Paint","Stabilised Earth","Stone","Technical Wooden Floor","Threads","Trims","Waterproofing","Wood Flooring","Wooden Door","Wooden False Ceiling & Panels"].sort();
+const SEED_PEOPLE=["BALLAS, Antonios","CHATZIROUMPIS, Vasilis","FYTOPOULOU, Katerina","KLEFTOSPYROU, Georgia","KOUTOULAKI, Anna","MAKROVASILI, Anastasia","NASIS, Athanasios","PLOUMISTOS, Georgios Paraskevas","ROSIOS, Irodion","ROUSSIN, Yanis","TSIAMPAOS, Konstantinos","VRETTOU, Eirini"].sort();
+const SEED_TAGS=["Contract","Design","HR","Procurement","Production"].sort();
+const TAG_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f3e5f5|#7b1fa2","#e8f5e9|#2e7d32","#fff8e1|#f57f17","#fbe9e7|#bf360c","#e3f2fd|#1565c0","#f9fbe7|#827717"];
+function tagColor(t){let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%TAG_COLORS.length;const parts=TAG_COLORS[h].split("|");return{bg:parts[0],color:parts[1]};}
+
+const newTask=()=>({id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",photos:[],tags:[],createdAt:new Date().toISOString().slice(0,10)});
+const newPkg=()=>({id:uuid(),name:"",owner:"",actions:[{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]});
+const defForm={title:"",date:new Date().toISOString().slice(0,10),direction:"outgoing",participants:"",summary:"",packages:[newPkg()]};
+
+// ── ScorePicker — importance × urgence ──────────────────────────
+function ScorePicker({imp,urg,onImp,onUrg}){
+  const score=calcScore(imp,urg);
+  const ss=scoreStyle(score);
+  const btn=(val,cur,setter,label)=><button onClick={()=>setter(val)}
+    style={{width:22,height:22,borderRadius:4,border:`1.5px solid ${cur===val?"#1c1c1e":"#ddd"}`,background:cur===val?"#1c1c1e":"#fff",color:cur===val?"#fff":"#aaa",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer",transition:"all .1s",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    {val}
+  </button>;
+  return <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+    <div style={{display:"flex",alignItems:"center",gap:3}}>
+      <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginRight:2}}>I</span>
+      {[1,2,3].map(v=>btn(v,imp,onImp))}
+    </div>
+    <span style={{color:"#ccc",fontSize:11}}>×</span>
+    <div style={{display:"flex",alignItems:"center",gap:3}}>
+      <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginRight:2}}>U</span>
+      {[1,2,3].map(v=>btn(v,urg,onUrg))}
+    </div>
+    <span style={{fontSize:12,fontWeight:800,padding:"2px 9px",borderRadius:12,background:ss.bg,color:ss.color,minWidth:36,textAlign:"center"}}>{ss.label}</span>
+  </div>;
+}
+
+// ── PkgForm — top-level to prevent focus loss on re-render ───────
+function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,tags=[]}){
+  return <div className="fpkg">
+    <div className="fpkghdr">
+      <div className="fg" style={{flex:2}}><label>Package</label><PkgPicker value={pkg.name} onChange={v=>sPkg(pi,"name",v)} library={library} addLib={addLib}/></div>
+      <div className="fg" style={{flex:1}}><label>Responsable</label><PersonPicker value={pkg.owner} onChange={v=>sPkg(pi,"owner",v)} people={people} addPeople={addPpl}/></div>
+      <button className="btn bgho" onClick={()=>rPkg(pi)} style={{alignSelf:"flex-end",padding:"8px"}}>✕</button>
+    </div>
+    {pkg.actions.map((ac,ai)=><div key={ac.id||ai} style={{marginBottom:6}}>
+      <div className="farow" style={{marginBottom:3}}>
+        <input type="text" placeholder="Action…" value={ac.text} onChange={e=>sAct(pi,ai,"text",e.target.value)}/>
+        <input type="date" value={ac.due} onChange={e=>sAct(pi,ai,"due",e.target.value)}/>
+        <select value={ac.status} onChange={e=>sAct(pi,ai,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+        <button className="btn bgho" onClick={()=>rAct(pi,ai)}>✕</button>
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",paddingLeft:2,marginBottom:2}}>
+        <ScorePicker imp={ac.importance||1} urg={ac.urgence||1} onImp={v=>sAct(pi,ai,"importance",v)} onUrg={v=>sAct(pi,ai,"urgence",v)}/>
+      </div>
+      {tags.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,paddingLeft:2,paddingBottom:4,alignItems:"center",marginTop:4}}>
+        <span style={{fontSize:10,fontWeight:700,color:"#bbb",textTransform:"uppercase",letterSpacing:".4px",marginRight:2,flexShrink:0}}>Tags</span>
+        {tags.map(t=>{
+          const on=(ac.tags||[]).includes(t);
+          const tc=tagColor(t);
+          return <button key={t} onClick={()=>sAct(pi,ai,"tags",on?(ac.tags||[]).filter(x=>x!==t):[...(ac.tags||[]),t])}
+            style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${on?tc.color:"#ddd"}`,background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .12s"}}>
+            {t}
+          </button>;
+        })}
+      </div>}
+    </div>)}
+    <button className="btn bgho" style={{fontSize:12,color:"#777",marginTop:3}} onClick={()=>aAct(pi)}>＋ Action</button>
+  </div>;
+}
+
+function PhotoStrip({photos=[],onAdd,onRemove,onView,small}){
+  const ref=useRef();const sz=small?44:56;
+  const handle=async files=>{for(const f of Array.from(files)){if(!f.type.startsWith("image/"))continue;if(f.size>4*1024*1024){alert(`"${f.name}" dépasse 4 MB.`);continue;}const d=await readFile(f);onAdd({id:uuid(),name:f.name,data:d,addedAt:new Date().toISOString().slice(0,10)});}};
+  return <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center",marginTop:small?4:6}}>
+    {photos.map(ph=><div key={ph.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>onView(ph)}>
+      <img src={ph.data} alt={ph.name} style={{width:sz,height:sz,objectFit:"cover",borderRadius:6,border:"1.5px solid #e8e6df",display:"block"}}/>
+      {onRemove&&<button onClick={e=>{e.stopPropagation();onRemove(ph.id);}} style={{position:"absolute",top:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"#c62828",color:"#fff",border:"none",fontSize:9,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>×</button>}
+    </div>)}
+    {onAdd&&<><input ref={ref} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>handle(e.target.files)}/>
+    <button onClick={()=>ref.current.click()} style={{width:sz,height:sz,borderRadius:6,border:"1.5px dashed #ccc",background:"#fafaf8",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,color:"#bbb",fontSize:10,fontWeight:700,fontFamily:"inherit"}}>
+      <span style={{fontSize:18,lineHeight:1}}>📷</span><span>Photo</span>
+    </button></>}
+  </div>;
+}
+
+function Lightbox({photo,onClose}){
+  useEffect(()=>{const h=e=>{if(e.key==="Escape")onClose();};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[]);
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
+      <img src={photo.data} alt={photo.name} style={{maxWidth:"100%",maxHeight:"80vh",borderRadius:10,objectFit:"contain"}}/>
+      <div style={{color:"#ccc",fontSize:12,textAlign:"center"}}>{photo.name} · <a href={photo.data} download={photo.name} style={{color:"#c9a84c",textDecoration:"none"}}>Télécharger</a></div>
+      <button onClick={onClose} style={{background:"#fff",border:"none",borderRadius:8,padding:"6px 18px",fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer"}}>Fermer</button>
+    </div>
+  </div>;
+}
+
+function DropPicker({value,onChange,items,onAddNew,placeholder,renderItem}){
+  const [open,setOpen]=useState(false);const [q,setQ]=useState("");const ref=useRef();
+  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
+  const filtered=items.filter(p=>p.toLowerCase().includes(q.toLowerCase()));
+  const exact=items.some(p=>p.toLowerCase()===q.toLowerCase());
+  const showAdd=q.trim().length>1&&!exact;
+  return <div ref={ref} style={{position:"relative"}}>
+    <div style={{position:"relative"}}>
+      <input type="text" placeholder={placeholder} value={open?q:value}
+        onFocus={()=>{setOpen(true);setQ("");}} onChange={e=>{setQ(e.target.value);if(!open)setOpen(true);}}
+        style={{width:"100%",padding:"8px 32px 8px 12px",border:`1.5px solid ${open?"#1c1c1e":"#ddd"}`,borderRadius:8,fontFamily:"inherit",fontSize:13,outline:"none",background:"#fff"}}/>
+      <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:"#bbb",pointerEvents:"none",fontSize:11}}>▾</span>
+    </div>
+    {open&&<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1.5px solid #1c1c1e",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,.12)",zIndex:999,maxHeight:240,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{overflowY:"auto",flex:1}}>
+        {filtered.map(p=><div key={p} onClick={()=>{onChange(p);setQ("");setOpen(false);}}
+          style={{padding:"8px 13px",fontSize:13,cursor:"pointer",borderBottom:"1px solid #f5f4f0",display:"flex",alignItems:"center",gap:8}}
+          onMouseEnter={e=>e.currentTarget.style.background="#f5f4f0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          {renderItem?renderItem(p):<span style={{flex:1}}>{p}</span>}
+          {value===p&&<span style={{color:"#2e7d32",fontSize:12}}>✓</span>}
+        </div>)}
+        {filtered.length===0&&!showAdd&&<div style={{padding:"14px",fontSize:13,color:"#bbb",textAlign:"center"}}>Aucun résultat</div>}
+      </div>
+      {showAdd&&onAddNew&&<div style={{borderTop:filtered.length>0?"1.5px solid #e8e6df":"none",padding:"10px 13px",background:"#fafaf8"}}>
+        <div style={{fontSize:12,color:"#888",marginBottom:6}}><strong>"{q.trim()}"</strong> n'est pas dans la liste.</div>
+        <button onClick={()=>{onAddNew(q.trim());onChange(q.trim());setQ("");setOpen(false);}} style={{width:"100%",padding:"7px 12px",background:"#1c1c1e",color:"#fff",border:"none",borderRadius:7,fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>＋ Ajouter à la liste et sélectionner</button>
+      </div>}
+    </div>}
+  </div>;
+}
+
+const PkgPicker=({value,onChange,library,addLib})=>(<DropPicker value={value} onChange={onChange} items={library} onAddNew={addLib} placeholder="Chercher ou saisir un package…"/>);
+const PersonPicker=({value,onChange,people,addPeople})=>(<DropPicker value={value} onChange={onChange} items={people} onAddNew={addPeople} placeholder="Chercher ou saisir un nom…" renderItem={p=>{const c=ownerColor(p);return<><span style={{width:22,height:22,borderRadius:"50%",background:c.bg,color:c.accent,fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{p.split(",")[0][0]}</span><span style={{flex:1}}>{p}</span></>;}}/>);
+function OChip({label,active,onClick,small,bg,color}){return <button onClick={onClick} style={{padding:small?"3px 9px":"5px 12px",borderRadius:20,border:`2px solid ${active?(bg||"#1c1c1e"):"#e0ddd6"}`,background:bg||(active?"#1c1c1e":"#fff"),color:color||(active?"#fff":"#777"),fontFamily:"inherit",fontSize:small?11:12,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>{label}</button>;}
+
+// ── ActionRow — inline editable row in global view ───────────────
+function ActionRow({ac,scoreEditMode,tags,people,library,getCCs,getPkgCCs,tagColor,ownerColor,
+  updAF,updTrackerAF,updTS,saveT,tasks,delTsk,delTrackerAction,delMoMAction,
+  setTaskForm,setSelected,setSelTracker,setEditMode,setActiveTab,setView,setLightbox,
+  records,trackers,addLib,addPpl}){
+  const [editing,setEditing]=useState(false);
+  const [editText,setEditText]=useState(ac.text);
+  const [editDue,setEditDue]=useState(ac.due||"");
+  const isTask=ac.source==="task";
+  const c=ownerColor(ac.owner||"");
+  const sc=calcScore(ac.importance||1,ac.urgence||1);
+  const ss=scoreStyle(sc);
+  const acCCs=[...new Set([...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")])].filter(p=>p!==ac.owner);
+
+  const save=()=>{
+    const f=(field,val)=>{
+      if(isTask) saveT(tasks.map(t=>t.id===ac.id?{...t,[field]:val}:t));
+      else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,field,val);
+      else updAF(ac.meetingId,ac.pkgId,ac.id,field,val);
+    };
+    if(editText.trim()!==ac.text) f("text",editText.trim());
+    if(editDue!==ac.due) f("due",editDue);
+    setEditing(false);
+  };
+  const toggleTag=tg=>{
+    const cur=ac.tags||[];
+    const next=cur.includes(tg)?cur.filter(x=>x!==tg):[...cur,tg];
+    if(isTask) saveT(tasks.map(t=>t.id===ac.id?{...t,tags:next}:t));
+    else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,"tags",next);
+    else updAF(ac.meetingId,ac.pkgId,ac.id,"tags",next);
+  };
+  const updateScore=(field,val)=>{
+    if(isTask) saveT(tasks.map(t=>t.id===ac.id?{...t,[field]:val}:t));
+    else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,field,val);
+    else updAF(ac.meetingId,ac.pkgId,ac.id,field,val);
+  };
+
+  return <tr style={{background:editing?"#f0f7ff":scoreEditMode?"#fffdf5":"transparent"}}>
+    {/* Action text */}
+    <td style={{minWidth:220}}>
+      {editing?<div style={{display:"flex",flexDirection:"column",gap:4}}>
+        <textarea value={editText} onChange={e=>setEditText(e.target.value)} autoFocus
+          style={{width:"100%",minWidth:200,padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:50}}/>
+        <input type="date" value={editDue} onChange={e=>setEditDue(e.target.value)}
+          style={{padding:"3px 7px",border:"1.5px solid #ddd",borderRadius:6,fontFamily:"inherit",fontSize:11,outline:"none"}}/>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+          {tags.map(tg=>{const{bg,color}=tagColor(tg);const on=(ac.tags||[]).includes(tg);return <button key={tg} onClick={()=>toggleTag(tg)}
+            style={{padding:"2px 8px",borderRadius:12,border:`1.5px solid ${on?color:"#ddd"}`,background:on?bg:"#fff",color:on?color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+        </div>
+        <div style={{display:"flex",gap:4}}>
+          <button onClick={save} style={{flex:1,padding:"4px",background:"#3949ab",color:"#fff",border:"none",borderRadius:5,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Sauver</button>
+          <button onClick={()=>{setEditing(false);setEditText(ac.text);setEditDue(ac.due||"");}} style={{padding:"4px 8px",background:"none",border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit",fontSize:11,cursor:"pointer",color:"#888"}}>✕</button>
+        </div>
+      </div>
+      :<div style={{cursor:"pointer"}} onClick={()=>{setEditing(true);setEditText(ac.text);setEditDue(ac.due||"");}}>
+        <div className="atext" title="Cliquer pour modifier">{ac.text}</div>
+        {isTask&&ac.note&&<div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginTop:2}}>{ac.note}</div>}
+        {(ac.photos||[]).length>0&&<div style={{display:"flex",gap:4,marginTop:4}}>{(ac.photos||[]).map(ph=><img key={ph.id} src={ph.data} onClick={e=>{e.stopPropagation();setLightbox(ph);}} alt="" style={{width:32,height:32,objectFit:"cover",borderRadius:4,border:"1px solid #e8e6df",cursor:"pointer"}}/>)}</div>}
+        <div style={{fontSize:10,color:"#ccc",marginTop:2}}>✏️ cliquer pour modifier</div>
+      </div>}
+    </td>
+    {/* Score */}
+    <td>{scoreEditMode?
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>I</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("importance",v)} style={{width:20,height:20,borderRadius:3,border:`1.5px solid ${(ac.importance||1)===v?"#1c1c1e":"#ddd"}`,background:(ac.importance||1)===v?"#1c1c1e":"#fff",color:(ac.importance||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
+        <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>U</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("urgence",v)} style={{width:20,height:20,borderRadius:3,border:`1.5px solid ${(ac.urgence||1)===v?"#1c1c1e":"#ddd"}`,background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
+        <span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:8,background:ss.bg,color:ss.color,textAlign:"center"}}>{ss.label}</span>
+      </div>
+      :<div><span style={{fontSize:11,fontWeight:800,padding:"2px 7px",borderRadius:10,background:ss.bg,color:ss.color,whiteSpace:"nowrap"}}>{ss.label}</span>{sc>1&&<div style={{fontSize:10,color:"#bbb",marginTop:1}}>I{ac.importance||1}×U{ac.urgence||1}</div>}</div>}
+    </td>
+    {/* Tags */}
+    <td><div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+      {(ac.tags||[]).map(tg=>{const{bg,color}=tagColor(tg);return <span key={tg} style={{fontSize:10,padding:"2px 6px",borderRadius:12,fontWeight:700,background:bg,color,whiteSpace:"nowrap"}}>{tg}</span>;})}
+    </div></td>
+    {/* Package */}
+    <td>{ac.package?<span className="ppill">{ac.package}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
+    {/* Owner */}
+    <td>{ac.owner?<span className="ochip" style={{background:c.bg,color:c.accent,fontSize:11,padding:"2px 7px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{ac.owner.split(",")[0]}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
+    {/* CCs */}
+    <td><div style={{display:"flex",flexDirection:"column",gap:2}}>{acCCs.length>0?acCCs.map((p,ci)=><div key={p} style={{display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",minWidth:22}}>CC{ci+1}</span><span style={{fontSize:10,padding:"1px 6px",borderRadius:20,fontWeight:600,background:"#e8f5e9",color:"#2e7d32",border:"1px solid #c8e6c9"}}>{p.split(",")[0]}</span></div>):<span style={{color:"#ddd",fontSize:12}}>—</span>}</div></td>
+    {/* Due */}
+    <td style={{color:"#bbb",fontSize:11,whiteSpace:"nowrap"}}>{ac.due||"—"}</td>
+    {/* Status */}
+    <td>{isTask
+      ?<select className="stsel" value={ac.status} onChange={e=>updTS(ac.id,e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+      :ac.source==="tracker"
+        ?<select className="stsel" value={ac.status} onChange={e=>updTrackerAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+        :<select className="stsel" value={ac.status} onChange={e=>updAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>}
+    </td>
+    {/* Source */}
+    <td>{isTask
+      ?<button className="btn bgho" style={{color:"#6a1b9a",fontSize:10,whiteSpace:"nowrap"}} onClick={()=>setTaskForm({...ac})}>📌 Tâche</button>
+      :ac.source==="tracker"
+        ?<button className="btn bgho" style={{color:"#00796b",fontSize:10,whiteSpace:"nowrap"}} onClick={()=>{setSelTracker(trackers.find(t=>t.id===ac.meetingId));setView("tracker-detail");}}>📊 {ac.meetingTitle}</button>
+        :<button className="btn bgho" style={{color:"#666",fontSize:10,whiteSpace:"nowrap"}} onClick={()=>{setSelected(records.find(r=>r.id===ac.meetingId));setEditMode(false);setActiveTab("packages");setView("detail");}}>{ac.meetingTitle}</button>}
+    </td>
+    {/* Delete */}
+    <td><button className="btn bgho" style={{color:"#ddd",fontSize:13,padding:"3px 6px"}}
+      onMouseEnter={e=>e.currentTarget.style.color="#c62828"}
+      onMouseLeave={e=>e.currentTarget.style.color="#ddd"}
+      onClick={()=>{if(!confirm(`Supprimer ?\n"${ac.text}"`))return;
+        if(isTask) delTsk(ac.id);
+        else if(ac.source==="tracker") delTrackerAction(ac.meetingId,ac.pkgId,ac.id);
+        else delMoMAction(ac.meetingId,ac.pkgId,ac.id);
+      }}>🗑</button></td>
+  </tr>;
+}
+
+// ── DualScroll — synced top + bottom scrollbars ──────────────────
+function DualScroll({children}){
+  const topRef=useRef();const botRef=useRef();
+  const syncFromTop=()=>{if(botRef.current)botRef.current.scrollLeft=topRef.current.scrollLeft;};
+  const syncFromBot=()=>{if(topRef.current)topRef.current.scrollLeft=botRef.current.scrollLeft;};
+  useEffect(()=>{
+    const top=topRef.current;const bot=botRef.current;
+    if(!top||!bot)return;
+    // Set top mirror width to match table width
+    const update=()=>{const inner=bot.querySelector("table");if(inner)top.firstChild.style.width=inner.scrollWidth+"px";};
+    update();
+    const obs=new ResizeObserver(update);if(bot.querySelector("table"))obs.observe(bot.querySelector("table"));
+    return()=>obs.disconnect();
+  },[]);
+  return <div style={{background:"#fff",borderRadius:10,border:"1.5px solid #e8e6df"}}>
+    <div ref={topRef} onScroll={syncFromTop} style={{overflowX:"auto",height:12,borderBottom:"1px solid #f0ede6",borderRadius:"10px 10px 0 0"}}>
+      <div style={{height:1}}/>
+    </div>
+    <div ref={botRef} onScroll={syncFromBot} style={{overflowX:"auto"}}>
+      {children}
+    </div>
+  </div>;
+}
+
+// ── APP ──────────────────────────────────────────────────────────
+function App(){
+  const [records,setRecords]=useState([]);
+  const [trackers,setTrackers]=useState([]);
+  const [tasks,setTasks]=useState([]);
+  const [library,setLibrary]=useState([]);
+  const [people,setPeople]=useState([]);
+  const [tags,setTags]=useState([]);
+  const [rules,setRules]=useState({}); // { tagName: [person, ...] }
+  const [pkgRules,setPkgRules]=useState({}); // { pkgName: [person, ...] }
+  const [loaded,setLoaded]=useState(false);
+  const [syncStatus,setSyncStatus]=useState("ok"); // ok | syncing | error
+  const [view,setView]=useState("dashboard");
+  const [selected,setSelected]=useState(null);
+  const [form,setForm]=useState(defForm);
+  const [editMode,setEditMode]=useState(false);
+  const [activeTab,setActiveTab]=useState("packages");
+  const [showLib,setShowLib]=useState(false);
+  const [showPpl,setShowPpl]=useState(false);
+  const [showTags,setShowTags]=useState(false);
+  const [trackerForm,setTrackerForm]=useState(null); // null=hidden, {}=new, {id,...}=edit
+  const [selTracker,setSelTracker]=useState(null);
+  const [showBak,setShowBak]=useState(false);
+  const [showEmail,setShowEmail]=useState(false);
+  const [showSearch,setShowSearch]=useState(false);
+  const [showEmailOut,setShowEmailOut]=useState(false);
+  const [scoreEditMode,setScoreEditMode]=useState(false);
+  const [libSearch,setLibSearch]=useState("");
+  const [libDel,setLibDel]=useState(null);
+  const [taskForm,setTaskForm]=useState(null);
+  const [lightbox,setLightbox]=useState(null);
+  const [taskFil,setTaskFil]=useState({status:"all",owner:"all",pkg:"all",score:"all",q:""});
+  const [fOwner,setFOwner]=useState("all");
+  const [fCC,setFCC]=useState("all");
+  const [fPkg,setFPkg]=useState("all");
+  const [fTag,setFTag]=useState("all");
+  const [fScore,setFScore]=useState("all");
+  const [fStatus,setFStatus]=useState("all");
+  const [fDir,setFDir]=useState("all");
+  const [fText,setFText]=useState("");
+
+  // Wait for Firebase then load
+  useEffect(()=>{
+    const load=async()=>{
+      try {
+        const [r,l,t,p,g,rv,qv,xv]=await Promise.all([cloudStore.get(SK),cloudStore.get(LK),cloudStore.get(TK),cloudStore.get(PK),cloudStore.get(GK),cloudStore.get(RK),cloudStore.get(QK),cloudStore.get(XK)]);
+        // Normalize importance/urgence on existing data that predates this feature
+        const normAc=ac=>({importance:1,urgence:1,...ac});
+        const normPkgs=pkgs=>(pkgs||[]).map(p=>({...p,actions:(p.actions||[]).map(normAc)}));
+        const rNorm=(r||[]).map(rec=>({...rec,packages:normPkgs(rec.packages)}));
+        const tNorm=(t||[]).map(tk=>({importance:1,urgence:1,...tk}));
+        const xNorm=(xv||[]).map(tr=>({...tr,packages:normPkgs(tr.packages)}));
+        setRecords(rNorm);setLibrary(l||SEED_LIBRARY);setTasks(tNorm);setPeople(p||SEED_PEOPLE);setTags(g||SEED_TAGS);setRules(rv||{});setPkgRules(qv||{});setTrackers(xNorm);
+        if(!l) await cloudStore.set(LK,SEED_LIBRARY);
+        if(!p) await cloudStore.set(PK,SEED_PEOPLE);
+        if(!g) await cloudStore.set(GK,SEED_TAGS);
+      } catch(e){ console.error(e); setLibrary(SEED_LIBRARY); setPeople(SEED_PEOPLE); }
+      setLoaded(true);
+    };
+    if(window._dbReady) load();
+    else window.addEventListener("db-ready",load,{once:true});
+  },[]);
+
+  const sync=async(key,val)=>{
+    setSyncStatus("syncing");
+    try{ await cloudStore.set(key,val); setSyncStatus("ok"); }
+    catch(e){ console.error(e); setSyncStatus("error"); }
+  };
+
+  const saveR=d=>{setRecords(d);sync(SK,d);};
+  const saveT=d=>{setTasks(d);sync(TK,d);};
+  const saveX=d=>{setTrackers(d);sync(XK,d);};
+  const saveL=d=>{setLibrary(d);sync(LK,d);};
+  const saveP=d=>{setPeople(d);sync(PK,d);};
+  const saveG=d=>{setTags(d);sync(GK,d);};
+  const saveRules=d=>{setRules(d);sync(RK,d);};
+  const savePkgRules=d=>{setPkgRules(d);sync(QK,d);};
+  const addLib=n=>{if(!library.includes(n)){const u=[...library,n].sort((a,b)=>a.localeCompare(b));saveL(u);}};
+  const addPpl=n=>{if(!people.includes(n)){const u=[...people,n].sort((a,b)=>a.localeCompare(b));saveP(u);}};
+  const addTag=n=>{if(!tags.includes(n)){const u=[...tags,n].sort((a,b)=>a.localeCompare(b));saveG(u);}};
+  const remLib=n=>{saveL(library.filter(p=>p!==n));setLibDel(null);};
+  const renLib=(o,nw)=>{if(!nw.trim()||library.includes(nw.trim()))return;saveL(library.map(p=>p===o?nw.trim():p).sort((a,b)=>a.localeCompare(b)));};
+  // CCs from tags
+  const getCCs=tagList=>[...new Set((tagList||[]).flatMap(t=>rules[t]||[]))];
+  // CCs from package name
+  const getPkgCCs=pkgName=>[...new Set(pkgRules[pkgName]||[])];
+  const momA=records.flatMap(r=>(r.packages||[]).flatMap(p=>(p.actions||[]).map(a=>({...a,package:p.name,owner:p.owner,pkgId:p.id,meetingTitle:r.title,meetingId:r.id,direction:r.direction,source:"mom"}))));
+  const taskA=tasks.map(t=>({...t,meetingTitle:"— Tâche —",meetingId:null,source:"task"}));
+  const trackerA=trackers.flatMap(tr=>(tr.packages||[]).flatMap(p=>(p.actions||[]).map(a=>({...a,package:p.name,owner:p.owner,pkgId:p.id,meetingTitle:tr.title,meetingId:tr.id,direction:"tracker",source:"tracker"}))));
+  const allA=[...momA,...taskA,...trackerA];
+  const allOwners=[...new Set(allA.map(a=>a.owner))].filter(Boolean).sort();
+  const allPkgs=[...new Set(allA.map(a=>a.package))].filter(Boolean).sort();
+  // All people who appear as CC on at least one action (excluding owners)
+  const allCCPersons=[...new Set(allA.flatMap(a=>[...getCCs(a.tags||[]),...getPkgCCs(a.package||"")].filter(p=>p!==a.owner)))].filter(Boolean).sort();
+  const pCount=allA.filter(a=>a.status==="pending").length;
+  const dCount=allA.filter(a=>a.status==="done").length;
+  const bCount=allA.filter(a=>a.status==="blocked").length;
+  const ipCount=allA.filter(a=>a.status==="in progress").length;
+
+  const resetF=()=>{setFOwner("all");setFCC("all");setFPkg("all");setFTag("all");setFScore("all");setFStatus("all");setFDir("all");setFText("");};
+  const afCount=[fOwner,fCC,fPkg,fTag,fScore,fStatus,fDir].filter(f=>f!=="all").length+(fText?1:0);
+
+  const filtA=allA.filter(a=>{
+    if(fOwner!=="all"){
+      const acCCs=[...getCCs(a.tags||[]),...getPkgCCs(a.package||"")];
+      if(a.owner!==fOwner && !acCCs.includes(fOwner)) return false;
+    }
+    if(fCC!=="all"){
+      const acCCs=[...getCCs(a.tags||[]),...getPkgCCs(a.package||"")];
+      if(!acCCs.includes(fCC)) return false;
+    }
+    if(fPkg!=="all"&&a.package!==fPkg)return false;
+    if(fTag!=="all"&&!(a.tags||[]).includes(fTag))return false;
+    if(fScore!=="all"&&calcScore(a.importance||1,a.urgence||1)<Number(fScore))return false;
+    if(fStatus!=="all"&&a.status!==fStatus)return false;
+    if(fDir!=="all"&&a.source==="mom"&&a.direction!==fDir)return false;
+    const q=fText.toLowerCase().trim();
+    if(q&&![a.text,a.package,a.owner,a.meetingTitle].some(s=>(s||"").toLowerCase().includes(q)))return false;
+    return true;
+  });
+  const filtR=records.filter(r=>{
+    if(fDir!=="all"&&r.direction!==fDir)return false;
+    const q=fText.toLowerCase().trim();
+    if(q&&!r.title.toLowerCase().includes(q)&&!(r.packages||[]).some(p=>p.name.toLowerCase().includes(q)))return false;
+    return true;
+  });
+
+  const addRec=()=>{const rec={...form,id:uuid(),packages:form.packages.filter(p=>p.name.trim())};saveR([rec,...records]);setView("dashboard");setForm(defForm);};
+  const updRec=rec=>{saveR(records.map(r=>r.id===rec.id?rec:r));setSelected(rec);setEditMode(false);};
+  const delRec=id=>{saveR(records.filter(r=>r.id!==id));setView("dashboard");setSelected(null);};
+  const delMoMAction=(rId,pId,aId)=>{const u=records.map(r=>r.id!==rId?r:{...r,packages:r.packages.map(p=>p.id!==pId?p:{...p,actions:p.actions.filter(a=>a.id!==aId)})});saveR(u);if(selected&&selected.id===rId)setSelected(u.find(r=>r.id===rId));};
+  const delTrackerAction=(tId,pId,aId)=>{const u=trackers.map(t=>t.id!==tId?t:{...t,packages:t.packages.map(p=>p.id!==pId?p:{...p,actions:p.actions.filter(a=>a.id!==aId)})});saveX(u);if(selTracker&&selTracker.id===tId)setSelTracker(u.find(t=>t.id===tId));};
+  const updAF=(rId,pId,aId,f,v)=>{
+    const today=new Date().toISOString().slice(0,10);
+    let extra={};
+    if(f==="status"){if(v==="done")extra={completedAt:today};else extra={completedAt:""};}
+    const u=records.map(r=>r.id!==rId?r:{...r,packages:r.packages.map(p=>p.id!==pId?p:{...p,actions:p.actions.map(a=>a.id!==aId?a:{...a,[f]:v,...extra})})});
+    saveR(u);if(selected&&selected.id===rId)setSelected(u.find(r=>r.id===rId));
+  };
+  const addAPhoto=(rId,pId,aId,ph)=>{const cur=(()=>{const _r=records.find(r=>r.id===rId);const _p=_r&&_r.packages&&_r.packages.find(p=>p.id===pId);return _p&&_p.actions&&_p.actions.find(a=>a.id===aId);})();if(cur)updAF(rId,pId,aId,"photos",[...(cur.photos||[]),ph]);};
+  const remAPhoto=(rId,pId,aId,phId)=>{const cur=(()=>{const _r=records.find(r=>r.id===rId);const _p=_r&&_r.packages&&_r.packages.find(p=>p.id===pId);return _p&&_p.actions&&_p.actions.find(a=>a.id===aId);})();if(cur)updAF(rId,pId,aId,"photos",(cur.photos||[]).filter(ph=>ph.id!==phId));};
+
+  const saveTsk=t=>{saveT(tasks.find(x=>x.id===t.id)?tasks.map(x=>x.id===t.id?t:x):[t,...tasks]);setTaskForm(null);};
+  const delTsk=id=>saveT(tasks.filter(t=>t.id!==id));
+  const updTS=(id,s)=>saveT(tasks.map(t=>t.id===id?{...t,status:s}:t));
+
+  // ── Tracker CRUD ─────────────────────────────────────────────
+  const newTrackerForm=()=>({id:uuid(),title:"",description:"",createdAt:new Date().toISOString().slice(0,10),packages:[newPkg()]});
+  const saveTracker=tr=>{saveX(trackers.find(x=>x.id===tr.id)?trackers.map(x=>x.id===tr.id?tr:x):[tr,...trackers]);setTrackerForm(null);if(selTracker&&selTracker.id===tr.id)setSelTracker(tr);};
+  const delTracker=id=>{saveX(trackers.filter(t=>t.id!==id));setSelTracker(null);setView("trackers");};
+  const updTrackerAF=(tId,pId,aId,f,v)=>{
+    const today=new Date().toISOString().slice(0,10);
+    // Auto-set completedAt when status → done, clear when leaving done
+    let extra={};
+    if(f==="status"){
+      if(v==="done") extra={completedAt:today};
+      else extra={completedAt:""};
+    }
+    const u=trackers.map(t=>t.id!==tId?t:{...t,packages:t.packages.map(p=>p.id!==pId?p:{...p,actions:p.actions.map(a=>a.id!==aId?a:{...a,[f]:v,...extra})})});
+    saveX(u);if(selTracker&&selTracker.id===tId)setSelTracker(u.find(t=>t.id===tId));
+  };
+
+  const sP=(pi,f,v)=>setForm({...form,packages:form.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
+  const aP=()=>setForm({...form,packages:[...form.packages,newPkg()]});
+  const rP=pi=>setForm({...form,packages:form.packages.filter((_,i)=>i!==pi)});
+  const aA=pi=>sP(pi,"actions",[...form.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]);
+  const rA=(pi,ai)=>sP(pi,"actions",form.packages[pi].actions.filter((_,i)=>i!==ai));
+  const sA=(pi,ai,f,v)=>sP(pi,"actions",form.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
+  const ssS=(f,v)=>setSelected({...selected,[f]:v});
+  const ssP=(pi,f,v)=>setSelected({...selected,packages:selected.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
+  const ssAP=()=>setSelected({...selected,packages:[...selected.packages,newPkg()]});
+  const ssRP=pi=>setSelected({...selected,packages:selected.packages.filter((_,i)=>i!==pi)});
+  const ssAA=pi=>ssP(pi,"actions",[...selected.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]);
+  const ssRA=(pi,ai)=>ssP(pi,"actions",selected.packages[pi].actions.filter((_,i)=>i!==ai));
+  const ssSA=(pi,ai,f,v)=>ssP(pi,"actions",selected.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
+
+  const cc=s=>({pending:"sc-pending",done:"sc-done",blocked:"sc-blocked","in progress":"sc-inprogress"}[s]||"sc-pending");
+  const shT=tasks.filter(t=>{
+    if(taskFil.status!=="all"&&t.status!==taskFil.status)return false;
+    if(taskFil.owner!=="all"&&t.owner!==taskFil.owner)return false;
+    if(taskFil.pkg!=="all"&&t.package!==taskFil.pkg)return false;
+    if(taskFil.score!=="all"&&calcScore(t.importance||1,t.urgence||1)<Number(taskFil.score))return false;
+    if(taskFil.q&&![t.text,t.package,t.owner,t.note].some(s=>(s||"").toLowerCase().includes(taskFil.q.toLowerCase())))return false;
+    return true;
+  });
+  const tOwners=[...new Set(tasks.map(t=>t.owner))].filter(Boolean).sort();
+  const tPkgs=[...new Set(tasks.map(t=>t.package))].filter(Boolean).sort();
+
+  if(!loaded)return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#aaa",gap:14}}>
+    <div style={{width:32,height:32,borderRadius:"50%",border:"3px solid #c9a84c",borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}/>
+    <div style={{fontSize:14}}>Connexion à Firebase…</div>
+  </div>;
+
+  // ── Email Modal ──────────────────────────────────────────────
+  // ── Search Modal ──────────────────────────────────────────────
+  function SearchModal(){
+    const [q,setQ]=useState("");
+    const inputRef=useRef();
+    useEffect(()=>{inputRef.current&&inputRef.current.focus();},[]);
+    useEffect(()=>{
+      const h=e=>{if(e.key==="Escape")setShowSearch(false);};
+      document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);
+    },[]);
+
+    const lq=q.toLowerCase().trim();
+    const momResults=lq?records.filter(r=>
+      r.title.toLowerCase().includes(lq)||
+      r.date&&r.date.includes(lq)||
+      (r.participants||"").toLowerCase().includes(lq)||
+      (r.summary||"").toLowerCase().includes(lq)||
+      (r.packages||[]).some(p=>p.name.toLowerCase().includes(lq)||p.owner&&p.owner.toLowerCase().includes(lq)||
+        (p.actions||[]).some(a=>a.text.toLowerCase().includes(lq)))
+    ):records.slice(0,5);
+
+    const trackerResults=lq?trackers.filter(tr=>
+      tr.title.toLowerCase().includes(lq)||
+      (tr.description||"").toLowerCase().includes(lq)||
+      (tr.packages||[]).some(p=>p.name.toLowerCase().includes(lq)||p.owner&&p.owner.toLowerCase().includes(lq)||
+        (p.actions||[]).some(a=>a.text.toLowerCase().includes(lq)))
+    ):trackers.slice(0,3);
+
+    const go=(type,item)=>{
+      if(type==="mom"){setSelected(item);setEditMode(false);setActiveTab("packages");setView("detail");}
+      else{setSelTracker(item);setView("tracker-detail");}
+      setShowSearch(false);
+    };
+
+    const highlight=(text)=>{
+      if(!lq||!text)return text;
+      const idx=text.toLowerCase().indexOf(lq);
+      if(idx===-1)return text;
+      return <>{text.slice(0,idx)}<mark style={{background:"#fff3cd",borderRadius:2,padding:"0 1px"}}>{text.slice(idx,idx+lq.length)}</mark>{text.slice(idx+lq.length)}</>;
+    };
+
+    const total=momResults.length+trackerResults.length;
+
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:3000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"80px 16px 16px"}} onClick={e=>{if(e.target===e.currentTarget)setShowSearch(false);}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:620,boxShadow:"0 24px 64px rgba(0,0,0,.3)",overflow:"hidden"}}>
+        {/* Search input */}
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",borderBottom:"1.5px solid #e8e6df"}}>
+          <span style={{fontSize:18,flexShrink:0}}>🔍</span>
+          <input ref={inputRef} type="text" placeholder="Rechercher un MoM, Tracker, action, package…"
+            value={q} onChange={e=>setQ(e.target.value)}
+            style={{flex:1,border:"none",outline:"none",fontSize:15,fontFamily:"inherit",background:"transparent"}}/>
+          {q&&<button onClick={()=>setQ("")} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:16,padding:"2px 6px"}}>✕</button>}
+          <kbd style={{fontSize:10,color:"#bbb",border:"1px solid #ddd",borderRadius:4,padding:"2px 6px",fontFamily:"inherit"}}>Esc</kbd>
+        </div>
+
+        {/* Results */}
+        <div style={{maxHeight:480,overflowY:"auto"}}>
+          {total===0&&lq&&<div style={{padding:"32px 20px",textAlign:"center",color:"#bbb"}}>
+            <div style={{fontSize:24,marginBottom:8}}>🔍</div>
+            <div style={{fontSize:14}}>Aucun résultat pour <strong>"{q}"</strong></div>
+          </div>}
+
+          {momResults.length>0&&<div>
+            <div style={{padding:"10px 18px 4px",fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".6px",background:"#fafaf8",borderBottom:"1px solid #f0ede6"}}>
+              📋 MoMs {lq&&<span style={{fontWeight:400}}>— {momResults.length} résultat{momResults.length>1?"s":""}</span>}
+            </div>
+            {momResults.map(r=>{
+              const tA=(r.packages||[]).reduce((s,p)=>s+(p.actions||[]).length,0);
+              const dA=(r.packages||[]).reduce((s,p)=>s+(p.actions||[]).filter(a=>a.status==="done").length,0);
+              const matchingActions=lq?(r.packages||[]).flatMap(p=>(p.actions||[]).filter(a=>a.text.toLowerCase().includes(lq))):[];
+              return <div key={r.id} onClick={()=>go("mom",r)}
+                style={{padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #f5f4f0",transition:"background .1s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#f5f4f0"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                  <span style={{fontFamily:"'DM Serif Display',serif",fontSize:14,flex:1}}>{highlight(r.title)}</span>
+                  <span style={{fontSize:11,color:"#aaa"}}>{r.date}</span>
+                  <span style={{fontSize:11,color:"#bbb"}}>{dA}/{tA} ✓</span>
+                </div>
+                {(r.packages||[]).slice(0,3).map(p=><span key={p.id} style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"#f0ede6",color:"#666",marginRight:4}}>{highlight(p.name)}</span>)}
+                {(r.packages||[]).length>3&&<span style={{fontSize:10,color:"#bbb"}}>+{(r.packages||[]).length-3}</span>}
+                {matchingActions.slice(0,2).map((a,i)=><div key={i} style={{fontSize:11,color:"#888",marginTop:4,paddingLeft:4,borderLeft:"2px solid #e8e6df"}}>→ {highlight(a.text)}</div>)}
+              </div>;
+            })}
+          </div>}
+
+          {trackerResults.length>0&&<div>
+            <div style={{padding:"10px 18px 4px",fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".6px",background:"#fafaf8",borderBottom:"1px solid #f0ede6"}}>
+              📊 Trackers {lq&&<span style={{fontWeight:400}}>— {trackerResults.length} résultat{trackerResults.length>1?"s":""}</span>}
+            </div>
+            {trackerResults.map(tr=>{
+              const tA=(tr.packages||[]).reduce((s,p)=>s+(p.actions||[]).length,0);
+              const dA=(tr.packages||[]).reduce((s,p)=>s+(p.actions||[]).filter(a=>a.status==="done").length,0);
+              const pct=tA?Math.round(dA/tA*100):0;
+              const matchingActions=lq?(tr.packages||[]).flatMap(p=>(p.actions||[]).filter(a=>a.text.toLowerCase().includes(lq))):[];
+              return <div key={tr.id} onClick={()=>go("tracker",tr)}
+                style={{padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #f5f4f0",transition:"background .1s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#f5f4f0"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                  <span style={{fontFamily:"'DM Serif Display',serif",fontSize:14,flex:1}}>{highlight(tr.title)}</span>
+                  <span style={{fontSize:11,color:"#bbb"}}>{pct}%</span>
+                </div>
+                {tr.description&&<div style={{fontSize:11,color:"#aaa",marginBottom:4}}>{highlight(tr.description)}</div>}
+                {(tr.packages||[]).slice(0,3).map(p=><span key={p.id} style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"#e0f2f1",color:"#00796b",marginRight:4}}>{highlight(p.name)}</span>)}
+                {matchingActions.slice(0,2).map((a,i)=><div key={i} style={{fontSize:11,color:"#888",marginTop:4,paddingLeft:4,borderLeft:"2px solid #b2dfdb"}}>→ {highlight(a.text)}</div>)}
+              </div>;
+            })}
+          </div>}
+
+          {!lq&&<div style={{padding:"12px 18px",fontSize:12,color:"#bbb",textAlign:"center"}}>
+            Tapez pour rechercher dans vos MoMs et Trackers…
+          </div>}
+        </div>
+      </div>
+    </div>;
+  }
+
+  function EmailModal(){
+    const [txt,setTxt]=useState("");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
+    const [apiKey,setApiKey]=useState(localStorage.getItem("mom_apikey")||"");
+    const parse=async()=>{
+      if(!txt.trim())return;
+      if(!apiKey.trim()){setErr("Veuillez saisir votre clé API Anthropic.");return;}
+      localStorage.setItem("mom_apikey",apiKey.trim());
+      setLoading(true);setErr("");
+      try{
+        const today=new Date().toISOString().slice(0,10);
+        const sys="You are an expert at extracting structured meeting data from emails and meeting notes. Extract the MoM from the provided text and return ONLY a valid JSON object: {\"title\":\"meeting title\",\"date\":\"YYYY-MM-DD (today if not found: "+today+")\",\"direction\":\"outgoing\",\"participants\":\"comma-separated names\",\"summary\":\"2-3 sentence summary\",\"packages\":[{\"name\":\"package name\",\"owner\":\"LASTNAME, Firstname\",\"actions\":[{\"text\":\"action\",\"due\":\"YYYY-MM-DD or empty\",\"status\":\"pending\"}]}]} Rules: each topic/package becomes a package entry. Format owner names as LASTNAME, Firstname. Convert relative dates to YYYY-MM-DD relative to today ("+today+"). Return ONLY JSON, no markdown.";
+        const resp=await fetch("https://api.anthropic.com/v1/messages",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","x-api-key":apiKey.trim()},
+          body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:4000,system:sys,messages:[{role:"user",content:txt}]})
+        });
+        const data=await resp.json();
+        if(data.error)throw new Error(data.error.message);
+        const raw=(data.content||[]).map(b=>b.text||"").join("").trim();
+        const clean=raw.replace(/^```(?:json)?\n?/,"").replace(/\n?```$/,"").trim();
+        const parsed=JSON.parse(clean);
+        const enriched={...parsed,id:uuid(),packages:(parsed.packages||[]).map(pkg=>({...pkg,id:uuid(),actions:(pkg.actions||[]).map(ac=>({...ac,id:uuid(),photos:[],status:ac.status||"pending",due:ac.due||""}))}))};
+        (enriched.packages||[]).forEach(pkg=>{if(pkg.name&&!library.includes(pkg.name))addLib(pkg.name);if(pkg.owner&&!people.includes(pkg.owner))addPpl(pkg.owner);});
+        setForm(enriched);setShowEmail(false);setView("new");
+      }catch(e){setErr("Erreur : "+e.message);}
+      setLoading(false);
+    };
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget&&!loading)setShowEmail(false)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+        <div style={{padding:"18px 22px 14px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:18}}>📧 MoM depuis un email</div>
+          <div style={{fontSize:12,color:"#aaa",marginTop:3}}>Claude extrait packages, responsables et actions automatiquement.</div></div>
+          {!loading&&<button onClick={()=>setShowEmail(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>}
+        </div>
+        <div style={{padding:"18px 22px",flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{background:"#f0f4ff",borderRadius:10,padding:"14px 16px",border:"1.5px solid #c5cef5"}}>
+            <label style={{fontSize:11,fontWeight:700,color:"#3949ab",textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:6}}>🔑 Clé API Anthropic</label>
+            <input type="password" placeholder="sk-ant-api03-…" value={apiKey} onChange={e=>setApiKey(e.target.value)} style={{width:"100%",padding:"8px 12px",border:"1.5px solid #c5cef5",borderRadius:8,fontFamily:"monospace",fontSize:13,outline:"none",background:"#fff"}}/>
+            <div style={{fontSize:11,color:"#7986cb",marginTop:5}}>Obtenez votre clé sur <a href="https://console.anthropic.com/settings/keys" target="_blank" style={{color:"#3949ab",fontWeight:700}}>console.anthropic.com</a> · Sauvegardée localement.</div>
+          </div>
+          <textarea placeholder={"Collez ici votre email ou notes de réunion…"} value={txt} onChange={e=>setTxt(e.target.value)} disabled={loading} style={{width:"100%",minHeight:200,padding:"12px 14px",border:"1.5px solid #ddd",borderRadius:10,fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6,outline:"none",resize:"vertical"}}/>
+          {err&&<div style={{fontSize:12,color:"#c62828",background:"#ffeaea",borderRadius:8,padding:"10px 13px"}}>{err}</div>}
+          {loading&&<div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"#f0f4ff",borderRadius:10,border:"1.5px solid #c5cef5"}}>
+            <div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #3949ab",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+            <div><div style={{fontSize:13,fontWeight:700,color:"#3949ab"}}>Analyse en cours…</div></div>
+          </div>}
+        </div>
+        <div style={{padding:"12px 22px 18px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button className="btn bout" onClick={()=>setShowEmail(false)} disabled={loading}>Annuler</button>
+          <button className="btn" disabled={!txt.trim()||!apiKey.trim()||loading} onClick={parse} style={{background:txt.trim()&&apiKey.trim()&&!loading?"#3949ab":"#ccc",color:"#fff",minWidth:170,justifyContent:"center"}}>{loading?"Analyse en cours…":"✨ Analyser et pré-remplir"}</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── Backup Modal ─────────────────────────────────────────────
+  function BakModal(){
+    const [err,setErr]=useState("");const [ok,setOk]=useState(false);const fRef=useRef();
+    const exp=()=>{const b=new Blob([JSON.stringify({version:6,exportedAt:new Date().toISOString(),records,tasks,trackers,library,people,tags,rules,pkgRules},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`mom-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(u);};
+    const imp=async text=>{setErr("");setOk(false);try{const d=JSON.parse(text);if(!d.records||!Array.isArray(d.records))throw new Error("Format invalide.");if(d.records)saveR(d.records);if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.library)saveL(d.library);if(d.people)saveP(d.people);if(d.tags)saveG(d.tags);if(d.rules)saveRules(d.rules);if(d.pkgRules)savePkgRules(d.pkgRules);setOk(true);setTimeout(()=>setShowBak(false),1400);}catch(e){setErr("Erreur : "+e.message);}};
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowBak(false)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
+        <div style={{padding:"18px 22px 14px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:17}}>Sauvegarde & Restauration</div><div style={{fontSize:12,color:"#aaa",marginTop:2}}>Données synchronisées via Firebase ☁️</div></div>
+          <button onClick={()=>setShowBak(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div style={{padding:"18px 22px",display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{background:"#f5f4f0",borderRadius:10,padding:"15px 17px"}}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>📤 Exporter une copie locale</div>
+            <div style={{fontSize:12,color:"#555",marginBottom:10,display:"flex",gap:12,flexWrap:"wrap"}}><span>📋 {records.length} MoM{records.length>1?"s":""}</span><span>📌 {tasks.length} tâche{tasks.length>1?"s":""}</span><span>📦 {library.length} packages</span><span>👥 {people.length} personnes</span></div>
+            <button className="btn bpri" style={{width:"100%",justifyContent:"center"}} onClick={exp}>⬇️ Télécharger la sauvegarde</button>
+          </div>
+          <div style={{background:"#f5f4f0",borderRadius:10,padding:"15px 17px"}}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>📥 Restaurer depuis un fichier</div>
+            <div style={{fontSize:12,color:"#888",marginBottom:10}}>Importez un fichier JSON. <strong style={{color:"#c62828"}}>Remplace toutes les données.</strong></div>
+            <input ref={fRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){const r=new FileReader();r.onload=ev=>imp(ev.target.result);r.readAsText(e.target.files[0]);}}}/>
+            <button className="btn bout" style={{width:"100%",justifyContent:"center"}} onClick={()=>fRef.current.click()}>📂 Choisir un fichier JSON</button>
+            {err&&<div style={{fontSize:12,color:"#c62828",background:"#ffeaea",borderRadius:7,padding:"8px 10px",marginTop:8}}>{err}</div>}
+            {ok&&<div style={{fontSize:12,color:"#2e7d32",background:"#e8f5e9",borderRadius:7,padding:"8px 10px",marginTop:8}}>✅ Données restaurées et synchronisées !</div>}
+          </div>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── Library Modal ─────────────────────────────────────────────
+  function LibModal(){
+    const [en,setEn]=useState(null);const [ev,setEv]=useState("");const [np,setNp]=useState("");
+    const lf=library.filter(p=>p.toLowerCase().includes(libSearch.toLowerCase()));
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowLib(false)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:560,maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
+        <div style={{padding:"18px 22px 13px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:17}}>Bibliothèque packages & CC</div><div style={{fontSize:12,color:"#aaa",marginTop:2}}>{library.length} packages · définir un CC automatique par package</div></div>
+          <button onClick={()=>setShowLib(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div style={{padding:"10px 22px 6px"}}><input type="text" placeholder="Filtrer…" value={libSearch} onChange={e=>setLibSearch(e.target.value)} style={{width:"100%",padding:"7px 11px",border:"1.5px solid #ddd",borderRadius:8,fontFamily:"inherit",fontSize:13,outline:"none"}}/></div>
+        <div style={{overflowY:"auto",flex:1,padding:"8px 22px 10px"}}>
+          {lf.map(p=>{
+            const ccs=pkgRules[p]||[];
+            const togglePkgPerson=person=>{const cur=pkgRules[p]||[];const updated=cur.includes(person)?cur.filter(x=>x!==person):[...cur,person];savePkgRules({...pkgRules,[p]:updated});};
+            return <div key={p} style={{marginBottom:10,padding:"10px 12px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
+              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:ccs.length>0||people.length>0?8:0}}>
+                {en===p?<><input autoFocus type="text" value={ev} onChange={e=>setEv(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){renLib(p,ev);setEn(null);}if(e.key==="Escape")setEn(null);}} style={{flex:1,padding:"4px 8px",border:"1.5px solid #1c1c1e",borderRadius:6,fontFamily:"inherit",fontSize:13,outline:"none"}}/><button onClick={()=>{renLib(p,ev);setEn(null);}} style={{background:"#1c1c1e",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>OK</button><button onClick={()=>setEn(null)} style={{background:"none",border:"1.5px solid #ddd",borderRadius:5,padding:"4px 8px",fontSize:11,cursor:"pointer",color:"#888"}}>✕</button></>
+                :<><span style={{flex:1,fontSize:13,fontWeight:600}}>{p}</span>
+                <button onClick={()=>{setEn(p);setEv(p);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"2px 5px"}} onMouseEnter={e=>e.target.style.color="#1c1c1e"} onMouseLeave={e=>e.target.style.color="#bbb"}>✏️</button>
+                {libDel===p?<><span style={{fontSize:11,color:"#c62828"}}>Supprimer ?</span><button onClick={()=>remLib(p)} style={{background:"#c62828",color:"#fff",border:"none",borderRadius:5,padding:"3px 8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Oui</button><button onClick={()=>setLibDel(null)} style={{background:"none",border:"1.5px solid #ddd",borderRadius:5,padding:"3px 7px",fontSize:11,cursor:"pointer"}}>Non</button></>
+                :<button onClick={()=>setLibDel(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,padding:"2px 5px"}} onMouseEnter={e=>e.target.style.color="#c62828"} onMouseLeave={e=>e.target.style.color="#ddd"}>🗑</button>}</>}
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>👤 CC automatique pour ce package</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                  {people.map(pr=>{const on=ccs.includes(pr);const c=ownerColor(pr);return <button key={pr} onClick={()=>togglePkgPerson(pr)}
+                    style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${on?c.accent:"#ddd"}`,background:on?c.bg:"#fff",color:on?c.accent:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+                    {on?"✓ ":""}{pr}</button>;})}
+                </div>
+                {ccs.length>0&&<div style={{fontSize:11,color:"#2e7d32",marginTop:5,fontWeight:600}}>✅ CC auto : {ccs.join(", ")}</div>}
+              </div>
+            </div>;
+          })}
+          {lf.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#bbb",fontSize:13}}>Aucun résultat</div>}
+        </div>
+        <div style={{padding:"10px 22px 18px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:8}}>
+          <input type="text" placeholder="Nouveau package…" value={np} onChange={e=>setNp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&np.trim()){addLib(np.trim());setNp("");}}} style={{flex:1,padding:"8px 11px",border:"1.5px solid #ddd",borderRadius:8,fontFamily:"inherit",fontSize:13,outline:"none"}}/>
+          <button onClick={()=>{if(np.trim()){addLib(np.trim());setNp("");}}} style={{background:"#1c1c1e",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>＋ Ajouter</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── People Modal ──────────────────────────────────────────────
+  function PplModal(){
+    const [ps,setPs]=useState("");const [en,setEn]=useState(null);const [ev,setEv]=useState("");const [np,setNp]=useState("");const [pd,setPd]=useState(null);
+    const lf=people.filter(p=>p.toLowerCase().includes(ps.toLowerCase()));
+    const ren=(o,nw)=>{if(!nw.trim()||people.includes(nw.trim()))return;saveP(people.map(p=>p===o?nw.trim():p).sort((a,b)=>a.localeCompare(b)));setEn(null);};
+    const rem=n=>{saveP(people.filter(p=>p!==n));setPd(null);};
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowPpl(false)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:480,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
+        <div style={{padding:"18px 22px 13px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:17}}>Équipe</div><div style={{fontSize:12,color:"#aaa",marginTop:2}}>{people.length} personnes</div></div><button onClick={()=>setShowPpl(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
+        <div style={{padding:"10px 22px 6px"}}><input type="text" placeholder="Filtrer…" value={ps} onChange={e=>setPs(e.target.value)} style={{width:"100%",padding:"7px 11px",border:"1.5px solid #ddd",borderRadius:8,fontFamily:"inherit",fontSize:13,outline:"none"}}/></div>
+        <div style={{overflowY:"auto",flex:1,padding:"0 22px 10px"}}>{lf.map(p=>{const c=ownerColor(p);return <div key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid #f5f4f0"}}><span style={{width:26,height:26,borderRadius:"50%",background:c.bg,color:c.accent,fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{p.split(",")[0][0]}</span>{en===p?<><input autoFocus type="text" value={ev} onChange={e=>setEv(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){ren(p,ev);setEn(null);}if(e.key==="Escape")setEn(null);}} style={{flex:1,padding:"4px 8px",border:"1.5px solid #1c1c1e",borderRadius:6,fontFamily:"inherit",fontSize:13,outline:"none"}}/><button onClick={()=>{ren(p,ev);setEn(null);}} style={{background:"#1c1c1e",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>OK</button><button onClick={()=>setEn(null)} style={{background:"none",border:"1.5px solid #ddd",borderRadius:5,padding:"4px 8px",fontSize:11,cursor:"pointer",color:"#888"}}>✕</button></>:<><span style={{flex:1,fontSize:13,cursor:"pointer"}} onClick={()=>{setEn(p);setEv(p);}}>{p}</span><button onClick={()=>{setEn(p);setEv(p);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"2px 5px"}} onMouseEnter={e=>e.target.style.color="#1c1c1e"} onMouseLeave={e=>e.target.style.color="#bbb"}>✏️</button>{pd===p?<><span style={{fontSize:11,color:"#c62828"}}>Supprimer ?</span><button onClick={()=>rem(p)} style={{background:"#c62828",color:"#fff",border:"none",borderRadius:5,padding:"3px 8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Oui</button><button onClick={()=>setPd(null)} style={{background:"none",border:"1.5px solid #ddd",borderRadius:5,padding:"3px 7px",fontSize:11,cursor:"pointer"}}>Non</button></>:<button onClick={()=>setPd(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,padding:"2px 5px"}} onMouseEnter={e=>e.target.style.color="#c62828"} onMouseLeave={e=>e.target.style.color="#ddd"}>🗑</button>}</>}</div>;})} {lf.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#bbb",fontSize:13}}>Aucun résultat</div>}</div>
+        <div style={{padding:"10px 22px 18px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:8}}><input type="text" placeholder="NOM, Prénom…" value={np} onChange={e=>setNp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&np.trim()){addPpl(np.trim());setNp("");}}} style={{flex:1,padding:"8px 11px",border:"1.5px solid #ddd",borderRadius:8,fontFamily:"inherit",fontSize:13,outline:"none"}}/><button onClick={()=>{if(np.trim()){addPpl(np.trim());setNp("");}}} style={{background:"#1c1c1e",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>＋ Ajouter</button></div>
+      </div>
+    </div>;
+  }
+
+  // ── Task Modal ─────────────────────────────────────────────────
+  function TskModal(){
+    const [t,setT]=useState(taskForm);const isNew=!tasks.find(x=>x.id===t.id);
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setTaskForm(null)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:580,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
+        <div style={{padding:"18px 22px 13px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:17}}>{isNew?"Nouvelle tâche":"Modifier la tâche"}</div>{!isNew&&t.createdAt&&<div style={{fontSize:11,color:"#aaa",marginTop:2}}>Saisie le {t.createdAt}</div>}</div>
+          <button onClick={()=>setTaskForm(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div style={{padding:"18px 22px",display:"flex",flexDirection:"column",gap:13}}>
+          <div className="fg full"><label>Description *</label><textarea placeholder="Décrivez la tâche…" value={t.text} onChange={e=>setT({...t,text:e.target.value})} style={{minHeight:70}}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <div className="fg"><label>Package</label><PkgPicker value={t.package} onChange={v=>setT({...t,package:v})} library={library} addLib={addLib}/></div>
+            <div className="fg"><label>Responsable</label><PersonPicker value={t.owner} onChange={v=>setT({...t,owner:v})} people={people} addPeople={addPpl}/></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+            <div className="fg"><label>Statut</label><select value={t.status} onChange={e=>setT({...t,status:e.target.value})} style={{width:"100%"}}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select></div>
+            <div className="fg"><label>Échéance</label><input type="date" value={t.due} onChange={e=>setT({...t,due:e.target.value})}/></div>
+          </div>
+          <div className="fg full">
+            <label>Importance × Urgence → Score</label>
+            <div style={{marginTop:6}}><ScorePicker imp={t.importance||1} urg={t.urgence||1} onImp={v=>setT({...t,importance:v})} onUrg={v=>setT({...t,urgence:v})}/></div>
+          </div>
+          <div className="fg full"><label>Note</label><textarea placeholder="Contexte, références…" value={t.note} onChange={e=>setT({...t,note:e.target.value})} style={{minHeight:50}}/></div>
+          <div><label>Tags</label><div style={{marginTop:5}}><TagSelector selected={t.tags||[]} onChange={v=>setT({...t,tags:v})} allTags={tags}/></div></div>
+          <div><label>Photos {(t.photos||[]).length>0&&<span style={{color:"#888",fontWeight:400,fontSize:11,textTransform:"none"}}>· {(t.photos||[]).length}</span>}</label>
+            <PhotoStrip photos={t.photos||[]} onAdd={ph=>setT({...t,photos:[...(t.photos||[]),ph]})} onRemove={id=>setT({...t,photos:(t.photos||[]).filter(ph=>ph.id!==id)})} onView={setLightbox}/>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:2}}>
+            {!isNew&&<button className="btn bdgr" onClick={()=>{delTsk(t.id);setTaskForm(null);}}>🗑️ Supprimer</button>}
+            <button className="btn bout" onClick={()=>setTaskForm(null)}>Annuler</button>
+            <button className="btn bpri" disabled={!t.text.trim()} onClick={()=>saveTsk(t)}>{isNew?"Créer":"Sauvegarder"}</button>
+          </div>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── TagRow — proper component so hooks are valid ─────────────
+  function TagRow({tagName,del,setDel,renTag,remTag,rules,people,toggleRulePerson}){
+    const [en,setEn]=useState(false);const [ev,setEv]=useState(tagName);
+    const{bg,color}=tagColor(tagName);const ccs=rules[tagName]||[];
+    return <div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <span style={{fontSize:12,padding:"4px 12px",borderRadius:20,background:bg,color,fontWeight:700,flexShrink:0}}>{tagName}</span>
+        {en?<><input autoFocus type="text" value={ev} onChange={e=>setEv(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){renTag(tagName,ev);setEn(false);}if(e.key==="Escape")setEn(false);}} style={{flex:1,padding:"4px 8px",border:"1.5px solid #1c1c1e",borderRadius:6,fontFamily:"inherit",fontSize:13,outline:"none"}}/><button onClick={()=>{renTag(tagName,ev);setEn(false);}} style={{background:"#1c1c1e",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>OK</button><button onClick={()=>setEn(false)} style={{background:"none",border:"1.5px solid #ddd",borderRadius:5,padding:"4px 8px",fontSize:11,cursor:"pointer",color:"#888"}}>✕</button></>
+        :<><div style={{flex:1}}/><button onClick={()=>{setEn(true);setEv(tagName);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"2px 5px"}}>✏️</button>
+        {del===tagName?<><span style={{fontSize:11,color:"#c62828"}}>Supprimer ?</span><button onClick={()=>remTag(tagName)} style={{background:"#c62828",color:"#fff",border:"none",borderRadius:5,padding:"3px 8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Oui</button><button onClick={()=>setDel(null)} style={{background:"none",border:"1.5px solid #ddd",borderRadius:5,padding:"3px 7px",fontSize:11,cursor:"pointer"}}>Non</button></>
+        :<button onClick={()=>setDel(tagName)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,padding:"2px 5px"}}>🗑</button>}</>}
+      </div>
+      <div>
+        <div style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>👤 CC automatique quand ce tag est assigné</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+          {people.map(p=>{const on=ccs.includes(p);const c=ownerColor(p);return <button key={p} onClick={()=>toggleRulePerson(tagName,p)}
+            style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${on?c.accent:"#ddd"}`,background:on?c.bg:"#fff",color:on?c.accent:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+            {on?"✓ ":""}{p}</button>;})}
+        </div>
+        {ccs.length>0&&<div style={{fontSize:11,color:"#2e7d32",marginTop:6,fontWeight:600}}>✅ CC auto : {ccs.join(", ")}</div>}
+      </div>
+    </div>;
+  }
+
+  // ── Tags Modal ────────────────────────────────────────────────
+  function TagsModal(){
+    const [search,setSearch]=useState("");const [np,setNp]=useState("");const [del,setDel]=useState(null);
+    const lf=tags.filter(t=>t.toLowerCase().includes(search.toLowerCase()));
+    const remTag=n=>{saveG(tags.filter(t=>t!==n));const nr={...rules};delete nr[n];saveRules(nr);setDel(null);};
+    const renTag=(o,nw)=>{if(!nw.trim()||tags.includes(nw.trim()))return;saveG(tags.map(t=>t===o?nw.trim():t).sort((a,b)=>a.localeCompare(b)));const nr={...rules};if(nr[o]){nr[nw.trim()]=nr[o];delete nr[o];}saveRules(nr);};
+    const toggleRulePerson=(tag,person)=>{const cur=rules[tag]||[];const updated=cur.includes(person)?cur.filter(p=>p!==person):[...cur,person];saveRules({...rules,[tag]:updated});};
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowTags(false)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:520,maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
+        <div style={{padding:"18px 22px 13px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:17}}>Tags & Règles CC</div><div style={{fontSize:12,color:"#aaa",marginTop:2}}>{tags.length} tags · définir un CC automatique par tag</div></div>
+          <button onClick={()=>setShowTags(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div style={{padding:"10px 22px 6px"}}><input type="text" placeholder="Filtrer les tags…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",padding:"7px 11px",border:"1.5px solid #ddd",borderRadius:8,fontFamily:"inherit",fontSize:13,outline:"none"}}/></div>
+        <div style={{overflowY:"auto",flex:1,padding:"8px 22px 10px"}}>
+          {lf.map(t=><TagRow key={t} tagName={t} del={del} setDel={setDel} renTag={renTag} remTag={remTag} rules={rules} people={people} toggleRulePerson={toggleRulePerson}/>)}
+          {lf.length===0&&<div style={{textAlign:"center",padding:"16px 0",color:"#bbb",fontSize:13}}>Aucun résultat</div>}
+        </div>
+        <div style={{padding:"10px 22px 18px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:8}}>
+          <input type="text" placeholder="Nouveau tag…" value={np} onChange={e=>setNp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&np.trim()){addTag(np.trim());setNp("");}}} style={{flex:1,padding:"8px 11px",border:"1.5px solid #ddd",borderRadius:8,fontFamily:"inherit",fontSize:13,outline:"none"}}/>
+          <button onClick={()=>{if(np.trim()){addTag(np.trim());setNp("");}}} style={{background:"#1c1c1e",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>＋ Ajouter</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── Inline tag selector (multi-select chips) ──────────────────
+  function TagSelector({selected=[],onChange,allTags}){
+    const [np,setNp]=useState("");
+    const toggle=t=>onChange(selected.includes(t)?selected.filter(x=>x!==t):[...selected,t]);
+    const ccs=getCCs(selected);
+    return <div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>
+        {allTags.map(t=>{const{bg,color}=tagColor(t);const on=selected.includes(t);return <button key={t} onClick={()=>toggle(t)}
+          style={{padding:"3px 10px",borderRadius:20,border:`2px solid ${on?color:"#e0ddd6"}`,background:on?bg:"#fff",color:on?color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+          {t}
+        </button>;})}
+      </div>
+      {ccs.length>0&&<div style={{display:"flex",flexDirection:"column",gap:3,background:"#e8f5e9",borderRadius:7,padding:"6px 10px",marginBottom:6}}>{ccs.map((p,ci)=><span key={p} style={{fontSize:11,fontWeight:600,color:"#2e7d32"}}>CC{ci+1} : {p.split(",")[0]}</span>)}</div>}
+      <div style={{display:"flex",gap:6}}>
+        <input type="text" placeholder="Nouveau tag…" value={np} onChange={e=>setNp(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&np.trim()){addTag(np.trim());toggle(np.trim());setNp("");}}}
+          style={{flex:1,padding:"5px 9px",border:"1.5px solid #ddd",borderRadius:7,fontFamily:"inherit",fontSize:12,outline:"none"}}/>
+        <button onClick={()=>{if(np.trim()){addTag(np.trim());toggle(np.trim());setNp("");}}}
+          style={{padding:"5px 10px",background:"#1c1c1e",color:"#fff",border:"none",borderRadius:7,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>＋</button>
+      </div>
+    </div>;
+  }
+
+  // ── Tracker Form Modal ────────────────────────────────────────
+  function TrackerFormModal(){
+    const [t,setT]=useState(trackerForm);
+    const isNew=!trackers.find(x=>x.id===t.id);
+    const sP2=(pi,f,v)=>setT({...t,packages:t.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
+    const aP2=()=>setT({...t,packages:[...t.packages,newPkg()]});
+    const rP2=pi=>setT({...t,packages:t.packages.filter((_,i)=>i!==pi)});
+    const aA2=pi=>sP2(pi,"actions",[...t.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]);
+    const rA2=(pi,ai)=>sP2(pi,"actions",t.packages[pi].actions.filter((_,i)=>i!==ai));
+    const sA2=(pi,ai,f,v)=>sP2(pi,"actions",t.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setTrackerForm(null)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:720,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+        <div style={{padding:"18px 22px 14px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:18}}>{isNew?"Nouveau Tracker":"Modifier le Tracker"}</div>
+          <div style={{fontSize:12,color:"#aaa",marginTop:2}}>Suivi de sous-projet — groupes → actions</div></div>
+          <button onClick={()=>setTrackerForm(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div style={{padding:"18px 22px",display:"flex",flexDirection:"column",gap:13}}>
+          <div className="fgrid">
+            <div className="fg full"><label>Titre *</label><input type="text" placeholder="ex : Procurement Follow-up, Safety Visits…" value={t.title} onChange={e=>setT({...t,title:e.target.value})}/></div>
+            <div className="fg full"><label>Description</label><textarea placeholder="Contexte, objectif…" value={t.description||""} onChange={e=>setT({...t,description:e.target.value})} style={{minHeight:50}}/></div>
+          </div>
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Groupes & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px",borderColor:"#00796b",color:"#00796b"}} onClick={aP2}>＋ Groupe</button></div>
+            {t.packages.map((pkg,pi)=><PkgForm key={pkg.id+"-"+tags.length} pkg={pkg} pi={pi} sPkg={sP2} sAct={sA2} aAct={aA2} rAct={rA2} rPkg={rP2} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:2}}>
+            {!isNew&&<button className="btn bdgr" onClick={()=>{if(confirm(`Supprimer "${t.title}" ?`)){delTracker(t.id);setTrackerForm(null);}}}>🗑️ Supprimer</button>}
+            <button className="btn bout" onClick={()=>setTrackerForm(null)}>Annuler</button>
+            <button className="btn" disabled={!t.title.trim()} onClick={()=>{saveTracker({...t,packages:t.packages.filter(p=>p.name.trim())});if(isNew)setSelTracker({...t,packages:t.packages.filter(p=>p.name.trim())});if(isNew)setView("tracker-detail");}} style={{background:t.title.trim()?"#00796b":"#ccc",color:"#fff"}}>{isNew?"Créer le Tracker":"Sauvegarder"}</button>
+          </div>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── Email Output Modal ────────────────────────────────────────
+  function EmailOutModal(){
+    const [copied,setCopied]=useState(false);
+
+    // Build email text from current filtA
+    const buildEmail=()=>{
+      const today=new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
+      // Group by source meeting / task
+      const bySource={};
+      filtA.forEach(ac=>{
+        const key=ac.source==="task"?"📌 Tâches standalone":ac.source==="tracker"?`📊 ${ac.meetingTitle}`:ac.meetingTitle;
+        if(!bySource[key]) bySource[key]=[];
+        bySource[key].push(ac);
+      });
+
+      // Subject line
+      const filterDesc=[];
+      if(fOwner!=="all") filterDesc.push(fOwner);
+      if(fPkg!=="all") filterDesc.push(fPkg);
+      if(fTag!=="all") filterDesc.push(`[${fTag}]`);
+      if(fStatus!=="all") filterDesc.push(fStatus);
+      const subject=filterDesc.length>0
+        ?`Suivi actions — ${filterDesc.join(" · ")} — ${today}`
+        :`Suivi actions — ${today}`;
+
+      let body=`Bonjour,\n\nVeuillez trouver ci-dessous le récapitulatif des actions${filterDesc.length>0?" ("+filterDesc.join(", ")+")":""} au ${today}.\n\n`;
+      body+=`${"─".repeat(60)}\n\n`;
+
+      Object.entries(bySource).forEach(([src,actions])=>{
+        body+=`${src}\n${"─".repeat(src.length)}\n\n`;
+        // Group by package within each source
+        const byPkg={};
+        actions.forEach(ac=>{
+          const k=ac.package||"—";
+          if(!byPkg[k]) byPkg[k]=[];
+          byPkg[k].push(ac);
+        });
+        Object.entries(byPkg).forEach(([pkg,acts])=>{
+          if(pkg!=="—") body+=`  📦 ${pkg}\n`;
+          acts.forEach(ac=>{
+            const status={"pending":"⏳","in progress":"🔄","done":"✅","blocked":"🚫"}[ac.status]||"•";
+            const owner=ac.owner?` @${ac.owner.split(",")[0]}`:"";
+            const due=ac.due?` → échéance ${new Date(ac.due).toLocaleDateString("fr-FR")}`:"";
+            const tags=(ac.tags||[]).length>0?` [${ac.tags.join(", ")}]`:"";
+            const sc=calcScore(ac.importance||1,ac.urgence||1);
+            const scoreStr=sc>1?` {Score ${sc} — I${ac.importance||1}×U${ac.urgence||1}}`:"";
+            const ccs=[...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")].filter((v,i,a)=>a.indexOf(v)===i);
+            const ccStr=ccs.length>0?" ("+ccs.map((p,ci)=>`CC${ci+1}: ${p.split(",")[0]}`).join(", ")+")" :"";
+            body+=`    ${status} ${ac.text}${owner}${due}${scoreStr}${tags}${ccStr}\n`;
+          });
+          body+="\n";
+        });
+      });
+
+      body+=`${"─".repeat(60)}\n`;
+      body+=`Total : ${filtA.length} action${filtA.length>1?"s":""} · Généré le ${today}\n`;
+      return {subject,body};
+    };
+
+    const {subject,body}=buildEmail();
+    const full=`Objet : ${subject}\n\n${body}`;
+
+    const copy=()=>{
+      navigator.clipboard.writeText(full).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
+    };
+
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setShowEmailOut(false)}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:680,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+        <div style={{padding:"18px 22px 14px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+          <div>
+            <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18}}>📋 Email de suivi</div>
+            <div style={{fontSize:12,color:"#aaa",marginTop:3}}>{filtA.length} action{filtA.length>1?"s":""} · basé sur les filtres actifs</div>
+          </div>
+          <button onClick={()=>setShowEmailOut(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb",flexShrink:0}}>×</button>
+        </div>
+        <div style={{padding:"14px 22px 8px"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".5px",marginBottom:4}}>Objet</div>
+          <div style={{padding:"8px 12px",background:"#f5f4f0",borderRadius:8,fontSize:13,fontWeight:600,color:"#1a1a1a"}}>{subject}</div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"8px 22px 14px"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".5px",marginBottom:4}}>Corps du message</div>
+          <textarea readOnly value={body}
+            style={{width:"100%",height:"100%",minHeight:320,padding:"12px 14px",border:"1.5px solid #e8e6df",borderRadius:10,fontFamily:"'Courier New',monospace",fontSize:12,lineHeight:1.7,resize:"none",background:"#fafaf8",color:"#1a1a1a",outline:"none"}}/>
+        </div>
+        <div style={{padding:"12px 22px 18px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
+          <span style={{fontSize:12,color:"#aaa",flex:1}}>Collez directement dans Outlook, Gmail, Teams…</span>
+          <button className="btn bout" onClick={()=>setShowEmailOut(false)}>Fermer</button>
+          <button className="btn bpri" onClick={copy} style={{minWidth:160,justifyContent:"center",background:copied?"#2e7d32":"#1c1c1e"}}>
+            {copied?"✅ Copié !":"📋 Copier tout"}
+          </button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  function FilterPanel(){
+    return <div style={{marginBottom:20}}>
+      <div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>Responsable</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5}}><OChip label="Tous" active={fOwner==="all"} onClick={()=>setFOwner("all")}/>{allOwners.map(o=>{const c=ownerColor(o),on=fOwner===o;return <OChip key={o} label={o} active={on} onClick={()=>setFOwner(on?"all":o)} bg={on?c.accent:c.bg} color={on?"#fff":c.accent}/>;})}</div></div>
+      {allCCPersons.length>0&&<div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>CC uniquement</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5}}><OChip label="Tous" active={fCC==="all"} onClick={()=>setFCC("all")} small/>{allCCPersons.map(p=>{const on=fCC===p;return <button key={p} onClick={()=>setFCC(on?"all":p)}
+        style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${on?"#2e7d32":"#c8e6c9"}`,background:on?"#e8f5e9":"#fff",color:on?"#2e7d32":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+        {p.split(",")[0]}
+      </button>;})}
+      </div></div>}
+      <div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>Package</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5}}><OChip label="Tous" active={fPkg==="all"} onClick={()=>setFPkg("all")} small/>{allPkgs.map(p=>{const on=fPkg===p;return <OChip key={p} label={p} active={on} small onClick={()=>setFPkg(on?"all":p)} bg={on?"#1c1c1e":"#f0ede6"} color={on?"#fff":"#555"}/>;})}</div></div>
+      {tags.length>0&&<div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>Tag</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5}}><OChip label="Tous" active={fTag==="all"} onClick={()=>setFTag("all")} small/>{tags.map(t=>{const{bg,color}=tagColor(t);const on=fTag===t;return <button key={t} onClick={()=>setFTag(on?"all":t)} style={{padding:"3px 10px",borderRadius:20,border:`2px solid ${on?color:"#e0ddd6"}`,background:on?bg:"#fff",color:on?color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>{t}</button>;})}
+      </div></div>}
+      <div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>Score I×U</div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+        <OChip label="Tous" active={fScore==="all"} onClick={()=>setFScore("all")} small/>
+        <button onClick={()=>setFScore(fScore==="4"?"all":"4")}
+          style={{padding:"3px 10px",borderRadius:20,border:`2px solid ${fScore==="4"?"#f57f17":"#e0ddd6"}`,background:fScore==="4"?"#fff8e1":"#fff",color:fScore==="4"?"#f57f17":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+          ⚡ ≥ 4
+        </button>
+        <button onClick={()=>setFScore(fScore==="7"?"all":"7")}
+          style={{padding:"3px 10px",borderRadius:20,border:`2px solid ${fScore==="7"?"#c62828":"#e0ddd6"}`,background:fScore==="7"?"#ffeaea":"#fff",color:fScore==="7"?"#c62828":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+          🔥 ≥ 7
+        </button>
+      </div></div>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
+        <input className="si" style={{flex:2,minWidth:180}} placeholder="🔍  Mot-clé…" value={fText} onChange={e=>setFText(e.target.value)}/>
+        <select value={fStatus} onChange={e=>setFStatus(e.target.value)}><option value="all">Tous statuts</option>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+        <select value={fDir} onChange={e=>setFDir(e.target.value)}><option value="all">Toutes directions</option>{DIRECTIONS.map(d=><option key={d} value={d}>{DIR_LABELS[d]}</option>)}</select>
+        {afCount>0&&<button className="btn bout" style={{fontSize:12,whiteSpace:"nowrap"}} onClick={resetF}>✕ Reset ({afCount})</button>}
+      </div>
+    </div>;
+  }
+
+  const syncLabel={ok:"☁️",syncing:"⏳",error:"⚠️"}[syncStatus];
+  // Ctrl+K / Cmd+K opens search
+  useEffect(()=>{
+    const h=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="k"){e.preventDefault();setShowSearch(s=>!s);}};
+    document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);
+  },[]);
+  const syncTitle={ok:"Synchronisé avec Firebase",syncing:"Synchronisation en cours…",error:"Erreur de synchronisation"}[syncStatus];
+
+  return <div className="app">
+    {showEmailOut&&<EmailOutModal/>}
+    {showSearch&&<SearchModal/>}
+    {showEmail&&<EmailModal/>}
+    {trackerForm&&<TrackerFormModal/>}
+    {showBak&&<BakModal/>}
+    {showLib&&<LibModal/>}
+    {showPpl&&<PplModal/>}
+    {showTags&&<TagsModal/>}
+    {taskForm&&<TskModal/>}
+    {lightbox&&<Lightbox photo={lightbox} onClose={()=>setLightbox(null)}/>}
+
+    <div className="hdr">
+      <h1>MoM <span>&amp;</span> Actions</h1>
+      <div className="nav">
+        <span title={syncTitle} style={{fontSize:14,cursor:"default"}}>{syncLabel}</span>
+        <button className={`nb${view==="dashboard"?" on":""}`} onClick={()=>setView("dashboard")}>Dashboard</button>
+        <button className={`nb${view==="trackers"||view==="tracker-detail"?" on":""}`} onClick={()=>setView("trackers")}>Trackers{trackers.length>0&&<span style={{background:"#00796b",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:10,marginLeft:2}}>{trackers.length}</span>}</button>
+        <button className={`nb${view==="tasks"?" on":""}`} onClick={()=>setView("tasks")}>Tâches{tasks.filter(t=>t.status!=="done").length>0&&<span style={{background:"#3949ab",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:10,marginLeft:2}}>{tasks.filter(t=>t.status!=="done").length}</span>}</button>
+        <button className={`nb${view==="actions"?" on":""}`} onClick={()=>{resetF();setView("actions");}}>Vue globale</button>
+        <button className="nb" onClick={()=>setShowSearch(true)} title="Rechercher (Ctrl+K)" style={{display:"flex",alignItems:"center",gap:4}}>🔍 <kbd style={{fontSize:9,color:"#555",border:"1px solid #555",borderRadius:3,padding:"1px 4px",fontFamily:"inherit",background:"transparent"}}>K</kbd></button>
+        <button className="nb lib" onClick={()=>setShowLib(true)}>📦 {library.length}</button>
+        <button className="nb lib" onClick={()=>setShowPpl(true)}>👥 {people.length}</button>
+        <button className="nb lib" onClick={()=>setShowTags(true)}>🏷️ {tags.length}</button>
+        <button className="nb bkp" onClick={()=>setShowBak(true)}>💾 Backup</button>
+        <button className="nb email-cta" onClick={()=>setShowEmail(true)}>📧 Email</button>
+        <button className="nb task-cta" onClick={()=>setTaskForm(newTask())}>＋ Tâche</button>
+        <button className="nb" style={{background:"#00796b",color:"#fff",fontWeight:700}} onClick={()=>setTrackerForm(newTrackerForm())}>＋ Tracker</button>
+        <button className="nb cta" onClick={()=>{setForm(defForm);setView("new");}}>＋ MoM</button>
+      </div>
+    </div>
+
+    <div className="main">
+
+      {view==="dashboard"&&<div>
+        <div className="stitle">Dashboard</div><div className="ssub">Données synchronisées en temps réel via Firebase ☁️</div>
+        <div className="stats">
+          <div className="sc"><div className="sn">{records.length}</div><div className="sl">MoMs</div></div>
+          <div className="sc" style={{borderLeft:"3px solid #00796b"}}><div className="sn" style={{color:"#00796b"}}>{trackers.length}</div><div className="sl">Trackers</div></div>
+          <div className="sc purple"><div className="sn">{tasks.filter(t=>t.status!=="done").length}</div><div className="sl">Tâches actives</div></div>
+          <div className="sc warn"><div className="sn">{pCount}</div><div className="sl">Pending</div></div>
+          <div className="sc info"><div className="sn">{ipCount}</div><div className="sl">In Progress</div></div>
+          <div className="sc warn"><div className="sn">{bCount}</div><div className="sl">Blocked</div></div>
+          <div className="sc ok"><div className="sn">{dCount}</div><div className="sl">Done</div></div>
+        </div>
+        <div className="filters" style={{marginBottom:13}}>
+          <input className="si" placeholder="Rechercher…" value={fText} onChange={e=>setFText(e.target.value)}/>
+          <select value={fDir} onChange={e=>setFDir(e.target.value)}><option value="all">Toutes directions</option>{DIRECTIONS.map(d=><option key={d} value={d}>{DIR_LABELS[d]}</option>)}</select>
+          {(fText||fDir!=="all")&&<button className="btn bout" style={{fontSize:12}} onClick={resetF}>✕ Reset</button>}
+        </div>
+        <div className="rlist">
+          {filtR.length===0?<div className="empty"><div className="eico">📋</div><div className="etxt">Aucun meeting. Cliquez sur ＋ MoM ou 📧 Email pour commencer.</div></div>
+          :filtR.map(r=>{
+            const tA=(r.packages||[]).reduce((s,p)=>s+p.actions.length,0);
+            const dA=(r.packages||[]).reduce((s,p)=>s+p.actions.filter(a=>a.status==="done").length,0);
+            const pC=(r.packages||[]).reduce((s,p)=>s+p.actions.reduce((ss,a)=>ss+(a.photos||[]).length,0),0);
+            const owners=[...new Set((r.packages||[]).map(p=>p.owner))].filter(Boolean);
+            return <div className="rcard" key={r.id} onClick={()=>{setSelected(r);setEditMode(false);setActiveTab("packages");setView("detail");}}>
+              <div className="rhdr"><div className="rtit">{r.title}</div><span className="badge" style={{background:DIR_COLORS[r.direction].badge,color:DIR_COLORS[r.direction].accent}}>{DIR_LABELS[r.direction]}</span></div>
+              <div className="rmeta"><span>📅 {r.date}</span><span>📦 {(r.packages||[]).length} packages</span><span>🔖 {dA}/{tA} done</span>{pC>0&&<span>📷 {pC}</span>}</div>
+              <div className="pbar"><div className="pfill" style={{width:tA?`${Math.round(dA/tA*100)}%`:"0%"}}/></div>
+              <div className="ppills">{(r.packages||[]).slice(0,9).map(p=><span className="ppill" key={p.id}>{p.name}</span>)}{(r.packages||[]).length>9&&<span className="ppill">+{(r.packages||[]).length-9}</span>}</div>
+              <div className="ostrip">{owners.map(o=>{const c=ownerColor(o);return <span key={o} className="ochip" style={{background:c.bg,color:c.accent}}>{o}</span>;})}</div>
+            </div>;
+          })}
+        </div>
+      </div>}
+
+      {view==="tasks"&&<div>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:2}}>
+          <div><div className="stitle">Tâches standalone</div><div className="ssub">Actions indépendantes, sans réunion.</div></div>
+          <button className="btn" style={{background:"#3949ab",color:"#fff",flexShrink:0}} onClick={()=>setTaskForm(newTask())}>＋ Nouvelle tâche</button>
+        </div>
+        <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+          <input className="si" placeholder="🔍 Rechercher…" value={taskFil.q} onChange={e=>setTaskFil({...taskFil,q:e.target.value})}/>
+          <select value={taskFil.status} onChange={e=>setTaskFil({...taskFil,status:e.target.value})}><option value="all">Tous statuts</option>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+          <select value={taskFil.score} onChange={e=>setTaskFil({...taskFil,score:e.target.value})}><option value="all">Tous scores</option><option value="4">Score ≥ 4 ⚡</option><option value="7">Score ≥ 7 🔥</option></select>
+          {tOwners.length>0&&<select value={taskFil.owner} onChange={e=>setTaskFil({...taskFil,owner:e.target.value})}><option value="all">Tous responsables</option>{tOwners.map(o=><option key={o} value={o}>{o}</option>)}</select>}
+          {tPkgs.length>0&&<select value={taskFil.pkg} onChange={e=>setTaskFil({...taskFil,pkg:e.target.value})}><option value="all">Tous packages</option>{tPkgs.map(p=><option key={p} value={p}>{p}</option>)}</select>}
+        </div>
+        {shT.length===0?<div className="empty"><div className="eico">📌</div><div className="etxt">{tasks.length===0?"Aucune tâche encore.":"Aucune tâche ne correspond."}</div></div>
+        :shT.map(t=>{const c=ownerColor(t.owner||"");const score=calcScore(t.importance||1,t.urgence||1);const ss=scoreStyle(score);return <div key={t.id} className={`tcard`} style={{borderLeft:`3px solid ${ss.border}`}}>
+          <div style={{marginTop:2}}><select className="stsel" value={t.status} onChange={e=>updTS(t.id,e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]}</option>)}</select></div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,lineHeight:1.5,textDecoration:t.status==="done"?"line-through":"none",color:t.status==="done"?"#bbb":"#1a1a1a"}}>{t.text}</div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:5,alignItems:"center"}}>
+              {t.package&&<span className="ppill">{t.package}</span>}
+              {t.owner&&<span className="ochip" style={{background:c.bg,color:c.accent,fontSize:11,padding:"2px 8px"}}>{t.owner}</span>}
+              {score>1&&<span style={{fontSize:11,padding:"2px 7px",borderRadius:12,fontWeight:700,background:ss.bg,color:ss.color}}>{ss.label} <span style={{fontWeight:400,opacity:.7}}>I{t.importance||1}×U{t.urgence||1}</span></span>}
+              {t.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {t.due}</span>}
+              {t.createdAt&&<span style={{fontSize:11,color:"#ddd"}}>Saisi le {t.createdAt}</span>}
+              {(t.tags||[]).map(tg=>{const{bg,color}=tagColor(tg);return <span key={tg} style={{fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:700,background:bg,color}}>{tg}</span>;})}
+              {getCCs(t.tags||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:2,marginTop:2}}>{getCCs(t.tags||[]).map((p,ci)=><span key={p} style={{fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600,background:"#e8f5e9",color:"#2e7d32"}}>CC{ci+1} : {p.split(",")[0]}</span>)}</div>}
+              {(t.photos||[]).length>0&&<span style={{fontSize:11,color:"#888"}}>📷 {(t.photos||[]).length}</span>}
+            </div>
+            {t.note&&<div style={{fontSize:12,color:"#888",marginTop:4,fontStyle:"italic",borderLeft:"2px solid #e8e6df",paddingLeft:7}}>{t.note}</div>}
+            {(t.photos||[]).length>0&&<PhotoStrip photos={t.photos||[]} onView={setLightbox} small/>}
+          </div>
+          <button className="btn bgho" style={{flexShrink:0}} onClick={()=>setTaskForm({...t})}>✏️</button>
+        </div>;})}
+      </div>}
+
+      {view==="actions"&&<div style={{padding:"0 14px 80px 14px",width:"100%",boxSizing:"border-box"}}>
+        <div className="stitle" style={{paddingTop:20}}>Vue globale</div><div className="ssub">MoMs + tâches — filtres croisés.</div>
+        <FilterPanel/>
+        <div style={{fontSize:12,color:"#aaa",marginBottom:9,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontWeight:700,color:filtA.length===0?"#c62828":"#1a1a1a"}}>{filtA.length}</span>
+          <span>action{filtA.length!==1?"s":""} trouvée{filtA.length!==1?"s":""}</span>
+          {afCount>0&&<span style={{color:"#bbb"}}>· {afCount} filtre{afCount>1?"s":""} actif{afCount>1?"s":""}</span>}
+          <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+            {filtA.length>0&&<button className="btn" onClick={()=>setScoreEditMode(s=>!s)}
+              style={{background:scoreEditMode?"#f57f17":"#2a2a2a",color:"#fff",fontSize:11,padding:"5px 12px"}}>
+              {scoreEditMode?"✓ Terminer édition":"✏️ Éditer scores"}
+            </button>}
+            {filtA.length>0&&<button className="btn" onClick={()=>setShowEmailOut(true)}
+              style={{background:"#1c1c1e",color:"#fff",fontSize:11,padding:"5px 12px"}}>
+              📋 Générer email
+            </button>}
+          </div>
+        </div>
+        {filtA.length===0?<div className="empty"><div className="eico">🔍</div><div className="etxt">Aucune action ne correspond.</div></div>
+        :<DualScroll>
+          <table className="attbl">
+          <thead><tr><th style={{minWidth:220}}>Action</th><th>Score {scoreEditMode&&<span style={{fontSize:9,background:"#f57f17",color:"#fff",borderRadius:4,padding:"1px 5px",marginLeft:4}}>ÉDITION</span>}</th><th>Tags</th><th>Package</th><th>Responsable</th><th>CC</th><th>Échéance</th><th>Statut</th><th>Source</th><th></th></tr></thead>
+          <tbody>{filtA.map((ac,i)=><ActionRow key={ac.id||i} ac={ac} scoreEditMode={scoreEditMode}
+            tags={tags} people={people} library={library}
+            getCCs={getCCs} getPkgCCs={getPkgCCs} tagColor={tagColor} ownerColor={ownerColor}
+            updAF={updAF} updTrackerAF={updTrackerAF} updTS={updTS}
+            saveT={saveT} tasks={tasks}
+            delTsk={delTsk} delTrackerAction={delTrackerAction} delMoMAction={delMoMAction}
+            setTaskForm={setTaskForm} setSelected={setSelected} setSelTracker={setSelTracker}
+            setEditMode={setEditMode} setActiveTab={setActiveTab} setView={setView}
+            setLightbox={setLightbox} records={records} trackers={trackers}
+            addLib={addLib} addPpl={addPpl}
+          />)}
+          </tbody>
+        </table></DualScroll>}
+      </div>}
+
+      {view==="new"&&<div>
+        <button className="bbtn" onClick={()=>setView("dashboard")}>← Retour</button>
+        <div className="stitle">Nouveau MoM</div><div className="ssub">Par package → responsable → actions.</div>
+        <div className="fcard">
+          <div className="fgrid">
+            <div className="fg full"><label>Titre *</label><input type="text" placeholder="ex : Site Meeting" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></div>
+            <div className="fg"><label>Date</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
+            <div className="fg"><label>Participants</label><input type="text" placeholder="Alice, Bob…" value={form.participants} onChange={e=>setForm({...form,participants:e.target.value})}/></div>
+            <div className="fg full"><label>Direction</label><div className="dirsel">{DIRECTIONS.map(d=><div key={d} className={`dirop${form.direction===d?" on":""}`} onClick={()=>setForm({...form,direction:d})}>{DIR_LABELS[d]}</div>)}</div></div>
+            <div className="fg full"><label>Résumé</label><textarea placeholder="Points clés…" value={form.summary} onChange={e=>setForm({...form,summary:e.target.value})}/></div>
+          </div>
+          <div style={{marginTop:18}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={aP}>＋ Package</button></div>
+            {form.packages.map((pkg,pi)=><PkgForm key={pkg.id+"-"+tags.length} pkg={pkg} pi={pi} sPkg={sP} sAct={sA} aAct={aA} rAct={rA} rPkg={rP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+          </div>
+          <div className="fbtns"><button className="btn bout" onClick={()=>setView("dashboard")}>Annuler</button><button className="btn bpri" disabled={!form.title.trim()} onClick={addRec}>Enregistrer</button></div>
+        </div>
+      </div>}
+
+      {view==="detail"&&selected&&<div>
+        <button className="bbtn" onClick={()=>setView("dashboard")}>← Retour</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:4}}>
+          <div>
+            <span className="badge" style={{background:(DIR_COLORS[selected.direction]||DIR_COLORS.outgoing).badge,color:(DIR_COLORS[selected.direction]||DIR_COLORS.outgoing).accent,marginBottom:7,display:"inline-flex"}}>{DIR_LABELS[selected.direction]||selected.direction}</span>
+            <div className="dtit">{selected.title}</div>
+            <div className="dmeta"><span>📅 {selected.date}</span>{selected.participants&&<span>👥 {selected.participants}</span>}<span>📦 {(selected.packages||[]).length} packages</span></div>
+          </div>
+          <div style={{display:"flex",gap:7,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+            <button className="btn bout" onClick={()=>setEditMode(!editMode)}>{editMode?"Annuler":"✏️ Modifier"}</button>
+            <button className="btn" style={{background:"#00796b",color:"#fff",fontWeight:700}} onClick={()=>{
+              const tr={id:uuid(),title:selected.title,description:selected.summary||"",createdAt:selected.date||new Date().toISOString().slice(0,10),packages:(selected.packages||[]).map(p=>({...p,id:uuid(),actions:(p.actions||[]).map(a=>({...a,id:uuid(),completedAt:a.status==="done"?a.completedAt||"":""}))}))}
+              ;saveX([tr,...trackers]);setSelTracker(tr);setView("tracker-detail");
+            }}>📊 → Tracker</button>
+            <button className="btn bdgr" onClick={()=>delRec(selected.id)}>🗑️</button>
+          </div>
+        </div>
+        {!editMode?<div>
+          <div className="tabs">
+            <button className={`tab${activeTab==="packages"?" on":""}`} onClick={()=>setActiveTab("packages")}>Packages & Actions</button>
+            {selected.summary&&<button className={`tab${activeTab==="summary"?" on":""}`} onClick={()=>setActiveTab("summary")}>Résumé</button>}
+          </div>
+          {activeTab==="summary"&&<div style={{background:"#fff",borderRadius:10,border:"1.5px solid #e8e6df",padding:"16px 20px",lineHeight:1.7,fontSize:14,color:"#333"}}>{selected.summary}</div>}
+          {activeTab==="packages"&&(selected.packages||[]).map(pkg=>{
+            const c=ownerColor(pkg.owner||""),done=pkg.actions.filter(a=>a.status==="done").length;
+            return <div className="pkgblock" key={pkg.id}>
+              <div className="pkghdr">
+                <div className="pkgname"><span>📦 {pkg.name}</span>{pkg.owner&&<span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:20,background:c.bg,color:c.accent}}>{pkg.owner}</span>}{getPkgCCs(pkg.name).filter(p=>p!==pkg.owner).map(p=>{const cc=ownerColor(p);return <span key={p} style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32"}}>CC: {p.split(",")[0]}</span>;})}</div>
+                <span style={{fontSize:12,color:"#bbb"}}>{done}/{pkg.actions.length}</span>
+              </div>
+              <div className="pbar"><div className="pfill" style={{width:pkg.actions.length?`${Math.round(done/pkg.actions.length*100)}%`:"0%"}}/></div>
+              <table className="pkgtbl"><tbody>
+                {pkg.actions.map(ac=><tr key={ac.id}>
+                  <td>
+                    <div className="atext">{ac.text}</div>
+                    {ac.due&&<div className="adue">📅 {ac.due}</div>}
+                    {(ac.tags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:4}}>{(ac.tags||[]).map(tg=>{const{bg,color}=tagColor(tg);return <span key={tg} style={{fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:700,background:bg,color}}>{tg}</span>;})}</div>}
+                    {(()=>{const ccs=[...new Set([...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")])].filter(p=>p!==ac.owner);return ccs.length>0&&<div style={{display:"flex",flexDirection:"column",gap:2,marginTop:3}}>{ccs.map((p,ci)=><span key={p} style={{fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600,background:"#e8f5e9",color:"#2e7d32",display:"inline-flex",alignItems:"center",gap:4}}><span style={{fontSize:9,fontWeight:800,color:"#aaa"}}>CC{ci+1}</span>{p.split(",")[0]}</span>)}</div>;})()}
+                    {ac.status==="done"&&ac.completedAt&&<div style={{fontSize:11,color:"#2e7d32",fontWeight:600,marginTop:3}}>✅ Réalisé le {ac.completedAt}</div>}
+                    <PhotoStrip photos={ac.photos||[]} onAdd={ph=>addAPhoto(selected.id,pkg.id,ac.id,ph)} onRemove={phId=>remAPhoto(selected.id,pkg.id,ac.id,phId)} onView={setLightbox} small/>
+                  </td>
+                  <td style={{verticalAlign:"top",paddingTop:12}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:5,alignItems:"flex-end"}}>
+                      <select className="stsel" value={ac.status} onChange={e=>updAF(selected.id,pkg.id,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+                      {ac.status==="done"&&<div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                        <span style={{fontSize:10,color:"#aaa",whiteSpace:"nowrap"}}>Réalisé le</span>
+                        <input type="date" value={ac.completedAt||""} onChange={e=>updAF(selected.id,pkg.id,ac.id,"completedAt",e.target.value)} style={{padding:"2px 5px",border:"1px solid #ddd",borderRadius:5,fontSize:11,fontFamily:"inherit",outline:"none",width:115}}/>
+                      </div>}
+                      {(()=>{const sc=calcScore(ac.importance||1,ac.urgence||1);const ss=scoreStyle(sc);return sc>1&&<span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:12,background:ss.bg,color:ss.color,whiteSpace:"nowrap"}}>{ss.label}</span>;})()}
+                      <div style={{display:"flex",gap:3}}>
+                        <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
+                          <span style={{fontSize:9,color:"#bbb",fontWeight:700}}>I</span>
+                          {[1,2,3].map(v=><button key={v} onClick={()=>updAF(selected.id,pkg.id,ac.id,"importance",v)} style={{width:18,height:18,borderRadius:3,border:`1px solid ${(ac.importance||1)===v?"#1c1c1e":"#ddd"}`,background:(ac.importance||1)===v?"#1c1c1e":"#fff",color:(ac.importance||1)===v?"#fff":"#aaa",fontSize:9,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}
+                        </div>
+                        <span style={{fontSize:11,color:"#ddd",alignSelf:"center"}}>×</span>
+                        <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
+                          <span style={{fontSize:9,color:"#bbb",fontWeight:700}}>U</span>
+                          {[1,2,3].map(v=><button key={v} onClick={()=>updAF(selected.id,pkg.id,ac.id,"urgence",v)} style={{width:18,height:18,borderRadius:3,border:`1px solid ${(ac.urgence||1)===v?"#1c1c1e":"#ddd"}`,background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontSize:9,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"flex-end",maxWidth:160}}>{tags.map(tg=>{const{bg,color}=tagColor(tg);const on=(ac.tags||[]).includes(tg);return <button key={tg} onClick={()=>updAF(selected.id,pkg.id,ac.id,"tags",on?(ac.tags||[]).filter(x=>x!==tg):[...(ac.tags||[]),tg])} style={{padding:"2px 7px",borderRadius:12,border:`1.5px solid ${on?color:"#e0ddd6"}`,background:on?bg:"#fff",color:on?color:"#ccc",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}</div>
+                    </div>
+                  </td>
+                </tr>)}
+              </tbody></table>
+            </div>;
+          })}
+        </div>:<div className="fcard" style={{marginTop:13}}>
+          <div className="fgrid">
+            <div className="fg full"><label>Titre</label><input type="text" value={selected.title} onChange={e=>ssS("title",e.target.value)}/></div>
+            <div className="fg"><label>Date</label><input type="date" value={selected.date} onChange={e=>ssS("date",e.target.value)}/></div>
+            <div className="fg"><label>Participants</label><input type="text" value={selected.participants} onChange={e=>ssS("participants",e.target.value)}/></div>
+            <div className="fg full"><label>Direction</label><div className="dirsel">{DIRECTIONS.map(d=><div key={d} className={`dirop${selected.direction===d?" on":""}`} onClick={()=>ssS("direction",d)}>{DIR_LABELS[d]}</div>)}</div></div>
+            <div className="fg full"><label>Résumé</label><textarea value={selected.summary} onChange={e=>ssS("summary",e.target.value)}/></div>
+          </div>
+          <div style={{marginTop:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={ssAP}>＋ Package</button></div>
+            {(selected.packages||[]).map((pkg,pi)=><PkgForm key={pkg.id+"-"+tags.length} pkg={pkg} pi={pi} sPkg={ssP} sAct={ssSA} aAct={()=>ssAA(pi)} rAct={ssRA} rPkg={ssRP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+          </div>
+          <div className="fbtns"><button className="btn bout" onClick={()=>setEditMode(false)}>Annuler</button><button className="btn bpri" onClick={()=>updRec(selected)}>Sauvegarder</button></div>
+        </div>}
+      </div>}
+
+      {/* TRACKERS LIST */}
+      {view==="trackers"&&<div>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:2}}>
+          <div><div className="stitle">Trackers</div><div className="ssub">Suivis de sous-projets et thèmes récurrents.</div></div>
+          <button className="btn" style={{background:"#00796b",color:"#fff",flexShrink:0}} onClick={()=>setTrackerForm(newTrackerForm())}>＋ Nouveau tracker</button>
+        </div>
+        {trackers.length===0?<div className="empty"><div className="eico">📊</div><div className="etxt">Aucun tracker. Créez-en un pour suivre un sous-projet.</div></div>
+        :<div className="rlist">{trackers.map(tr=>{
+          const allActs=(tr.packages||[]).flatMap(p=>p.actions||[]);
+          const done=allActs.filter(a=>a.status==="done").length;
+          const total=allActs.length;
+          const pct=total?Math.round(done/total*100):0;
+          const owners=[...new Set((tr.packages||[]).map(p=>p.owner))].filter(Boolean);
+          return <div className="rcard" key={tr.id} onClick={()=>{setSelTracker(tr);setView("tracker-detail");}}>
+            <div className="rhdr">
+              <div className="rtit">{tr.title}</div>
+              <span className="badge" style={{background:"#e0f2f1",color:"#00796b"}}>📊 Tracker</span>
+            </div>
+            <div className="rmeta"><span>📅 Créé le {tr.createdAt}</span><span>📦 {(tr.packages||[]).length} groupe{(tr.packages||[]).length>1?"s":""}</span><span>🔖 {done}/{total} done</span></div>
+            <div className="pbar"><div className="pfill" style={{width:`${pct}%`,background:"#00796b"}}/></div>
+            {tr.description&&<div style={{fontSize:12,color:"#888",marginBottom:6,fontStyle:"italic"}}>{tr.description}</div>}
+            <div className="ppills">{(tr.packages||[]).slice(0,8).map(p=><span className="ppill" key={p.id}>{p.name}</span>)}{(tr.packages||[]).length>8&&<span className="ppill">+{(tr.packages||[]).length-8}</span>}</div>
+            <div className="ostrip">{owners.map(o=>{const c=ownerColor(o);return <span key={o} className="ochip" style={{background:c.bg,color:c.accent}}>{o}</span>;})}</div>
+          </div>;
+        })}</div>}
+      </div>}
+
+      {/* TRACKER DETAIL */}
+      {view==="tracker-detail"&&selTracker&&<div>
+        <button className="bbtn" onClick={()=>setView("trackers")}>← Retour</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:4}}>
+          <div>
+            <span className="badge" style={{background:"#e0f2f1",color:"#00796b",marginBottom:7,display:"inline-flex"}}>📊 Tracker</span>
+            <div className="dtit">{selTracker.title}</div>
+            <div className="dmeta"><span>📅 Créé le {selTracker.createdAt}</span><span>📦 {(selTracker.packages||[]).length} groupe{(selTracker.packages||[]).length>1?"s":""}</span></div>
+            {selTracker.description&&<div style={{fontSize:13,color:"#888",fontStyle:"italic",marginTop:2}}>{selTracker.description}</div>}
+          </div>
+          <div style={{display:"flex",gap:7,flexShrink:0}}>
+            <button className="btn bout" onClick={()=>setTrackerForm({...selTracker})}>✏️ Modifier</button>
+            <button className="btn bdgr" onClick={()=>{if(confirm(`Supprimer "${selTracker.title}" ?`))delTracker(selTracker.id);}}>🗑️</button>
+          </div>
+        </div>
+        {(selTracker.packages||[]).map(pkg=>{
+          const c=ownerColor(pkg.owner||"");
+          const done=pkg.actions.filter(a=>a.status==="done").length;
+          return <div className="pkgblock" key={pkg.id}>
+            <div className="pkghdr">
+              <div className="pkgname"><span>📁 {pkg.name}</span>{pkg.owner&&<span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:20,background:c.bg,color:c.accent}}>{pkg.owner}</span>}</div>
+              <span style={{fontSize:12,color:"#bbb"}}>{done}/{pkg.actions.length}</span>
+            </div>
+            <div className="pbar"><div className="pfill" style={{width:pkg.actions.length?`${Math.round(done/pkg.actions.length*100)}%`:"0%",background:"#00796b"}}/></div>
+            <table className="pkgtbl"><tbody>
+              {pkg.actions.map(ac=>{
+                const sc=calcScore(ac.importance||1,ac.urgence||1);
+                const ss=scoreStyle(sc);
+                return <tr key={ac.id}>
+                  <td>
+                    <div className="atext" style={{textDecoration:ac.status==="done"?"line-through":"none",color:ac.status==="done"?"#bbb":"#1a1a1a"}}>{ac.text}</div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:3,alignItems:"center"}}>
+                      {ac.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {ac.due}</span>}
+                      {ac.status==="done"&&ac.completedAt&&<span style={{fontSize:11,color:"#2e7d32",fontWeight:600}}>✅ Réalisé le {ac.completedAt}</span>}
+                      {sc>1&&<span style={{fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:10,background:ss.bg,color:ss.color}}>{ss.label}</span>}
+                      {(ac.tags||[]).map(tg=>{const{bg,color}=tagColor(tg);return <span key={tg} style={{fontSize:11,padding:"2px 7px",borderRadius:12,fontWeight:700,background:bg,color}}>{tg}</span>;})}
+                    </div>
+                  </td>
+                  <td style={{verticalAlign:"top",paddingTop:10}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
+                      <select className="stsel" value={ac.status} onChange={e=>updTrackerAF(selTracker.id,pkg.id,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+                      {ac.status==="done"&&<div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{fontSize:10,color:"#aaa"}}>Réalisé le</span>
+                        <input type="date" value={ac.completedAt||""} onChange={e=>updTrackerAF(selTracker.id,pkg.id,ac.id,"completedAt",e.target.value)} style={{padding:"2px 5px",border:"1px solid #ddd",borderRadius:5,fontSize:11,fontFamily:"inherit",outline:"none",width:120}}/>
+                      </div>}
+                    </div>
+                  </td>
+                </tr>;
+              })}
+            </tbody></table>
+          </div>;
+        })}
+      </div>}
+
+      {/* ── Sticky bottom bar ── */}
+      {view==="detail"&&selected&&!editMode&&<div className="sticky-bar">
+        <span className="sb-title">📋 {selected.title}</span>
+        <button className="btn" style={{background:"#2a2a2a",color:"#ccc",border:"1px solid #444",fontSize:12}} onClick={()=>setEditMode(true)}>✏️ Modifier</button>
+        <button className="btn" style={{background:"#3949ab",color:"#fff",fontWeight:700,fontSize:12}} title="Convertir toutes les actions en tâches standalone" onClick={()=>{
+          const today=new Date().toISOString().slice(0,10);
+          const newTasks=(selected.packages||[]).flatMap(pkg=>
+            (pkg.actions||[]).map(ac=>({
+              id:uuid(),
+              text:ac.text,
+              owner:pkg.owner||"",
+              package:pkg.name||"",
+              status:ac.status||"pending",
+              importance:ac.importance||1,
+              urgence:ac.urgence||1,
+              due:ac.due||"",
+              note:`Issu du MoM : ${selected.title} (${selected.date||today})`,
+              photos:[],
+              tags:ac.tags||[],
+              completedAt:ac.completedAt||"",
+              createdAt:today,
+            }))
+          );
+          if(newTasks.length===0){alert("Ce MoM ne contient aucune action.");return;}
+          if(!confirm(`Créer ${newTasks.length} tâche${newTasks.length>1?"s":""} à partir de "${selected.title}" ?\n\nLe MoM restera intact.`))return;
+          saveT([...newTasks,...tasks]);
+          setView("tasks");
+        }}>📌 → Tâches ({(selected.packages||[]).reduce((s,p)=>s+(p.actions||[]).length,0)})</button>
+        <button className="btn" style={{background:"#00796b",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>{
+          const tr={id:uuid(),title:selected.title,description:selected.summary||"",createdAt:selected.date||new Date().toISOString().slice(0,10),packages:(selected.packages||[]).map(p=>({...p,id:uuid(),actions:(p.actions||[]).map(a=>({...a,id:uuid(),completedAt:a.status==="done"?a.completedAt||"":""}))}))}
+          ;saveX([tr,...trackers]);setSelTracker(tr);setView("tracker-detail");
+        }}>📊 → Tracker</button>
+      </div>}
+
+      {view==="detail"&&selected&&editMode&&<div className="sticky-bar">
+        <span className="sb-title">✏️ {selected.title}</span>
+        <button className="btn" style={{background:"#2a2a2a",color:"#ccc",border:"1px solid #444",fontSize:12}} onClick={()=>setSelected({...selected,packages:[...(selected.packages||[]),newPkg()]})}>＋ Groupe</button>
+        <div style={{flex:1}}/>
+        <button className="btn" style={{background:"transparent",color:"#f87171",border:"1px solid #7f1d1d",fontSize:12}} onClick={()=>{if(confirm(`Supprimer "${selected.title}" ?`))delRec(selected.id);}}>🗑️ Supprimer</button>
+        <button className="btn" style={{background:"transparent",color:"#ccc",border:"1px solid #555",fontSize:12}} onClick={()=>setEditMode(false)}>✕ Annuler</button>
+        <button className="btn" style={{background:"#c9a84c",color:"#1c1c1e",fontWeight:700,fontSize:12}} onClick={()=>updRec(selected)}>💾 Sauvegarder</button>
+      </div>}
+
+      {view==="new"&&<div className="sticky-bar">
+        <span className="sb-title">➕ {form.title||"Nouveau MoM"}</span>
+        <button className="btn" style={{background:"#2a2a2a",color:"#ccc",border:"1px solid #444",fontSize:12}} onClick={aP}>＋ Groupe</button>
+        <button className="btn" style={{background:"transparent",color:"#ccc",border:"1px solid #555",fontSize:12}} onClick={()=>setView("dashboard")}>Annuler</button>
+        <button className="btn" disabled={!form.title.trim()} style={{background:form.title.trim()?"#c9a84c":"#555",color:form.title.trim()?"#1c1c1e":"#999",fontWeight:700,fontSize:12}} onClick={addRec}>💾 Enregistrer</button>
+      </div>}
+
+      {view==="tracker-detail"&&selTracker&&<div className="sticky-bar">
+        <span className="sb-title">📊 {selTracker.title}</span>
+        <button className="btn" style={{background:"#2a2a2a",color:"#ccc",border:"1px solid #444",fontSize:12}} onClick={()=>{
+          const newG=newPkg();
+          const updated={...selTracker,packages:[...(selTracker.packages||[]),newG]};
+          saveX(trackers.map(t=>t.id===selTracker.id?updated:t));setSelTracker(updated);
+        }}>＋ Groupe</button>
+        <div style={{flex:1}}/>
+        <button className="btn" style={{background:"transparent",color:"#f87171",border:"1px solid #7f1d1d",fontSize:12}} onClick={()=>{if(confirm(`Supprimer "${selTracker.title}" ?`))delTracker(selTracker.id);}}>🗑️ Supprimer</button>
+        <button className="btn" style={{background:"#00796b",color:"#fff",fontWeight:700,fontSize:12}} onClick={()=>setTrackerForm({...selTracker})}>✏️ Modifier</button>
+      </div>}
+
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
