@@ -126,14 +126,6 @@ input:focus,textarea:focus{border-color:#1c1c1e}textarea{resize:vertical;min-hei
 </head>
 <body>
 <div id="root"></div>
-<div id="error-display" style="display:none;padding:20px;font-family:monospace;background:#fff;color:red;white-space:pre-wrap;font-size:13px"></div>
-<script>
-window.onerror = function(msg, src, line, col, err) {
-  document.getElementById('error-display').style.display='block';
-  document.getElementById('error-display').textContent = 'JS ERROR:\n' + msg + '\nLine: ' + line + '\n' + (err&&err.stack||'');
-  return false;
-};
-</script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
 
@@ -301,137 +293,7 @@ const PkgPicker=({value,onChange,library,addLib})=>(<DropPicker value={value} on
 const PersonPicker=({value,onChange,people,addPeople})=>(<DropPicker value={value} onChange={onChange} items={people} onAddNew={addPeople} placeholder="Chercher ou saisir un nom…" renderItem={p=>{const c=ownerColor(p);return<><span style={{width:22,height:22,borderRadius:"50%",background:c.bg,color:c.accent,fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{p.split(",")[0][0]}</span><span style={{flex:1}}>{p}</span></>;}}/>);
 function OChip({label,active,onClick,small,bg,color}){return <button onClick={onClick} style={{padding:small?"3px 9px":"5px 12px",borderRadius:20,border:`2px solid ${active?(bg||"#1c1c1e"):"#e0ddd6"}`,background:bg||(active?"#1c1c1e":"#fff"),color:color||(active?"#fff":"#777"),fontFamily:"inherit",fontSize:small?11:12,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>{label}</button>;}
 
-// ── ActionRow — inline editable row in global view ───────────────
-function ActionRow({ac,scoreEditMode,tags,people,library,getCCs,getPkgCCs,tagColor,ownerColor,
-  updAF,updTrackerAF,updTS,saveT,tasks,delTsk,delTrackerAction,delMoMAction,
-  setTaskForm,setSelected,setSelTracker,setEditMode,setActiveTab,setView,setLightbox,
-  records,trackers,addLib,addPpl}){
-  const [editing,setEditing]=useState(false);
-  const [editText,setEditText]=useState(ac.text);
-  const [editDue,setEditDue]=useState(ac.due||"");
-  const isTask=ac.source==="task";
-  const c=ownerColor(ac.owner||"");
-  const sc=calcScore(ac.importance||1,ac.urgence||1);
-  const ss=scoreStyle(sc);
-  const acCCs=[...new Set([...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")])].filter(p=>p!==ac.owner);
 
-  const save=()=>{
-    const f=(field,val)=>{
-      if(isTask) saveT(tasks.map(t=>t.id===ac.id?{...t,[field]:val}:t));
-      else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,field,val);
-      else updAF(ac.meetingId,ac.pkgId,ac.id,field,val);
-    };
-    if(editText.trim()!==ac.text) f("text",editText.trim());
-    if(editDue!==ac.due) f("due",editDue);
-    setEditing(false);
-  };
-  const toggleTag=tg=>{
-    const cur=ac.tags||[];
-    const next=cur.includes(tg)?cur.filter(x=>x!==tg):[...cur,tg];
-    if(isTask) saveT(tasks.map(t=>t.id===ac.id?{...t,tags:next}:t));
-    else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,"tags",next);
-    else updAF(ac.meetingId,ac.pkgId,ac.id,"tags",next);
-  };
-  const updateScore=(field,val)=>{
-    if(isTask) saveT(tasks.map(t=>t.id===ac.id?{...t,[field]:val}:t));
-    else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,field,val);
-    else updAF(ac.meetingId,ac.pkgId,ac.id,field,val);
-  };
-
-  return <tr style={{background:editing?"#f0f7ff":scoreEditMode?"#fffdf5":"transparent"}}>
-    {/* Action text */}
-    <td style={{minWidth:220}}>
-      {editing?<div style={{display:"flex",flexDirection:"column",gap:4}}>
-        <textarea value={editText} onChange={e=>setEditText(e.target.value)} autoFocus
-          style={{width:"100%",minWidth:200,padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:50}}/>
-        <input type="date" value={editDue} onChange={e=>setEditDue(e.target.value)}
-          style={{padding:"3px 7px",border:"1.5px solid #ddd",borderRadius:6,fontFamily:"inherit",fontSize:11,outline:"none"}}/>
-        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
-          {tags.map(tg=>{const{bg,color}=tagColor(tg);const on=(ac.tags||[]).includes(tg);return <button key={tg} onClick={()=>toggleTag(tg)}
-            style={{padding:"2px 8px",borderRadius:12,border:`1.5px solid ${on?color:"#ddd"}`,background:on?bg:"#fff",color:on?color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
-        </div>
-        <div style={{display:"flex",gap:4}}>
-          <button onClick={save} style={{flex:1,padding:"4px",background:"#3949ab",color:"#fff",border:"none",borderRadius:5,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Sauver</button>
-          <button onClick={()=>{setEditing(false);setEditText(ac.text);setEditDue(ac.due||"");}} style={{padding:"4px 8px",background:"none",border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit",fontSize:11,cursor:"pointer",color:"#888"}}>✕</button>
-        </div>
-      </div>
-      :<div style={{cursor:"pointer"}} onClick={()=>{setEditing(true);setEditText(ac.text);setEditDue(ac.due||"");}}>
-        <div className="atext" title="Cliquer pour modifier">{ac.text}</div>
-        {isTask&&ac.note&&<div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginTop:2}}>{ac.note}</div>}
-        {(ac.photos||[]).length>0&&<div style={{display:"flex",gap:4,marginTop:4}}>{(ac.photos||[]).map(ph=><img key={ph.id} src={ph.data} onClick={e=>{e.stopPropagation();setLightbox(ph);}} alt="" style={{width:32,height:32,objectFit:"cover",borderRadius:4,border:"1px solid #e8e6df",cursor:"pointer"}}/>)}</div>}
-        <div style={{fontSize:10,color:"#ccc",marginTop:2}}>✏️ cliquer pour modifier</div>
-      </div>}
-    </td>
-    {/* Score */}
-    <td>{scoreEditMode?
-      <div style={{display:"flex",flexDirection:"column",gap:3}}>
-        <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>I</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("importance",v)} style={{width:20,height:20,borderRadius:3,border:`1.5px solid ${(ac.importance||1)===v?"#1c1c1e":"#ddd"}`,background:(ac.importance||1)===v?"#1c1c1e":"#fff",color:(ac.importance||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
-        <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>U</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("urgence",v)} style={{width:20,height:20,borderRadius:3,border:`1.5px solid ${(ac.urgence||1)===v?"#1c1c1e":"#ddd"}`,background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
-        <span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:8,background:ss.bg,color:ss.color,textAlign:"center"}}>{ss.label}</span>
-      </div>
-      :<div><span style={{fontSize:11,fontWeight:800,padding:"2px 7px",borderRadius:10,background:ss.bg,color:ss.color,whiteSpace:"nowrap"}}>{ss.label}</span>{sc>1&&<div style={{fontSize:10,color:"#bbb",marginTop:1}}>I{ac.importance||1}×U{ac.urgence||1}</div>}</div>}
-    </td>
-    {/* Tags */}
-    <td><div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-      {(ac.tags||[]).map(tg=>{const{bg,color}=tagColor(tg);return <span key={tg} style={{fontSize:10,padding:"2px 6px",borderRadius:12,fontWeight:700,background:bg,color,whiteSpace:"nowrap"}}>{tg}</span>;})}
-    </div></td>
-    {/* Package */}
-    <td>{ac.package?<span className="ppill">{ac.package}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
-    {/* Owner */}
-    <td>{ac.owner?<span className="ochip" style={{background:c.bg,color:c.accent,fontSize:11,padding:"2px 7px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{ac.owner.split(",")[0]}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
-    {/* CCs */}
-    <td><div style={{display:"flex",flexDirection:"column",gap:2}}>{acCCs.length>0?acCCs.map((p,ci)=><div key={p} style={{display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",minWidth:22}}>CC{ci+1}</span><span style={{fontSize:10,padding:"1px 6px",borderRadius:20,fontWeight:600,background:"#e8f5e9",color:"#2e7d32",border:"1px solid #c8e6c9"}}>{p.split(",")[0]}</span></div>):<span style={{color:"#ddd",fontSize:12}}>—</span>}</div></td>
-    {/* Due */}
-    <td style={{color:"#bbb",fontSize:11,whiteSpace:"nowrap"}}>{ac.due||"—"}</td>
-    {/* Status */}
-    <td>{isTask
-      ?<select className="stsel" value={ac.status} onChange={e=>updTS(ac.id,e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
-      :ac.source==="tracker"
-        ?<select className="stsel" value={ac.status} onChange={e=>updTrackerAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
-        :<select className="stsel" value={ac.status} onChange={e=>updAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>}
-    </td>
-    {/* Source */}
-    <td>{isTask
-      ?<button className="btn bgho" style={{color:"#6a1b9a",fontSize:10,whiteSpace:"nowrap"}} onClick={()=>setTaskForm({...ac})}>📌 Tâche</button>
-      :ac.source==="tracker"
-        ?<button className="btn bgho" style={{color:"#00796b",fontSize:10,whiteSpace:"nowrap"}} onClick={()=>{setSelTracker(trackers.find(t=>t.id===ac.meetingId));setView("tracker-detail");}}>📊 {ac.meetingTitle}</button>
-        :<button className="btn bgho" style={{color:"#666",fontSize:10,whiteSpace:"nowrap"}} onClick={()=>{setSelected(records.find(r=>r.id===ac.meetingId));setEditMode(false);setActiveTab("packages");setView("detail");}}>{ac.meetingTitle}</button>}
-    </td>
-    {/* Delete */}
-    <td><button className="btn bgho" style={{color:"#ddd",fontSize:13,padding:"3px 6px"}}
-      onMouseEnter={e=>e.currentTarget.style.color="#c62828"}
-      onMouseLeave={e=>e.currentTarget.style.color="#ddd"}
-      onClick={()=>{if(!confirm(`Supprimer ?\n"${ac.text}"`))return;
-        if(isTask) delTsk(ac.id);
-        else if(ac.source==="tracker") delTrackerAction(ac.meetingId,ac.pkgId,ac.id);
-        else delMoMAction(ac.meetingId,ac.pkgId,ac.id);
-      }}>🗑</button></td>
-  </tr>;
-}
-
-// ── DualScroll — synced top + bottom scrollbars ──────────────────
-function DualScroll({children}){
-  const topRef=useRef();const botRef=useRef();
-  const syncFromTop=()=>{if(botRef.current)botRef.current.scrollLeft=topRef.current.scrollLeft;};
-  const syncFromBot=()=>{if(topRef.current)topRef.current.scrollLeft=botRef.current.scrollLeft;};
-  useEffect(()=>{
-    const top=topRef.current;const bot=botRef.current;
-    if(!top||!bot)return;
-    // Set top mirror width to match table width
-    const update=()=>{const inner=bot.querySelector("table");if(inner)top.firstChild.style.width=inner.scrollWidth+"px";};
-    update();
-    const obs=new ResizeObserver(update);if(bot.querySelector("table"))obs.observe(bot.querySelector("table"));
-    return()=>obs.disconnect();
-  },[]);
-  return <div style={{background:"#fff",borderRadius:10,border:"1.5px solid #e8e6df"}}>
-    <div ref={topRef} onScroll={syncFromTop} style={{overflowX:"auto",height:12,borderBottom:"1px solid #f0ede6",borderRadius:"10px 10px 0 0"}}>
-      <div style={{height:1}}/>
-    </div>
-    <div ref={botRef} onScroll={syncFromBot} style={{overflowX:"auto"}}>
-      {children}
-    </div>
-  </div>;
-}
 
 // ── APP ──────────────────────────────────────────────────────────
 function App(){
@@ -457,7 +319,6 @@ function App(){
   const [selTracker,setSelTracker]=useState(null);
   const [showBak,setShowBak]=useState(false);
   const [showEmail,setShowEmail]=useState(false);
-  const [showSearch,setShowSearch]=useState(false);
   const [showEmailOut,setShowEmailOut]=useState(false);
   const [scoreEditMode,setScoreEditMode]=useState(false);
   const [libSearch,setLibSearch]=useState("");
@@ -627,122 +488,7 @@ function App(){
   </div>;
 
   // ── Email Modal ──────────────────────────────────────────────
-  // ── Search Modal ──────────────────────────────────────────────
-  function SearchModal(){
-    const [q,setQ]=useState("");
-    const inputRef=useRef();
-    useEffect(()=>{inputRef.current&&inputRef.current.focus();},[]);
-    useEffect(()=>{
-      const h=e=>{if(e.key==="Escape")setShowSearch(false);};
-      document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);
-    },[]);
 
-    const lq=q.toLowerCase().trim();
-    const momResults=lq?records.filter(r=>
-      r.title.toLowerCase().includes(lq)||
-      r.date&&r.date.includes(lq)||
-      (r.participants||"").toLowerCase().includes(lq)||
-      (r.summary||"").toLowerCase().includes(lq)||
-      (r.packages||[]).some(p=>p.name.toLowerCase().includes(lq)||p.owner&&p.owner.toLowerCase().includes(lq)||
-        (p.actions||[]).some(a=>a.text.toLowerCase().includes(lq)))
-    ):records.slice(0,5);
-
-    const trackerResults=lq?trackers.filter(tr=>
-      tr.title.toLowerCase().includes(lq)||
-      (tr.description||"").toLowerCase().includes(lq)||
-      (tr.packages||[]).some(p=>p.name.toLowerCase().includes(lq)||p.owner&&p.owner.toLowerCase().includes(lq)||
-        (p.actions||[]).some(a=>a.text.toLowerCase().includes(lq)))
-    ):trackers.slice(0,3);
-
-    const go=(type,item)=>{
-      if(type==="mom"){setSelected(item);setEditMode(false);setActiveTab("packages");setView("detail");}
-      else{setSelTracker(item);setView("tracker-detail");}
-      setShowSearch(false);
-    };
-
-    const highlight=(text)=>{
-      if(!lq||!text)return text;
-      const idx=text.toLowerCase().indexOf(lq);
-      if(idx===-1)return text;
-      return <>{text.slice(0,idx)}<mark style={{background:"#fff3cd",borderRadius:2,padding:"0 1px"}}>{text.slice(idx,idx+lq.length)}</mark>{text.slice(idx+lq.length)}</>;
-    };
-
-    const total=momResults.length+trackerResults.length;
-
-    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:3000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"80px 16px 16px"}} onClick={e=>{if(e.target===e.currentTarget)setShowSearch(false);}}>
-      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:620,boxShadow:"0 24px 64px rgba(0,0,0,.3)",overflow:"hidden"}}>
-        {/* Search input */}
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",borderBottom:"1.5px solid #e8e6df"}}>
-          <span style={{fontSize:18,flexShrink:0}}>🔍</span>
-          <input ref={inputRef} type="text" placeholder="Rechercher un MoM, Tracker, action, package…"
-            value={q} onChange={e=>setQ(e.target.value)}
-            style={{flex:1,border:"none",outline:"none",fontSize:15,fontFamily:"inherit",background:"transparent"}}/>
-          {q&&<button onClick={()=>setQ("")} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:16,padding:"2px 6px"}}>✕</button>}
-          <kbd style={{fontSize:10,color:"#bbb",border:"1px solid #ddd",borderRadius:4,padding:"2px 6px",fontFamily:"inherit"}}>Esc</kbd>
-        </div>
-
-        {/* Results */}
-        <div style={{maxHeight:480,overflowY:"auto"}}>
-          {total===0&&lq&&<div style={{padding:"32px 20px",textAlign:"center",color:"#bbb"}}>
-            <div style={{fontSize:24,marginBottom:8}}>🔍</div>
-            <div style={{fontSize:14}}>Aucun résultat pour <strong>"{q}"</strong></div>
-          </div>}
-
-          {momResults.length>0&&<div>
-            <div style={{padding:"10px 18px 4px",fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".6px",background:"#fafaf8",borderBottom:"1px solid #f0ede6"}}>
-              📋 MoMs {lq&&<span style={{fontWeight:400}}>— {momResults.length} résultat{momResults.length>1?"s":""}</span>}
-            </div>
-            {momResults.map(r=>{
-              const tA=(r.packages||[]).reduce((s,p)=>s+(p.actions||[]).length,0);
-              const dA=(r.packages||[]).reduce((s,p)=>s+(p.actions||[]).filter(a=>a.status==="done").length,0);
-              const matchingActions=lq?(r.packages||[]).flatMap(p=>(p.actions||[]).filter(a=>a.text.toLowerCase().includes(lq))):[];
-              return <div key={r.id} onClick={()=>go("mom",r)}
-                style={{padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #f5f4f0",transition:"background .1s"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#f5f4f0"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                  <span style={{fontFamily:"'DM Serif Display',serif",fontSize:14,flex:1}}>{highlight(r.title)}</span>
-                  <span style={{fontSize:11,color:"#aaa"}}>{r.date}</span>
-                  <span style={{fontSize:11,color:"#bbb"}}>{dA}/{tA} ✓</span>
-                </div>
-                {(r.packages||[]).slice(0,3).map(p=><span key={p.id} style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"#f0ede6",color:"#666",marginRight:4}}>{highlight(p.name)}</span>)}
-                {(r.packages||[]).length>3&&<span style={{fontSize:10,color:"#bbb"}}>+{(r.packages||[]).length-3}</span>}
-                {matchingActions.slice(0,2).map((a,i)=><div key={i} style={{fontSize:11,color:"#888",marginTop:4,paddingLeft:4,borderLeft:"2px solid #e8e6df"}}>→ {highlight(a.text)}</div>)}
-              </div>;
-            })}
-          </div>}
-
-          {trackerResults.length>0&&<div>
-            <div style={{padding:"10px 18px 4px",fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".6px",background:"#fafaf8",borderBottom:"1px solid #f0ede6"}}>
-              📊 Trackers {lq&&<span style={{fontWeight:400}}>— {trackerResults.length} résultat{trackerResults.length>1?"s":""}</span>}
-            </div>
-            {trackerResults.map(tr=>{
-              const tA=(tr.packages||[]).reduce((s,p)=>s+(p.actions||[]).length,0);
-              const dA=(tr.packages||[]).reduce((s,p)=>s+(p.actions||[]).filter(a=>a.status==="done").length,0);
-              const pct=tA?Math.round(dA/tA*100):0;
-              const matchingActions=lq?(tr.packages||[]).flatMap(p=>(p.actions||[]).filter(a=>a.text.toLowerCase().includes(lq))):[];
-              return <div key={tr.id} onClick={()=>go("tracker",tr)}
-                style={{padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #f5f4f0",transition:"background .1s"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#f5f4f0"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                  <span style={{fontFamily:"'DM Serif Display',serif",fontSize:14,flex:1}}>{highlight(tr.title)}</span>
-                  <span style={{fontSize:11,color:"#bbb"}}>{pct}%</span>
-                </div>
-                {tr.description&&<div style={{fontSize:11,color:"#aaa",marginBottom:4}}>{highlight(tr.description)}</div>}
-                {(tr.packages||[]).slice(0,3).map(p=><span key={p.id} style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"#e0f2f1",color:"#00796b",marginRight:4}}>{highlight(p.name)}</span>)}
-                {matchingActions.slice(0,2).map((a,i)=><div key={i} style={{fontSize:11,color:"#888",marginTop:4,paddingLeft:4,borderLeft:"2px solid #b2dfdb"}}>→ {highlight(a.text)}</div>)}
-              </div>;
-            })}
-          </div>}
-
-          {!lq&&<div style={{padding:"12px 18px",fontSize:12,color:"#bbb",textAlign:"center"}}>
-            Tapez pour rechercher dans vos MoMs et Trackers…
-          </div>}
-        </div>
-      </div>
-    </div>;
-  }
 
   function EmailModal(){
     const [txt,setTxt]=useState("");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
@@ -1024,7 +770,7 @@ function App(){
           </div>
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Groupes & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px",borderColor:"#00796b",color:"#00796b"}} onClick={aP2}>＋ Groupe</button></div>
-            {t.packages.map((pkg,pi)=><PkgForm key={pkg.id+"-"+tags.length} pkg={pkg} pi={pi} sPkg={sP2} sAct={sA2} aAct={aA2} rAct={rA2} rPkg={rP2} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+            {t.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP2} sAct={sA2} aAct={aA2} rAct={rA2} rPkg={rP2} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:2}}>
             {!isNew&&<button className="btn bdgr" onClick={()=>{if(confirm(`Supprimer "${t.title}" ?`)){delTracker(t.id);setTrackerForm(null);}}}>🗑️ Supprimer</button>}
@@ -1168,16 +914,10 @@ function App(){
   }
 
   const syncLabel={ok:"☁️",syncing:"⏳",error:"⚠️"}[syncStatus];
-  // Ctrl+K / Cmd+K opens search
-  useEffect(()=>{
-    const h=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="k"){e.preventDefault();setShowSearch(s=>!s);}};
-    document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);
-  },[]);
   const syncTitle={ok:"Synchronisé avec Firebase",syncing:"Synchronisation en cours…",error:"Erreur de synchronisation"}[syncStatus];
 
   return <div className="app">
     {showEmailOut&&<EmailOutModal/>}
-    {showSearch&&<SearchModal/>}
     {showEmail&&<EmailModal/>}
     {trackerForm&&<TrackerFormModal/>}
     {showBak&&<BakModal/>}
@@ -1195,7 +935,6 @@ function App(){
         <button className={`nb${view==="trackers"||view==="tracker-detail"?" on":""}`} onClick={()=>setView("trackers")}>Trackers{trackers.length>0&&<span style={{background:"#00796b",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:10,marginLeft:2}}>{trackers.length}</span>}</button>
         <button className={`nb${view==="tasks"?" on":""}`} onClick={()=>setView("tasks")}>Tâches{tasks.filter(t=>t.status!=="done").length>0&&<span style={{background:"#3949ab",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:10,marginLeft:2}}>{tasks.filter(t=>t.status!=="done").length}</span>}</button>
         <button className={`nb${view==="actions"?" on":""}`} onClick={()=>{resetF();setView("actions");}}>Vue globale</button>
-        <button className="nb" onClick={()=>setShowSearch(true)} title="Rechercher (Ctrl+K)" style={{display:"flex",alignItems:"center",gap:4}}>🔍 <kbd style={{fontSize:9,color:"#555",border:"1px solid #555",borderRadius:3,padding:"1px 4px",fontFamily:"inherit",background:"transparent"}}>K</kbd></button>
         <button className="nb lib" onClick={()=>setShowLib(true)}>📦 {library.length}</button>
         <button className="nb lib" onClick={()=>setShowPpl(true)}>👥 {people.length}</button>
         <button className="nb lib" onClick={()=>setShowTags(true)}>🏷️ {tags.length}</button>
@@ -1277,8 +1016,8 @@ function App(){
         </div>;})}
       </div>}
 
-      {view==="actions"&&<div style={{padding:"0 14px 80px 14px",width:"100%",boxSizing:"border-box"}}>
-        <div className="stitle" style={{paddingTop:20}}>Vue globale</div><div className="ssub">MoMs + tâches — filtres croisés.</div>
+      {view==="actions"&&<div>
+        <div className="stitle">Vue globale</div><div className="ssub">MoMs + tâches — filtres croisés.</div>
         <FilterPanel/>
         <div style={{fontSize:12,color:"#aaa",marginBottom:9,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span style={{fontWeight:700,color:filtA.length===0?"#c62828":"#1a1a1a"}}>{filtA.length}</span>
@@ -1296,22 +1035,46 @@ function App(){
           </div>
         </div>
         {filtA.length===0?<div className="empty"><div className="eico">🔍</div><div className="etxt">Aucune action ne correspond.</div></div>
-        :<DualScroll>
-          <table className="attbl">
-          <thead><tr><th style={{minWidth:220}}>Action</th><th>Score {scoreEditMode&&<span style={{fontSize:9,background:"#f57f17",color:"#fff",borderRadius:4,padding:"1px 5px",marginLeft:4}}>ÉDITION</span>}</th><th>Tags</th><th>Package</th><th>Responsable</th><th>CC</th><th>Échéance</th><th>Statut</th><th>Source</th><th></th></tr></thead>
-          <tbody>{filtA.map((ac,i)=><ActionRow key={ac.id||i} ac={ac} scoreEditMode={scoreEditMode}
-            tags={tags} people={people} library={library}
-            getCCs={getCCs} getPkgCCs={getPkgCCs} tagColor={tagColor} ownerColor={ownerColor}
-            updAF={updAF} updTrackerAF={updTrackerAF} updTS={updTS}
-            saveT={saveT} tasks={tasks}
-            delTsk={delTsk} delTrackerAction={delTrackerAction} delMoMAction={delMoMAction}
-            setTaskForm={setTaskForm} setSelected={setSelected} setSelTracker={setSelTracker}
-            setEditMode={setEditMode} setActiveTab={setActiveTab} setView={setView}
-            setLightbox={setLightbox} records={records} trackers={trackers}
-            addLib={addLib} addPpl={addPpl}
-          />)}
+        :<div className="atwrap" style={{overflowX:"auto"}}><table className="attbl">
+          <thead><tr><th>Action</th><th>Score</th><th>Tags</th><th>Package</th><th>Responsable</th><th>CC</th><th>Échéance</th><th>Statut</th><th>Source</th><th></th></tr></thead>
+          <tbody>{filtA.map((ac,i)=>{
+            const c=ownerColor(ac.owner||"");
+            const isTask=ac.source==="task";
+            const sc=calcScore(ac.importance||1,ac.urgence||1);
+            const ss=scoreStyle(sc);
+            const acCCs=[...new Set([...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")])].filter(p=>p!==ac.owner);
+            const updateScore=(field,val)=>{
+              if(isTask) saveT(tasks.map(t=>t.id===ac.id?{...t,[field]:val}:t));
+              else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,field,val);
+              else updAF(ac.meetingId,ac.pkgId,ac.id,field,val);
+            };
+            return <tr key={ac.id||i}>
+            <td><div className="atext">{ac.text}</div>{isTask&&ac.note&&<div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginTop:2}}>{ac.note}</div>}</td>
+            <td>{scoreEditMode?<div style={{display:"flex",flexDirection:"column",gap:3}}>
+              <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>I</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("importance",v)} style={{width:20,height:20,borderRadius:3,border:"1.5px solid "+((ac.importance||1)===v?"#1c1c1e":"#ddd"),background:(ac.importance||1)===v?"#1c1c1e":"#fff",color:(ac.importance||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
+              <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>U</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("urgence",v)} style={{width:20,height:20,borderRadius:3,border:"1.5px solid "+((ac.urgence||1)===v?"#1c1c1e":"#ddd"),background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
+              <span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:8,background:ss.bg,color:ss.color,textAlign:"center"}}>{ss.label}</span>
+            </div>:<div><span style={{fontSize:11,fontWeight:800,padding:"2px 7px",borderRadius:10,background:ss.bg,color:ss.color,whiteSpace:"nowrap"}}>{ss.label}</span>{sc>1&&<div style={{fontSize:10,color:"#bbb",marginTop:1}}>I{ac.importance||1}x U{ac.urgence||1}</div>}</div>}</td>
+            <td><div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(ac.tags||[]).map(tg=>{const tc=tagColor(tg);return <span key={tg} style={{fontSize:10,padding:"2px 6px",borderRadius:12,fontWeight:700,background:tc.bg,color:tc.color,whiteSpace:"nowrap"}}>{tg}</span>;})}</div></td>
+            <td>{ac.package?<span className="ppill">{ac.package}</span>:<span style={{color:"#ddd"}}>-</span>}</td>
+            <td>{ac.owner?<span className="ochip" style={{background:c.bg,color:c.accent,fontSize:11,padding:"2px 7px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{ac.owner.split(",")[0]}</span>:<span style={{color:"#ddd"}}>-</span>}</td>
+            <td><div style={{display:"flex",flexDirection:"column",gap:2}}>{acCCs.length>0?acCCs.map((p,ci)=><div key={p} style={{display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",minWidth:22}}>CC{ci+1}</span><span style={{fontSize:10,padding:"1px 6px",borderRadius:20,fontWeight:600,background:"#e8f5e9",color:"#2e7d32",border:"1px solid #c8e6c9"}}>{p.split(",")[0]}</span></div>):<span style={{color:"#ddd",fontSize:12}}>-</span>}</div></td>
+            <td style={{color:"#bbb",fontSize:11,whiteSpace:"nowrap"}}>{ac.due||"-"}</td>
+            <td>{isTask?<select className="stsel" value={ac.status} onChange={e=>updTS(ac.id,e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+              :ac.source==="tracker"?<select className="stsel" value={ac.status} onChange={e=>updTrackerAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+              :<select className="stsel" value={ac.status} onChange={e=>updAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>}</td>
+            <td>{isTask?<button className="btn bgho" style={{color:"#6a1b9a",fontSize:11,whiteSpace:"nowrap"}} onClick={()=>setTaskForm({...ac})}>Tache</button>
+              :ac.source==="tracker"?<button className="btn bgho" style={{color:"#00796b",fontSize:11,whiteSpace:"nowrap"}} onClick={()=>{setSelTracker(trackers.find(t=>t.id===ac.meetingId));setView("tracker-detail");}}>Tracker</button>
+              :<button className="btn bgho" style={{color:"#666",fontSize:11,whiteSpace:"nowrap"}} onClick={()=>{setSelected(records.find(r=>r.id===ac.meetingId));setEditMode(false);setActiveTab("packages");setView("detail");}}>{ac.meetingTitle}</button>}</td>
+            <td><button className="btn bgho" style={{color:"#ddd",fontSize:13,padding:"3px 6px"}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}
+              onClick={()=>{if(!confirm("Supprimer cette action ?"))return;
+                if(isTask) delTsk(ac.id);
+                else if(ac.source==="tracker") delTrackerAction(ac.meetingId,ac.pkgId,ac.id);
+                else delMoMAction(ac.meetingId,ac.pkgId,ac.id);
+              }}>x</button></td>
+          </tr>;})}
           </tbody>
-        </table></DualScroll>}
+        </table></div>}
       </div>}
 
       {view==="new"&&<div>
@@ -1327,7 +1090,7 @@ function App(){
           </div>
           <div style={{marginTop:18}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={aP}>＋ Package</button></div>
-            {form.packages.map((pkg,pi)=><PkgForm key={pkg.id+"-"+tags.length} pkg={pkg} pi={pi} sPkg={sP} sAct={sA} aAct={aA} rAct={rA} rPkg={rP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+            {form.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP} sAct={sA} aAct={aA} rAct={rA} rPkg={rP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
           </div>
           <div className="fbtns"><button className="btn bout" onClick={()=>setView("dashboard")}>Annuler</button><button className="btn bpri" disabled={!form.title.trim()} onClick={addRec}>Enregistrer</button></div>
         </div>
@@ -1410,7 +1173,7 @@ function App(){
           </div>
           <div style={{marginTop:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={ssAP}>＋ Package</button></div>
-            {(selected.packages||[]).map((pkg,pi)=><PkgForm key={pkg.id+"-"+tags.length} pkg={pkg} pi={pi} sPkg={ssP} sAct={ssSA} aAct={()=>ssAA(pi)} rAct={ssRA} rPkg={ssRP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+            {(selected.packages||[]).map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={ssP} sAct={ssSA} aAct={()=>ssAA(pi)} rAct={ssRA} rPkg={ssRP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
           </div>
           <div className="fbtns"><button className="btn bout" onClick={()=>setEditMode(false)}>Annuler</button><button className="btn bpri" onClick={()=>updRec(selected)}>Sauvegarder</button></div>
         </div>}
