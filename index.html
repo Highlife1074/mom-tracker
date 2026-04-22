@@ -97,7 +97,7 @@ select{padding:7px 10px;border:1.5px solid #ddd;border-radius:8px;font-family:'D
 .atext{line-height:1.5}.adue{font-size:11px;color:#bbb;margin-top:1px}
 .sttchip{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:12px;font-size:11px;font-weight:700}
 .sc-pending{background:#fff8e1;color:#f57f17}.sc-done{background:#e8f5e9;color:#2e7d32}.sc-blocked{background:#ffeaea;color:#c62828}.sc-inprogress{background:#e3f2fd;color:#1565c0}
-.fcard{background:#fff;border-radius:12px;border:1.5px solid #e8e6df;padding:22px}
+.fcard{background:#fff;border-radius:12px;border:1.5px solid #e8e6df;padding:22px;max-width:1100px}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .fg{display:flex;flex-direction:column;gap:5px}.fg.full{grid-column:1/-1}
 label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px}
@@ -173,8 +173,31 @@ const TAG_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0
 function tagColor(t){let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%TAG_COLORS.length;const parts=TAG_COLORS[h].split("|");return{bg:parts[0],color:parts[1]};}
 
 const newTask=()=>({id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",photos:[],tags:[],createdAt:new Date().toISOString().slice(0,10)});
-const newPkg=()=>({id:uuid(),name:"",owner:"",actions:[{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]});
+const newPkg=()=>({id:uuid(),name:"",owner:"",actions:[{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:""}]});
 const defForm={title:"",date:new Date().toISOString().slice(0,10),direction:"outgoing",participants:"",summary:"",packages:[newPkg()]};
+
+// ── InlineTagAdd — add a new tag directly from PkgForm ──────────
+function InlineTagAdd({onAdd}){
+  const [show,setShow]=useState(false);
+  const [val,setVal]=useState("");
+  const ref=useRef();
+  useEffect(()=>{if(show&&ref.current)ref.current.focus();},[show]);
+  if(!show) return <button onClick={()=>setShow(true)}
+    style={{padding:"2px 8px",borderRadius:20,border:"1.5px solid #e0ddd6",background:"#fff",color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>＋ tag</button>;
+  return <span style={{display:"inline-flex",alignItems:"center",gap:3}}>
+    <input ref={ref} type="text" value={val} onChange={e=>setVal(e.target.value)}
+      onKeyDown={e=>{
+        if(e.key==="Enter"&&val.trim()){onAdd(val.trim());setVal("");setShow(false);}
+        if(e.key==="Escape"){setShow(false);setVal("");}
+      }}
+      placeholder="Nouveau tag…"
+      style={{padding:"2px 7px",border:"1.5px solid #1c1c1e",borderRadius:20,fontFamily:"inherit",fontSize:11,outline:"none",width:90}}/>
+    <button onClick={()=>{if(val.trim()){onAdd(val.trim());setVal("");setShow(false);}}}
+      style={{padding:"2px 7px",borderRadius:20,background:"#1c1c1e",color:"#fff",border:"none",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓</button>
+    <button onClick={()=>{setShow(false);setVal("");}}
+      style={{padding:"2px 5px",borderRadius:20,background:"none",color:"#bbb",border:"1px solid #ddd",fontFamily:"inherit",fontSize:11,cursor:"pointer"}}>✕</button>
+  </span>;
+}
 
 // ── ScorePicker — importance × urgence ──────────────────────────
 function ScorePicker({imp,urg,onImp,onUrg}){
@@ -199,7 +222,7 @@ function ScorePicker({imp,urg,onImp,onUrg}){
 }
 
 // ── PkgForm — top-level to prevent focus loss on re-render ───────
-function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,tags=[]}){
+function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,tags=[],addTag}){
   return <div className="fpkg">
     <div className="fpkghdr">
       <div className="fg" style={{flex:2}}><label>Package</label><PkgPicker value={pkg.name} onChange={v=>sPkg(pi,"name",v)} library={library} addLib={addLib}/></div>
@@ -216,17 +239,23 @@ function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,t
       <div style={{display:"flex",gap:6,alignItems:"center",paddingLeft:2,marginBottom:2}}>
         <ScorePicker imp={ac.importance||1} urg={ac.urgence||1} onImp={v=>sAct(pi,ai,"importance",v)} onUrg={v=>sAct(pi,ai,"urgence",v)}/>
       </div>
-      {tags.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,paddingLeft:2,paddingBottom:4,alignItems:"center",marginTop:4}}>
+      {<div style={{display:"flex",flexWrap:"wrap",gap:4,paddingLeft:2,paddingBottom:4,alignItems:"center",marginTop:4}}>
         <span style={{fontSize:10,fontWeight:700,color:"#bbb",textTransform:"uppercase",letterSpacing:".4px",marginRight:2,flexShrink:0}}>Tags</span>
         {tags.map(t=>{
           const on=(ac.tags||[]).includes(t);
           const tc=tagColor(t);
           return <button key={t} onClick={()=>sAct(pi,ai,"tags",on?(ac.tags||[]).filter(x=>x!==t):[...(ac.tags||[]),t])}
-            style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${on?tc.color:"#ddd"}`,background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .12s"}}>
+            style={{padding:"3px 10px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .12s"}}>
             {t}
           </button>;
         })}
+        <InlineTagAdd onAdd={(newTag)=>{
+          if(typeof addTag==="function") addTag(newTag);
+          sAct(pi,ai,"tags",[...(ac.tags||[]),newTag]);
+        }}/>
       </div>}
+      <textarea placeholder="Détails…" value={ac.details||""} onChange={e=>sAct(pi,ai,"details",e.target.value)}
+        style={{width:"100%",marginTop:4,padding:"5px 8px",border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",fontSize:12,color:"#555",resize:"vertical",minHeight:36,outline:"none",background:"#fafaf8",boxSizing:"border-box"}}/>
     </div>)}
     <button className="btn bgho" style={{fontSize:12,color:"#777",marginTop:3}} onClick={()=>aAct(pi)}>＋ Action</button>
   </div>;
@@ -459,14 +488,14 @@ function App(){
   const sP=(pi,f,v)=>setForm({...form,packages:form.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
   const aP=()=>setForm({...form,packages:[...form.packages,newPkg()]});
   const rP=pi=>setForm({...form,packages:form.packages.filter((_,i)=>i!==pi)});
-  const aA=pi=>sP(pi,"actions",[...form.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]);
+  const aA=pi=>sP(pi,"actions",[...form.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:""}]);
   const rA=(pi,ai)=>sP(pi,"actions",form.packages[pi].actions.filter((_,i)=>i!==ai));
   const sA=(pi,ai,f,v)=>sP(pi,"actions",form.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
   const ssS=(f,v)=>setSelected({...selected,[f]:v});
   const ssP=(pi,f,v)=>setSelected({...selected,packages:selected.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
   const ssAP=()=>setSelected({...selected,packages:[...selected.packages,newPkg()]});
   const ssRP=pi=>setSelected({...selected,packages:selected.packages.filter((_,i)=>i!==pi)});
-  const ssAA=pi=>ssP(pi,"actions",[...selected.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]);
+  const ssAA=pi=>ssP(pi,"actions",[...selected.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:""}]);
   const ssRA=(pi,ai)=>ssP(pi,"actions",selected.packages[pi].actions.filter((_,i)=>i!==ai));
   const ssSA=(pi,ai,f,v)=>ssP(pi,"actions",selected.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
 
@@ -639,7 +668,7 @@ function App(){
   function TskModal(){
     const [t,setT]=useState(taskForm);const isNew=!tasks.find(x=>x.id===t.id);
     return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setTaskForm(null)}}>
-      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:580,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:800,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
         <div style={{padding:"18px 22px 13px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:17}}>{isNew?"Nouvelle tâche":"Modifier la tâche"}</div>{!isNew&&t.createdAt&&<div style={{fontSize:11,color:"#aaa",marginTop:2}}>Saisie le {t.createdAt}</div>}</div>
           <button onClick={()=>setTaskForm(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
@@ -753,11 +782,11 @@ function App(){
     const sP2=(pi,f,v)=>setT({...t,packages:t.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
     const aP2=()=>setT({...t,packages:[...t.packages,newPkg()]});
     const rP2=pi=>setT({...t,packages:t.packages.filter((_,i)=>i!==pi)});
-    const aA2=pi=>sP2(pi,"actions",[...t.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1}]);
+    const aA2=pi=>sP2(pi,"actions",[...t.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:""}]);
     const rA2=(pi,ai)=>sP2(pi,"actions",t.packages[pi].actions.filter((_,i)=>i!==ai));
     const sA2=(pi,ai,f,v)=>sP2(pi,"actions",t.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
-    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setTrackerForm(null)}}>
-      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:720,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:1100,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
         <div style={{padding:"18px 22px 14px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:18}}>{isNew?"Nouveau Tracker":"Modifier le Tracker"}</div>
           <div style={{fontSize:12,color:"#aaa",marginTop:2}}>Suivi de sous-projet — groupes → actions</div></div>
@@ -770,7 +799,7 @@ function App(){
           </div>
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Groupes & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px",borderColor:"#00796b",color:"#00796b"}} onClick={aP2}>＋ Groupe</button></div>
-            {t.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP2} sAct={sA2} aAct={aA2} rAct={rA2} rPkg={rP2} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+            {t.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP2} sAct={sA2} aAct={aA2} rAct={rA2} rPkg={rP2} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag}/>)}
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:2}}>
             {!isNew&&<button className="btn bdgr" onClick={()=>{if(confirm(`Supprimer "${t.title}" ?`)){delTracker(t.id);setTrackerForm(null);}}}>🗑️ Supprimer</button>}
@@ -1049,7 +1078,7 @@ function App(){
               else updAF(ac.meetingId,ac.pkgId,ac.id,field,val);
             };
             return <tr key={ac.id||i}>
-            <td><div className="atext">{ac.text}</div>{isTask&&ac.note&&<div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginTop:2}}>{ac.note}</div>}</td>
+            <td><div className="atext">{ac.text}</div>{ac.details&&<div style={{fontSize:11,color:"#666",marginTop:2,fontStyle:"italic"}}>{ac.details}</div>}{isTask&&ac.note&&<div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginTop:2}}>{ac.note}</div>}</td>
             <td>{scoreEditMode?<div style={{display:"flex",flexDirection:"column",gap:3}}>
               <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>I</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("importance",v)} style={{width:20,height:20,borderRadius:3,border:"1.5px solid "+((ac.importance||1)===v?"#1c1c1e":"#ddd"),background:(ac.importance||1)===v?"#1c1c1e":"#fff",color:(ac.importance||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
               <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>U</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("urgence",v)} style={{width:20,height:20,borderRadius:3,border:"1.5px solid "+((ac.urgence||1)===v?"#1c1c1e":"#ddd"),background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
@@ -1090,7 +1119,7 @@ function App(){
           </div>
           <div style={{marginTop:18}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={aP}>＋ Package</button></div>
-            {form.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP} sAct={sA} aAct={aA} rAct={rA} rPkg={rP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+            {form.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP} sAct={sA} aAct={aA} rAct={rA} rPkg={rP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag}/>)}
           </div>
           <div className="fbtns"><button className="btn bout" onClick={()=>setView("dashboard")}>Annuler</button><button className="btn bpri" disabled={!form.title.trim()} onClick={addRec}>Enregistrer</button></div>
         </div>
@@ -1131,6 +1160,7 @@ function App(){
                 {pkg.actions.map(ac=><tr key={ac.id}>
                   <td>
                     <div className="atext">{ac.text}</div>
+                    {ac.details&&<div style={{fontSize:12,color:"#666",marginTop:3,fontStyle:"italic",lineHeight:1.5}}>{ac.details}</div>}
                     {ac.due&&<div className="adue">📅 {ac.due}</div>}
                     {(ac.tags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:4}}>{(ac.tags||[]).map(tg=>{const{bg,color}=tagColor(tg);return <span key={tg} style={{fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:700,background:bg,color}}>{tg}</span>;})}</div>}
                     {(()=>{const ccs=[...new Set([...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")])].filter(p=>p!==ac.owner);return ccs.length>0&&<div style={{display:"flex",flexDirection:"column",gap:2,marginTop:3}}>{ccs.map((p,ci)=><span key={p} style={{fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600,background:"#e8f5e9",color:"#2e7d32",display:"inline-flex",alignItems:"center",gap:4}}><span style={{fontSize:9,fontWeight:800,color:"#aaa"}}>CC{ci+1}</span>{p.split(",")[0]}</span>)}</div>;})()}
@@ -1173,7 +1203,7 @@ function App(){
           </div>
           <div style={{marginTop:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={ssAP}>＋ Package</button></div>
-            {(selected.packages||[]).map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={ssP} sAct={ssSA} aAct={()=>ssAA(pi)} rAct={ssRA} rPkg={ssRP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags}/>)}
+            {(selected.packages||[]).map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={ssP} sAct={ssSA} aAct={()=>ssAA(pi)} rAct={ssRA} rPkg={ssRP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag}/>)}
           </div>
           <div className="fbtns"><button className="btn bout" onClick={()=>setEditMode(false)}>Annuler</button><button className="btn bpri" onClick={()=>updRec(selected)}>Sauvegarder</button></div>
         </div>}
@@ -1237,6 +1267,7 @@ function App(){
                 return <tr key={ac.id}>
                   <td>
                     <div className="atext" style={{textDecoration:ac.status==="done"?"line-through":"none",color:ac.status==="done"?"#bbb":"#1a1a1a"}}>{ac.text}</div>
+                    {ac.details&&<div style={{fontSize:12,color:"#666",marginTop:3,fontStyle:"italic",lineHeight:1.5}}>{ac.details}</div>}
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:3,alignItems:"center"}}>
                       {ac.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {ac.due}</span>}
                       {ac.status==="done"&&ac.completedAt&&<span style={{fontSize:11,color:"#2e7d32",fontWeight:600}}>✅ Réalisé le {ac.completedAt}</span>}
