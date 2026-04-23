@@ -153,6 +153,18 @@ label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-
 <script id="app-source" type="text/plain">
 const {useState,useEffect,useRef,useCallback}=React;
 
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={err:null,info:null};}
+  componentDidCatch(err,info){this.setState({err,info});}
+  render(){
+    if(this.state.err){
+      return React.createElement("div",{style:{padding:24,fontFamily:"monospace",color:"#c62828",whiteSpace:"pre-wrap",fontSize:13,background:"#fff"}},
+        "REACT ERROR:\n"+this.state.err.message+"\n\nComponent stack:\n"+(this.state.info&&this.state.info.componentStack||""));
+    }
+    return this.props.children;
+  }
+}
+
 // ── Storage keys ─────────────────────────────────────────────────
 const KEYS={
   tasks:"pp_tasks", trackers:"pp_trackers", tenders:"pp_tenders",
@@ -1439,7 +1451,7 @@ function App(){
   </div>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ErrorBoundary,null,React.createElement(App)));
 </script>
 <script>
 (function(){
@@ -1449,7 +1461,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
       var out=Babel.transform(src,{presets:["react"]}).code;
       eval(out);
     }catch(e){
-      document.body.innerHTML='<div style="padding:24px;font-family:monospace;color:#c62828;white-space:pre-wrap;font-size:13px">BUILD ERROR:\n'+e.message+'</div>';
+      document.body.innerHTML='<div style="padding:24px;font-family:monospace;color:#c62828;white-space:pre-wrap;font-size:13px;background:#fff">BABEL ERROR:\n'+e.message+'\n\nStack:\n'+(e.stack||"")+'</div>';
     }
   }
   function wait(){
@@ -1458,6 +1470,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
       else window.addEventListener("db-ready",run,{once:true});
     }else setTimeout(wait,50);
   }
+  // Also catch unhandled React errors
+  window.addEventListener("error",function(e){
+    if(document.body.innerHTML.trim()===""||document.getElementById("root").innerHTML===""){
+      document.body.innerHTML='<div style="padding:24px;font-family:monospace;color:#c62828;white-space:pre-wrap;font-size:13px;background:#fff">RUNTIME ERROR:\n'+(e.message||"Unknown")+'\n\nFile: '+(e.filename||"")+' L'+(e.lineno||"")+'\n\nStack:\n'+((e.error&&e.error.stack)||"")+'</div>';
+    }
+  });
   document.readyState==="loading"?document.addEventListener("DOMContentLoaded",wait):wait();
 })();
 </script>
