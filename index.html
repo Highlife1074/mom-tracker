@@ -266,7 +266,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,onAdd}){
           {tenders.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
       </div>
-      <div className="fg"><label>Link Contractor</label>
+      <div className="fg"><label>Link Subcontractor</label>
         <select value={contractorRef} onChange={e=>setContractorRef(e.target.value)}>
           <option value="">— none —</option>
           {contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
@@ -695,7 +695,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks}){
     const d=contractors.find(x=>x.id===cd.id)?contractors.map(x=>x.id===cd.id?cd:x):[cd,...contractors];
     saveContractors(d);setShowForm(false);if(selCtr&&selCtr.id===cd.id)setSelCtr(cd);
   };
-  const delCtr=id=>{if(confirm("Delete contractor?"))saveContractors(contractors.filter(c=>c.id!==id));setSelCtr(null);};
+  const delCtr=id=>{if(confirm("Delete subcontractor?"))saveContractors(contractors.filter(c=>c.id!==id));setSelCtr(null);};
 
   const addContract=ctrId=>{
     const nc=newContract();
@@ -826,14 +826,14 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks}){
 
   return <div>
     <div className="page-hdr">
-      <div><div className="page-title">Contractors</div><div className="page-sub">Subcontractors, contracts & certifications</div></div>
-      <button className="btn btn-gold" onClick={openNew}>＋ New Contractor</button>
+      <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts & certifications</div></div>
+      <button className="btn btn-gold" onClick={openNew}>＋ New Subcontractor</button>
     </div>
     <div className="filter-bar">
       <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={()=>setPkgFilter("all")}>All packages</button>
       {allPkgs.map(p=><button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={()=>setPkgFilter(pkgFilter===p?"all":p)}>{p}</button>)}
     </div>
-    {filtered.length===0?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No contractors yet.</div></div>
+    {filtered.length===0?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors yet.</div></div>
     :<table className="tbl">
       <thead><tr><th>Contractor</th><th>Package</th><th>Owner</th><th>Contracts</th><th>Total Value</th><th>Certified</th><th>Remaining</th><th>Forecast end</th></tr></thead>
       <tbody>{filtered.map(ctr=>{
@@ -860,10 +860,10 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks}){
 function ContractorFormModal({data,onChange,onSave,onClose,people,packages}){
   const set=(f,v)=>onChange(Object.assign({},data,{[f]:v}));
   return <div className="overlay"><div className="modal" style={{maxWidth:480}}>
-    <div className="modal-hdr"><div className="modal-title">{data.name||"New Contractor"}</div>
+    <div className="modal-hdr"><div className="modal-title">{data.name||"New Subcontractor"}</div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
     <div className="modal-body">
-      <div className="fg"><label>Contractor name *</label><input type="text" value={data.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. ACME Construction"/></div>
+      <div className="fg"><label>Subcontractor name *</label><input type="text" value={data.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. ACME Construction"/></div>
       <div className="frow">
         <div className="fg"><label>Package</label>
           <select value={data.package||""} onChange={e=>set("package",e.target.value)}>
@@ -879,7 +879,7 @@ function ContractorFormModal({data,onChange,onSave,onClose,people,packages}){
     </div>
     <div className="modal-footer">
       <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn btn-pri" disabled={!data.name.trim()} onClick={()=>onSave(data)}>Save Contractor</button>
+      <button className="btn btn-pri" disabled={!data.name.trim()} onClick={()=>onSave(data)}>Save Subcontractor</button>
     </div>
   </div></div>;
 }
@@ -941,7 +941,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         <option value="all">All tenders</option>{tenders.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
       </select>
       <select value={fContractor} onChange={e=>setFContractor(e.target.value)} style={{width:"auto",padding:"5px 8px",fontSize:11}}>
-        <option value="all">All contractors</option>{contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        <option value="all">All subcontractors</option>{contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
       {(fStatus!=="all"||fOwner!=="all"||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||q)&&
         <button className="btn btn-sm" onClick={()=>{setFStatus("all");setFOwner("all");setFPkg("all");setFTender("all");setFContractor("all");setQ("");}}>✕ Reset</button>}
@@ -1017,13 +1017,40 @@ function App(){
           cloudStore.get(KEYS.contractors),cloudStore.get(KEYS.people),cloudStore.get(KEYS.packages),
           cloudStore.get(KEYS.tags),cloudStore.get(KEYS.tagrules),cloudStore.get(KEYS.pkgrules)
         ]);
-        if(t)setTasks(t);
-        if(x)setTrackers(x);
+        if(t){setTasks(t);}
+        else{
+          // Migrate old tasks from previous app
+          const oldTasks=await cloudStore.get("tasks");
+          if(oldTasks&&oldTasks.length){
+            const migrated=oldTasks.map(t=>newTask({id:t.id,text:t.text||"",owner:t.owner||"",package:t.package||"",status:t.status||"pending",importance:t.importance||1,urgence:t.urgence||1,due:t.due||"",note:t.note||"",tags:t.tags||[],createdAt:t.createdAt||today()}));
+            setTasks(migrated);sync(KEYS.tasks,migrated);
+          }
+        }
+        if(x){setTrackers(x);}
+        else{
+          // Migrate old trackers (ex-MoMs = records) from previous app
+          const oldRecords=await cloudStore.get("records");
+          const oldTrackers=await cloudStore.get("trackers");
+          const migratedTrackers=[];
+          if(oldRecords&&oldRecords.length){
+            oldRecords.forEach(r=>{
+              const actions=(r.packages||[]).flatMap(pkg=>(pkg.actions||[]).map(a=>newTrackerAction({id:a.id,text:a.text||"",owner:pkg.owner||a.owner||"",package:pkg.name||"",status:a.status||"pending",importance:a.importance||1,urgence:a.urgence||1,due:a.due||"",tags:a.tags||[],details:a.details||"",createdAt:r.date||today()})));
+              migratedTrackers.push(newTracker({id:r.id,title:r.title||"Untitled",description:r.summary||"",createdAt:r.date||today(),actions}));
+            });
+          }
+          if(oldTrackers&&oldTrackers.length){
+            oldTrackers.forEach(tr=>{
+              const actions=(tr.packages||[]).flatMap(pkg=>(pkg.actions||[]).map(a=>newTrackerAction({id:a.id,text:a.text||"",owner:pkg.owner||a.owner||"",package:pkg.name||"",status:a.status||"pending",importance:a.importance||1,urgence:a.urgence||1,due:a.due||"",tags:a.tags||[],details:a.details||"",createdAt:tr.createdAt||today()})));
+              migratedTrackers.push(newTracker({id:tr.id,title:tr.title||"Untitled",description:tr.description||"",createdAt:tr.createdAt||today(),actions}));
+            });
+          }
+          if(migratedTrackers.length){setTrackers(migratedTrackers);sync(KEYS.trackers,migratedTrackers);}
+        }
         if(td)setTenders(td);
         if(ct)setContractors(ct);
-        if(p)setPeople(p);
+        if(p){setPeople(p);}else{const op=await cloudStore.get("people");if(op)setPeople(op);}
         if(pk)setPackages(pk);
-        if(g)setTags(g);
+        if(g){setTags(g);}else{const og=await cloudStore.get("tags");if(og)setTags(og);}
         if(tr)setTagrules(tr);
         if(pr)setPkgrules(pr);
       }catch(e){console.error("Load error",e);}
@@ -1045,7 +1072,7 @@ function App(){
     {id:"actions",icon:"📋",label:"Actions"},
     {id:"trackers",icon:"📊",label:"Trackers"},
     {id:"tenders",icon:"📑",label:"Tenders"},
-    {id:"contractors",icon:"🤝",label:"Contractors"},
+    {id:"contractors",icon:"🤝",label:"Subcontractors"},
     {id:"global",icon:"🌐",label:"Global"},
   ];
 
