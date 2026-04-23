@@ -1024,8 +1024,122 @@ function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tende
   </div></div>;
 }
 
+// ── SETTINGS VIEW ─────────────────────────────────────────────────
+function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tagrules,saveTagrules,pkgrules,savePkgrules}){
+  const [tab,setTab]=useState("tags");
+  const [newTag,setNewTag]=useState("");
+  const [newPerson,setNewPerson]=useState("");
+  const [newPackage,setNewPackage]=useState("");
+
+  const addTag=()=>{const t=newTag.trim();if(t&&!tags.includes(t)){saveTags([...tags,t].sort());setNewTag("");}};
+  const removeTag=t=>{if(confirm("Remove tag '"+t+"'? CC rules for this tag will also be removed.")){saveTags(tags.filter(x=>x!==t));const nr=Object.assign({},tagrules);delete nr[t];saveTagrules(nr);}};
+  const addPerson=()=>{const p=newPerson.trim();if(p&&!people.includes(p)){savePeople([...people,p].sort());setNewPerson("");}};
+  const removePerson=p=>{if(confirm("Remove "+p+"?"))savePeople(people.filter(x=>x!==p));};
+  const addPackage=()=>{const p=newPackage.trim();if(p&&!packages.includes(p)){savePackages([...packages,p].sort());setNewPackage("");}};
+  const removePackage=p=>{if(confirm("Remove package '"+p+"'?"))savePackages(packages.filter(x=>x!==p));};
+
+  const toggleTagRule=(tag,person)=>{
+    const cur=tagrules[tag]||[];
+    const updated=cur.includes(person)?cur.filter(x=>x!==person):[...cur,person];
+    saveTagrules(Object.assign({},tagrules,{[tag]:updated}));
+  };
+  const togglePkgRule=(pkg,person)=>{
+    const cur=pkgrules[pkg]||[];
+    const updated=cur.includes(person)?cur.filter(x=>x!==person):[...cur,person];
+    savePkgrules(Object.assign({},pkgrules,{[pkg]:updated}));
+  };
+
+  return <div>
+    <div className="page-hdr">
+      <div><div className="page-title">Settings</div><div className="page-sub">Manage tags, people, packages and CC rules</div></div>
+    </div>
+
+    <div style={{display:"flex",gap:8,marginBottom:20}}>
+      {["tags","people","packages","cc-rules"].map(t=><button key={t} className={"fchip"+(tab===t?" on":"")} onClick={()=>setTab(t)} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}
+    </div>
+
+    {tab==="tags"&&<div className="card">
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Tags ({tags.length})</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <input type="text" value={newTag} onChange={e=>setNewTag(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTag()} placeholder="New tag name…" style={{flex:1}}/>
+        <button className="btn btn-pri" onClick={addTag}>＋ Add</button>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        {tags.map(t=>{const tc=tagColor(t);return <div key={t} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:20,background:tc.bg,border:"1.5px solid "+tc.color}}>
+          <span style={{fontSize:12,fontWeight:700,color:tc.color}}>{t}</span>
+          <button onClick={()=>removeTag(t)} style={{background:"none",border:"none",cursor:"pointer",color:tc.color,fontSize:12,padding:"0 2px",lineHeight:1}}>×</button>
+        </div>;})}
+      </div>
+    </div>}
+
+    {tab==="people"&&<div className="card">
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>People ({people.length})</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <input type="text" value={newPerson} onChange={e=>setNewPerson(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPerson()} placeholder="LASTNAME, Firstname" style={{flex:1}}/>
+        <button className="btn btn-pri" onClick={addPerson}>＋ Add</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        {people.map(p=>{const c=ownerColor(p);return <div key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:8,background:c.bg}}>
+          <div style={{width:28,height:28,borderRadius:"50%",background:c.accent,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>{p[0]}</div>
+          <span style={{flex:1,fontSize:13,fontWeight:600,color:c.accent}}>{p}</span>
+          <button onClick={()=>removePerson(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}>🗑</button>
+        </div>;})}
+      </div>
+    </div>}
+
+    {tab==="packages"&&<div className="card">
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Packages ({packages.length})</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <input type="text" value={newPackage} onChange={e=>setNewPackage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPackage()} placeholder="Package name…" style={{flex:1}}/>
+        <button className="btn btn-pri" onClick={addPackage}>＋ Add</button>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        {packages.map(p=><div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,background:"#f0ede6",border:"1.5px solid #e0ddd6"}}>
+          <span style={{fontSize:12,fontWeight:600,color:"#555"}}>{p}</span>
+          <button onClick={()=>removePackage(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:12,padding:"0 2px"}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#bbb"}>×</button>
+        </div>)}
+      </div>
+    </div>}
+
+    {tab==="cc-rules"&&<div>
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>Tag → Auto CC</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:14}}>When a tag is assigned to an action, the selected people are automatically CC'd.</div>
+        {tags.map(t=>{const tc=tagColor(t);const ccs=tagrules[t]||[];return <div key={t} style={{marginBottom:12,padding:"10px 12px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{padding:"3px 10px",borderRadius:20,background:tc.bg,color:tc.color,fontSize:12,fontWeight:700}}>{t}</span>
+            {ccs.length>0&&<span style={{fontSize:11,color:"#2e7d32",fontWeight:600}}>→ CC: {ccs.map(p=>p.split(",")[0]).join(", ")}</span>}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+            {people.map(p=>{const on=ccs.includes(p);const c=ownerColor(p);return <button key={p} onClick={()=>toggleTagRule(t,p)}
+              style={{padding:"3px 10px",borderRadius:20,border:"1.5px solid "+(on?c.accent:"#ddd"),background:on?c.bg:"#fff",color:on?c.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {on?"✓ ":""}{p.split(",")[0]}
+            </button>;})}
+          </div>
+        </div>;})}
+      </div>
+      <div className="card">
+        <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>Package → Auto CC</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:14}}>When an action belongs to a package, selected people are automatically CC'd.</div>
+        {packages.map(pkg=>{const ccs=pkgrules[pkg]||[];return <div key={pkg} style={{marginBottom:12,padding:"10px 12px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{padding:"3px 10px",borderRadius:20,background:"#f0ede6",color:"#555",fontSize:12,fontWeight:700}}>📦 {pkg}</span>
+            {ccs.length>0&&<span style={{fontSize:11,color:"#2e7d32",fontWeight:600}}>→ CC: {ccs.map(p=>p.split(",")[0]).join(", ")}</span>}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+            {people.map(p=>{const on=ccs.includes(p);const c=ownerColor(p);return <button key={p} onClick={()=>togglePkgRule(pkg,p)}
+              style={{padding:"3px 10px",borderRadius:20,border:"1.5px solid "+(on?c.accent:"#ddd"),background:on?c.bg:"#fff",color:on?c.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {on?"✓ ":""}{p.split(",")[0]}
+            </button>;})}
+          </div>
+        </div>;})}
+      </div>
+    </div>}
+  </div>;
+}
+
 // ── GLOBAL VIEW ────────────────────────────────────────────────────
-function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers}){
+function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules}){
   const [fStatus,setFStatus]=useState("all");
   const [fOwner,setFOwner]=useState("all");
   const [fPkg,setFPkg]=useState("all");
@@ -1036,10 +1150,14 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   // Flatten all actions from tasks + trackers
   const taskActions=tasks.map(t=>Object.assign({},t,{_source:"task",_sourceTitle:"Task",_sourceId:t.id}));
   const trackerActions=trackers.flatMap(tr=>tr.actions.map(a=>Object.assign({},a,{_source:"tracker",_sourceTitle:tr.title,_sourceId:tr.id})));
-  const allActions=[...taskActions,...trackerActions];
 
+  const [fCC,setFCC]=useState("all");
+  const [showEmail,setShowEmail]=useState(false);
+
+  const allActions=[...taskActions,...trackerActions];
   const allOwners=[...new Set(allActions.map(a=>a.owner).filter(Boolean))].sort();
   const allPkgs=[...new Set(allActions.map(a=>a.package).filter(Boolean))].sort();
+  const allCCs=[...new Set(allActions.flatMap(a=>getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules,pkgrules)))].filter(Boolean).sort();
 
   const filtered=allActions.filter(a=>{
     if(fStatus!=="all"&&a.status!==fStatus)return false;
@@ -1047,9 +1165,39 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     if(fPkg!=="all"&&a.package!==fPkg)return false;
     if(fTender!=="all"&&a.tenderRef!==fTender)return false;
     if(fContractor!=="all"&&a.contractorRef!==fContractor)return false;
+    if(fCC!=="all"){const ccs=getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules,pkgrules);if(!ccs.includes(fCC))return false;}
     if(q){const lq=q.toLowerCase();if(![a.text,a.owner,a.package].some(s=>(s||"").toLowerCase().includes(lq)))return false;}
     return true;
   });
+
+  const buildEmail=()=>{
+    const today=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
+    let subject="Action tracking — "+today;
+    if(fOwner!=="all")subject="Actions @"+fOwner.split(",")[0]+" — "+today;
+    else if(fCC!=="all")subject="Actions CC: "+fCC.split(",")[0]+" — "+today;
+    let body="Hello,\n\nPlease find below your pending actions as of "+today+".\n\n"+"─".repeat(60)+"\n\n";
+    const bySource={};
+    filtered.forEach(a=>{
+      const key=a._source==="task"?"📋 Tasks":"📊 "+a._sourceTitle;
+      if(!bySource[key])bySource[key]=[];
+      bySource[key].push(a);
+    });
+    Object.entries(bySource).forEach(function(e){
+      body+=e[0]+"\n"+"─".repeat(e[0].length)+"\n";
+      e[1].forEach(function(a){
+        const status={"pending":"⏳","in progress":"🔄","done":"✅","blocked":"🚫"}[a.status]||"•";
+        const due=a.due?" → "+fmtDate(a.due):"";
+        const ccs=getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules,pkgrules);
+        const ccStr=ccs.length>0?" [CC: "+ccs.map(function(p){return "@"+p.split(",")[0];}).join(", ")+"]":"";
+        const sc=calcScore(a.importance||1,a.urgence||1);
+        const scoreStr=sc>=9?" 🔴"+sc:sc>=6?" 🟠"+sc:"";
+        body+="  "+status+" "+a.text+(a.owner?" @"+a.owner.split(",")[0]:"")+due+scoreStr+ccStr+"\n";
+      });
+      body+="\n";
+    });
+    body+="─".repeat(60)+"\n"+"Total: "+filtered.length+" action"+(filtered.length>1?"s":"")+"\n";
+    return{subject,body};
+  };
 
   const updateStatus=(a,val)=>{
     if(a._source==="task")saveTasks(tasks.map(t=>t.id===a.id?Object.assign({},t,{status:val}):t));
@@ -1065,7 +1213,20 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       <div><div className="page-title">Global View</div>
         <div className="page-sub">{filtered.length} actions · {pending} pending · {inprog} in progress · {done} done</div>
       </div>
+      {filtered.length>0&&<button className="btn btn-gold" onClick={()=>setShowEmail(true)}>📧 Generate Email</button>}
     </div>
+
+    {showEmail&&(()=>{const em=buildEmail();return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
+      <div className="modal-hdr"><div className="modal-title">📧 Action email</div><button onClick={()=>setShowEmail(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
+      <div className="modal-body">
+        <div className="fg" style={{marginBottom:10}}><label>Subject</label><input type="text" value={em.subject} readOnly style={{fontWeight:600}}/></div>
+        <div className="fg"><label>Body</label><textarea value={em.body} readOnly style={{minHeight:320,fontFamily:"monospace",fontSize:12,lineHeight:1.6,background:"#fafaf8"}}/></div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn" onClick={()=>setShowEmail(false)}>Close</button>
+        <button className="btn btn-pri" onClick={()=>{navigator.clipboard.writeText("Subject: "+em.subject+"\n\n"+em.body);}}>📋 Copy all</button>
+      </div>
+    </div></div>;})()}
     <div className="filter-bar">
       <input type="text" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search…" style={{width:180,padding:"5px 10px",fontSize:12}}/>
       <select value={fStatus} onChange={e=>setFStatus(e.target.value)} style={{width:"auto",padding:"5px 8px",fontSize:11}}>
@@ -1083,8 +1244,11 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       <select value={fContractor} onChange={e=>setFContractor(e.target.value)} style={{width:"auto",padding:"5px 8px",fontSize:11}}>
         <option value="all">All subcontractors</option>{contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
-      {(fStatus!=="all"||fOwner!=="all"||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||q)&&
-        <button className="btn btn-sm" onClick={()=>{setFStatus("all");setFOwner("all");setFPkg("all");setFTender("all");setFContractor("all");setQ("");}}>✕ Reset</button>}
+      <select value={fCC} onChange={e=>setFCC(e.target.value)} style={{width:"auto",padding:"5px 8px",fontSize:11}}>
+        <option value="all">All CC</option>{allCCs.map(p=><option key={p} value={p}>{p.split(",")[0]}</option>)}
+      </select>
+      {(fStatus!=="all"||fOwner!=="all"||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||fCC!=="all"||q)&&
+        <button className="btn btn-sm" onClick={()=>{setFStatus("all");setFOwner("all");setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setQ("");}}>✕ Reset</button>}
     </div>
 
     {filtered.length===0?<div className="empty"><div className="empty-ico">🔍</div><div className="empty-txt">No actions match the filters.</div></div>
@@ -1099,6 +1263,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
             <td style={{minWidth:200}}>
               <div style={{fontWeight:500}}>{a.text}</div>
               {(a.tags||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{(a.tags||[]).map(tg=><TagChip key={tg} tag={tg}/>)}</div>}
+              {(()=>{const ccs=getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules,pkgrules);return ccs.length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}</div>;})()}
             </td>
             <td>
               <select className="btn btn-sm" value={a.status} onChange={e=>updateStatus(a,e.target.value)} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd"}}>
@@ -1148,6 +1313,8 @@ function App(){
   const savePeople=d=>{setPeople(d);sync(KEYS.people,d);};
   const savePackages=d=>{setPackages(d);sync(KEYS.packages,d);};
   const saveTags=d=>{setTags(d);sync(KEYS.tags,d);};
+  const saveTagrules=d=>{setTagrules(d);sync(KEYS.tagrules,d);};
+  const savePkgrules=d=>{setPkgrules(d);sync(KEYS.pkgrules,d);};
 
   useEffect(()=>{
     const load=async()=>{
@@ -1188,11 +1355,29 @@ function App(){
         }
         if(td)setTenders(td);
         if(ct)setContractors(ct);
-        if(p){setPeople(p);}else{const op=await cloudStore.get("people");if(op)setPeople(op);}
+        if(p){setPeople(p);}
+        else{
+          const op=await cloudStore.get("people");
+          const finalP=op||SEED_PEOPLE;
+          setPeople(finalP);sync(KEYS.people,finalP);
+        }
         if(pk)setPackages(pk);
-        if(g){setTags(g);}else{const og=await cloudStore.get("tags");if(og)setTags(og);}
-        if(tr)setTagrules(tr);
-        if(pr)setPkgrules(pr);
+        if(g){setTags(g);}
+        else{
+          const og=await cloudStore.get("tags");
+          const finalG=og&&og.length?og:SEED_TAGS;
+          setTags(finalG);sync(KEYS.tags,finalG);
+        }
+        if(tr){setTagrules(tr);}
+        else{
+          const otr=await cloudStore.get("tagrules");
+          if(otr){setTagrules(otr);sync(KEYS.tagrules,otr);}
+        }
+        if(pr){setPkgrules(pr);}
+        else{
+          const opr=await cloudStore.get("pkgrules");
+          if(opr){setPkgrules(opr);sync(KEYS.pkgrules,opr);}
+        }
       }catch(e){console.error("Load error",e);}
       setLoaded(true);
     };
@@ -1212,8 +1397,9 @@ function App(){
     {id:"actions",icon:"📋",label:"Actions"},
     {id:"trackers",icon:"📊",label:"Trackers"},
     {id:"tenders",icon:"📑",label:"Tenders"},
-    {id:"contractors",icon:"🤝",label:"Subcontractors"},
+    {id:"contractors",icon:"🤝",label:"Subcontr."},
     {id:"global",icon:"🌐",label:"Global"},
+    {id:"settings",icon:"⚙️",label:"Settings"},
   ];
 
   const syncDot=<div className={"sync-dot sync-"+syncStatus} title={syncStatus==="ok"?"Synced":syncStatus==="syncing"?"Syncing…":"Sync error"}/>;
@@ -1228,7 +1414,6 @@ function App(){
         <span className="lbl">{n.label}</span>
       </button>)}
       <div className="nav-sep"/>
-      <div style={{fontSize:18,color:"#555",marginTop:"auto",paddingBottom:8,cursor:"default"}} title="Project Pilot v2">⚙️</div>
     </nav>
 
     {/* Main content */}
@@ -1238,7 +1423,8 @@ function App(){
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT}/>}
         {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks}/>}
-        {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX}/>}
+        {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules}/>}
+        {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules}/>}
       </div>
 
       {/* Right sidebar — Quick Add */}
