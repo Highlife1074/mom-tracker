@@ -954,7 +954,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks}){
           </div>
         </div>)}
       </div>
-      {showForm&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
+      {showForm&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={()=>setShowForm(false)} people={people} packages={packages} tenders={tenders||[]}/>}
     </div>;
   }
 
@@ -987,7 +987,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks}){
         </tr>;
       })}</tbody>
     </table>}
-    {showForm&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
+    {showForm&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={()=>setShowForm(false)} people={people} packages={packages} tenders={tenders||[]}/>}
   </div>;
 }
 
