@@ -143,7 +143,7 @@ const cloudStore = {
   }
 };
 
-const SK="records"; const LK="library"; const TK="tasks"; const PK="people"; const GK="tags"; const RK="tagrules"; const QK="pkgrules"; const XK="trackers"; const DK="tenders";
+const SK="records"; const LK="library"; const VK="groups"; const TK="tasks"; const PK="people"; const GK="tags"; const RK="tagrules"; const QK="pkgrules"; const XK="trackers"; const DK="tenders";
 const TENDER_STEPS=[
   {key:"acc",label:"ACC / Aconex",opts:["À faire","Signature interne","Signature client","Approuvé","À refaire"]},
   {key:"contrat",label:"Contrat",opts:["Request to do","Request done","Contract to do","Contract to be signed","Signé"]},
@@ -192,7 +192,7 @@ const TAG_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0
 function tagColor(t){let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%TAG_COLORS.length;const parts=TAG_COLORS[h].split("|");return{bg:parts[0],color:parts[1]};}
 
 const newTask=()=>({id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",photos:[],tags:[],createdAt:new Date().toISOString().slice(0,10)});
-const newPkg=()=>({id:uuid(),name:"",owner:"",actions:[{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{}}]});
+const newPkg=()=>({id:uuid(),name:"",owner:"",actions:[{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{},tenderRef:""}]});
 const defForm={title:"",date:new Date().toISOString().slice(0,10),direction:"outgoing",participants:"",summary:"",packages:[newPkg()]};
 
 // ── InlineTagAdd — add a new tag directly from PkgForm ──────────
@@ -218,6 +218,38 @@ function InlineTagAdd({onAdd}){
   </span>;
 }
 
+
+// ── TenderPicker — link action to a Tender ──────────────────────
+function TenderPicker({value,onChange,tenders}){
+  const [open,setOpen]=useState(false);
+  const [q,setQ]=useState("");
+  const ref=useRef();
+  useEffect(()=>{
+    const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);
+  },[]);
+  const opts=tenders.map(t=>t.title).filter(t=>t.toLowerCase().includes(q.toLowerCase()));
+  return <div ref={ref} style={{position:"relative",display:"inline-block",minWidth:140}}>
+    <div onClick={()=>setOpen(!open)} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",border:"1.5px solid "+(value?"#b45309":"#ddd"),borderRadius:20,background:value?"#fff8f0":"#fff",cursor:"pointer",fontSize:11,fontWeight:700,color:value?"#b45309":"#bbb"}}>
+      <span>📑 {value||"Link Tender"}</span>
+      <span style={{fontSize:9,color:"#bbb",marginLeft:2}}>▾</span>
+    </div>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:100,background:"#fff",border:"1.5px solid #e8e6df",borderRadius:10,boxShadow:"0 4px 16px rgba(0,0,0,.12)",minWidth:200,marginTop:4,padding:6}}>
+      <input autoFocus type="text" placeholder="Search or type Tender name…" value={q} onChange={e=>setQ(e.target.value)}
+        style={{width:"100%",padding:"5px 8px",border:"1.5px solid #ddd",borderRadius:7,fontFamily:"inherit",fontSize:11,outline:"none",boxSizing:"border-box",marginBottom:5}}/>
+      {value&&<div onClick={()=>{onChange("");setOpen(false);}} style={{padding:"4px 8px",borderRadius:6,cursor:"pointer",fontSize:11,color:"#c62828",fontWeight:700}}>✕ Remove link</div>}
+      {opts.map(t=><div key={t} onClick={()=>{onChange(t);setOpen(false);setQ("");}}
+        style={{padding:"5px 8px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:600,color:t===value?"#b45309":"#333",background:t===value?"#fff8f0":"transparent"}}>
+        📑 {t}
+      </div>)}
+      {q&&!opts.includes(q)&&<div onClick={()=>{onChange(q);setOpen(false);setQ("");}}
+        style={{padding:"5px 8px",borderRadius:6,cursor:"pointer",fontSize:11,color:"#b45309",fontWeight:700,borderTop:"1px solid #f0ede6",marginTop:4}}>
+        ＋ Link to "{q}"
+      </div>}
+    </div>}
+  </div>;
+}
+
 // ── ScorePicker — importance × urgence ──────────────────────────
 function ScorePicker({imp,urg,onImp,onUrg}){
   const score=calcScore(imp,urg);
@@ -241,7 +273,7 @@ function ScorePicker({imp,urg,onImp,onUrg}){
 }
 
 // ── PkgForm — top-level to prevent focus loss on re-render ───────
-function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,tags=[],addTag}){
+function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,tags=[],addTag,tenders=[]}){
   return <div className="fpkg">
     <div className="fpkghdr">
       <div className="fg" style={{flex:2}}><label>Package</label><PkgPicker value={pkg.name} onChange={v=>sPkg(pi,"name",v)} library={library} addLib={addLib}/></div>
@@ -278,11 +310,12 @@ function PkgForm({pkg,pi,sPkg,sAct,aAct,rAct,rPkg,library,people,addLib,addPpl,t
         <textarea placeholder="Add details, context, notes…" value={ac.details||""} onChange={e=>sAct(pi,ai,"details",e.target.value)}
           style={{width:"100%",padding:"6px 9px",border:"1.5px solid #e8e6df",borderRadius:7,fontFamily:"inherit",fontSize:12,color:"#555",resize:"vertical",minHeight:44,outline:"none",background:"#fafaf8",boxSizing:"border-box",display:"block"}}/>
       </div>
-      <div style={{paddingLeft:2,marginTop:6,display:"flex",alignItems:"center",gap:8}}>
+      <div style={{paddingLeft:2,marginTop:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>sAct(pi,ai,"isTender",!ac.isTender)}
           style={{padding:"3px 10px",borderRadius:20,border:"1.5px solid "+(ac.isTender?"#b45309":"#ddd"),background:ac.isTender?"#fff8f0":"#fff",color:ac.isTender?"#b45309":"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .12s"}}>
-          📑 {ac.isTender?"Tender ✓":"+ Tender steps"}
+          📑 {ac.isTender?"Tender steps ✓":"+ Tender steps"}
         </button>
+        <TenderPicker value={ac.tenderRef||""} onChange={v=>sAct(pi,ai,"tenderRef",v)} tenders={tenders}/>
       </div>
       {ac.isTender&&<div style={{marginTop:8,padding:"10px 12px",background:"#fff8f0",borderRadius:8,border:"1.5px solid #fed7aa"}}>
         <div style={{fontSize:10,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Tender Steps</div>
@@ -381,6 +414,8 @@ function App(){
   const [tenders,setTenders]=useState([]);
   const [selTender,setSelTender]=useState(null);
   const [tenderForm,setTenderForm]=useState(null);
+  const [personGroups,setPersonGroups]=useState([{id:"g1",name:"External works",members:[]},{id:"g2",name:"Podium",members:[]},{id:"g3",name:"Civil works",members:[]}]);
+  const [showGroups,setShowGroups]=useState(false);
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok"); // ok | syncing | error
   const [view,setView]=useState("dashboard");
@@ -398,6 +433,7 @@ function App(){
   const [showEmailOut,setShowEmailOut]=useState(false);
   const [emailSource,setEmailSource]=useState(null); // null = use filtA, otherwise array of actions
   const [scoreEditMode,setScoreEditMode]=useState(false);
+  const [editingAction,setEditingAction]=useState(null); // {id, source, meetingId, pkgId, text, due, tags, tenderRef}
   const [libSearch,setLibSearch]=useState("");
   const [libDel,setLibDel]=useState(null);
   const [taskForm,setTaskForm]=useState(null);
@@ -411,20 +447,22 @@ function App(){
   const [fStatus,setFStatus]=useState("all");
   const [fDir,setFDir]=useState("all");
   const [fTender,setFTender]=useState("all");
+  const [fTenderRef,setFTenderRef]=useState("all");
+  const [fGroup,setFGroup]=useState("all");
   const [fText,setFText]=useState("");
 
   // Wait for Firebase then load
   useEffect(()=>{
     const load=async()=>{
       try {
-        const [r,l,t,p,g,rv,qv,xv,dv]=await Promise.all([cloudStore.get(SK),cloudStore.get(LK),cloudStore.get(TK),cloudStore.get(PK),cloudStore.get(GK),cloudStore.get(RK),cloudStore.get(QK),cloudStore.get(XK),cloudStore.get(DK)]);
+        const [r,l,t,p,g,rv,qv,xv,dv,vv]=await Promise.all([cloudStore.get(SK),cloudStore.get(LK),cloudStore.get(TK),cloudStore.get(PK),cloudStore.get(GK),cloudStore.get(RK),cloudStore.get(QK),cloudStore.get(XK),cloudStore.get(DK),cloudStore.get(VK)]);
         // Normalize importance/urgence on existing data that predates this feature
         const normAc=ac=>({importance:1,urgence:1,...ac});
         const normPkgs=pkgs=>(pkgs||[]).map(p=>({...p,actions:(p.actions||[]).map(normAc)}));
         const rNorm=(r||[]).map(rec=>({...rec,packages:normPkgs(rec.packages)}));
         const tNorm=(t||[]).map(tk=>({importance:1,urgence:1,...tk}));
         const xNorm=(xv||[]).map(tr=>({...tr,packages:normPkgs(tr.packages)}));
-        setRecords(rNorm);setLibrary(l||SEED_LIBRARY);setTasks(tNorm);setPeople(p||SEED_PEOPLE);setTags(g||SEED_TAGS);setRules(rv||{});setPkgRules(qv||{});setTrackers(xNorm);setTenders(dv||[]);
+        setRecords(rNorm);setLibrary(l||SEED_LIBRARY);setTasks(tNorm);setPeople(p||SEED_PEOPLE);setTags(g||SEED_TAGS);setRules(rv||{});setPkgRules(qv||{});setTrackers(xNorm);setTenders(dv||[]);if(vv)setPersonGroups(vv);
         if(!l) await cloudStore.set(LK,SEED_LIBRARY);
         if(!p) await cloudStore.set(PK,SEED_PEOPLE);
         if(!g) await cloudStore.set(GK,SEED_TAGS);
@@ -445,6 +483,7 @@ function App(){
   const saveT=d=>{setTasks(d);sync(TK,d);};
   const saveX=d=>{setTrackers(d);sync(XK,d);};
   const saveD=d=>{setTenders(d);sync(DK,d);};
+  const saveV=d=>{setPersonGroups(d);sync(VK,d);};
   const saveL=d=>{setLibrary(d);sync(LK,d);};
   const saveP=d=>{setPeople(d);sync(PK,d);};
   const saveG=d=>{setTags(d);sync(GK,d);};
@@ -472,8 +511,8 @@ function App(){
   const bCount=allA.filter(a=>a.status==="blocked").length;
   const ipCount=allA.filter(a=>a.status==="in progress").length;
 
-  const resetF=()=>{setFOwner("all");setFCC("all");setFPkg("all");setFTag("all");setFScore("all");setFStatus("all");setFDir("all");setFTender("all");setFText("");};
-  const afCount=[fOwner,fCC,fPkg,fTag,fScore,fStatus,fDir,fTender].filter(f=>f!=="all").length+(fText?1:0);
+  const resetF=()=>{setFOwner("all");setFCC("all");setFPkg("all");setFTag("all");setFScore("all");setFStatus("all");setFDir("all");setFTender("all");setFTenderRef("all");setFGroup("all");setFText("");};
+  const afCount=[fOwner,fCC,fPkg,fTag,fScore,fStatus,fDir,fTender,fTenderRef,fGroup].filter(f=>f!=="all").length+(fText?1:0);
 
   const filtA=allA.filter(a=>{
     if(fOwner!=="all"){
@@ -489,6 +528,8 @@ function App(){
     if(fScore!=="all"&&calcScore(a.importance||1,a.urgence||1)<Number(fScore))return false;
     if(fStatus!=="all"&&a.status!==fStatus)return false;
     if(fTender!=="all"){if(fTender==="tender"&&!a.isTender)return false;if(fTender==="no-tender"&&a.isTender)return false;}
+    if(fTenderRef!=="all"&&(a.tenderRef||"")!==fTenderRef)return false;
+    if(fGroup!=="all"){const grp=personGroups.find(g=>g.id===fGroup);if(grp){const m=grp.members||[];if(a.owner&&m.includes(a.owner)){}else if([...getCCs(a.tags||[]),...getPkgCCs(a.package||"")].some(p=>m.includes(p))){}else return false;}}
     if(fDir!=="all"&&a.source==="mom"&&a.direction!==fDir)return false;
     const q=fText.toLowerCase().trim();
     if(q&&![a.text,a.package,a.owner,a.meetingTitle].some(s=>(s||"").toLowerCase().includes(q)))return false;
@@ -539,14 +580,14 @@ function App(){
   const sP=(pi,f,v)=>setForm({...form,packages:form.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
   const aP=()=>setForm({...form,packages:[...form.packages,newPkg()]});
   const rP=pi=>setForm({...form,packages:form.packages.filter((_,i)=>i!==pi)});
-  const aA=pi=>sP(pi,"actions",[...form.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{}}]);
+  const aA=pi=>sP(pi,"actions",[...form.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{},tenderRef:""}]);
   const rA=(pi,ai)=>sP(pi,"actions",form.packages[pi].actions.filter((_,i)=>i!==ai));
   const sA=(pi,ai,f,v)=>sP(pi,"actions",form.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
   const ssS=(f,v)=>setSelected({...selected,[f]:v});
   const ssP=(pi,f,v)=>setSelected({...selected,packages:selected.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
   const ssAP=()=>setSelected({...selected,packages:[...selected.packages,newPkg()]});
   const ssRP=pi=>setSelected({...selected,packages:selected.packages.filter((_,i)=>i!==pi)});
-  const ssAA=pi=>ssP(pi,"actions",[...selected.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{}}]);
+  const ssAA=pi=>ssP(pi,"actions",[...selected.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{},tenderRef:""}]);
   const ssRA=(pi,ai)=>ssP(pi,"actions",selected.packages[pi].actions.filter((_,i)=>i!==ai));
   const ssSA=(pi,ai,f,v)=>ssP(pi,"actions",selected.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
 
@@ -569,6 +610,51 @@ function App(){
 
   // ── Email Modal ──────────────────────────────────────────────
 
+
+  // ── Groups Modal ──────────────────────────────────────────────
+  function GroupsModal(){
+    const [grps,setGrps]=useState(personGroups);
+    const addGrp=()=>setGrps([...grps,{id:uuid(),name:"New Group",members:[]}]);
+    const remGrp=id=>setGrps(grps.filter(g=>g.id!==id));
+    const setName=(id,name)=>setGrps(grps.map(g=>g.id===id?Object.assign({},g,{name:name}):g));
+    const toggle=(id,person)=>{
+      setGrps(grps.map(g=>{
+        if(g.id!==id)return g;
+        const m=g.members||[];
+        return Object.assign({},g,{members:m.includes(person)?m.filter(x=>x!==person):[...m,person]});
+      }));
+    };
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget){saveV(grps);setShowGroups(false);}}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:560,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+        <div style={{padding:"16px 22px 12px",borderBottom:"1.5px solid #e8e6df",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:17}}>Person Groups</div>
+          <button onClick={()=>{saveV(grps);setShowGroups(false);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"14px 22px"}}>
+          {grps.map(g=><div key={g.id} style={{marginBottom:14,padding:"12px 14px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+              <input type="text" value={g.name} onChange={e=>setName(g.id,e.target.value)}
+                style={{flex:1,padding:"5px 9px",border:"1.5px solid #ddd",borderRadius:7,fontFamily:"inherit",fontSize:13,fontWeight:600,outline:"none"}}/>
+              <button onClick={()=>remGrp(g.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}>🗑</button>
+            </div>
+            <div style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Members</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+              {people.map(p=>{const on=(g.members||[]).includes(p);const col=ownerColor(p);return <button key={p} onClick={()=>toggle(g.id,p)}
+                style={{padding:"3px 10px",borderRadius:20,border:"1.5px solid "+(on?col.accent:"#ddd"),background:on?col.bg:"#fff",color:on?col.accent:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                {on?"✓ ":""}{p.split(",")[0]}
+              </button>;})}
+            </div>
+            {(g.members||[]).length>0&&<div style={{fontSize:11,color:"#2e7d32",marginTop:6,fontWeight:600}}>✅ {(g.members||[]).length} member{(g.members||[]).length>1?"s":""}</div>}
+          </div>)}
+          <button onClick={addGrp} style={{width:"100%",padding:"8px",background:"none",border:"1.5px dashed #ddd",borderRadius:8,fontFamily:"inherit",fontSize:12,color:"#aaa",cursor:"pointer"}}>＋ Add Group</button>
+        </div>
+        <div style={{padding:"12px 22px",borderTop:"1.5px solid #e8e6df",display:"flex",justifyContent:"flex-end",gap:8}}>
+          <button className="btn bout" onClick={()=>setShowGroups(false)}>Cancel</button>
+          <button className="btn bpri" onClick={()=>{saveV(grps);setShowGroups(false);}}>💾 Save Groups</button>
+        </div>
+      </div>
+    </div>;
+  }
 
   function EmailModal(){
     const [txt,setTxt]=useState("");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
@@ -916,7 +1002,7 @@ function App(){
     const sP2=(pi,f,v)=>setT({...t,packages:t.packages.map((p,i)=>i===pi?{...p,[f]:v}:p)});
     const aP2=()=>setT({...t,packages:[...t.packages,newPkg()]});
     const rP2=pi=>setT({...t,packages:t.packages.filter((_,i)=>i!==pi)});
-    const aA2=pi=>sP2(pi,"actions",[...t.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{}}]);
+    const aA2=pi=>sP2(pi,"actions",[...t.packages[pi].actions,{id:uuid(),text:"",status:"pending",due:"",photos:[],tags:[],importance:1,urgence:1,details:"",isTender:false,tenderSteps:{},tenderRef:""}]);
     const rA2=(pi,ai)=>sP2(pi,"actions",t.packages[pi].actions.filter((_,i)=>i!==ai));
     const sA2=(pi,ai,f,v)=>sP2(pi,"actions",t.packages[pi].actions.map((a,i)=>i===ai?{...a,[f]:v}:a));
     return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -933,7 +1019,7 @@ function App(){
           </div>
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Groupes & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px",borderColor:"#00796b",color:"#00796b"}} onClick={aP2}>＋ Group</button></div>
-            {t.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP2} sAct={sA2} aAct={aA2} rAct={rA2} rPkg={rP2} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag}/>)}
+            {t.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP2} sAct={sA2} aAct={aA2} rAct={rA2} rPkg={rP2} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag} tenders={tenders}/>)}
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:2}}>
             {!isNew&&<button className="btn bdgr" onClick={()=>{if(confirm(`Supprimer "${t.title}" ?`)){delTracker(t.id);setTrackerForm(null);}}}>🗑️ Delete</button>}
@@ -951,8 +1037,9 @@ function App(){
     const actions=emailSource||filtA;
     const sourceLabel=emailSource?"Ce document":"active filters";
 
+    const fmtDate=d=>{if(!d)return"";const p=d.split("-");if(p.length!==3)return d;return p[2]+"/"+p[1]+"/"+p[0].slice(2);};
     const buildEmail=()=>{
-      const today=new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
+      const today=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
       const bySource={};
       actions.forEach(ac=>{
         const key=ac.source==="task"?"📌 Standalone tasks":ac.source==="tracker"?"📊 "+ac.meetingTitle:ac.meetingTitle;
@@ -973,7 +1060,7 @@ function App(){
         ?"Action tracking — "+filterDesc.join(" · ")+" — "+today
         :"Action tracking — "+today;
 
-      let body="Hello,\n\nPlease find below the action summary"+(filterDesc.length>0?" ("+filterDesc.join(", ")+")":"")+" au "+today+".\n\n";
+      let body="Hello,\n\nPlease find below the action summary"+(filterDesc.length>0?" ("+filterDesc.join(", ")+")":"")+" as of "+today+".\n\n";
       body+="─".repeat(60)+"\n\n";
 
       Object.entries(bySource).forEach(function(entry){
@@ -992,22 +1079,26 @@ function App(){
           if(pkg!=="—") body+="  📦 "+pkg+"\n";
           acts.forEach(ac=>{
             const status={"pending":"⏳","in progress":"🔄","done":"✅","blocked":"🚫"}[ac.status]||"•";
-            const owner=ac.owner?" @"+ac.owner.split(",")[0]:"";
-            const due=ac.due?" → échéance "+new Date(ac.due).toLocaleDateString("fr-FR"):"";
+            const ownerName=ac.owner?ac.owner.split(",")[0]:"";
+            const owner=ownerName?" @"+ownerName:"";
+            const dueDate=ac.due?fmtDate(ac.due):"";
+            const due=dueDate?" → "+dueDate:"";
             const tags=(ac.tags||[]).length>0?" ["+ac.tags.join(", ")+"]":"";
             const sc=calcScore(ac.importance||1,ac.urgence||1);
-            const scoreStr=sc>1?" {Score "+sc+" — I"+(ac.importance||1)+"×U"+(ac.urgence||1)+"}":"";
+            const scoreLabel=sc>=9?"🔴 "+sc:sc>=6?"🟠 "+sc:sc>1?""+sc:"";
+            const scoreStr=scoreLabel?" [Score: "+scoreLabel+"]":"";
             const ccs=[...getCCs(ac.tags||[]),...getPkgCCs(ac.package||"")].filter((v,i,a)=>a.indexOf(v)===i);
-            const ccStr=ccs.length>0?" ("+ccs.map((p,ci)=>"CC"+(ci+1)+": "+p.split(",")[0]).join(", ")+")" :"";
-            const details=ac.details?" ["+ac.details+"]":"";
-            body+="    "+status+" "+ac.text+owner+due+scoreStr+tags+ccStr+details+"\n";
+            const ccStr=ccs.length>0?" "+ccs.map(p=>"@"+p.split(",")[0]).join(" "):"";
+            const details=ac.details?" — "+ac.details:"";
+            const tref=ac.tenderRef?" [📑 "+ac.tenderRef+"]":"";
+            body+="    "+status+" "+ac.text+owner+due+scoreStr+tags+ccStr+tref+details+"\n";
           });
           body+="\n";
         });
       });
 
       body+="─".repeat(60)+"\n";
-      body+="Total: "+actions.length+" action"+(actions.length>1?"s":"")+" · Generated on "+today+"\n";
+      body+="Total: "+actions.length+" action"+(actions.length>1?"s":"")+" · Generated "+today+"\n";
       return {subject,body};
     };
 
@@ -1051,6 +1142,19 @@ function App(){
     return <div style={{marginBottom:20}}>
       <div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>Owner</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:5}}><OChip label="Tous" active={fOwner==="all"} onClick={()=>setFOwner("all")}/>{allOwners.map(o=>{const c=ownerColor(o),on=fOwner===o;return <OChip key={o} label={o} active={on} onClick={()=>setFOwner(on?"all":o)} bg={on?c.accent:c.bg} color={on?"#fff":c.accent}/>;})}</div></div>
+      {personGroups.length>0&&<div style={{marginBottom:11}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px"}}>Groups</div>
+          <button onClick={()=>setShowGroups(true)} style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:"#f0ede6",border:"none",cursor:"pointer",color:"#666",fontFamily:"inherit"}}>⚙️ Edit</button>
+        </div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          <OChip label="All" active={fGroup==="all"} onClick={()=>setFGroup("all")} small/>
+          {personGroups.filter(g=>(g.members||[]).length>0).map(g=>{const on=fGroup===g.id;return <button key={g.id} onClick={()=>setFGroup(on?"all":g.id)}
+            style={{padding:"3px 10px",borderRadius:20,border:"2px solid "+(on?"#1c1c1e":"#e0ddd6"),background:on?"#1c1c1e":"#fff",color:on?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+            {g.name}
+          </button>;})}
+        </div>
+      </div>}
       {allCCPersons.length>0&&<div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>CC only</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:5}}><OChip label="Tous" active={fCC==="all"} onClick={()=>setFCC("all")} small/>{allCCPersons.map(p=>{const on=fCC===p;return <button key={p} onClick={()=>setFCC(on?"all":p)}
         style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${on?"#2e7d32":"#c8e6c9"}`,background:on?"#e8f5e9":"#fff",color:on?"#2e7d32":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
@@ -1074,6 +1178,14 @@ function App(){
           🔥 ≥ 7
         </button>
       </div></div>
+      {tenders.length>0&&<div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>Tender Link</div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+        <OChip label="All" active={fTenderRef==="all"} onClick={()=>setFTenderRef("all")} small/>
+        {tenders.map(t=>{const on=fTenderRef===t.title;return <button key={t.id} onClick={()=>setFTenderRef(on?"all":t.title)}
+          style={{padding:"3px 10px",borderRadius:20,border:"2px solid "+(on?"#b45309":"#e0ddd6"),background:on?"#fff8f0":"#fff",color:on?"#b45309":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+          📑 {t.title}
+        </button>;})}
+      </div></div>}
       <div style={{marginBottom:11}}><div style={{fontSize:10,fontWeight:800,color:"#bbb",textTransform:"uppercase",letterSpacing:".7px",marginBottom:6}}>Type</div>
       <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
         <OChip label="All" active={fTender==="all"} onClick={()=>setFTender("all")} small/>
@@ -1103,6 +1215,7 @@ function App(){
     {showEmail&&<EmailModal/>}
     {trackerForm&&<TrackerFormModal/>}
     {tenderForm&&<TenderFormModal/>}
+    {showGroups&&<GroupsModal/>}
     {showBak&&<BakModal/>}
     {showLib&&<LibModal/>}
     {showPpl&&<PplModal/>}
@@ -1234,7 +1347,38 @@ function App(){
               else updAF(ac.meetingId,ac.pkgId,ac.id,field,val);
             };
             return <tr key={ac.id||i}>
-            <td><div className="atext">{ac.text}</div>{ac.details&&<div style={{fontSize:11,color:"#666",marginTop:2,fontStyle:"italic"}}>{ac.details}</div>}{ac.isTender&&<div style={{marginTop:5,padding:"4px 8px",background:"#fff8f0",borderRadius:6,border:"1px solid #fed7aa",display:"flex",flexWrap:"wrap",gap:4}}><span style={{fontSize:9,fontWeight:800,color:"#b45309",marginRight:2,alignSelf:"center"}}>📑</span>{TENDER_STEPS.filter(s=>(ac.tenderSteps||{})[s.key]).map(s=>{const val=(ac.tenderSteps||{})[s.key];const cl=tenderStepColor(val);return <span key={s.key} style={{fontSize:9,padding:"1px 6px",borderRadius:10,background:cl.bg,color:cl.color,fontWeight:700,border:"1px solid "+cl.color,whiteSpace:"nowrap"}}>{s.label}: {val}</span>;})}</div>}{isTask&&ac.note&&<div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginTop:2}}>{ac.note}</div>}</td>
+            <td style={{minWidth:220}}>{editingAction&&editingAction.id===ac.id
+              ?<div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <textarea autoFocus value={editingAction.text} onChange={e=>setEditingAction(Object.assign({},editingAction,{text:e.target.value}))}
+                  style={{width:"100%",padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:50,boxSizing:"border-box"}}/>
+                <input type="date" value={editingAction.due||""} onChange={e=>setEditingAction(Object.assign({},editingAction,{due:e.target.value}))}
+                  style={{padding:"3px 7px",border:"1.5px solid #ddd",borderRadius:6,fontFamily:"inherit",fontSize:11,outline:"none"}}/>
+                <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{tags.map(tg=>{const on=(editingAction.tags||[]).includes(tg);const tc=tagColor(tg);return <button key={tg} onClick={()=>{const t=editingAction.tags||[];setEditingAction(Object.assign({},editingAction,{tags:on?t.filter(x=>x!==tg):[...t,tg]}));}}
+                  style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}</div>
+                <TenderPicker value={editingAction.tenderRef||""} onChange={v=>setEditingAction(Object.assign({},editingAction,{tenderRef:v}))} tenders={tenders}/>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={()=>{
+                    var ea=editingAction;
+                    var flds={text:ea.text,due:ea.due||"",tags:ea.tags||[],tenderRef:ea.tenderRef||""};
+                    Object.keys(flds).forEach(function(f){
+                      if(ea.source==="task")saveT(tasks.map(function(t){return t.id===ea.id?Object.assign({},t,{[f]:flds[f]}):t;}));
+                      else if(ea.source==="tracker")updTrackerAF(ea.meetingId,ea.pkgId,ea.id,f,flds[f]);
+                      else updAF(ea.meetingId,ea.pkgId,ea.id,f,flds[f]);
+                    });
+                    setEditingAction(null);
+                  }} style={{flex:1,padding:"4px",background:"#3949ab",color:"#fff",border:"none",borderRadius:5,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Save</button>
+                  <button onClick={()=>setEditingAction(null)} style={{padding:"4px 8px",background:"none",border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit",fontSize:11,cursor:"pointer",color:"#888"}}>✕</button>
+                </div>
+              </div>
+              :<div style={{cursor:"pointer"}} onClick={()=>setEditingAction({id:ac.id,source:ac.source,meetingId:ac.meetingId,pkgId:ac.pkgId,text:ac.text,due:ac.due||"",tags:ac.tags||[],tenderRef:ac.tenderRef||""})}>
+                <div className="atext" title="Click to edit">{ac.text}</div>
+                {ac.details&&<div style={{fontSize:11,color:"#666",marginTop:2,fontStyle:"italic"}}>{ac.details}</div>}
+                {ac.isTender&&<div style={{marginTop:4,padding:"3px 7px",background:"#fff8f0",borderRadius:6,border:"1px solid #fed7aa",display:"flex",flexWrap:"wrap",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#b45309",marginRight:2}}>📑</span>{TENDER_STEPS.filter(s=>(ac.tenderSteps||{})[s.key]).map(s=>{const val=(ac.tenderSteps||{})[s.key];const cl=tenderStepColor(val);return <span key={s.key} style={{fontSize:9,padding:"1px 5px",borderRadius:8,background:cl.bg,color:cl.color,fontWeight:700}}>{s.label}: {val}</span>;})}</div>}
+                {ac.tenderRef&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:"#fff8f0",color:"#b45309",fontWeight:700,border:"1px solid #fed7aa",whiteSpace:"nowrap",marginTop:3,display:"inline-block"}}>📑 {ac.tenderRef}</span>}
+                {isTask&&ac.note&&<div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginTop:2}}>{ac.note}</div>}
+                <div style={{fontSize:9,color:"#ddd",marginTop:2}}>✏️ click to edit</div>
+              </div>
+            }</td>
             <td>{scoreEditMode?<div style={{display:"flex",flexDirection:"column",gap:3}}>
               <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>I</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("importance",v)} style={{width:20,height:20,borderRadius:3,border:"1.5px solid "+((ac.importance||1)===v?"#1c1c1e":"#ddd"),background:(ac.importance||1)===v?"#1c1c1e":"#fff",color:(ac.importance||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
               <div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,fontWeight:800,color:"#aaa",width:10}}>U</span>{[1,2,3].map(v=><button key={v} onClick={()=>updateScore("urgence",v)} style={{width:20,height:20,borderRadius:3,border:"1.5px solid "+((ac.urgence||1)===v?"#1c1c1e":"#ddd"),background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontSize:10,fontWeight:800,cursor:"pointer",padding:0}}>{v}</button>)}</div>
@@ -1275,7 +1419,7 @@ function App(){
           </div>
           <div style={{marginTop:18}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages & Actions</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={aP}>＋ Package</button></div>
-            {form.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP} sAct={sA} aAct={aA} rAct={rA} rPkg={rP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag}/>)}
+            {form.packages.map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={sP} sAct={sA} aAct={aA} rAct={rA} rPkg={rP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag} tenders={tenders}/>)}
           </div>
           <div className="fbtns"><button className="btn bout" onClick={()=>setView("dashboard")}>Cancel</button><button className="btn bpri" disabled={!form.title.trim()} onClick={addRec}>Save</button></div>
         </div>
@@ -1363,7 +1507,7 @@ function App(){
           </div>
           <div style={{marginTop:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}><label style={{fontSize:12}}>Packages</label><button className="btn bout" style={{fontSize:12,padding:"5px 10px"}} onClick={ssAP}>＋ Package</button></div>
-            {(selected.packages||[]).map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={ssP} sAct={ssSA} aAct={()=>ssAA(pi)} rAct={ssRA} rPkg={ssRP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag}/>)}
+            {(selected.packages||[]).map((pkg,pi)=><PkgForm key={pkg.id} pkg={pkg} pi={pi} sPkg={ssP} sAct={ssSA} aAct={()=>ssAA(pi)} rAct={ssRA} rPkg={ssRP} library={library} people={people} addLib={addLib} addPpl={addPpl} tags={tags} addTag={addTag} tenders={tenders}/>)}
           </div>
           <div className="fbtns"><button className="btn bout" onClick={()=>setEditMode(false)}>Cancel</button><button className="btn bpri" onClick={()=>updRec(selected)}>Save</button></div>
         </div>}
@@ -1517,6 +1661,36 @@ function App(){
             })}</tbody>
           </table>
         </div>
+        {(()=>{
+          const linked=allA.filter(a=>(a.tenderRef||"")===selTender.title);
+          if(!linked.length) return null;
+          return <div style={{marginTop:16}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>📋 Linked Actions ({linked.length})</div>
+            <div style={{background:"#fff",borderRadius:10,border:"1.5px solid #fed7aa",overflow:"hidden"}}>
+              {linked.map((ac,i)=>{
+                const sc=calcScore(ac.importance||1,ac.urgence||1);
+                const ss=scoreStyle(sc);
+                return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 14px",borderBottom:i<linked.length-1?"1px solid #fff8f0":"none"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#1a1a1a"}}>{ac.text}</div>
+                    {ac.details&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{ac.details}</div>}
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4,alignItems:"center"}}>
+                      {ac.owner&&<span style={{fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:20,background:ownerColor(ac.owner).bg,color:ownerColor(ac.owner).accent}}>{ac.owner.split(",")[0]}</span>}
+                      {ac.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {ac.due}</span>}
+                      {sc>1&&<span style={{fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:10,background:ss.bg,color:ss.color}}>{ss.label}</span>}
+                      <span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"#f5f4f0",color:"#888"}}>{ac.source==="task"?"📌 Task":ac.source==="tracker"?"📊 "+ac.meetingTitle:"📋 "+ac.meetingTitle}</span>
+                    </div>
+                  </div>
+                  <select className="stsel" value={ac.status} onChange={e=>{
+                    if(ac.source==="task") saveT(tasks.map(t=>t.id===ac.id?Object.assign({},t,{status:e.target.value}):t));
+                    else if(ac.source==="tracker") updTrackerAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value);
+                    else updAF(ac.meetingId,ac.pkgId,ac.id,"status",e.target.value);
+                  }}>{STATUS_OPTIONS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}</select>
+                </div>;
+              })}
+            </div>
+          </div>;
+        })()}
       </div>}
 
       {/* ── Sticky bottom bar ── */}
