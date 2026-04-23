@@ -155,11 +155,12 @@ const {useState,useEffect,useRef,useCallback}=React;
 
 class ErrorBoundary extends React.Component{
   constructor(props){super(props);this.state={err:null,info:null};}
+  static getDerivedStateFromError(err){return{err,info:null};}
   componentDidCatch(err,info){this.setState({err,info});}
   render(){
     if(this.state.err){
-      return React.createElement("div",{style:{padding:24,fontFamily:"monospace",color:"#c62828",whiteSpace:"pre-wrap",fontSize:13,background:"#fff"}},
-        "REACT ERROR:\n"+this.state.err.message+"\n\nComponent stack:\n"+(this.state.info&&this.state.info.componentStack||""));
+      return React.createElement("div",{style:{padding:24,fontFamily:"monospace",color:"#c62828",whiteSpace:"pre-wrap",fontSize:13,background:"#fff",minHeight:"100vh"}},
+        "REACT RENDER ERROR:\n"+(this.state.err.message||String(this.state.err))+"\n\nComponent stack:\n"+(this.state.info&&this.state.info.componentStack||"no stack"));
     }
     return this.props.children;
   }
@@ -581,7 +582,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
         </div>;
       })}
       <button className="btn btn-sm" onClick={()=>addAction(sel.id)} style={{marginTop:8}}>＋ Add Action</button>
-      {showForm&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
+      {showForm&&formData&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
     </div>;
   }
 
@@ -606,11 +607,12 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
         <div className="pbar" style={{marginTop:8}}><div className="pfill" style={{width:pct+"%",background:pct===100?"#2e7d32":"#c9a84c"}}/></div>
       </div>;
     })}
-    {showForm&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
+    {showForm&&formData&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
   </div>;
 }
 
 function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
+  if(!data)return null;
   const set=function(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);};
   return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
     <div className="modal-hdr"><div className="modal-title">{data.createdAt===today()&&!data.title?"New Tracker":data.title||"Edit Tracker"}</div>
@@ -707,7 +709,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
           </div>
         </div>)}
       </div>
-      {showForm&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
+      {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
     </div>;
   }
 
@@ -733,11 +735,12 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
         </tr>;
       })}</tbody>
     </table>}
-    {showForm&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
+    {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
   </div>;
 }
 
 function TenderFormModal({data,onChange,onSave,onClose,people,packages}){
+  if(!data)return null;
   const set=function(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);};
   return <div className="overlay"><div className="modal" style={{maxWidth:560}}>
     <div className="modal-hdr"><div className="modal-title">{data.title||"New Tender"}</div>
@@ -772,238 +775,234 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages}){
 
 // ── CONTRACTORS VIEW ───────────────────────────────────────────────
 function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders}){
+  var ctrs=contractors||[];
+  var tnds=tenders||[];
+  var pkgs=packages||[];
+  var ppl=people||[];
+  var tsks=tasks||[];
   const [pkgFilter,setPkgFilter]=useState("all");
   const [selCtr,setSelCtr]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [formData,setFormData]=useState(null);
-  const [showContractForm,setShowContractForm]=useState(false);
-  const [contractData,setContractData]=useState(null);
 
-  const allPkgs=[...new Set(contractors.map(c=>c.package).filter(Boolean))].sort();
-  const filtered=pkgFilter==="all"?contractors:contractors.filter(c=>c.package===pkgFilter);
+  const allPkgs=[...new Set(ctrs.map(function(c){return c.package;}).filter(Boolean))].sort();
+  const filtered=pkgFilter==="all"?ctrs:ctrs.filter(function(c){return c.package===pkgFilter;});
 
-  const openNew=()=>{setFormData(newContractor());setShowForm(true);};
-  const openEdit=c=>{setFormData(JSON.parse(JSON.stringify(c)));setShowForm(true);};
-  const saveCtr=cd=>{
-    const d=contractors.find(x=>x.id===cd.id)?contractors.map(x=>x.id===cd.id?cd:x):[cd,...contractors];
-    saveContractors(d);setShowForm(false);if(selCtr&&selCtr.id===cd.id)setSelCtr(cd);
-  };
-  const delCtr=id=>{if(confirm("Delete subcontractor?"))saveContractors(contractors.filter(c=>c.id!==id));setSelCtr(null);};
+  function openNew(){var d=newContractor();setFormData(d);setShowForm(true);}
+  function openEdit(ctr){setFormData(JSON.parse(JSON.stringify(ctr)));setShowForm(true);}
+  function closeForm(){setShowForm(false);setFormData(null);}
+  function saveCtr(cd){
+    var d=ctrs.find(function(x){return x.id===cd.id;})?ctrs.map(function(x){return x.id===cd.id?cd:x;}):[cd,...ctrs];
+    saveContractors(d);closeForm();
+    if(selCtr&&selCtr.id===cd.id)setSelCtr(cd);
+  }
+  function delCtr(id){if(confirm("Delete subcontractor?"))saveContractors(ctrs.filter(function(c){return c.id!==id;}));setSelCtr(null);}
 
-  const addContract=ctrId=>{
-    const nc=newContract();
-    const d=contractors.map(c=>c.id!==ctrId?c:Object.assign({},c,{contracts:[...(c.contracts||[]),nc]}));
-    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(c=>c.id===ctrId));
-  };
-  const updateContract=(ctrId,contractId,field,val)=>{
-    const d=contractors.map(function(c){if(c.id!==ctrId)return c;
-      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){if(ct.id!==contractId)return ct;var u=Object.assign({},ct);u[field]=val;return u;})});
+  function addContract(ctrId){
+    var nc=newContract();
+    var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:[...(c.contracts||[]),nc]});});
+    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
+  }
+  function updateContract(ctrId,contractId,field,val){
+    var d=ctrs.map(function(c){
+      if(c.id!==ctrId)return c;
+      var newContracts=(c.contracts||[]).map(function(ct){if(ct.id!==contractId)return ct;var u=Object.assign({},ct);u[field]=val;return u;});
+      return Object.assign({},c,{contracts:newContracts});
     });
     saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
-  };
-  const addAddendum=(ctrId,contractId)=>{
-    const ad=newAddendum();
-    const d=contractors.map(c=>{if(c.id!==ctrId)return c;
-      return Object.assign({},c,{contracts:(c.contracts||[]).map(ct=>ct.id!==contractId?ct:Object.assign({},ct,{addendums:[...(ct.addendums||[]),ad]}))});
+  }
+  function addAddendum(ctrId,contractId){
+    var ad=newAddendum();
+    var d=ctrs.map(function(c){if(c.id!==ctrId)return c;var ncts=(c.contracts||[]).map(function(ct){if(ct.id!==contractId)return ct;return Object.assign({},ct,{addendums:[...(ct.addendums||[]),ad]});});return Object.assign({},c,{contracts:ncts});});
+    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
+  }
+  function addCertification(ctrId,contractId){
+    var cf=newCertification();
+    var d=ctrs.map(function(c){if(c.id!==ctrId)return c;var ncts=(c.contracts||[]).map(function(ct){if(ct.id!==contractId)return ct;return Object.assign({},ct,{certifications:[...(ct.certifications||[]),cf]});});return Object.assign({},c,{contracts:ncts});});
+    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
+  }
+  function updateAdItem(ctrId,contractId,field,i,key,val){
+    var d=ctrs.map(function(c){
+      if(c.id!==ctrId)return c;
+      var ncts=(c.contracts||[]).map(function(ct){
+        if(ct.id!==contractId)return ct;
+        var items=(ct[field]||[]).map(function(item,j){if(j!==i)return item;var u=Object.assign({},item);u[key]=val;return u;});
+        var u2=Object.assign({},ct);u2[field]=items;return u2;
+      });
+      return Object.assign({},c,{contracts:ncts});
     });
-    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(c=>c.id===ctrId));
-  };
-  const addCertification=(ctrId,contractId)=>{
-    const cf=newCertification();
-    const d=contractors.map(c=>{if(c.id!==ctrId)return c;
-      return Object.assign({},c,{contracts:(c.contracts||[]).map(ct=>ct.id!==contractId?ct:Object.assign({},ct,{certifications:[...(ct.certifications||[]),cf]}))});
-    });
-    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(c=>c.id===ctrId));
-  };
+    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
+  }
 
   function contractFinancials(ct){
-    const base=Number(ct.amount)||0;
-    const addTotal=(ct.addendums||[]).reduce((s,a)=>s+Number(a.amount||0),0);
-    const total=base+addTotal;
-    const certified=(ct.certifications||[]).reduce((s,c)=>s+Number(c.amount||0),0);
-    const remaining=total-certified;
-    const pct=total>0?Math.round(certified/total*100):0;
-    // Forecast end date based on monthly burn rate
-    let forecast="";
+    var base=Number(ct.amount)||0;
+    var addTotal=(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
+    var total=base+addTotal;
+    var certified=(ct.certifications||[]).reduce(function(s,c){return s+Number(c.amount||0);},0);
+    var remaining=total-certified;
+    var pct=total>0?Math.round(certified/total*100):0;
+    var forecast="";
     if(ct.startDate&&certified>0&&remaining>0){
-      const start=new Date(ct.startDate);
-      const now=new Date();
-      const months=Math.max((now-start)/(1000*60*60*24*30),1);
-      const monthlyBurn=certified/months;
-      const monthsLeft=monthlyBurn>0?remaining/monthlyBurn:null;
-      if(monthsLeft){
-        const fd=new Date(now.getTime()+monthsLeft*30*24*60*60*1000);
-        forecast=fd.toISOString().slice(0,10);
-      }
+      var start=new Date(ct.startDate);var now=new Date();
+      var months=Math.max((now-start)/(1000*60*60*24*30),1);
+      var burn=certified/months;
+      if(burn>0){var fd=new Date(now.getTime()+(remaining/burn)*30*24*60*60*1000);forecast=fd.toISOString().slice(0,10);}
     }
     return{base,addTotal,total,certified,remaining,pct,forecast};
   }
 
-  const linkedTasks=selCtr?tasks.filter(t=>t.contractorRef===selCtr.id):[];
+  var linkedTasks=selCtr?tsks.filter(function(t){return t.contractorRef===selCtr.id;}):[];
 
   if(selCtr){
-    const ctr=selCtr;
+    var ctr=selCtr;
+    var linkedTender=ctr.tenderRef?tnds.find(function(t){return t.id===ctr.tenderRef;}):null;
     return <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
         <button className="btn btn-sm" onClick={()=>setSelCtr(null)}>← Back</button>
         <div style={{flex:1}}>
           <div className="page-title">{ctr.name}</div>
-          <div className="page-sub">{ctr.package&&<span>📦 {ctr.package} </span>}{ctr.owner&&<OwnerChip owner={ctr.owner}/>}{ctr.tenderRef&&tenders&&tenders.find(t=>t.id===ctr.tenderRef)?<span style={{marginLeft:6,padding:"2px 8px",borderRadius:10,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11,fontWeight:700}}>📑 {(tenders.find(t=>t.id===ctr.tenderRef)||{}).title}</span>:null}</div>
+          <div style={{fontSize:13,color:"#888",marginTop:2}}>
+            {ctr.package&&<span>📦 {ctr.package} </span>}
+            {ctr.owner&&<OwnerChip owner={ctr.owner}/>}
+            {linkedTender&&<span style={{marginLeft:8,padding:"2px 8px",borderRadius:10,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11,fontWeight:700}}>📑 {linkedTender.title}</span>}
+          </div>
         </div>
         <button className="btn btn-sm" onClick={()=>openEdit(ctr)}>✏️ Edit</button>
         <button className="btn btn-sm btn-danger" onClick={()=>delCtr(ctr.id)}>🗑</button>
       </div>
 
-      {(ctr.contracts||[]).map(ct=>{
-        const fin=contractFinancials(ct);
-        let addCumul=0;
-        let certCumul=0;
+      {(ctr.contracts||[]).map(function(ct){
+        var fin=contractFinancials(ct);
+        var addCumul=0;var certCumul=0;
         return <div key={ct.id} className="card" style={{marginBottom:12}}>
-          {/* Contract header — editable number, amount, dates */}
           <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:10}}>
             <div style={{flex:1}}>
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Contract #</span>
-                  <input type="text" value={ct.number||""} onChange={e=>updateContract(ctr.id,ct.id,"number",e.target.value)} placeholder="e.g. C-2024-001"
-                    style={{width:130,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <input type="text" value={ct.number||""} onChange={function(e){updateContract(ctr.id,ct.id,"number",e.target.value);}} placeholder="C-2024-001" style={{width:130,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Base amount</span>
-                  <input type="number" value={ct.amount||""} onChange={e=>updateContract(ctr.id,ct.id,"amount",e.target.value)} placeholder="0"
-                    style={{width:110,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
-                  <select value={ct.currency||"EUR"} onChange={e=>updateContract(ctr.id,ct.id,"currency",e.target.value)}
-                    style={{width:70,padding:"3px 6px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:6}}>
-                    {["EUR","USD","GBP","CHF"].map(cur=><option key={cur} value={cur}>{cur}</option>)}
+                  <input type="number" value={ct.amount||""} onChange={function(e){updateContract(ctr.id,ct.id,"amount",e.target.value);}} placeholder="0" style={{width:110,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <select value={ct.currency||"EUR"} onChange={function(e){updateContract(ctr.id,ct.id,"currency",e.target.value);}} style={{width:70,padding:"3px 6px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:6}}>
+                    {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
                   </select>
                 </div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <span style={{fontSize:11,color:"#aaa"}}>Start</span>
-                  <input type="date" value={ct.startDate||""} onChange={e=>updateContract(ctr.id,ct.id,"startDate",e.target.value)} style={{padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <span style={{fontSize:11,color:"#aaa"}}>End</span>
-                  <input type="date" value={ct.endDate||""} onChange={e=>updateContract(ctr.id,ct.id,"endDate",e.target.value)} style={{padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-                </div>
-                {fin.forecast&&<span style={{fontSize:11,color:fin.forecast>ct.endDate?"#c62828":"#2e7d32",fontWeight:700}}>📅 Forecast: {fmtDate(fin.forecast)}</span>}
+                <span style={{fontSize:11,color:"#aaa"}}>Start</span>
+                <input type="date" value={ct.startDate||""} onChange={function(e){updateContract(ctr.id,ct.id,"startDate",e.target.value);}} style={{padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+                <span style={{fontSize:11,color:"#aaa"}}>End</span>
+                <input type="date" value={ct.endDate||""} onChange={function(e){updateContract(ctr.id,ct.id,"endDate",e.target.value);}} style={{padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+                {fin.forecast&&<span style={{fontSize:11,color:fin.forecast>ct.endDate?"#c62828":"#2e7d32",fontWeight:700}}>Forecast: {fmtDate(fin.forecast)}</span>}
               </div>
-              <input type="text" value={ct.description||""} onChange={e=>updateContract(ctr.id,ct.id,"description",e.target.value)} placeholder="Description…"
-                style={{marginTop:6,width:"100%",padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,color:"#888"}}/>
+              <input type="text" value={ct.description||""} onChange={function(e){updateContract(ctr.id,ct.id,"description",e.target.value);}} placeholder="Description..." style={{marginTop:6,width:"100%",padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,color:"#888"}}/>
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{fontSize:18,fontWeight:800,color:"#1a1a1a"}}>{fin.total.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
+              <div style={{fontSize:18,fontWeight:800}}>{fin.total.toLocaleString()} {ct.currency||"EUR"}</div>
               <div style={{fontSize:11,color:"#888"}}>Base {fin.base.toLocaleString()} + Add. {fin.addTotal.toLocaleString()}</div>
             </div>
           </div>
-
           <div className="pbar"><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#888",margin:"4px 0 12px"}}>
             <span>Certified: <strong style={{color:"#2e7d32"}}>{fin.certified.toLocaleString()}</strong> ({fin.pct}%)</span>
             <span>Remaining: <strong style={{color:fin.remaining<0?"#c62828":"#1a1a1a"}}>{fin.remaining.toLocaleString()}</strong></span>
           </div>
-
           <div style={{display:"flex",gap:12}}>
-            {/* Addendums */}
             <div style={{flex:1}}>
               <div style={{fontSize:11,fontWeight:800,color:"#555",textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Addendums</div>
-              {(ct.addendums||[]).map((ad,i)=>{
+              {(ct.addendums||[]).map(function(ad,i){
                 addCumul+=Number(ad.amount||0);
                 return <div key={ad.id} style={{marginBottom:6,padding:"6px 8px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6"}}>
-                  <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:3}}>
-                    <input type="text" value={ad.number} onChange={e=>{const ads=(ct.addendums||[]).map((a,j)=>j===i?Object.assign({},a,{number:e.target.value}):a);updateContract(ctr.id,ct.id,"addendums",ads);}} placeholder="Addendum #"
-                      style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
-                    <input type="date" value={ad.date} onChange={e=>{const ads=(ct.addendums||[]).map((a,j)=>j===i?Object.assign({},a,{date:e.target.value}):a);updateContract(ctr.id,ct.id,"addendums",ads);}}
-                      style={{width:115,padding:"3px 5px",fontSize:10}}/>
+                  <div style={{display:"flex",gap:5,marginBottom:3}}>
+                    <input type="text" value={ad.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"number",e.target.value);}} placeholder="Addendum #" style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
+                    <input type="date" value={ad.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"date",e.target.value);}} style={{width:115,padding:"3px 5px",fontSize:10}}/>
                   </div>
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    <input type="number" value={ad.amount} onChange={e=>{const ads=(ct.addendums||[]).map((a,j)=>j===i?Object.assign({},a,{amount:e.target.value}):a);updateContract(ctr.id,ct.id,"addendums",ads);}} placeholder="Amount"
-                      style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
-                    <div style={{fontSize:10,color:"#888",whiteSpace:"nowrap"}}>Cumul: <strong style={{color:"#333"}}>{addCumul.toLocaleString()}</strong></div>
+                    <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount" style={{flex:1,padding:"3px 6px",fontSize:11}}/>
+                    <span style={{fontSize:10,color:"#888",whiteSpace:"nowrap"}}>Cumul: <strong>{addCumul.toLocaleString()}</strong></span>
                   </div>
                 </div>;
               })}
-              <button className="btn btn-sm" onClick={()=>addAddendum(ctr.id,ct.id)} style={{marginTop:2}}>＋ Addendum</button>
+              <button className="btn btn-sm" onClick={function(){addAddendum(ctr.id,ct.id);}}>+ Addendum</button>
             </div>
-            {/* Certifications */}
             <div style={{flex:1}}>
               <div style={{fontSize:11,fontWeight:800,color:"#555",textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Certifications</div>
-              {(ct.certifications||[]).map((cf,i)=>{
+              {(ct.certifications||[]).map(function(cf,i){
                 certCumul+=Number(cf.amount||0);
-                const remaining=fin.total-certCumul;
+                var rem2=fin.total-certCumul;
                 return <div key={cf.id} style={{marginBottom:6,padding:"6px 8px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6"}}>
-                  <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:3}}>
-                    <input type="text" value={cf.number} onChange={e=>{const cfs=(ct.certifications||[]).map((c,j)=>j===i?Object.assign({},c,{number:e.target.value}):c);updateContract(ctr.id,ct.id,"certifications",cfs);}} placeholder="Cert #"
-                      style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
-                    <input type="date" value={cf.date} onChange={e=>{const cfs=(ct.certifications||[]).map((c,j)=>j===i?Object.assign({},c,{date:e.target.value}):c);updateContract(ctr.id,ct.id,"certifications",cfs);}}
-                      style={{width:115,padding:"3px 5px",fontSize:10}}/>
+                  <div style={{display:"flex",gap:5,marginBottom:3}}>
+                    <input type="text" value={cf.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"number",e.target.value);}} placeholder="Cert #" style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
+                    <input type="date" value={cf.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"date",e.target.value);}} style={{width:115,padding:"3px 5px",fontSize:10}}/>
                   </div>
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    <input type="number" value={cf.amount} onChange={e=>{const cfs=(ct.certifications||[]).map((c,j)=>j===i?Object.assign({},c,{amount:e.target.value}):c);updateContract(ctr.id,ct.id,"certifications",cfs);}} placeholder="Amount"
-                      style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
-                    <div style={{fontSize:10,whiteSpace:"nowrap",display:"flex",flexDirection:"column",alignItems:"flex-end"}}>
+                    <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} placeholder="Amount" style={{flex:1,padding:"3px 6px",fontSize:11}}/>
+                    <div style={{fontSize:10,display:"flex",flexDirection:"column",alignItems:"flex-end"}}>
                       <span style={{color:"#2e7d32"}}>Cumul: <strong>{certCumul.toLocaleString()}</strong></span>
-                      <span style={{color:remaining<0?"#c62828":"#888"}}>Left: <strong>{remaining.toLocaleString()}</strong></span>
+                      <span style={{color:rem2<0?"#c62828":"#888"}}>Left: <strong>{rem2.toLocaleString()}</strong></span>
                     </div>
                   </div>
                 </div>;
               })}
-              <button className="btn btn-sm" onClick={()=>addCertification(ctr.id,ct.id)} style={{marginTop:2}}>＋ Certification</button>
+              <button className="btn btn-sm" onClick={function(){addCertification(ctr.id,ct.id);}}>+ Certification</button>
             </div>
           </div>
         </div>;
       })}
-      <button className="btn btn-gold" onClick={()=>addContract(ctr.id)} style={{marginBottom:16}}>＋ Add Contract</button>
-
+      <button className="btn btn-gold" onClick={function(){addContract(ctr.id);}} style={{marginBottom:16}}>+ Add Contract</button>
       <div className="card">
         <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
-        {linkedTasks.length===0?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this contractor.</div>
-        :linkedTasks.map(t=><div key={t.id} className="ac-item" style={{marginBottom:4}}>
-          <div style={{flex:1}}>
-            <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
-            <div className="ac-meta">{t.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {fmtDate(t.due)}</span>}{t.owner&&<OwnerChip owner={t.owner}/>}<StatusChip status={t.status}/></div>
-          </div>
-        </div>)}
+        {linkedTasks.length===0
+          ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this subcontractor.</div>
+          :linkedTasks.map(function(t){return <div key={t.id} className="ac-item" style={{marginBottom:4}}>
+            <div style={{flex:1}}>
+              <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
+              <div className="ac-meta">{t.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {fmtDate(t.due)}</span>}{t.owner&&<OwnerChip owner={t.owner}/>}<StatusChip status={t.status}/></div>
+            </div>
+          </div>;})}
       </div>
-      {showForm&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={()=>setShowForm(false)} people={people} packages={packages} tenders={tenders||[]}/>}
+      {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
     </div>;
   }
 
   return <div>
     <div className="page-hdr">
-      <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts & certifications</div></div>
-      <button className="btn btn-gold" onClick={openNew}>＋ New Subcontractor</button>
+      <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts and certifications</div></div>
+      <button className="btn btn-gold" onClick={openNew}>+ New Subcontractor</button>
     </div>
     <div className="filter-bar">
       <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={()=>setPkgFilter("all")}>All packages</button>
-      {allPkgs.map(p=><button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={()=>setPkgFilter(pkgFilter===p?"all":p)}>{p}</button>)}
+      {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
     </div>
-    {filtered.length===0?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors yet.</div></div>
-    :<table className="tbl">
-      <thead><tr><th>Contractor</th><th>Package</th><th>Owner</th><th>Contracts</th><th>Total Value</th><th>Certified</th><th>Remaining</th><th>Forecast end</th></tr></thead>
-      <tbody>{filtered.map(ctr=>{
-        const totVal=(ctr.contracts||[]).reduce((s,ct)=>{const fin=contractFinancials(ct);return s+fin.total;},0);
-        const totCert=(ctr.contracts||[]).reduce((s,ct)=>{const fin=contractFinancials(ct);return s+fin.certified;},0);
-        const totRem=totVal-totCert;
-        const lastForecast=(ctr.contracts||[]).map(ct=>contractFinancials(ct).forecast).filter(Boolean).sort().reverse()[0]||"";
-        return <tr key={ctr.id} style={{cursor:"pointer"}} onClick={()=>setSelCtr(ctr)}>
-          <td style={{fontWeight:700}}>{ctr.name}</td>
-          <td>{ctr.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{ctr.package}</span>}</td>
-          <td>{ctr.owner&&<OwnerChip owner={ctr.owner}/>}</td>
-          <td style={{textAlign:"center"}}>{(ctr.contracts||[]).length}</td>
-          <td style={{fontWeight:600}}>{totVal.toLocaleString()}</td>
-          <td style={{color:"#2e7d32",fontWeight:600}}>{totCert.toLocaleString()}</td>
-          <td style={{color:totRem<0?"#c62828":"#1a1a1a",fontWeight:600}}>{totRem.toLocaleString()}</td>
-          <td style={{fontSize:12,color:"#888"}}>{lastForecast?fmtDate(lastForecast):"—"}</td>
-        </tr>;
-      })}</tbody>
-    </table>}
-    {showForm&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={()=>setShowForm(false)} people={people} packages={packages} tenders={tenders||[]}/>}
+    {filtered.length===0
+      ?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors yet.</div></div>
+      :<table className="tbl">
+        <thead><tr><th>Name</th><th>Package</th><th>Owner</th><th>Linked Tender</th><th>Contracts</th><th>Total</th><th>Certified</th><th>Remaining</th></tr></thead>
+        <tbody>{filtered.map(function(ctr){
+          var totVal=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).total;},0);
+          var totCert=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).certified;},0);
+          var totRem=totVal-totCert;
+          var lt=ctr.tenderRef?tnds.find(function(t){return t.id===ctr.tenderRef;}):null;
+          return <tr key={ctr.id} style={{cursor:"pointer"}} onClick={function(){setSelCtr(ctr);}}>
+            <td style={{fontWeight:700}}>{ctr.name}</td>
+            <td>{ctr.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{ctr.package}</span>}</td>
+            <td>{ctr.owner&&<OwnerChip owner={ctr.owner}/>}</td>
+            <td>{lt?<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
+            <td style={{textAlign:"center"}}>{(ctr.contracts||[]).length}</td>
+            <td style={{fontWeight:600}}>{totVal.toLocaleString()}</td>
+            <td style={{color:"#2e7d32",fontWeight:600}}>{totCert.toLocaleString()}</td>
+            <td style={{color:totRem<0?"#c62828":"#1a1a1a",fontWeight:600}}>{totRem.toLocaleString()}</td>
+          </tr>;
+        })}</tbody>
+      </table>}
+    {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
   </div>;
 }
 
 function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tenders}){
+  if(!data)return null;
   const set=function(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);};
   return <div className="overlay"><div className="modal" style={{maxWidth:480}}>
     <div className="modal-hdr"><div className="modal-title">{data.name||"New Subcontractor"}</div>
