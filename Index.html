@@ -329,7 +329,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
   };
 
   const updateTask=(id,field,val)=>{
-    saveT(tasks.map(t=>t.id===id?Object.assign({},t,{[field]:val}):t));
+    saveT(tasks.map(function(t){if(t.id!==id)return t;var u=Object.assign({},t);u[field]=val;return u;}));
   };
   const deleteTask=id=>{if(confirm("Delete this task?"))saveT(tasks.filter(t=>t.id!==id));};
 
@@ -489,7 +489,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
   const delTracker=id=>{if(confirm("Delete tracker?"))saveX(trackers.filter(t=>t.id!==id));setSel(null);setView("list");};
 
   const updAction=(trId,acId,field,val)=>{
-    const d=trackers.map(tr=>tr.id!==trId?tr:Object.assign({},tr,{actions:tr.actions.map(a=>a.id!==acId?a:Object.assign({},a,{[field]:val}))}));
+    const d=trackers.map(function(tr){if(tr.id!==trId)return tr;return Object.assign({},tr,{actions:tr.actions.map(function(a){if(a.id!==acId)return a;var u=Object.assign({},a);u[field]=val;return u;})});});
     saveX(d);if(sel&&sel.id===trId)setSel(d.find(t=>t.id===trId));
   };
   const addAction=trId=>{
@@ -599,7 +599,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
 }
 
 function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
-  const set=(f,v)=>onChange(Object.assign({},data,{[f]:v}));
+  const set=function(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);};
   return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
     <div className="modal-hdr"><div className="modal-title">{data.createdAt===today()&&!data.title?"New Tracker":data.title||"Edit Tracker"}</div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
@@ -726,7 +726,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
 }
 
 function TenderFormModal({data,onChange,onSave,onClose,people,packages}){
-  const set=(f,v)=>onChange(Object.assign({},data,{[f]:v}));
+  const set=function(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);};
   return <div className="overlay"><div className="modal" style={{maxWidth:560}}>
     <div className="modal-hdr"><div className="modal-title">{data.title||"New Tender"}</div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
@@ -784,10 +784,10 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(c=>c.id===ctrId));
   };
   const updateContract=(ctrId,contractId,field,val)=>{
-    const d=contractors.map(c=>{if(c.id!==ctrId)return c;
-      return Object.assign({},c,{contracts:(c.contracts||[]).map(ct=>ct.id!==contractId?ct:Object.assign({},ct,{[field]:val}))});
+    const d=contractors.map(function(c){if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){if(ct.id!==contractId)return ct;var u=Object.assign({},ct);u[field]=val;return u;})});
     });
-    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(c=>c.id===ctrId));
+    saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
   };
   const addAddendum=(ctrId,contractId)=>{
     const ad=newAddendum();
@@ -992,7 +992,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
 }
 
 function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tenders}){
-  const set=(f,v)=>onChange(Object.assign({},data,{[f]:v}));
+  const set=function(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);};
   return <div className="overlay"><div className="modal" style={{maxWidth:480}}>
     <div className="modal-hdr"><div className="modal-title">{data.name||"New Subcontractor"}</div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
@@ -1041,12 +1041,12 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
   const toggleTagRule=(tag,person)=>{
     const cur=tagrules[tag]||[];
     const updated=cur.includes(person)?cur.filter(x=>x!==person):[...cur,person];
-    saveTagrules(Object.assign({},tagrules,{[tag]:updated}));
+    var ntr=Object.assign({},tagrules);ntr[tag]=updated;saveTagrules(ntr);
   };
   const togglePkgRule=(pkg,person)=>{
     const cur=pkgrules[pkg]||[];
     const updated=cur.includes(person)?cur.filter(x=>x!==person):[...cur,person];
-    savePkgrules(Object.assign({},pkgrules,{[pkg]:updated}));
+    var npr=Object.assign({},pkgrules);npr[pkg]=updated;savePkgrules(npr);
   };
 
   return <div>
