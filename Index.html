@@ -836,7 +836,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         <button className="btn btn-sm" onClick={()=>setSelCtr(null)}>← Back</button>
         <div style={{flex:1}}>
           <div className="page-title">{ctr.name}</div>
-          <div className="page-sub">{ctr.package&&<span>📦 {ctr.package} </span>}{ctr.owner&&<OwnerChip owner={ctr.owner}/>}{ctr.tenderRef&&(()=>{const td=(tenders||[]).find(t=>t.id===ctr.tenderRef);return td?<span style={{marginLeft:6,padding:"2px 8px",borderRadius:10,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11,fontWeight:700}}>📑 {td.title}</span>:null;})()}</div>
+          <div className="page-sub">{ctr.package&&<span>📦 {ctr.package} </span>}{ctr.owner&&<OwnerChip owner={ctr.owner}/>}{ctr.tenderRef&&tenders&&tenders.find(t=>t.id===ctr.tenderRef)?<span style={{marginLeft:6,padding:"2px 8px",borderRadius:10,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11,fontWeight:700}}>📑 {(tenders.find(t=>t.id===ctr.tenderRef)||{}).title}</span>:null}</div>
         </div>
         <button className="btn btn-sm" onClick={()=>openEdit(ctr)}>✏️ Edit</button>
         <button className="btn btn-sm btn-danger" onClick={()=>delCtr(ctr.id)}>🗑</button>
@@ -1020,6 +1020,20 @@ function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tende
     <div className="modal-footer">
       <button className="btn" onClick={onClose}>Cancel</button>
       <button className="btn btn-pri" disabled={!data.name.trim()} onClick={()=>onSave(data)}>Save Subcontractor</button>
+    </div>
+  </div></div>;
+}
+
+function EmailModal({em,onClose}){
+  return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
+    <div className="modal-hdr"><div className="modal-title">📧 Action email</div><button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
+    <div className="modal-body">
+      <div className="fg" style={{marginBottom:10}}><label>Subject</label><input type="text" value={em.subject} readOnly style={{fontWeight:600}}/></div>
+      <div className="fg"><label>Body</label><textarea value={em.body} readOnly style={{minHeight:320,fontFamily:"monospace",fontSize:12,lineHeight:1.6,background:"#fafaf8"}}/></div>
+    </div>
+    <div className="modal-footer">
+      <button className="btn" onClick={onClose}>Close</button>
+      <button className="btn btn-pri" onClick={()=>navigator.clipboard.writeText("Subject: "+em.subject+"\n\n"+em.body)}>📋 Copy all</button>
     </div>
   </div></div>;
 }
@@ -1216,17 +1230,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       {filtered.length>0&&<button className="btn btn-gold" onClick={()=>setShowEmail(true)}>📧 Generate Email</button>}
     </div>
 
-    {showEmail&&(()=>{const em=buildEmail();return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
-      <div className="modal-hdr"><div className="modal-title">📧 Action email</div><button onClick={()=>setShowEmail(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
-      <div className="modal-body">
-        <div className="fg" style={{marginBottom:10}}><label>Subject</label><input type="text" value={em.subject} readOnly style={{fontWeight:600}}/></div>
-        <div className="fg"><label>Body</label><textarea value={em.body} readOnly style={{minHeight:320,fontFamily:"monospace",fontSize:12,lineHeight:1.6,background:"#fafaf8"}}/></div>
-      </div>
-      <div className="modal-footer">
-        <button className="btn" onClick={()=>setShowEmail(false)}>Close</button>
-        <button className="btn btn-pri" onClick={()=>{navigator.clipboard.writeText("Subject: "+em.subject+"\n\n"+em.body);}}>📋 Copy all</button>
-      </div>
-    </div></div>;})()}
+    {showEmail&&<EmailModal em={buildEmail()} onClose={()=>setShowEmail(false)}/>}
     <div className="filter-bar">
       <input type="text" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search…" style={{width:180,padding:"5px 10px",fontSize:12}}/>
       <select value={fStatus} onChange={e=>setFStatus(e.target.value)} style={{width:"auto",padding:"5px 8px",fontSize:11}}>
@@ -1263,7 +1267,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
             <td style={{minWidth:200}}>
               <div style={{fontWeight:500}}>{a.text}</div>
               {(a.tags||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{(a.tags||[]).map(tg=><TagChip key={tg} tag={tg}/>)}</div>}
-              {(()=>{const ccs=getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules,pkgrules);return ccs.length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}</div>;})()}
+              {getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules,pkgrules).length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules,pkgrules).map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}</div>}
             </td>
             <td>
               <select className="btn btn-sm" value={a.status} onChange={e=>updateStatus(a,e.target.value)} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd"}}>
