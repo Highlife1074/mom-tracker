@@ -225,8 +225,8 @@ function newTracker(overrides){return Object.assign({id:uuid(),title:"",descript
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",instructionNumber:"",startDate:"",endDate:"",amount:0,currency:"EUR",addendums:[],certifications:[],description:""};}
-function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",date:"",amount:0,description:""};}
+function newContract(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",addendums:[],certifications:[],description:"",};}
+function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:""};}
 
 // ── Cloud store ───────────────────────────────────────────────────
@@ -950,7 +950,8 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
       var burn=certified/months;
       if(burn>0){var fd=new Date(now.getTime()+(remaining/burn)*30*24*60*60*1000);forecast=fd.toISOString().slice(0,10);}
     }
-    return{base,addTotal,total,certified,remaining,pct,forecast};
+    var totalInstructed=Number(ct.instructionAmount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.instructionAmount||0);},0);
+    return{base,addTotal,total,certified,remaining,pct,forecast,totalInstructed};
   }
 
   var linkedTasks=selCtr?tsks.filter(function(t){return t.contractorRef===selCtr.id;}):[];
@@ -976,7 +977,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
       {(ctr.contracts||[]).map(function(ct){
         var fin=contractFinancials(ct);
         var addCumul=0;var certCumul=0;
-        var totalInstructed=Number(ct.amount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
+        var totalInstructed=Number(ct.instructionAmount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.instructionAmount||0);},0);
         return <div key={ct.id} className="card" style={{marginBottom:12}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:10}}>
             <div style={{flex:1}}>
@@ -987,7 +988,9 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Instruction #</span>
-                  <input type="text" value={ct.instructionNumber||""} onChange={function(e){updateContract(ctr.id,ct.id,"instructionNumber",e.target.value);}} placeholder="INS-001" style={{width:100,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <input type="text" value={ct.instructionNumber||""} onChange={function(e){updateContract(ctr.id,ct.id,"instructionNumber",e.target.value);}} placeholder="INS-001" style={{width:90,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>INS amount</span>
+                  <input type="number" value={ct.instructionAmount||""} onChange={function(e){updateContract(ctr.id,ct.id,"instructionAmount",e.target.value);}} placeholder="0" style={{width:90,padding:"3px 7px",fontSize:12,border:"1.5px solid #e8e6df",borderRadius:6}}/>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Amount</span>
@@ -1023,14 +1026,19 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
               {(ct.addendums||[]).map(function(ad,i){
                 addCumul+=Number(ad.amount||0);
                 return <div key={ad.id} style={{marginBottom:6,padding:"6px 8px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6"}}>
-                  <div style={{display:"flex",gap:5,marginBottom:3,flexWrap:"wrap"}}>
-                    <input type="text" value={ad.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"number",e.target.value);}} placeholder="Add #" style={{width:70,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
-                    <input type="text" value={ad.instructionNumber||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionNumber",e.target.value);}} placeholder="INS #" style={{width:70,padding:"3px 6px",fontSize:11}}/>
-                    <input type="date" value={ad.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"date",e.target.value);}} style={{width:115,padding:"3px 5px",fontSize:10}}/>
+                  <div style={{display:"flex",gap:5,marginBottom:3,flexWrap:"wrap",alignItems:"center"}}>
+                    <input type="text" value={ad.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"number",e.target.value);}} placeholder="Add #" style={{width:65,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
+                    <input type="text" value={ad.instructionNumber||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionNumber",e.target.value);}} placeholder="INS #" style={{width:65,padding:"3px 6px",fontSize:11}}/>
+                    <input type="date" value={ad.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"date",e.target.value);}} style={{width:110,padding:"3px 5px",fontSize:10}}/>
                   </div>
-                  <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount" style={{flex:1,padding:"3px 6px",fontSize:11}}/>
-                    <span style={{fontSize:10,color:"#888",whiteSpace:"nowrap"}}>Cumul: <strong>{addCumul.toLocaleString()}</strong></span>
+                  <div style={{display:"flex",gap:5,marginBottom:3,alignItems:"center"}}>
+                    <span style={{fontSize:10,color:"#aaa",whiteSpace:"nowrap"}}>Contract amt</span>
+                    <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="0" style={{flex:1,padding:"3px 6px",fontSize:11}}/>
+                    <span style={{fontSize:10,color:"#aaa",whiteSpace:"nowrap"}}>INS amt</span>
+                    <input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} placeholder="0" style={{flex:1,padding:"3px 6px",fontSize:11}}/>
+                  </div>
+                  <div style={{display:"flex",gap:5,alignItems:"center",fontSize:10,color:"#888"}}>
+                    <span>Cumul contract: <strong>{addCumul.toLocaleString()}</strong></span>
                   </div>
                 </div>;
               })}
@@ -1094,7 +1102,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           <th style={{cursor:"pointer"}} onClick={function(){toggleSort("name");}}>Name{sortIcon("name")}</th>
           <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
           <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-          <th>Linked Tenders</th><th>Contracts</th><th>Total</th><th>Certified</th><th>Remaining</th>
+          <th>Linked Tenders</th><th>Contracts</th><th>Total</th><th>Total Instructed</th><th>Certified</th><th>Remaining</th>
         </tr></thead>
         <tbody>{filtered.map(function(ctr){
           var totVal=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).total;},0);
@@ -1108,6 +1116,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
             <td>{linkedT.length>0?<div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{linkedT.map(function(lt){return lt?<span key={lt.id} className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:null;})}</div>:<span style={{color:"#ddd"}}>—</span>}</td>
             <td style={{textAlign:"center"}}>{(ctr.contracts||[]).length}</td>
             <td style={{fontWeight:600}}>{totVal.toLocaleString()}</td>
+            <td style={{color:"#1a73e8",fontWeight:600}}>{(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).totalInstructed;},0).toLocaleString()}</td>
             <td style={{color:"#2e7d32",fontWeight:600}}>{totCert.toLocaleString()}</td>
             <td style={{color:totRem<0?"#c62828":"#1a1a1a",fontWeight:600}}>{totRem.toLocaleString()}</td>
           </tr>;
@@ -1329,7 +1338,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   var filtered=allActions.filter(function(a){
     if(fStatus!=="all"&&a.status!==fStatus)return false;
     if(fOwners.length>0&&!fOwners.includes(a.owner||""))return false;
-    if(fTags.length>0&&!fTags.every(function(tg){return (a.tags||[]).includes(tg);}))return false;
+    if(fTags.length>0&&!(a.tags||[]).some(function(tg){return fTags.includes(tg);}))return false;
     if(fPkg!=="all"&&a.package!==fPkg)return false;
     if(fTender!=="all"&&a.tenderRef!==fTender)return false;
     if(fContractor!=="all"&&a.contractorRef!==fContractor)return false;
