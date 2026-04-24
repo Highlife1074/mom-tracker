@@ -167,6 +167,7 @@ class ErrorBoundary extends React.Component{
 }
 
 // ── Storage keys ─────────────────────────────────────────────────
+const KEYS_IMP="pp_improvements";
 const KEYS={
   tasks:"pp_tasks", trackers:"pp_trackers", tenders:"pp_tenders",
   contractors:"pp_contractors", people:"pp_people", tags:"pp_tags",
@@ -226,8 +227,8 @@ function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
 function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",addendums:[],certifications:[],description:"",};}
-function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:""};}
-function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:""};}
+function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:""};}
+function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:"",comment:""};}
 
 // ── Cloud store ───────────────────────────────────────────────────
 const cloudStore={
@@ -236,6 +237,37 @@ const cloudStore={
 };
 
 // ── Quick Add Sidebar ─────────────────────────────────────────────
+function ImprovementBox({improvements,saveImprovements,currentPage}){
+  const [open,setOpen]=useState(false);
+  const [text,setText]=useState("");
+  const ref=useRef();
+
+  function submit(){
+    if(!text.trim())return;
+    var entry={id:uuid(),text:text.trim(),page:currentPage,date:today(),ts:Date.now()};
+    saveImprovements([entry,...improvements]);
+    setText("");setOpen(false);
+  }
+
+  return <div style={{position:"fixed",bottom:16,right:276,zIndex:500}}>
+    {open&&<div style={{position:"absolute",bottom:44,right:0,width:280,background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",border:"1.5px solid #e8e6df",padding:14}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>💡 Improvement idea</div>
+      <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Page: <strong>{currentPage}</strong></div>
+      <textarea ref={ref} autoFocus value={text} onChange={function(e){setText(e.target.value);}}
+        onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
+        placeholder="Describe the improvement..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1.5px solid #e8e6df",borderRadius:7,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box"}}/>
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        <button className="btn" style={{flex:1}} onClick={function(){setOpen(false);setText("");}}>Cancel</button>
+        <button className="btn btn-gold" style={{flex:1}} onClick={submit}>✓ Add</button>
+      </div>
+    </div>}
+    <button onClick={function(){setOpen(!open);}} title="Suggest an improvement"
+      style={{width:36,height:36,borderRadius:"50%",background:"#c9a84c",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#1c1c1e",transition:"all .15s"}}>
+      💡
+    </button>
+  </div>;
+}
+
 function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd}){
   const [text,setText]=useState("");
   const [due,setDue]=useState("");
@@ -328,6 +360,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd}){
         </select>
       </div>
       <button className="btn btn-gold" style={{width:"100%",justifyContent:"center"}} onClick={submit}>＋ Add Task</button>
+    <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
     </div>
   </div>;
 }
@@ -860,16 +893,17 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages}){
 }
 
 // ── CONTRACTORS VIEW ───────────────────────────────────────────────
-function PdfCertModal({pdfData,onClose,onConfirm}){
+function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [cert,setCert]=useState({number:"",date:"",amount:""});
 
   useEffect(function(){
     setLoading(true);setError("");
+    if(!apiKey){setError("No API key set. Please add your Anthropic API key in Settings.");setLoading(false);return;}
     fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"application/json","x-api-key":apiKey||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body:JSON.stringify({
         model:"claude-sonnet-4-20250514",
         max_tokens:1000,
@@ -933,7 +967,7 @@ function PdfCertModal({pdfData,onClose,onConfirm}){
   </div></div>;
 }
 
-function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders}){
+function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey}){
   var ctrs=contractors||[];
   var tnds=tenders||[];
   var pkgs=packages||[];
@@ -1130,6 +1164,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                   <div style={{display:"flex",gap:5,alignItems:"center",fontSize:10,color:"#888"}}>
                     <span>Cumul contract: <strong>{addCumul.toLocaleString()}</strong></span>
                   </div>
+                  <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,marginTop:3,color:"#555"}}/>
                 </div>;
               })}
               <button className="btn btn-sm" onClick={function(){addAddendum(ctr.id,ct.id);}}>+ Addendum</button>
@@ -1151,6 +1186,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                       <span style={{color:rem2<0?"#c62828":"#888"}}>Left: <strong>{rem2.toLocaleString()}</strong></span>
                     </div>
                   </div>
+                  <input type="text" value={cf.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,marginTop:3,color:"#555"}}/>
                 </div>;
               })}
               <div style={{display:"flex",gap:6,marginTop:2,alignItems:"center"}}>
@@ -1187,7 +1223,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           </div>;})}
       </div>
       {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
-      {pdfExtracting&&<PdfCertModal pdfData={pdfExtracting} onClose={function(){setPdfExtracting(null);}} onConfirm={function(cert,ctrId,ctId){
+      {pdfExtracting&&<PdfCertModal pdfData={pdfExtracting} apiKey={apiKey} onClose={function(){setPdfExtracting(null);}} onConfirm={function(cert,ctrId,ctId){
         var cf=Object.assign(newCertification(),cert);
         var d=ctrs.map(function(c){if(c.id!==ctrId)return c;var ncts=(c.contracts||[]).map(function(ct){if(ct.id!==ctId)return ct;return Object.assign({},ct,{certifications:[...(ct.certifications||[]),cf]});});return Object.assign({},c,{contracts:ncts});});
         saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
@@ -1236,7 +1272,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         })}</tbody>
       </table>}
     {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
-    {pdfExtracting&&<PdfCertModal pdfData={pdfExtracting} onClose={function(){setPdfExtracting(null);}} onConfirm={function(cert,ctrId,ctId){
+    {pdfExtracting&&<PdfCertModal pdfData={pdfExtracting} apiKey={apiKey} onClose={function(){setPdfExtracting(null);}} onConfirm={function(cert,ctrId,ctId){
       var cf=Object.assign(newCertification(),cert);
       var d=ctrs.map(function(c){if(c.id!==ctrId)return c;var ncts=(c.contracts||[]).map(function(ct){if(ct.id!==ctId)return ct;return Object.assign({},ct,{certifications:[...(ct.certifications||[]),cf]});});return Object.assign({},c,{contracts:ncts});});
       saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
@@ -1307,7 +1343,7 @@ function EmailModal({em,onClose}){
 }
 
 // ── SETTINGS VIEW ─────────────────────────────────────────────────
-function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tagrules,saveTagrules,pkgrules,savePkgrules}){
+function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tagrules,saveTagrules,pkgrules,savePkgrules,apiKey,saveApiKey,improvements,saveImprovements}){
   const [tab,setTab]=useState("tags");
   const [newTag,setNewTag]=useState("");
   const [newPerson,setNewPerson]=useState("");
@@ -1335,9 +1371,17 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
     <div className="page-hdr">
       <div><div className="page-title">Settings</div><div className="page-sub">Manage tags, people, packages and CC rules</div></div>
     </div>
+    <div className="card" style={{marginBottom:16,background:"#fffbf0",border:"1.5px solid #fed7aa"}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:6}}>🔑 Anthropic API Key <span style={{fontSize:11,fontWeight:400,color:"#888"}}>(required for PDF import)</span></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <input type="password" value={apiKey||""} onChange={function(e){saveApiKey(e.target.value);}} placeholder="sk-ant-..." style={{flex:1,padding:"6px 10px",fontSize:12,fontFamily:"monospace"}}/>
+        {apiKey&&<span style={{fontSize:11,color:"#2e7d32",fontWeight:700}}>✓ Key saved</span>}
+      </div>
+      <div style={{fontSize:11,color:"#888",marginTop:4}}>Your key is stored locally in your browser only and never sent to Firebase.</div>
+    </div>
 
     <div style={{display:"flex",gap:8,marginBottom:20}}>
-      {["tags","people","packages","cc-rules"].map(t=><button key={t} className={"fchip"+(tab===t?" on":"")} onClick={()=>setTab(t)} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}
+      {["tags","people","packages","cc-rules","improvements"].map(function(t){return <button key={t} className={"fchip"+(tab===t?" on":"")} onClick={function(){setTab(t);}} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t==="improvements"?"💡 Improvements":t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
     </div>
 
     {tab==="tags"&&<div className="card">
@@ -1421,8 +1465,10 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
 }
 
 // ── CONTRACTS VIEW ────────────────────────────────────────────────
-function ContractsView({contractors,tenders,packages,saveTasks,tasks}){
-  const [selContract,setSelContract]=useState(null); // {ctr, ct}
+function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,tasks}){
+  function saveCtr2(d){saveContractors(d);if(selContract){var newCtr=d.find(function(c){return c.id===selContract.ctr.id;});var newCt=newCtr?(newCtr.contracts||[]).find(function(c){return c.id===selContract.ct.id;}):null;if(newCtr&&newCt)setSelContract({ctr:newCtr,ct:newCt});}}
+  const [selContract,setSelContract]=useState(null);
+  const [editMode,setEditMode]=useState(false);
   const [q,setQ]=useState("");
   const [fPkg,setFPkg]=useState("all");
   const [fCtr,setFCtr]=useState("all");
@@ -1476,7 +1522,7 @@ function ContractsView({contractors,tenders,packages,saveTasks,tasks}){
     var addCumul=0;var certCumul=0;
     return <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-        <button className="btn btn-sm" onClick={function(){setSelContract(null);}}>← Back</button>
+        <button className="btn btn-sm" onClick={function(){setSelContract(null);setEditMode(false);}}>← Back</button>
         <div style={{flex:1}}>
           <div className="page-title">{ct.number||"Contract"} {ct.sapNumber&&<span style={{fontSize:14,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:4}}>
@@ -1485,6 +1531,9 @@ function ContractsView({contractors,tenders,packages,saveTasks,tasks}){
             {linkedTender&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {linkedTender.title}</span>}
           </div>
         </div>
+        <button className="btn btn-sm" onClick={function(){setEditMode(!editMode);}}>
+          {editMode?"✓ Done":"✏️ Edit"}
+        </button>
       </div>
 
       <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
@@ -1510,6 +1559,75 @@ function ContractsView({contractors,tenders,packages,saveTasks,tasks}){
       </div>
 
       <div className="pbar" style={{height:8,marginBottom:16}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
+
+      {editMode&&<div className="card" style={{marginBottom:16}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Edit Contract</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+          <div style={{flex:1,minWidth:120}}>
+            <label>Contract #</label>
+            <input type="text" value={ct.number||""} onChange={function(e){
+              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.number=e.target.value;return u;})});});
+              saveCtr2(d);
+            }} style={{padding:"4px 8px",fontSize:12}}/>
+          </div>
+          <div style={{flex:1,minWidth:100}}>
+            <label>SAP #</label>
+            <input type="text" value={ct.sapNumber||""} onChange={function(e){
+              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.sapNumber=e.target.value;return u;})});});
+              saveCtr2(d);
+            }} style={{padding:"4px 8px",fontSize:12}}/>
+          </div>
+          <div style={{flex:1,minWidth:120}}>
+            <label>Amount</label>
+            <input type="number" value={ct.amount||""} onChange={function(e){
+              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.amount=e.target.value;return u;})});});
+              saveCtr2(d);
+            }} style={{padding:"4px 8px",fontSize:12}}/>
+          </div>
+          <div style={{flex:1,minWidth:80}}>
+            <label>Currency</label>
+            <select value={ct.currency||"EUR"} onChange={function(e){
+              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.currency=e.target.value;return u;})});});
+              saveCtr2(d);
+            }} style={{padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}>
+              {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
+            </select>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+          <div style={{flex:1,minWidth:130}}>
+            <label>Start date</label>
+            <input type="date" value={ct.startDate||""} onChange={function(e){
+              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.startDate=e.target.value;return u;})});});
+              saveCtr2(d);
+            }} style={{padding:"4px 8px",fontSize:12}}/>
+          </div>
+          <div style={{flex:1,minWidth:130}}>
+            <label>End date</label>
+            <input type="date" value={ct.endDate||""} onChange={function(e){
+              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.endDate=e.target.value;return u;})});});
+              saveCtr2(d);
+            }} style={{padding:"4px 8px",fontSize:12}}/>
+          </div>
+          <div style={{flex:1,minWidth:160}}>
+            <label>Tender</label>
+            <select value={ct.tenderRef||""} onChange={function(e){
+              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.tenderRef=e.target.value;return u;})});});
+              saveCtr2(d);
+            }} style={{padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}>
+              <option value="">— none —</option>
+              {(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label>Description</label>
+          <textarea value={ct.description||""} onChange={function(e){
+            var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.description=e.target.value;return u;})});});
+            saveCtr2(d);
+          }} style={{padding:"4px 8px",fontSize:12,minHeight:50,width:"100%",resize:"vertical"}}/>
+        </div>
+      </div>}
 
       <div style={{display:"flex",gap:10}}>
         <div style={{flex:1}}>
@@ -1899,6 +2017,10 @@ function App(){
   const [tags,setTags]=useState(SEED_TAGS);
   const [tagrules,setTagrules]=useState({});
   const [pkgrules,setPkgrules]=useState({});
+  const [improvements,setImprovements]=useState([]);
+  function saveImprovements(d){setImprovements(d);sync(KEYS_IMP,d);}
+  const [apiKey,setApiKey]=useState(function(){try{return localStorage.getItem('pp_apikey')||'';}catch(e){return '';}});
+  function saveApiKey(k){setApiKey(k);try{localStorage.setItem('pp_apikey',k);}catch(e){}}
 
   const sync=useCallback(async(key,val)=>{
     setSyncStatus("syncing");
@@ -1919,10 +2041,10 @@ function App(){
   useEffect(()=>{
     const load=async()=>{
       try{
-        const [t,x,td,ct,p,pk,g,tr,pr]=await Promise.all([
+        const [t,x,td,ct,p,pk,g,tr,pr,imp]=await Promise.all([
           cloudStore.get(KEYS.tasks),cloudStore.get(KEYS.trackers),cloudStore.get(KEYS.tenders),
           cloudStore.get(KEYS.contractors),cloudStore.get(KEYS.people),cloudStore.get(KEYS.packages),
-          cloudStore.get(KEYS.tags),cloudStore.get(KEYS.tagrules),cloudStore.get(KEYS.pkgrules)
+          cloudStore.get(KEYS.tags),cloudStore.get(KEYS.tagrules),cloudStore.get(KEYS.pkgrules),cloudStore.get(KEYS_IMP)
         ]);
         if(t){setTasks(t);}
         else{
@@ -1968,6 +2090,7 @@ function App(){
           const finalG=og&&og.length?og:SEED_TAGS;
           setTags(finalG);sync(KEYS.tags,finalG);
         }
+        if(imp)setImprovements(imp);
         if(tr){setTagrules(tr);}
         else{
           const otr=await cloudStore.get("tagrules");
@@ -2023,16 +2146,17 @@ function App(){
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT}/>}
-        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders}/>}
-        {view==="contracts"&&<ContractsView contractors={contractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
+        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey}/>}
+        {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules}/>}
-        {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules}/>}
+        {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements}/>}
       </div>
 
       {/* Right sidebar — Quick Add */}
       <aside className="rsidebar">
         <QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={addTask}/>
       </aside>
+    <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
     </div>
   </div>;
 }
