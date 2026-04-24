@@ -1987,6 +1987,48 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     }
   }
 
+  function updateCtField(ctrId,ctId,field,val){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;var u=Object.assign({},ct);u[field]=val;return u;
+      })});
+    });
+    save(d);
+  }
+
+  function updateAdItem(ctrId,ctId,field,i,key,val){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;
+        var items=(ct[field]||[]).map(function(item,j){if(j!==i)return item;var u=Object.assign({},item);u[key]=val;return u;});
+        var u2=Object.assign({},ct);u2[field]=items;return u2;
+      })});
+    });
+    save(d);
+  }
+
+  function delAdItem(ctrId,ctId,field,i){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;var u=Object.assign({},ct);u[field]=(ct[field]||[]).filter(function(_,j){return j!==i;});return u;
+      })});
+    });
+    save(d);
+  }
+
+  function addAdItem(ctrId,ctId,field,newItem){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;var u=Object.assign({},ct);u[field]=[...(ct[field]||[]),newItem];return u;
+      })});
+    });
+    save(d);
+  }
+
   if(nav&&nav.ctId){
     var ctr=(contractors||[]).find(function(c){return c.id===nav.ctrId;})||{contracts:[]};
     var ct=(ctr.contracts||[]).find(function(c){return c.id===nav.ctId;})||{addendums:[],certifications:[]};
