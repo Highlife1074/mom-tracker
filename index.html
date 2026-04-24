@@ -225,7 +225,7 @@ function newTracker(overrides){return Object.assign({id:uuid(),title:"",descript
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",addendums:[],certifications:[],description:"",};}
+function newContract(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",addendums:[],certifications:[],description:"",};}
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:""};}
 
@@ -860,6 +860,79 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages}){
 }
 
 // ── CONTRACTORS VIEW ───────────────────────────────────────────────
+function PdfCertModal({pdfData,onClose,onConfirm}){
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+  const [cert,setCert]=useState({number:"",date:"",amount:""});
+
+  useEffect(function(){
+    setLoading(true);setError("");
+    fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",
+        max_tokens:1000,
+        messages:[{role:"user",content:[
+          {type:"document",source:{type:"base64",media_type:"application/pdf",data:pdfData.b64}},
+          {type:"text",text:"Extract from this PDF: cert number/reference, date as YYYY-MM-DD, and certified amount as a plain number. Reply ONLY with raw JSON with keys: number, date, amount. Empty string if not found."}
+        ]}]
+      })
+    })
+    .then(function(r){return r.json();})
+    .then(function(data){
+      var text="";
+      if(data.content&&data.content.length>0){
+        data.content.forEach(function(block){if(block.type==="text")text+=block.text;});
+      }
+      try{
+        var clean=text.replace(/```json|```/g,"").trim();
+        var parsed=JSON.parse(clean);
+        setCert({number:parsed.number||"",date:parsed.date||"",amount:parsed.amount||""});
+      }catch(e){setError("Could not parse extraction result. Please fill manually.");}
+      setLoading(false);
+    })
+    .catch(function(e){setError("API error: "+e.message);setLoading(false);});
+  },[]);
+
+  function set(f,v){var u=Object.assign({},cert);u[f]=v;setCert(u);}
+
+  return <div className="overlay"><div className="modal" style={{maxWidth:480}}>
+    <div className="modal-hdr">
+      <div className="modal-title">📄 Import Certification — {pdfData.fileName}</div>
+      <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+    </div>
+    <div className="modal-body">
+      {loading&&<div style={{textAlign:"center",padding:"32px 0",color:"#888"}}>
+        <div style={{fontSize:28,marginBottom:12}}>⏳</div>
+        <div style={{fontSize:14}}>Extracting data from PDF...</div>
+        <div style={{fontSize:11,color:"#bbb",marginTop:6}}>Claude AI is reading the document</div>
+      </div>}
+      {error&&<div style={{padding:"10px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+      {!loading&&<div>
+        <div style={{padding:"8px 12px",background:"#e8f5e9",borderRadius:8,fontSize:12,color:"#2e7d32",marginBottom:16,fontWeight:600}}>
+          ✅ Extraction complete — review and confirm before saving
+        </div>
+        <div className="fg"><label>Certification #</label>
+          <input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}} placeholder="e.g. CERT-2024-03"/>
+        </div>
+        <div className="fg"><label>Date</label>
+          <input type="date" value={cert.date} onChange={function(e){set("date",e.target.value);}}/>
+        </div>
+        <div className="fg"><label>Amount</label>
+          <input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}} placeholder="0"/>
+        </div>
+      </div>}
+    </div>
+    {!loading&&<div className="modal-footer">
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn btn-pri" onClick={function(){onConfirm({number:cert.number,date:cert.date,amount:Number(cert.amount)||0},pdfData.ctrId,pdfData.ctId);}}>
+        ✓ Add Certification
+      </button>
+    </div>}
+  </div></div>;
+}
+
 function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders}){
   var ctrs=contractors||[];
   var tnds=tenders||[];
@@ -873,6 +946,8 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
   const [selCtr,setSelCtr]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [formData,setFormData]=useState(null);
+  const [pdfExtracting,setPdfExtracting]=useState(null);
+  const [pdfPreview,setPdfPreview]=useState(null);
 
   function toggleSort(col){if(sortCol===col)setSortDir(function(d){return d==="asc"?"desc":"asc";});else{setSortCol(col);setSortDir("asc");}}
   function sortIcon(col){if(sortCol!==col)return " ↕";return sortDir==="asc"?" ↑":" ↓";}
@@ -981,6 +1056,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         return <div key={ct.id} className="card" style={{marginBottom:12}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:10}}>
             <div style={{flex:1}}>
+              {ct.package&&<div style={{marginBottom:6}}><span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:11}}>📦 {ct.package}</span></div>}
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Contract #</span>
@@ -1006,6 +1082,13 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                 <span style={{fontSize:11,color:"#aaa"}}>End</span>
                 <input type="date" value={ct.endDate||""} onChange={function(e){updateContract(ctr.id,ct.id,"endDate",e.target.value);}} style={{padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
                 {fin.forecast&&<span style={{fontSize:11,color:fin.forecast>(ct.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:700}}>Forecast: {fmtDate(fin.forecast)}</span>}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:6,alignItems:"center"}}>
+                <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Package</span>
+                <select value={ct.package||""} onChange={function(e){updateContract(ctr.id,ct.id,"package",e.target.value);}} style={{flex:1,padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+                  <option value="">— none —</option>
+                  {pkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
+                </select>
               </div>
               <input type="text" value={ct.description||""} onChange={function(e){updateContract(ctr.id,ct.id,"description",e.target.value);}} placeholder="Description..." style={{marginTop:6,width:"100%",padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,color:"#888"}}/>
             </div>
@@ -1063,7 +1146,23 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                   </div>
                 </div>;
               })}
-              <button className="btn btn-sm" onClick={function(){addCertification(ctr.id,ct.id);}}>+ Certification</button>
+              <div style={{display:"flex",gap:6,marginTop:2,alignItems:"center"}}>
+                <button className="btn btn-sm" onClick={function(){addCertification(ctr.id,ct.id);}}>+ Certification</button>
+                <label style={{display:"inline-flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:6,border:"1.5px solid #e8e6df",background:"#fff",fontFamily:"inherit",fontSize:11,fontWeight:600,cursor:"pointer",color:"#555",textTransform:"none",letterSpacing:"normal"}}>
+                  📄 Import PDF
+                  <input type="file" accept=".pdf" style={{display:"none"}} onChange={function(e){
+                    var file=e.target.files&&e.target.files[0];
+                    if(!file)return;
+                    var reader=new FileReader();
+                    reader.onload=function(ev){
+                      var b64=ev.target.result.split(",")[1];
+                      setPdfExtracting({ctrId:ctr.id,ctId:ct.id,b64:b64,fileName:file.name});
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value="";
+                  }}/>
+                </label>
+              </div>
             </div>
           </div>
         </div>;
@@ -1081,6 +1180,12 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           </div>;})}
       </div>
       {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
+      {pdfExtracting&&<PdfCertModal pdfData={pdfExtracting} onClose={function(){setPdfExtracting(null);}} onConfirm={function(cert,ctrId,ctId){
+        var cf=Object.assign(newCertification(),cert);
+        var d=ctrs.map(function(c){if(c.id!==ctrId)return c;var ncts=(c.contracts||[]).map(function(ct){if(ct.id!==ctId)return ct;return Object.assign({},ct,{certifications:[...(ct.certifications||[]),cf]});});return Object.assign({},c,{contracts:ncts});});
+        saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
+        setPdfExtracting(null);
+      }}/>}
     </div>;
   }
 
@@ -1114,6 +1219,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
             <td>{ctr.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{ctr.package}</span>}</td>
             <td>{ctr.owner&&<OwnerChip owner={ctr.owner}/>}</td>
             <td>{linkedT.length>0?<div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{linkedT.map(function(lt){return lt?<span key={lt.id} className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:null;})}</div>:<span style={{color:"#ddd"}}>—</span>}</td>
+            <td><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[...new Set((ctr.contracts||[]).map(function(ct){return ct.package;}).filter(Boolean))].map(function(p){return <span key={p} className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{p}</span>;})}</div></td>
             <td style={{textAlign:"center"}}>{(ctr.contracts||[]).length}</td>
             <td style={{fontWeight:600}}>{totVal.toLocaleString()}</td>
             <td style={{color:"#1a73e8",fontWeight:600}}>{(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).totalInstructed;},0).toLocaleString()}</td>
@@ -1123,6 +1229,12 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         })}</tbody>
       </table>}
     {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
+    {pdfExtracting&&<PdfCertModal pdfData={pdfExtracting} onClose={function(){setPdfExtracting(null);}} onConfirm={function(cert,ctrId,ctId){
+      var cf=Object.assign(newCertification(),cert);
+      var d=ctrs.map(function(c){if(c.id!==ctrId)return c;var ncts=(c.contracts||[]).map(function(ct){if(ct.id!==ctId)return ct;return Object.assign({},ct,{certifications:[...(ct.certifications||[]),cf]});});return Object.assign({},c,{contracts:ncts});});
+      saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
+      setPdfExtracting(null);
+    }}/>}
   </div>;
 }
 
