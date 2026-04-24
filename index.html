@@ -151,7 +151,6 @@ label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-
 <body>
 <div id="root"></div>
 <script id="app-source" type="text/plain">
-// PROJECT PILOT v3 - BUILD 20260424
 const {useState,useEffect,useRef,useCallback}=React;
 
 class ErrorBoundary extends React.Component{
@@ -224,10 +223,10 @@ const STATUS_ICONS={pending:"⏳","in progress":"🔄",done:"✅",blocked:"🚫"
 function newTask(overrides){return Object.assign({id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today()},overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
-function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
-function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRef:"",contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",startDate:"",endDate:"",amount:0,currency:"EUR",addendums:[],certifications:[],description:""};}
-function newAddendum(){return{id:uuid(),number:"",date:"",amount:0,description:""};}
+function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
+function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
+function newContract(){return{id:uuid(),number:"",instructionNumber:"",startDate:"",endDate:"",amount:0,currency:"EUR",addendums:[],certifications:[],description:""};}
+function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",date:"",amount:0,description:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:""};}
 
 // ── Cloud store ───────────────────────────────────────────────────
@@ -313,9 +312,13 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd}){
         </div>
       </div>}
       <div className="fg"><label>Link Tender</label>
-        <select value={tenderRef} onChange={function(e){setTenderRef(e.target.value);}}>
+        <select value={tenderRef} onChange={function(e){
+          var tid=e.target.value;
+          setTenderRef(tid);
+          if(tid){var td=(tenders||[]).find(function(t){return t.id===tid;});if(td){if(td.package)setPkg(td.package);}}
+        }}>
           <option value="">— none —</option>
-          {(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
+          {(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}{t.package?" ("+t.package+")":""}</option>;})}
         </select>
       </div>
       <div className="fg"><label>Link Subcontractor</label>
@@ -661,102 +664,116 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
 // ── TENDERS VIEW ───────────────────────────────────────────────────
 function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
   const [pkgFilter,setPkgFilter]=useState("all");
+  const [searchQ,setSearchQ]=useState("");
+  const [sortCol,setSortCol]=useState("title");
+  const [sortDir,setSortDir]=useState("asc");
   const [selTender,setSelTender]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [formData,setFormData]=useState(null);
 
-  const allPkgs=[...new Set(tenders.map(t=>t.package).filter(Boolean))].sort();
-  const filtered=pkgFilter==="all"?tenders:tenders.filter(t=>t.package===pkgFilter);
+  const allPkgs=[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))].sort();
 
-  const openNew=()=>{setFormData(newTender());setShowForm(true);};
-  const openEdit=td=>{setFormData(JSON.parse(JSON.stringify(td)));setShowForm(true);};
-  const saveTender=td=>{
-    const d=tenders.find(x=>x.id===td.id)?tenders.map(x=>x.id===td.id?td:x):[td,...tenders];
+  function toggleSort(col){if(sortCol===col)setSortDir(function(d){return d==="asc"?"desc":"asc";});else{setSortCol(col);setSortDir("asc");}}
+  function sortIcon(col){if(sortCol!==col)return " ↕";return sortDir==="asc"?" ↑":" ↓";}
+
+  var filtered=(tenders||[]).filter(function(t){
+    if(pkgFilter!=="all"&&t.package!==pkgFilter)return false;
+    if(searchQ){var q=searchQ.toLowerCase();if(!(t.title||"").toLowerCase().includes(q)&&!(t.ownerTender||"").toLowerCase().includes(q)&&!(t.package||"").toLowerCase().includes(q))return false;}
+    return true;
+  }).slice().sort(function(a,b){
+    var va="",vb="";
+    if(sortCol==="title"){va=a.title||"";vb=b.title||"";}
+    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";}
+    else if(sortCol==="owner"){va=a.ownerTender||"";vb=b.ownerTender||"";}
+    else if(sortCol==="acc"){va=(a.steps||{}).acc||"";vb=(b.steps||{}).acc||"";}
+    else if(sortCol==="contract"){va=(a.steps||{}).contract||"";vb=(b.steps||{}).contract||"";}
+    var r=va<vb?-1:va>vb?1:0;
+    return sortDir==="asc"?r:-r;
+  });
+
+  function openNew(){setFormData(newTender());setShowForm(true);}
+  function openEdit(td){setFormData(JSON.parse(JSON.stringify(td)));setShowForm(true);}
+  function saveTender(td){
+    var d=(tenders||[]).find(function(x){return x.id===td.id;})?(tenders||[]).map(function(x){return x.id===td.id?td:x;}):[td,...(tenders||[])];
     saveTenders(d);setShowForm(false);if(selTender&&selTender.id===td.id)setSelTender(td);
-  };
-  const delTender=id=>{if(confirm("Delete tender?"))saveTenders(tenders.filter(t=>t.id!==id));setSelTender(null);};
-  const updateStep=(tdId,step,field,val)=>{
-    const d=tenders.map(t=>{if(t.id!==tdId)return t;
-      const sd=Object.assign({},t.stepDates||{});
-      if(!sd[step])sd[step]={target:"",done:""};
-      const steps=Object.assign({},t.steps||{});
-      if(field==="status")steps[step]=val;
-      else{const cur=Object.assign({},sd[step]);cur[field]=val;sd[step]=cur;}
-      return Object.assign({},t,{steps,stepDates:sd});
-    });
-    saveTenders(d);if(selTender&&selTender.id===tdId)setSelTender(d.find(t=>t.id===tdId));
-  };
+  }
+  function delTender(id){if(confirm("Delete tender?"))saveTenders((tenders||[]).filter(function(t){return t.id!==id;}));setSelTender(null);}
 
-  const linkedTasks=selTender?tasks.filter(t=>t.tenderRef===selTender.id):[];
+  function updateStep(tdId,step,field,val){
+    var d=(tenders||[]).map(function(t){
+      if(t.id!==tdId)return t;
+      var sd=Object.assign({},t.stepDates||{});
+      if(!sd[step])sd[step]={target:"",done:""};
+      var steps=Object.assign({},t.steps||{});
+      var sc=Object.assign({},t.stepComments||{});
+      if(field==="status")steps[step]=val;
+      else if(field==="comment"){sc[step]=val;}
+      else{var cur=Object.assign({},sd[step]);cur[field]=val;sd[step]=cur;}
+      return Object.assign({},t,{steps:steps,stepDates:sd,stepComments:sc});
+    });
+    saveTenders(d);if(selTender&&selTender.id===tdId)setSelTender(d.find(function(t){return t.id===tdId;}));
+  }
+
+  var linkedTasks=selTender?(tasks||[]).filter(function(t){return t.tenderRef===selTender.id;}):[];
 
   if(selTender){
-    const td=selTender;
+    var td=selTender;
     return <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-        <button className="btn btn-sm" onClick={()=>setSelTender(null)}>← Back</button>
+        <button className="btn btn-sm" onClick={function(){setSelTender(null);}}>← Back</button>
         <div style={{flex:1}}>
           <div className="page-title">{td.title}</div>
-          <div className="page-sub">
-            {td.package&&<span>📦 {td.package} </span>}
-            {td.ownerTender&&<span> · <OwnerChip owner={td.ownerTender}/></span>}
-          </div>
-          {(td.budget||td.instructionAmount)&&<div style={{display:"flex",gap:12,marginTop:6,flexWrap:"wrap"}}>
-            {td.budget&&<div style={{padding:"5px 12px",borderRadius:8,background:"#f0ede6",fontSize:12}}>
-              <span style={{color:"#888",marginRight:4}}>Budget:</span><strong>{Number(td.budget).toLocaleString()} {td.currency||"EUR"}</strong>
-            </div>}
-            {td.instructionAmount&&<div style={{padding:"5px 12px",borderRadius:8,background:"#e8f0fe",fontSize:12}}>
-              <span style={{color:"#888",marginRight:4}}>Instruction:</span><strong>{Number(td.instructionAmount).toLocaleString()} {td.currency||"EUR"}</strong>
-            </div>}
-            {td.budget&&td.instructionAmount&&<div style={{padding:"5px 12px",borderRadius:8,fontSize:12,background:Number(td.instructionAmount)>Number(td.budget)?"#fce4ec":"#e8f5e9"}}>
-              <span style={{color:"#888",marginRight:4}}>Variance:</span>
-              <strong style={{color:Number(td.instructionAmount)>Number(td.budget)?"#c62828":"#2e7d32"}}>
-                {Number(td.instructionAmount)>Number(td.budget)?"+":""}{(Number(td.instructionAmount)-Number(td.budget)).toLocaleString()} {td.currency||"EUR"}
-              </strong>
+          <div className="page-sub">{td.package&&<span>📦 {td.package} </span>}{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</div>
+          {(td.budget||td.instructionAmount)&&<div style={{display:"flex",gap:10,marginTop:6,flexWrap:"wrap"}}>
+            {td.budget&&<div style={{padding:"4px 10px",borderRadius:7,background:"#f0ede6",fontSize:12}}><span style={{color:"#888"}}>Budget: </span><strong>{Number(td.budget).toLocaleString()} {td.currency||"EUR"}</strong></div>}
+            {td.instructionAmount&&<div style={{padding:"4px 10px",borderRadius:7,background:"#e8f0fe",fontSize:12}}><span style={{color:"#888"}}>Instruction: </span><strong>{Number(td.instructionAmount).toLocaleString()} {td.currency||"EUR"}</strong></div>}
+            {td.budget&&td.instructionAmount&&<div style={{padding:"4px 10px",borderRadius:7,fontSize:12,background:Number(td.instructionAmount)>Number(td.budget)?"#fce4ec":"#e8f5e9"}}>
+              <span style={{color:"#888"}}>Variance: </span><strong style={{color:Number(td.instructionAmount)>Number(td.budget)?"#c62828":"#2e7d32"}}>{Number(td.instructionAmount)>Number(td.budget)?"+":""}{(Number(td.instructionAmount)-Number(td.budget)).toLocaleString()} {td.currency||"EUR"}</strong>
             </div>}
           </div>}
         </div>
-        <button className="btn btn-sm" onClick={()=>openEdit(td)}>✏️ Edit</button>
-        <button className="btn btn-sm btn-danger" onClick={()=>delTender(td.id)}>🗑</button>
+        <button className="btn btn-sm" onClick={function(){openEdit(td);}}>✏️ Edit</button>
+        <button className="btn btn-sm btn-danger" onClick={function(){delTender(td.id);}}>🗑</button>
       </div>
 
       <div className="card">
-        <div className="card-title" style={{fontSize:14,marginBottom:12}}>Submission Steps</div>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Submission Steps</div>
         <table className="tbl" style={{fontSize:12}}>
-          <thead><tr><th>Step</th><th>Status</th><th>Target date</th><th>Done date</th></tr></thead>
-          <tbody>{TENDER_STEPS.map(s=>{
-            const val=(td.steps||{})[s.key]||"";
-            const dates=(td.stepDates||{})[s.key]||{};
-            const cls=tenderStepClass(s.key,val);
+          <thead><tr><th>Step</th><th>Status</th><th>Target</th><th>Done</th><th>Comment</th></tr></thead>
+          <tbody>{TENDER_STEPS.map(function(s){
+            var val=(td.steps||{})[s.key]||"";
+            var dates=(td.stepDates||{})[s.key]||{};
+            var comment=(td.stepComments||{})[s.key]||"";
+            var cls=tenderStepClass(s.key,val);
             return <tr key={s.key}>
-              <td style={{fontWeight:700,color:"#555"}}>{s.label}</td>
-              <td>
-                <select value={val} onChange={e=>updateStep(td.id,s.key,"status",e.target.value)}
+              <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{s.label}</td>
+              <td style={{minWidth:180}}>
+                <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
                   style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
-                  {s.opts.map(o=><option key={o} value={o}>{o}</option>)}
+                  {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
                 </select>
                 {val&&val!=="—"&&<span className={"chip "+cls} style={{marginLeft:4,fontSize:10}}>{val}</span>}
               </td>
-              <td><input type="date" value={dates.target||""} onChange={e=>updateStep(td.id,s.key,"target",e.target.value)} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
-              <td><input type="date" value={dates.done||""} onChange={e=>updateStep(td.id,s.key,"done",e.target.value)} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
+              <td><input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
+              <td><input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
+              <td><input type="text" value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,minWidth:160}}/></td>
             </tr>;
           })}</tbody>
         </table>
       </div>
 
       <div className="card" style={{marginTop:10}}>
-        <div className="card-title" style={{fontSize:14,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
-        {linkedTasks.length===0?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this tender. Link actions using the sidebar quick add or action editor.</div>
-        :linkedTasks.map(t=><div key={t.id} className="ac-item" style={{marginBottom:6}}>
-          <div className="ac-check" style={{borderColor:t.status==="done"?"#2e7d32":"#ddd",background:t.status==="done"?"#2e7d32":"transparent"}}>
-            {t.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
-          </div>
-          <div style={{flex:1}}>
-            <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
-            <div className="ac-meta">{t.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {fmtDate(t.due)}</span>}{t.owner&&<OwnerChip owner={t.owner}/>}<StatusChip status={t.status}/></div>
-          </div>
-        </div>)}
+        <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
+        {linkedTasks.length===0
+          ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this tender.</div>
+          :linkedTasks.map(function(t){return <div key={t.id} className="ac-item" style={{marginBottom:6}}>
+            <div style={{flex:1}}>
+              <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
+              <div className="ac-meta">{t.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {fmtDate(t.due)}</span>}{t.owner&&<OwnerChip owner={t.owner}/>}<StatusChip status={t.status}/></div>
+            </div>
+          </div>;})}
       </div>
-      {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
+      {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages}/>}
     </div>;
   }
 
@@ -765,24 +782,34 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
       <div><div className="page-title">Tenders</div><div className="page-sub">Track submission steps by package</div></div>
       <button className="btn btn-gold" onClick={openNew}>＋ New Tender</button>
     </div>
-    <div className="filter-bar">
-      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={()=>setPkgFilter("all")}>All packages</button>
-      {allPkgs.map(p=><button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={()=>setPkgFilter(pkgFilter===p?"all":p)}>{p}</button>)}
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search tender, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
+      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All packages</button>
+      {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
+      {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
-    {filtered.length===0?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders yet.</div></div>
-    :<table className="tbl">
-      <thead><tr><th>Tender</th><th>Package</th><th>Owner</th><th>ACC</th><th>Contract</th><th>MAR</th><th>ITP</th><th>WMS</th></tr></thead>
-      <tbody>{filtered.map(td=>{
-        const steps=td.steps||{};
-        return <tr key={td.id} style={{cursor:"pointer"}} onClick={()=>setSelTender(td)}>
-          <td style={{fontWeight:600}}>{td.title}</td>
-          <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
-          <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
-          {TENDER_STEPS.map(s=>{const v=steps[s.key]||"";const cls=tenderStepClass(s.key,v);return <td key={s.key}>{v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}</td>;})}
-        </tr>;
-      })}</tbody>
-    </table>}
-    {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={()=>setShowForm(false)} people={people} packages={packages}/>}
+    {filtered.length===0
+      ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
+      :<table className="tbl">
+        <thead><tr>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("acc");}}>ACC{sortIcon("acc")}</th>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("contract");}}>Contract{sortIcon("contract")}</th>
+          <th>MAR</th><th>ITP</th><th>WMS</th>
+        </tr></thead>
+        <tbody>{filtered.map(function(td){
+          var steps=td.steps||{};
+          return <tr key={td.id} style={{cursor:"pointer"}} onClick={function(){setSelTender(td);}}>
+            <td style={{fontWeight:600}}>{td.title}</td>
+            <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
+            <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
+            {TENDER_STEPS.map(function(s){var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);return <td key={s.key}>{v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}</td>;})}
+          </tr>;
+        })}</tbody>
+      </table>}
+    {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages}/>}
   </div>;
 }
 
@@ -840,20 +867,36 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
   var ppl=people||[];
   var tsks=tasks||[];
   const [pkgFilter,setPkgFilter]=useState("all");
+  const [searchQ,setSearchQ]=useState("");
+  const [sortCol,setSortCol]=useState("name");
+  const [sortDir,setSortDir]=useState("asc");
   const [selCtr,setSelCtr]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [formData,setFormData]=useState(null);
 
+  function toggleSort(col){if(sortCol===col)setSortDir(function(d){return d==="asc"?"desc":"asc";});else{setSortCol(col);setSortDir("asc");}}
+  function sortIcon(col){if(sortCol!==col)return " ↕";return sortDir==="asc"?" ↑":" ↓";}
+
   const allPkgs=[...new Set(ctrs.map(function(c){return c.package;}).filter(Boolean))].sort();
-  const filtered=pkgFilter==="all"?ctrs:ctrs.filter(function(c){return c.package===pkgFilter;});
+  var filtered=ctrs.filter(function(c){
+    if(pkgFilter!=="all"&&c.package!==pkgFilter)return false;
+    if(searchQ){var q=searchQ.toLowerCase();if(!(c.name||"").toLowerCase().includes(q)&&!(c.package||"").toLowerCase().includes(q))return false;}
+    return true;
+  }).slice().sort(function(a,b){
+    var va="",vb="";
+    if(sortCol==="name"){va=a.name||"";vb=b.name||"";}
+    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";}
+    else if(sortCol==="owner"){va=a.owner||"";vb=b.owner||"";}
+    var r=va<vb?-1:va>vb?1:0;
+    return sortDir==="asc"?r:-r;
+  });
 
   function openNew(){var d=newContractor();setFormData(d);setShowForm(true);}
   function openEdit(ctr){setFormData(JSON.parse(JSON.stringify(ctr)));setShowForm(true);}
   function closeForm(){setShowForm(false);setFormData(null);}
   function saveCtr(cd){
     var d=ctrs.find(function(x){return x.id===cd.id;})?ctrs.map(function(x){return x.id===cd.id?cd:x;}):[cd,...ctrs];
-    saveContractors(d);closeForm();
-    if(selCtr&&selCtr.id===cd.id)setSelCtr(cd);
+    saveContractors(d);closeForm();if(selCtr&&selCtr.id===cd.id)setSelCtr(cd);
   }
   function delCtr(id){if(confirm("Delete subcontractor?"))saveContractors(ctrs.filter(function(c){return c.id!==id;}));setSelCtr(null);}
 
@@ -914,37 +957,42 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
 
   if(selCtr){
     var ctr=selCtr;
-    var linkedTender=ctr.tenderRef?tnds.find(function(t){return t.id===ctr.tenderRef;}):null;
+    var linkedTenders=(ctr.tenderRefs||[ctr.tenderRef].filter(Boolean)).map(function(id){return tnds.find(function(t){return t.id===id;});}).filter(Boolean);
     return <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-        <button className="btn btn-sm" onClick={()=>setSelCtr(null)}>← Back</button>
+        <button className="btn btn-sm" onClick={function(){setSelCtr(null);}}>← Back</button>
         <div style={{flex:1}}>
           <div className="page-title">{ctr.name}</div>
-          <div style={{fontSize:13,color:"#888",marginTop:2}}>
-            {ctr.package&&<span>📦 {ctr.package} </span>}
+          <div style={{fontSize:13,color:"#888",marginTop:2,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            {ctr.package&&<span>📦 {ctr.package}</span>}
             {ctr.owner&&<OwnerChip owner={ctr.owner}/>}
-            {linkedTender&&<span style={{marginLeft:8,padding:"2px 8px",borderRadius:10,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11,fontWeight:700}}>📑 {linkedTender.title}</span>}
+            {linkedTenders.map(function(lt){return lt?<span key={lt.id} style={{padding:"2px 8px",borderRadius:10,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11,fontWeight:700}}>📑 {lt.title}</span>:null;})}
           </div>
         </div>
-        <button className="btn btn-sm" onClick={()=>openEdit(ctr)}>✏️ Edit</button>
-        <button className="btn btn-sm btn-danger" onClick={()=>delCtr(ctr.id)}>🗑</button>
+        <button className="btn btn-sm" onClick={function(){openEdit(ctr);}}>✏️ Edit</button>
+        <button className="btn btn-sm btn-danger" onClick={function(){delCtr(ctr.id);}}>🗑</button>
       </div>
 
       {(ctr.contracts||[]).map(function(ct){
         var fin=contractFinancials(ct);
         var addCumul=0;var certCumul=0;
+        var totalInstructed=Number(ct.amount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
         return <div key={ct.id} className="card" style={{marginBottom:12}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:10}}>
             <div style={{flex:1}}>
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Contract #</span>
-                  <input type="text" value={ct.number||""} onChange={function(e){updateContract(ctr.id,ct.id,"number",e.target.value);}} placeholder="C-2024-001" style={{width:130,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <input type="text" value={ct.number||""} onChange={function(e){updateContract(ctr.id,ct.id,"number",e.target.value);}} placeholder="C-2024-001" style={{width:120,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Base amount</span>
-                  <input type="number" value={ct.amount||""} onChange={function(e){updateContract(ctr.id,ct.id,"amount",e.target.value);}} placeholder="0" style={{width:110,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
-                  <select value={ct.currency||"EUR"} onChange={function(e){updateContract(ctr.id,ct.id,"currency",e.target.value);}} style={{width:70,padding:"3px 6px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:6}}>
+                  <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Instruction #</span>
+                  <input type="text" value={ct.instructionNumber||""} onChange={function(e){updateContract(ctr.id,ct.id,"instructionNumber",e.target.value);}} placeholder="INS-001" style={{width:100,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Amount</span>
+                  <input type="number" value={ct.amount||""} onChange={function(e){updateContract(ctr.id,ct.id,"amount",e.target.value);}} placeholder="0" style={{width:100,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <select value={ct.currency||"EUR"} onChange={function(e){updateContract(ctr.id,ct.id,"currency",e.target.value);}} style={{width:65,padding:"3px 6px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:6}}>
                     {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
                   </select>
                 </div>
@@ -954,13 +1002,14 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                 <input type="date" value={ct.startDate||""} onChange={function(e){updateContract(ctr.id,ct.id,"startDate",e.target.value);}} style={{padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
                 <span style={{fontSize:11,color:"#aaa"}}>End</span>
                 <input type="date" value={ct.endDate||""} onChange={function(e){updateContract(ctr.id,ct.id,"endDate",e.target.value);}} style={{padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-                {fin.forecast&&<span style={{fontSize:11,color:fin.forecast>ct.endDate?"#c62828":"#2e7d32",fontWeight:700}}>Forecast: {fmtDate(fin.forecast)}</span>}
+                {fin.forecast&&<span style={{fontSize:11,color:fin.forecast>(ct.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:700}}>Forecast: {fmtDate(fin.forecast)}</span>}
               </div>
               <input type="text" value={ct.description||""} onChange={function(e){updateContract(ctr.id,ct.id,"description",e.target.value);}} placeholder="Description..." style={{marginTop:6,width:"100%",padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,color:"#888"}}/>
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{fontSize:18,fontWeight:800}}>{fin.total.toLocaleString()} {ct.currency||"EUR"}</div>
+              <div style={{fontSize:16,fontWeight:800}}>{fin.total.toLocaleString()} {ct.currency||"EUR"}</div>
               <div style={{fontSize:11,color:"#888"}}>Base {fin.base.toLocaleString()} + Add. {fin.addTotal.toLocaleString()}</div>
+              <div style={{fontSize:11,color:"#1a73e8",fontWeight:700,marginTop:2}}>Total instructed: {totalInstructed.toLocaleString()}</div>
             </div>
           </div>
           <div className="pbar"><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
@@ -974,8 +1023,9 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
               {(ct.addendums||[]).map(function(ad,i){
                 addCumul+=Number(ad.amount||0);
                 return <div key={ad.id} style={{marginBottom:6,padding:"6px 8px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6"}}>
-                  <div style={{display:"flex",gap:5,marginBottom:3}}>
-                    <input type="text" value={ad.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"number",e.target.value);}} placeholder="Addendum #" style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
+                  <div style={{display:"flex",gap:5,marginBottom:3,flexWrap:"wrap"}}>
+                    <input type="text" value={ad.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"number",e.target.value);}} placeholder="Add #" style={{width:70,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
+                    <input type="text" value={ad.instructionNumber||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionNumber",e.target.value);}} placeholder="INS #" style={{width:70,padding:"3px 6px",fontSize:11}}/>
                     <input type="date" value={ad.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"date",e.target.value);}} style={{width:115,padding:"3px 5px",fontSize:10}}/>
                   </div>
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
@@ -1031,24 +1081,31 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
       <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts and certifications</div></div>
       <button className="btn btn-gold" onClick={openNew}>+ New Subcontractor</button>
     </div>
-    <div className="filter-bar">
-      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={()=>setPkgFilter("all")}>All packages</button>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search..." style={{width:180,padding:"5px 10px",fontSize:12}}/>
+      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All packages</button>
       {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
+      {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors yet.</div></div>
+      ?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors found.</div></div>
       :<table className="tbl">
-        <thead><tr><th>Name</th><th>Package</th><th>Owner</th><th>Linked Tender</th><th>Contracts</th><th>Total</th><th>Certified</th><th>Remaining</th></tr></thead>
+        <thead><tr>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("name");}}>Name{sortIcon("name")}</th>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+          <th>Linked Tenders</th><th>Contracts</th><th>Total</th><th>Certified</th><th>Remaining</th>
+        </tr></thead>
         <tbody>{filtered.map(function(ctr){
           var totVal=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).total;},0);
           var totCert=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).certified;},0);
           var totRem=totVal-totCert;
-          var lt=ctr.tenderRef?tnds.find(function(t){return t.id===ctr.tenderRef;}):null;
+          var linkedT=(ctr.tenderRefs||[ctr.tenderRef].filter(Boolean)).map(function(id){return tnds.find(function(t){return t.id===id;});}).filter(Boolean);
           return <tr key={ctr.id} style={{cursor:"pointer"}} onClick={function(){setSelCtr(ctr);}}>
             <td style={{fontWeight:700}}>{ctr.name}</td>
             <td>{ctr.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{ctr.package}</span>}</td>
             <td>{ctr.owner&&<OwnerChip owner={ctr.owner}/>}</td>
-            <td>{lt?<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
+            <td>{linkedT.length>0?<div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{linkedT.map(function(lt){return lt?<span key={lt.id} className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:null;})}</div>:<span style={{color:"#ddd"}}>—</span>}</td>
             <td style={{textAlign:"center"}}>{(ctr.contracts||[]).length}</td>
             <td style={{fontWeight:600}}>{totVal.toLocaleString()}</td>
             <td style={{color:"#2e7d32",fontWeight:600}}>{totCert.toLocaleString()}</td>
@@ -1061,38 +1118,51 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
 }
 
 function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tenders}){
-  if(!data)return null;
-  const set=function(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);};
+  function set(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);}
+  var selRefs=data.tenderRefs||[];
+  function toggleTender(tid){
+    var cur=data.tenderRefs||[];
+    var updated=cur.includes(tid)?cur.filter(function(x){return x!==tid;}):[...cur,tid];
+    set("tenderRefs",updated);
+  }
   return <div className="overlay"><div className="modal" style={{maxWidth:480}}>
     <div className="modal-hdr"><div className="modal-title">{data.name||"New Subcontractor"}</div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
     <div className="modal-body">
-      <div className="fg"><label>Subcontractor name *</label><input type="text" value={data.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. ACME Construction"/></div>
+      <div className="fg"><label>Subcontractor name *</label><input type="text" value={data.name||""} onChange={function(e){set("name",e.target.value);}} placeholder="e.g. ACME Construction"/></div>
       <div className="frow">
         <div className="fg"><label>Package</label>
-          <select value={data.package||""} onChange={e=>set("package",e.target.value)}>
-            <option value="">— none —</option>{packages.map(p=><option key={p} value={p}>{p}</option>)}
+          <select value={data.package||""} onChange={function(e){set("package",e.target.value);}}>
+            <option value="">— none —</option>{(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
           </select>
         </div>
         <div className="fg"><label>Owner</label>
-          <select value={data.owner||""} onChange={e=>set("owner",e.target.value)}>
-            <option value="">— none —</option>{people.map(p=><option key={p} value={p}>{p.split(",")[0]}</option>)}
+          <select value={data.owner||""} onChange={function(e){set("owner",e.target.value);}}>
+            <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
           </select>
         </div>
       </div>
-      <div className="fg"><label>Linked Tender</label>
-        <select value={data.tenderRef||""} onChange={e=>set("tenderRef",e.target.value)}>
-          <option value="">— none —</option>
-          {(tenders||[]).map(t=><option key={t.id} value={t.id}>{t.title}{t.package?" ("+t.package+")":""}</option>)}
-        </select>
+      <div className="fg">
+        <label>Linked Tenders ({selRefs.length} selected)</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:4}}>
+          {(tenders||[]).map(function(t){
+            var on=selRefs.includes(t.id);
+            return <button key={t.id} onClick={function(){toggleTender(t.id);}}
+              style={{padding:"3px 10px",borderRadius:20,border:"1.5px solid "+(on?"#b45309":"#ddd"),background:on?"#fff8f0":"#fff",color:on?"#b45309":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {on?"✓ ":""}{t.title}{t.package?" ("+t.package+")":""}
+            </button>;
+          })}
+        </div>
+        {selRefs.length>0&&<div style={{marginTop:6,fontSize:11,color:"#2e7d32",fontWeight:600}}>Linked: {selRefs.map(function(id){var t=(tenders||[]).find(function(x){return x.id===id;});return t?t.title:"?";}).join(", ")}</div>}
       </div>
     </div>
     <div className="modal-footer">
       <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn btn-pri" disabled={!data.name.trim()} onClick={()=>onSave(data)}>Save Subcontractor</button>
+      <button className="btn btn-pri" disabled={!(data.name||"").trim()} onClick={function(){onSave(data);}}>Save Subcontractor</button>
     </div>
   </div></div>;
 }
+
 
 function EmailModal({em,onClose}){
   return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
@@ -1225,7 +1295,8 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
 // ── GLOBAL VIEW ────────────────────────────────────────────────────
 function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules}){
   const [fStatus,setFStatus]=useState("all");
-  const [fOwner,setFOwner]=useState("all");
+  const [fOwners,setFOwners]=useState([]);
+  const [fTags,setFTags]=useState([]);
   const [fPkg,setFPkg]=useState("all");
   const [fTender,setFTender]=useState("all");
   const [fContractor,setFContractor]=useState("all");
@@ -1257,7 +1328,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
 
   var filtered=allActions.filter(function(a){
     if(fStatus!=="all"&&a.status!==fStatus)return false;
-    if(fOwner!=="all"&&a.owner!==fOwner)return false;
+    if(fOwners.length>0&&!fOwners.includes(a.owner||""))return false;
+    if(fTags.length>0&&!fTags.every(function(tg){return (a.tags||[]).includes(tg);}))return false;
     if(fPkg!=="all"&&a.package!==fPkg)return false;
     if(fTender!=="all"&&a.tenderRef!==fTender)return false;
     if(fContractor!=="all"&&a.contractorRef!==fContractor)return false;
@@ -1312,8 +1384,9 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   function buildEmail(){
     var today=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
     var subject="Global Action View — "+today;
-    if(fOwner!=="all")subject="Actions @"+fOwner.split(",")[0]+" — "+today;
-    else if(fCC!=="all")subject="Actions CC: "+fCC.split(",")[0]+" — "+today;
+    if(fOwners.length===1)subject="Actions @"+fOwners[0].split(",")[0]+" — "+today;
+    else if(fOwners.length>1)subject="Actions ("+fOwners.length+" owners) — "+today;
+    else if(fCC!=="all")subject="CC "+fCC.split(",")[0]+" Actions — "+today;
     var NL=String.fromCharCode(10);
     var lines=["Hello,","","Please find below the action summary as of "+today+".","","─".repeat(60),""];
     var bySource={};
@@ -1359,15 +1432,11 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
 
     {showEmail&&<EmailModal em={buildEmail()} onClose={function(){setShowEmail(false);}}/>}
 
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:4,alignItems:"center"}}>
       <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search…" style={{width:160,padding:"5px 10px",fontSize:12}}/>
       <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All status</option>
         {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
-      </select>
-      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All owners</option>
-        {allOwners.map(function(o){return <option key={o} value={o}>{o.split(",")[0]}</option>;})}
       </select>
       <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All packages</option>
@@ -1391,8 +1460,14 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         <option value="mid">🟠 Medium (4-6)</option>
         <option value="low">Low (1-3)</option>
       </select>
-      {(fStatus!=="all"||fOwner!=="all"||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||fCC!=="all"||fScore!=="all"||q)&&
-        <button className="btn btn-sm" onClick={function(){setFStatus("all");setFOwner("all");setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setFScore("all");setQ("");}}>✕ Reset</button>}
+    </div>
+    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+      <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Owners:</span>
+      {allOwners.map(function(o){var on=fOwners.includes(o);var col=ownerColor(o);return <button key={o} onClick={function(){setFOwners(function(prev){return prev.includes(o)?prev.filter(function(x){return x!==o;}):[...prev,o];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?col.accent:"#ddd"),background:on?col.bg:"#fff",color:on?col.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{o.split(",")[0]}</button>;})}
+      <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginLeft:8}}>Tags:</span>
+      {(tags||[]).map(function(tg){var on=fTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){setFTags(function(prev){return prev.includes(tg)?prev.filter(function(x){return x!==tg;}):[...prev,tg];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+      {(fStatus!=="all"||fOwners.length>0||fTags.length>0||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||fCC!=="all"||fScore!=="all"||q)&&
+        <button className="btn btn-sm" style={{marginLeft:8}} onClick={function(){setFStatus("all");setFOwners([]);setFTags([]);setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setFScore("all");setQ("");}}>✕ Reset all</button>}
     </div>
 
     {filtered.length===0
