@@ -1371,23 +1371,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
   }
 
-  function contractFinancials(ct){
-    var base=Number(ct.amount)||0;
-    var addTotal=(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
-    var total=base+addTotal;
-    var certified=(ct.certifications||[]).reduce(function(s,c){return s+Number(c.amount||0);},0);
-    var remaining=total-certified;
-    var pct=total>0?Math.round(certified/total*100):0;
-    var forecast="";
-    if(ct.startDate&&certified>0&&remaining>0){
-      var start=new Date(ct.startDate);var now=new Date();
-      var months=Math.max((now-start)/(1000*60*60*24*30),1);
-      var burn=certified/months;
-      if(burn>0){var fd=new Date(now.getTime()+(remaining/burn)*30*24*60*60*1000);forecast=fd.toISOString().slice(0,10);}
-    }
-    var totalInstructed=Number(ct.instructionAmount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.instructionAmount||0);},0);
-    return{base,addTotal,total,certified,remaining,pct,forecast,totalInstructed};
-  }
+  // contractFinancials is defined globally
 
   var linkedTasks=selCtr?tsks.filter(function(t){return t.contractorRef===selCtr.id;}):[];
 
@@ -1819,6 +1803,25 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
     </div>}
   </div>;
 }
+// ── contractFinancials (global) ──────────────────────────────────
+function contractFinancials(ct){
+  var base=Number(ct.amount)||0;
+  var addTotal=(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
+  var total=base+addTotal;
+  var certified=(ct.certifications||[]).reduce(function(s,cf){return s+Number(cf.amount||0);},0);
+  var remaining=total-certified;
+  var pct=total>0?Math.round(certified/total*100):0;
+  var totalInstructed=Number(ct.instructionAmount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.instructionAmount||0);},0);
+  var forecast="";
+  if(ct.startDate&&certified>0&&remaining>0){
+    var start=new Date(ct.startDate);var now=new Date();
+    var months=Math.max((now-start)/(1000*60*60*24*30),1);
+    var burn=certified/months;
+    if(burn>0){var fd=new Date(now.getTime()+(remaining/burn)*30*24*60*60*1000);forecast=fd.toISOString().slice(0,10);}
+  }
+  return{base,addTotal,total,certified,remaining,pct,totalInstructed,forecast};
+}
+
 function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdItem,delAdItem,addAdItem,tenders,nav,setNav}){
   const [showAdd,setShowAdd]=useState(false);
   const [showCert,setShowCert]=useState(true);
@@ -1840,10 +1843,10 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
     {/* KPI cards */}
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {[
-        {label:"Contract Value",val:fin.total.toLocaleString()+" EUR",sub:"Base "+fin.base.toLocaleString()+" + Add. "+fin.addTotal.toLocaleString(),color:"#1a1a1a"},
-        {label:"Total Instructed",val:fin.totalInstructed.toLocaleString()+" EUR",sub:"",color:"#1a73e8"},
-        {label:"Certified",val:fin.certified.toLocaleString()+" EUR",sub:fin.pct+"% of contract",color:"#2e7d32"},
-        {label:"Remaining",val:fin.remaining.toLocaleString()+" EUR",sub:fin.forecast?"Forecast: "+fmtMonthYear(fin.forecast):"",color:fin.remaining<0?"#c62828":"#1a1a1a"}
+        {label:"Contract Value excl. tax",val:fin.total.toLocaleString()+" EUR",sub:"Base "+fin.base.toLocaleString()+" + Add. "+fin.addTotal.toLocaleString(),color:"#1a1a1a"},
+        {label:"Total Instructed excl. tax",val:fin.totalInstructed.toLocaleString()+" EUR",sub:"",color:"#1a73e8"},
+        {label:"Certified excl. tax",val:fin.certified.toLocaleString()+" EUR",sub:fin.pct+"% of contract",color:"#2e7d32"},
+        {label:"Remaining excl. tax",val:fin.remaining.toLocaleString()+" EUR",sub:fin.forecast?"Forecast: "+fmtMonthYear(fin.forecast):"",color:fin.remaining<0?"#c62828":"#1a1a1a"}
       ].map(function(k){return <div key={k.label} className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px"}}>
         <div style={{fontSize:10,color:"#888",marginBottom:2}}>{k.label}</div>
         <div style={{fontSize:15,fontWeight:800,color:k.color}}>{k.val}</div>
@@ -1866,7 +1869,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           <input type="text" value={ct.sapNumber||""} onChange={function(e){updateCtField(ctr.id,ct.id,"sapNumber",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
         </div>
         <div style={{flex:"0 0 130px"}}>
-          <label>Amount (EUR)</label>
+          <label>Amount excl. tax (EUR)</label>
           <input type="number" value={ct.amount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"amount",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
         </div>
         <div style={{flex:"0 0 120px"}}>
@@ -1874,7 +1877,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           <input type="text" value={ct.instructionNumber||""} onChange={function(e){updateCtField(ctr.id,ct.id,"instructionNumber",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
         </div>
         <div style={{flex:"0 0 130px"}}>
-          <label>INS Amount (EUR)</label>
+          <label>INS Amount excl. tax (EUR)</label>
           <input type="number" value={ct.instructionAmount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"instructionAmount",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
         </div>
       </div>
@@ -1923,7 +1926,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="text" value={ad.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"number",e.target.value);}} placeholder="Add #" style={{width:80,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
               <input type="text" value={ad.instructionNumber||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionNumber",e.target.value);}} placeholder="INS #" style={{width:80,padding:"3px 6px",fontSize:11}}/>
               <input type="date" value={ad.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"date",e.target.value);}} style={{width:130,padding:"3px 6px",fontSize:11}}/>
-              <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
+              <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
               <input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} placeholder="INS Amt EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
               <span style={{fontSize:10,color:"#888"}}>Cumul: <strong>{addCumul.toLocaleString()} EUR</strong></span>
               <button onClick={function(){if(confirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
@@ -1952,7 +1955,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:4}}>
               <input type="text" value={cf.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"number",e.target.value);}} placeholder="Cert #" style={{width:80,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
               <input type="month" value={cf.date?cf.date.slice(0,7):""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"date",e.target.value+"-01");}} style={{width:130,padding:"3px 6px",fontSize:11}}/>
-              <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} placeholder="Amount EUR" style={{width:130,padding:"3px 6px",fontSize:11}}/>
+              <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:130,padding:"3px 6px",fontSize:11}}/>
               <span style={{fontSize:10,color:"#2e7d32"}}>Cumul: <strong>{certCumul.toLocaleString()} EUR</strong></span>
               <span style={{fontSize:10,color:rem<0?"#c62828":"#888"}}>Left: <strong>{rem.toLocaleString()} EUR</strong></span>
               <button onClick={function(){if(confirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
@@ -1972,23 +1975,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
   const [fPkg,setFPkg]=useState("all");
   const [fCtr,setFCtr]=useState("all");
 
-  function contractFinancials(ct){
-    var base=Number(ct.amount)||0;
-    var addTotal=(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
-    var total=base+addTotal;
-    var certified=(ct.certifications||[]).reduce(function(s,cf){return s+Number(cf.amount||0);},0);
-    var remaining=total-certified;
-    var pct=total>0?Math.round(certified/total*100):0;
-    var totalInstructed=Number(ct.instructionAmount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.instructionAmount||0);},0);
-    var forecast="";
-    if(ct.startDate&&certified>0&&remaining>0){
-      var start=new Date(ct.startDate);var now=new Date();
-      var months=Math.max((now-start)/(1000*60*60*24*30),1);
-      var burn=certified/months;
-      if(burn>0){var fd=new Date(now.getTime()+(remaining/burn)*30*24*60*60*1000);forecast=fd.toISOString().slice(0,10);}
-    }
-    return{base,addTotal,total,certified,remaining,pct,totalInstructed,forecast};
-  }
+  // contractFinancials is global
 
   // Helper: save and keep nav in sync
   function save(d){
