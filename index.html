@@ -225,7 +225,7 @@ function newTracker(overrides){return Object.assign({id:uuid(),title:"",descript
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",addendums:[],certifications:[],description:"",};}
+function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",addendums:[],certifications:[],description:"",};}
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:""};}
 
@@ -1056,11 +1056,18 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         return <div key={ct.id} className="card" style={{marginBottom:12}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:10}}>
             <div style={{flex:1}}>
-              {ct.tenderRef&&(function(){var td=tnds.find(function(t){return t.id===ct.tenderRef;});return td?<div style={{marginBottom:6}}><span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11}}>📑 {td.title}{td.package?" · "+td.package:""}</span></div>:null;})()}
+              <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                {ct.tenderRef&&(function(){var td=tnds.find(function(t){return t.id===ct.tenderRef;});return td?<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11}}>📑 {td.title}{td.package?" · "+td.package:""}</span>:null;})()}
+                {ct.sapNumber&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:11}}>SAP: {ct.sapNumber}</span>}
+              </div>
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Contract #</span>
-                  <input type="text" value={ct.number||""} onChange={function(e){updateContract(ctr.id,ct.id,"number",e.target.value);}} placeholder="C-2024-001" style={{width:120,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <input type="text" value={ct.number||""} onChange={function(e){updateContract(ctr.id,ct.id,"number",e.target.value);}} placeholder="C-2024-001" style={{width:110,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>SAP #</span>
+                  <input type="text" value={ct.sapNumber||""} onChange={function(e){updateContract(ctr.id,ct.id,"sapNumber",e.target.value);}} placeholder="SAP-XXXX" style={{width:100,padding:"3px 7px",fontSize:12,border:"1.5px solid #e8e6df",borderRadius:6}}/>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Instruction #</span>
@@ -1410,6 +1417,203 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
         </div>;})}
       </div>
     </div>}
+  </div>;
+}
+
+// ── CONTRACTS VIEW ────────────────────────────────────────────────
+function ContractsView({contractors,tenders,packages,saveTasks,tasks}){
+  const [selContract,setSelContract]=useState(null); // {ctr, ct}
+  const [q,setQ]=useState("");
+  const [fPkg,setFPkg]=useState("all");
+  const [fCtr,setFCtr]=useState("all");
+
+  // Flatten all contracts from all contractors
+  var allContracts=[];
+  (contractors||[]).forEach(function(ctr){
+    (ctr.contracts||[]).forEach(function(ct){
+      allContracts.push({ct:ct,ctr:ctr});
+    });
+  });
+
+  var allPkgs=[...new Set(allContracts.map(function(x){return x.ct.package;}).filter(Boolean))].sort();
+  var allCtrs=[...new Set((contractors||[]).map(function(c){return c.name;}).filter(Boolean))].sort();
+
+  var filtered=allContracts.filter(function(x){
+    if(fPkg!=="all"&&x.ct.package!==fPkg)return false;
+    if(fCtr!=="all"&&x.ctr.name!==fCtr)return false;
+    if(q){var lq=q.toLowerCase();
+      if(!(x.ct.number||"").toLowerCase().includes(lq)&&
+         !(x.ct.sapNumber||"").toLowerCase().includes(lq)&&
+         !(x.ctr.name||"").toLowerCase().includes(lq)&&
+         !(x.ct.description||"").toLowerCase().includes(lq))return false;}
+    return true;
+  });
+
+  function contractFinancials(ct){
+    var base=Number(ct.amount)||0;
+    var addTotal=(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
+    var total=base+addTotal;
+    var certified=(ct.certifications||[]).reduce(function(s,cf){return s+Number(cf.amount||0);},0);
+    var remaining=total-certified;
+    var pct=total>0?Math.round(certified/total*100):0;
+    var totalInstructed=Number(ct.instructionAmount||0)+(ct.addendums||[]).reduce(function(s,a){return s+Number(a.instructionAmount||0);},0);
+    var forecast="";
+    if(ct.startDate&&certified>0&&remaining>0){
+      var start=new Date(ct.startDate);var now=new Date();
+      var months=Math.max((now-start)/(1000*60*60*24*30),1);
+      var burn=certified/months;
+      if(burn>0){var fd=new Date(now.getTime()+(remaining/burn)*30*24*60*60*1000);forecast=fd.toISOString().slice(0,10);}
+    }
+    return{base,addTotal,total,certified,remaining,pct,totalInstructed,forecast};
+  }
+
+  // Detail view
+  if(selContract){
+    var ctr=selContract.ctr;
+    var ct=selContract.ct;
+    var fin=contractFinancials(ct);
+    var linkedTender=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
+    var addCumul=0;var certCumul=0;
+    return <div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+        <button className="btn btn-sm" onClick={function(){setSelContract(null);}}>← Back</button>
+        <div style={{flex:1}}>
+          <div className="page-title">{ct.number||"Contract"} {ct.sapNumber&&<span style={{fontSize:14,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:4}}>
+            <OwnerChip owner={ctr.name}/>
+            {ct.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>📦 {ct.package}</span>}
+            {linkedTender&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {linkedTender.title}</span>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Contract Value</div>
+          <div style={{fontSize:20,fontWeight:800}}>{fin.total.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
+          <div style={{fontSize:11,color:"#aaa"}}>Base {fin.base.toLocaleString()} + Add. {fin.addTotal.toLocaleString()}</div>
+        </div>
+        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Total Instructed</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#1a73e8"}}>{fin.totalInstructed.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
+        </div>
+        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Certified</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#2e7d32"}}>{fin.certified.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
+          <div style={{fontSize:11,color:"#aaa"}}>{fin.pct}% of contract value</div>
+        </div>
+        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Remaining</div>
+          <div style={{fontSize:20,fontWeight:800,color:fin.remaining<0?"#c62828":"#1a1a1a"}}>{fin.remaining.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
+          {fin.forecast&&<div style={{fontSize:11,color:fin.forecast>(ct.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:600}}>Forecast end: {fmtDate(fin.forecast)}</div>}
+        </div>
+      </div>
+
+      <div className="pbar" style={{height:8,marginBottom:16}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
+
+      <div style={{display:"flex",gap:10}}>
+        <div style={{flex:1}}>
+          <div className="card">
+            <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Addendums ({(ct.addendums||[]).length})</div>
+            {(ct.addendums||[]).length===0?<div style={{color:"#bbb",fontSize:12}}>None</div>
+            :(ct.addendums||[]).map(function(ad,i){
+              addCumul+=Number(ad.amount||0);
+              return <div key={ad.id} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:6}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <span style={{fontWeight:700,fontSize:12}}>{ad.number||"—"}</span>
+                    {ad.instructionNumber&&<span style={{marginLeft:8,fontSize:11,color:"#1a73e8"}}>INS: {ad.instructionNumber}</span>}
+                    {ad.date&&<span style={{marginLeft:8,fontSize:11,color:"#888"}}>📅 {fmtDate(ad.date)}</span>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontWeight:700,fontSize:12}}>{Number(ad.amount||0).toLocaleString()}</div>
+                    {ad.instructionAmount&&<div style={{fontSize:11,color:"#1a73e8"}}>INS: {Number(ad.instructionAmount).toLocaleString()}</div>}
+                    <div style={{fontSize:10,color:"#aaa"}}>Cumul: {addCumul.toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>
+        <div style={{flex:1}}>
+          <div className="card">
+            <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Certifications ({(ct.certifications||[]).length})</div>
+            {(ct.certifications||[]).length===0?<div style={{color:"#bbb",fontSize:12}}>None</div>
+            :(ct.certifications||[]).map(function(cf,i){
+              certCumul+=Number(cf.amount||0);
+              var rem=fin.total-certCumul;
+              return <div key={cf.id} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:6}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <span style={{fontWeight:700,fontSize:12}}>{cf.number||"—"}</span>
+                    {cf.date&&<span style={{marginLeft:8,fontSize:11,color:"#888"}}>📅 {fmtDate(cf.date)}</span>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontWeight:700,fontSize:12,color:"#2e7d32"}}>{Number(cf.amount||0).toLocaleString()}</div>
+                    <div style={{fontSize:10,color:"#aaa"}}>Cumul: {certCumul.toLocaleString()}</div>
+                    <div style={{fontSize:10,color:rem<0?"#c62828":"#aaa"}}>Left: {rem.toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>
+      </div>
+      {ct.description&&<div className="card" style={{marginTop:10}}>
+        <div style={{fontSize:12,color:"#555"}}>{ct.description}</div>
+      </div>}
+    </div>;
+  }
+
+  // List view — summary cards
+  return <div>
+    <div className="page-hdr">
+      <div><div className="page-title">Contracts</div>
+        <div className="page-sub">{allContracts.length} contracts across {(contractors||[]).length} subcontractors</div>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search contract, SAP, subcontractor..." style={{width:250,padding:"5px 10px",fontSize:12}}/>
+      <select value={fCtr} onChange={function(e){setFCtr(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+        <option value="all">All subcontractors</option>
+        {allCtrs.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+      </select>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+        <option value="all">All packages</option>
+        {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
+      </select>
+      {(q||fCtr!=="all"||fPkg!=="all")&&<button className="btn btn-sm" onClick={function(){setQ("");setFCtr("all");setFPkg("all");}}>✕ Reset</button>}
+    </div>
+
+    {filtered.length===0?<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No contracts found.</div></div>
+    :<table className="tbl">
+      <thead><tr><th>Contract #</th><th>SAP #</th><th>Subcontractor</th><th>Package</th><th>Tender</th><th>Value</th><th>Instructed</th><th>Certified</th><th>Remaining</th><th>%</th><th>Forecast end</th></tr></thead>
+      <tbody>{filtered.map(function(x){
+        var ct=x.ct;var ctr=x.ctr;
+        var fin=contractFinancials(ct);
+        var lt=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
+        return <tr key={ct.id} style={{cursor:"pointer"}} onClick={function(){setSelContract(x);}}>
+          <td style={{fontWeight:700}}>{ct.number||<span style={{color:"#ddd"}}>—</span>}</td>
+          <td>{ct.sapNumber?<span style={{color:"#1a73e8",fontWeight:600}}>{ct.sapNumber}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
+          <td><OwnerChip owner={ctr.name}/></td>
+          <td>{ct.package?<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{ct.package}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
+          <td>{lt?<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
+          <td style={{fontWeight:600,whiteSpace:"nowrap"}}>{fin.total.toLocaleString()}</td>
+          <td style={{color:"#1a73e8",fontWeight:600,whiteSpace:"nowrap"}}>{fin.totalInstructed>0?fin.totalInstructed.toLocaleString():<span style={{color:"#ddd"}}>—</span>}</td>
+          <td style={{color:"#2e7d32",fontWeight:600,whiteSpace:"nowrap"}}>{fin.certified.toLocaleString()}</td>
+          <td style={{color:fin.remaining<0?"#c62828":"#1a1a1a",fontWeight:600,whiteSpace:"nowrap"}}>{fin.remaining.toLocaleString()}</td>
+          <td>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:40,height:5,background:"#f0ede6",borderRadius:3,overflow:"hidden"}}>
+                <div style={{width:fin.pct+"%",height:"100%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32",borderRadius:3}}/>
+              </div>
+              <span style={{fontSize:11,color:"#888"}}>{fin.pct}%</span>
+            </div>
+          </td>
+          <td style={{fontSize:11,color:fin.forecast&&fin.forecast>(ct.endDate||"9999")?"#c62828":"#888",whiteSpace:"nowrap"}}>{fin.forecast?fmtDate(fin.forecast):"—"}</td>
+        </tr>;
+      })}</tbody>
+    </table>}
   </div>;
 }
 
@@ -1794,6 +1998,7 @@ function App(){
     {id:"trackers",icon:"📊",label:"Trackers"},
     {id:"tenders",icon:"📑",label:"Tenders"},
     {id:"contractors",icon:"🤝",label:"Subcontr."},
+    {id:"contracts",icon:"📋",label:"Contracts"},
     {id:"global",icon:"🌐",label:"Global"},
     {id:"settings",icon:"⚙️",label:"Settings"},
   ];
@@ -1819,6 +2024,7 @@ function App(){
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT}/>}
         {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders}/>}
+        {view==="contracts"&&<ContractsView contractors={contractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules}/>}
       </div>
