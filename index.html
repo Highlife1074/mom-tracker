@@ -268,7 +268,7 @@ function ImprovementBox({improvements,saveImprovements,currentPage}){
   </div>;
 }
 
-function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd}){
+function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,improvements,saveImprovements,currentPage}){
   const [text,setText]=useState("");
   const [due,setDue]=useState("");
   const [owner,setOwner]=useState("");
@@ -2153,7 +2153,7 @@ function App(){
 
       {/* Right sidebar — Quick Add */}
       <aside className="rsidebar">
-        <QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={addTask}/>
+        <QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={addTask} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
       </aside>
     <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
     </div>
