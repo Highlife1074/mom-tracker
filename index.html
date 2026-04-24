@@ -53,7 +53,9 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;height:10
 .main-area{flex:1;display:flex;overflow:hidden}
 .content{flex:1;overflow-y:auto;padding:24px;min-width:0}
 /* Right sidebar */
-.rsidebar{width:260px;background:#fff;border-left:1.5px solid #e8e6df;display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.rsidebar{background:#fff;border-left:1.5px solid #e8e6df;display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:width .2s;}
+.rsidebar.open{width:260px;}
+.rsidebar.closed{width:36px;}
 .rsidebar-hdr{padding:14px 16px 10px;border-bottom:1.5px solid #e8e6df;font-family:'DM Serif Display',serif;font-size:15px;color:#1c1c1e}
 .rsidebar-body{flex:1;overflow-y:auto;padding:12px}
 /* Cards */
@@ -146,6 +148,28 @@ label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-
 .fchip{padding:4px 12px;border-radius:20px;border:1.5px solid #e0ddd6;background:#fff;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;color:#888;transition:all .12s}
 .fchip.on{border-color:#1c1c1e;background:#1c1c1e;color:#fff}
 .fchip.gold.on{border-color:#c9a84c;background:#c9a84c;color:#1c1c1e}
+
+@media(max-width:768px){
+  .layout{flex-direction:column;}
+  .leftnav{width:100%;flex-direction:row;height:48px;padding:0 8px;overflow-x:auto;justify-content:flex-start;}
+  .leftnav .logo{display:none;}
+  .navbtn{width:auto;height:44px;flex-direction:row;gap:4px;padding:0 10px;border-radius:6px;}
+  .navbtn span.lbl{font-size:10px;}
+  .main-area{flex-direction:column-reverse;}
+  .rsidebar{width:100%!important;border-left:none;border-top:1.5px solid #e8e6df;max-height:220px;}
+  .rsidebar.closed{height:36px;max-height:36px;}
+  .content{padding:12px;}
+  .tbl{font-size:11px;}
+  .tbl th,.tbl td{padding:6px 8px;}
+  .page-title{font-size:18px;}
+  .modal{max-width:100%!important;margin:0;border-radius:0;max-height:100vh;}
+  .overlay{padding:0;align-items:flex-end;}
+}
+@media(max-width:480px){
+  .frow{flex-direction:column;}
+  .filter-bar{gap:4px;}
+  .filter-bar select,.filter-bar input{font-size:11px;padding:4px 6px;}
+}
 </style>
 </head>
 <body>
@@ -168,6 +192,7 @@ class ErrorBoundary extends React.Component{
 
 // ── Storage keys ─────────────────────────────────────────────────
 const KEYS_IMP="pp_improvements";
+const KEYS_CORR="pp_correspondences";
 const KEYS={
   tasks:"pp_tasks", trackers:"pp_trackers", tenders:"pp_tenders",
   contractors:"pp_contractors", people:"pp_people", tags:"pp_tags",
@@ -200,7 +225,7 @@ function getAllCCs(tags,pkg,owner,tagrules,pkgrules){
 // Tender step statuses
 const TENDER_STEPS=[
   {key:"pkg",label:"Tender Package",opts:["—","Not started","In preparation","Submitted","Approved"]},
-  {key:"process",label:"Tender Process",opts:["—","Not started","Enquiry sent","Bids received","Under evaluation","Awarded"],special:"process"},
+  {key:"process",label:"Tender Process",opts:[],special:"process"},
   {key:"acc",label:"ACC/Aconex",opts:["—","Internal review ongoing","Pending client approval","Approved A","Approved B","Approved C"]},
   {key:"contract",label:"Contract",opts:["—","Request sent","In circulation","Signed"]},
   {key:"mar",label:"MAR",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]},
@@ -904,12 +929,18 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     var td=selTender;
     return <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
       {/* Sidebar tender list */}
-      <div style={{width:220,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0}}>
-        <div style={{padding:"10px 12px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Tenders</div>
-        <div style={{maxHeight:"80vh",overflowY:"auto"}}>
-          {filtered.map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"8px 12px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:12,fontWeight:isActive?700:400}}>
-            <div style={{color:isActive?"#1c1c1e":"#555",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div>
-            {t.package&&<div style={{fontSize:10,color:"#aaa",marginTop:1}}>{t.package}</div>}
+      <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
+        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Tenders</div>
+        <div style={{padding:"6px 8px",borderBottom:"1px solid #f0ede6"}}>
+          <select value={pkgFilter} onChange={function(e){setPkgFilter(e.target.value);}} style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+            <option value="all">All packages</option>
+            {[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))].sort().map(function(p){return <option key={p} value={p}>{p}</option>;})}
+          </select>
+        </div>
+        <div style={{maxHeight:"75vh",overflowY:"auto"}}>
+          {filtered.slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>
+            <div style={{color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+            {t.package&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{t.package}</div>}
           </div>;})}
         </div>
       </div>
@@ -945,18 +976,16 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{s.label}</td>
               <td style={{minWidth:180}}>
                 {s.special==="process"
-                  ?<div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:3}}>
-                      <span style={{fontSize:10,color:"#888"}}>%</span>
-                      <input type="number" min="0" max="100" value={(processPct[td.id]!==undefined?processPct[td.id]:((td.stepDates||{}).process||{}).pct)||""} onChange={function(e){var np=Object.assign({},processPct);np[td.id]=e.target.value;setProcessPct(np);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{pct:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:55,padding:"3px 5px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:5}}/>
+                  ?<div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{fontSize:11,color:"#888",fontWeight:600}}>Progress</span>
+                      <input type="number" min="0" max="100" value={(processPct[td.id]!==undefined?processPct[td.id]:((td.stepDates||{}).process||{}).pct)||""} onChange={function(e){var np=Object.assign({},processPct);np[td.id]=e.target.value;setProcessPct(np);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{pct:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:60,padding:"3px 7px",fontSize:13,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:5,textAlign:"center"}}/>
+                      <span style={{fontSize:11,color:"#888"}}>%</span>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:3}}>
-                      <span style={{fontSize:10,color:"#888"}}>Bids</span>
-                      <input type="number" min="0" value={(processBids[td.id]!==undefined?processBids[td.id]:((td.stepDates||{}).process||{}).bids)||""} onChange={function(e){var nb=Object.assign({},processBids);nb[td.id]=e.target.value;setProcessBids(nb);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{bids:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:45,padding:"3px 5px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:5}}/>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{fontSize:11,color:"#888",fontWeight:600}}>Bids received</span>
+                      <input type="number" min="0" value={(processBids[td.id]!==undefined?processBids[td.id]:((td.stepDates||{}).process||{}).bids)||""} onChange={function(e){var nb=Object.assign({},processBids);nb[td.id]=e.target.value;setProcessBids(nb);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{bids:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:50,padding:"3px 7px",fontSize:13,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:5,textAlign:"center"}}/>
                     </div>
-                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"1px solid #e8e6df",background:"#fff",fontFamily:"inherit",fontSize:11,cursor:"pointer",outline:"none",borderRadius:5,padding:"2px 4px"}}>
-                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-                    </select>
                   </div>
                   :<div style={{display:"flex",alignItems:"center",gap:4}}>
                     <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
@@ -1159,7 +1188,111 @@ function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
   </div></div>;
 }
 
-function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey}){
+// ── Correspondence Log ────────────────────────────────────────────
+function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,saveT,tasks}){
+  const [showAdd,setShowAdd]=useState(false);
+  const [form,setForm]=useState({number:"",type:"received",date:today(),description:"",replied:false,replyNumber:"",replyDate:""});
+
+  var ctrCorr=(correspondences||[]).filter(function(l){return l.ctrId===ctrId;}).sort(function(a,b){return b.date.localeCompare(a.date);});
+
+  function addLetter(){
+    var entry=Object.assign({id:uuid(),ctrId:ctrId,ctrName:ctrName},form);
+    var newCorr=[entry,...(correspondences||[])];
+    saveCorrespondences(newCorr);
+    // Auto-create action if received and not replied
+    if(form.type==="received"&&!form.replied&&saveT&&tasks){
+      var dueDate=new Date(form.date);dueDate.setDate(dueDate.getDate()+7);
+      var duStr=dueDate.toISOString().slice(0,10);
+      var action=newTask({
+        text:"Respond to letter "+form.number+" from "+ctrName+" received "+fmtDate(form.date),
+        due:duStr,status:"pending",note:"Auto-created from correspondence log"
+      });
+      saveT([action,...(tasks||[])]);
+    }
+    setShowAdd(false);
+    setForm({number:"",type:"received",date:today(),description:"",replied:false,replyNumber:"",replyDate:""});
+  }
+
+  function delLetter(id){if(confirm("Delete this correspondence entry?"))saveCorrespondences((correspondences||[]).filter(function(l){return l.id!==id;}));}
+
+  function set(f,v){setForm(function(prev){return Object.assign({},prev,{[f]:v});});}
+
+  const TYPE_COLORS={received:{bg:"#e3f2fd",color:"#1565c0",label:"Received"},sent:{bg:"#e8f5e9",color:"#2e7d32",label:"Sent"}};
+
+  return <div className="card" style={{marginBottom:12}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+      <div style={{fontWeight:700,fontSize:13}}>Correspondence ({ctrCorr.length})</div>
+      <button className="btn btn-sm btn-gold" onClick={function(){setShowAdd(!showAdd);}}>＋ Add Letter</button>
+    </div>
+
+    {showAdd&&<div style={{padding:"12px",background:"#fafaf8",borderRadius:8,border:"1px solid #e8e6df",marginBottom:10}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <div style={{flex:1,minWidth:110}}>
+          <label>Letter # *</label>
+          <input type="text" value={form.number} onChange={function(e){set("number",e.target.value);}} placeholder="e.g. LTR-001"/>
+        </div>
+        <div style={{flex:1,minWidth:100}}>
+          <label>Type</label>
+          <select value={form.type} onChange={function(e){set("type",e.target.value);}} style={{fontFamily:"inherit"}}>
+            <option value="received">Received</option>
+            <option value="sent">Sent</option>
+          </select>
+        </div>
+        <div style={{flex:1,minWidth:120}}>
+          <label>Date</label>
+          <input type="date" value={form.date} onChange={function(e){set("date",e.target.value);}}/>
+        </div>
+      </div>
+      <div className="fg" style={{marginBottom:8}}>
+        <label>Description / Subject</label>
+        <input type="text" value={form.description} onChange={function(e){set("description",e.target.value);}} placeholder="Brief description of the letter..."/>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:500,color:"#333"}}>
+          <input type="checkbox" checked={form.replied} onChange={function(e){set("replied",e.target.checked);}} style={{width:15,height:15}}/>
+          Replied
+        </label>
+        {form.replied&&<div style={{display:"flex",gap:8,flex:1}}>
+          <div style={{flex:1}}>
+            <label>Reply letter #</label>
+            <input type="text" value={form.replyNumber} onChange={function(e){set("replyNumber",e.target.value);}} placeholder="Reply #"/>
+          </div>
+          <div style={{flex:1}}>
+            <label>Reply date</label>
+            <input type="date" value={form.replyDate} onChange={function(e){set("replyDate",e.target.value);}}/>
+          </div>
+        </div>}
+      </div>
+      {form.type==="received"&&!form.replied&&<div style={{padding:"6px 10px",background:"#fff8e1",borderRadius:6,fontSize:11,color:"#f57f17",marginBottom:8}}>
+        ⚠️ An action "Respond to letter" will be auto-created with due date 7 days from receipt.
+      </div>}
+      <div style={{display:"flex",gap:6}}>
+        <button className="btn" onClick={function(){setShowAdd(false);}}>Cancel</button>
+        <button className="btn btn-pri" disabled={!form.number.trim()} onClick={addLetter}>Save</button>
+      </div>
+    </div>}
+
+    {ctrCorr.length===0&&!showAdd&&<div style={{color:"#bbb",fontSize:12}}>No correspondence recorded yet.</div>}
+    {ctrCorr.map(function(letter){
+      var tc=TYPE_COLORS[letter.type]||TYPE_COLORS.received;
+      return <div key={letter.id} style={{padding:"8px 10px",borderRadius:7,border:"1px solid #f0ede6",marginBottom:5,background:"#fafaf8"}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+          <span style={{padding:"2px 8px",borderRadius:12,background:tc.bg,color:tc.color,fontSize:10,fontWeight:700,flexShrink:0}}>{tc.label}</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:12}}>#{letter.number} <span style={{color:"#888",fontWeight:400}}>· {fmtDate(letter.date)}</span></div>
+            {letter.description&&<div style={{fontSize:11,color:"#555",marginTop:1}}>{letter.description}</div>}
+            {letter.replied
+              ?<div style={{fontSize:10,color:"#2e7d32",marginTop:3}}>✅ Replied: #{letter.replyNumber} on {fmtDate(letter.replyDate)}</div>
+              :letter.type==="received"&&<div style={{fontSize:10,color:"#c62828",fontWeight:600,marginTop:3}}>⚠️ Awaiting reply</div>}
+          </div>
+          <button onClick={function(){delLetter(letter.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
+function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey,correspondences,saveCorrespondences,saveT}){
   var ctrs=contractors||[];
   var tnds=tenders||[];
   var pkgs=packages||[];
@@ -1403,16 +1536,17 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         </div>;
       })}
       <button className="btn btn-gold" onClick={function(){addContract(ctr.id);}} style={{marginBottom:16}}>+ Add Contract</button>
+      {/* Correspondence Log */}
+      <CorrespondenceLog ctrId={ctr.id} ctrName={ctr.name} correspondences={correspondences||[]} saveCorrespondences={saveCorrespondences} saveT={saveT} tasks={tasks}/>
+
       <div className="card">
         <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
         {linkedTasks.length===0
           ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this subcontractor.</div>
-          :linkedTasks.map(function(t){return <div key={t.id} className="ac-item" style={{marginBottom:4}}>
-            <div style={{flex:1}}>
-              <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
-              <div className="ac-meta">{t.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {fmtDate(t.due)}</span>}{t.owner&&<OwnerChip owner={t.owner}/>}<StatusChip status={t.status}/></div>
-            </div>
-          </div>;})}
+          :linkedTasks.map(function(t){return <ActionItem key={t.id} task={t}
+            onStatusChange={function(val){saveContractors(ctrs.map(function(c){return c;}))||saveT(tsks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
+            onUpdate={function(field,val){saveT(tsks.map(function(x){if(x.id!==t.id)return x;var u=Object.assign({},x);u[field]=val;return u;}));}}
+            people={ppl} packages={pkgs} tags={[]} tenders={tnds} contractors={ctrs}/>;} )}
       </div>
       {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
       {pdfExtracting&&<PdfCertModal pdfData={pdfExtracting} apiKey={apiKey} onClose={function(){setPdfExtracting(null);}} onConfirm={function(cert,ctrId,ctId){
@@ -2360,6 +2494,9 @@ function App(){
   const [tagrules,setTagrules]=useState({});
   const [pkgrules,setPkgrules]=useState({});
   const [pdfGlobal,setPdfGlobal]=useState(null);
+  const [sidebarOpen,setSidebarOpen]=useState(true);
+  const [correspondences,setCorrespondences]=useState([]);
+  function saveCorrespondences(d){setCorrespondences(d);sync(KEYS_CORR,d);}
   const [improvements,setImprovements]=useState([]);
   function saveImprovements(d){setImprovements(d);sync(KEYS_IMP,d);}
   const [apiKey,setApiKey]=useState(function(){try{return localStorage.getItem('pp_apikey')||'';}catch(e){return '';}});
@@ -2384,10 +2521,10 @@ function App(){
   useEffect(()=>{
     const load=async()=>{
       try{
-        const [t,x,td,ct,p,pk,g,tr,pr,imp]=await Promise.all([
+        const [t,x,td,ct,p,pk,g,tr,pr,imp,corr]=await Promise.all([
           cloudStore.get(KEYS.tasks),cloudStore.get(KEYS.trackers),cloudStore.get(KEYS.tenders),
           cloudStore.get(KEYS.contractors),cloudStore.get(KEYS.people),cloudStore.get(KEYS.packages),
-          cloudStore.get(KEYS.tags),cloudStore.get(KEYS.tagrules),cloudStore.get(KEYS.pkgrules),cloudStore.get(KEYS_IMP)
+          cloudStore.get(KEYS.tags),cloudStore.get(KEYS.tagrules),cloudStore.get(KEYS.pkgrules),cloudStore.get(KEYS_IMP),cloudStore.get(KEYS_CORR)
         ]);
         if(t){setTasks(t);}
         else{
@@ -2434,6 +2571,7 @@ function App(){
           setTags(finalG);sync(KEYS.tags,finalG);
         }
         if(imp)setImprovements(imp);
+        if(corr)setCorrespondences(corr);
         if(tr){setTagrules(tr);}
         else{
           const otr=await cloudStore.get("tagrules");
@@ -2456,7 +2594,29 @@ function App(){
   if(!loaded)return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",flexDirection:"column",gap:12,color:"#888"}}>
     <div style={{width:36,height:36,border:"3px solid #c9a84c",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
     <div style={{fontSize:14}}>Connecting to Firebase…</div>
-    <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+    <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}
+@media(max-width:768px){
+  .layout{flex-direction:column;}
+  .leftnav{width:100%;flex-direction:row;height:48px;padding:0 8px;overflow-x:auto;justify-content:flex-start;}
+  .leftnav .logo{display:none;}
+  .navbtn{width:auto;height:44px;flex-direction:row;gap:4px;padding:0 10px;border-radius:6px;}
+  .navbtn span.lbl{font-size:10px;}
+  .main-area{flex-direction:column-reverse;}
+  .rsidebar{width:100%!important;border-left:none;border-top:1.5px solid #e8e6df;max-height:220px;}
+  .rsidebar.closed{height:36px;max-height:36px;}
+  .content{padding:12px;}
+  .tbl{font-size:11px;}
+  .tbl th,.tbl td{padding:6px 8px;}
+  .page-title{font-size:18px;}
+  .modal{max-width:100%!important;margin:0;border-radius:0;max-height:100vh;}
+  .overlay{padding:0;align-items:flex-end;}
+}
+@media(max-width:480px){
+  .frow{flex-direction:column;}
+  .filter-bar{gap:4px;}
+  .filter-bar select,.filter-bar input{font-size:11px;padding:4px 6px;}
+}
+</style>
   </div>;
 
   const NAV=[
@@ -2489,15 +2649,21 @@ function App(){
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors}/>}
-        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey}/>}
+        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT}/>}
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements}/>}
       </div>
 
       {/* Right sidebar — Quick Add */}
-      <aside className="rsidebar">
-        <QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={addTask} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
+      <aside className={"rsidebar "+(sidebarOpen?"open":"closed")}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:sidebarOpen?"flex-end":"center",padding:"8px 8px 0",flexShrink:0}}>
+          <button onClick={function(){setSidebarOpen(!sidebarOpen);}} title={sidebarOpen?"Collapse sidebar":"Expand sidebar"}
+            style={{background:"none",border:"1px solid #e8e6df",borderRadius:6,cursor:"pointer",padding:"3px 6px",fontSize:12,color:"#888",lineHeight:1}}>
+            {sidebarOpen?"›":"‹"}
+          </button>
+        </div>
+        {sidebarOpen&&<QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={addTask} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>}
       </aside>
     <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
     <div style={{position:"fixed",bottom:16,right:318,zIndex:500}}>
