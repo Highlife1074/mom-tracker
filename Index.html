@@ -1313,7 +1313,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     var subject="Global Action View — "+today;
     if(fOwner!=="all")subject="Actions @"+fOwner.split(",")[0]+" — "+today;
     else if(fCC!=="all")subject="Actions CC: "+fCC.split(",")[0]+" — "+today;
-    var body="Hello,\n\nPlease find below the action summary as of "+today+".\n\n"+"─".repeat(60)+"\n\n";
+    var NL=String.fromCharCode(10);
+    var lines=["Hello,","","Please find below the action summary as of "+today+".","","─".repeat(60),""];
     var bySource={};
     filtered.forEach(function(a){
       var key=a._source==="task"?"📋 Tasks":"📊 "+a._sourceTitle;
@@ -1321,7 +1322,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       bySource[key].push(a);
     });
     Object.entries(bySource).forEach(function(e){
-      body+=e[0]+"\n"+"─".repeat(e[0].length)+"\n";
+      lines.push(e[0]);
+      lines.push("─".repeat(e[0].length));
       e[1].forEach(function(a){
         var st={"pending":"⏳","in progress":"🔄","done":"✅","blocked":"🚫"}[a.status]||"•";
         var due=a.due?" → "+fmtDate(a.due):"";
@@ -1331,11 +1333,13 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         var ccStr=ccs.length>0?" "+ccs.map(function(p){return "@"+p.split(",")[0];}).join(" "):"";
         var tr=a.tenderRef?(tenders||[]).find(function(t){return t.id===a.tenderRef;}):null;
         var trStr=tr?" [📑 "+tr.title+"]":"";
-        body+="  "+st+" "+a.text+(a.owner?" @"+a.owner.split(",")[0]:"")+due+scoreStr+ccStr+trStr+"\n";
+        lines.push("  "+st+" "+a.text+(a.owner?" @"+a.owner.split(",")[0]:"")+due+scoreStr+ccStr+trStr);
       });
-      body+="\n";
+      lines.push("");
     });
-    body+="─".repeat(60)+"\n"+"Total: "+filtered.length+" action"+(filtered.length!==1?"s":"")+"\n";
+    lines.push("─".repeat(60));
+    lines.push("Total: "+filtered.length+" action"+(filtered.length!==1?"s":""));
+    var body=lines.join(NL);
     return{subject,body};
   }
 
