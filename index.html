@@ -1647,34 +1647,64 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
   </div>;
 }
 function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,tasks}){
-  function saveCtr2(d){saveContractors(d);if(selContract){var newCtr=d.find(function(c){return c.id===selContract.ctr.id;});var newCt=newCtr?(newCtr.contracts||[]).find(function(c){return c.id===selContract.ct.id;}):null;if(newCtr&&newCt)setSelContract({ctr:newCtr,ct:newCt});}}
-  const [selContract,setSelContract]=useState(null);
-  const [editMode,setEditMode]=useState(false);
+  // nav: null=list, {ctrId}=subcontractor contracts, {ctrId,ctId}=contract detail
+  const [nav,setNav]=useState(null);
   const [q,setQ]=useState("");
   const [fPkg,setFPkg]=useState("all");
   const [fCtr,setFCtr]=useState("all");
 
-  // Flatten all contracts from all contractors
-  var allContracts=[];
-  (contractors||[]).forEach(function(ctr){
-    (ctr.contracts||[]).forEach(function(ct){
-      allContracts.push({ct:ct,ctr:ctr});
+  // Helper: save and keep nav in sync
+  function save(d){
+    saveContractors(d);
+    if(nav&&nav.ctId){
+      var nc=d.find(function(c){return c.id===nav.ctrId;});
+      var nct=nc?(nc.contracts||[]).find(function(ct){return ct.id===nav.ctId;}):null;
+      if(!nct)setNav({ctrId:nav.ctrId}); // contract deleted, go up
+    }
+  }
+
+  // Contract mutation helpers
+  function updateCtField(ctrId,ctId,field,val){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;
+        var u=Object.assign({},ct);u[field]=val;return u;
+      })});
     });
-  });
-
-  var allPkgs=[...new Set(allContracts.map(function(x){return x.ct.package;}).filter(Boolean))].sort();
-  var allCtrs=[...new Set((contractors||[]).map(function(c){return c.name;}).filter(Boolean))].sort();
-
-  var filtered=allContracts.filter(function(x){
-    if(fPkg!=="all"&&x.ct.package!==fPkg)return false;
-    if(fCtr!=="all"&&x.ctr.name!==fCtr)return false;
-    if(q){var lq=q.toLowerCase();
-      if(!(x.ct.number||"").toLowerCase().includes(lq)&&
-         !(x.ct.sapNumber||"").toLowerCase().includes(lq)&&
-         !(x.ctr.name||"").toLowerCase().includes(lq)&&
-         !(x.ct.description||"").toLowerCase().includes(lq))return false;}
-    return true;
-  });
+    save(d);
+  }
+  function updateAdItem(ctrId,ctId,field,i,key,val){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;
+        var items=(ct[field]||[]).map(function(item,j){if(j!==i)return item;var u=Object.assign({},item);u[key]=val;return u;});
+        var u2=Object.assign({},ct);u2[field]=items;return u2;
+      })});
+    });
+    save(d);
+  }
+  function delAdItem(ctrId,ctId,field,i){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;
+        var u=Object.assign({},ct);u[field]=(ct[field]||[]).filter(function(_,j){return j!==i;});return u;
+      })});
+    });
+    save(d);
+  }
+  function addAdItem(ctrId,ctId,field,newItem){
+    var d=(contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
+        if(ct.id!==ctId)return ct;
+        var u=Object.assign({},ct);u[field]=[...(ct[field]||[]),newItem];return u;
+      })});
+    });
+    save(d);
+  }
 
   function contractFinancials(ct){
     var base=Number(ct.amount)||0;
@@ -1694,185 +1724,252 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     return{base,addTotal,total,certified,remaining,pct,totalInstructed,forecast};
   }
 
-  // Detail view
-  if(selContract){
-    var ctr=selContract.ctr;
-    var ct=selContract.ct;
+  // ── CONTRACT DETAIL VIEW ───────────────────────────────────────
+  if(nav&&nav.ctId){
+    var ctr=(contractors||[]).find(function(c){return c.id===nav.ctrId;})||{contracts:[]};
+    var ct=(ctr.contracts||[]).find(function(c){return c.id===nav.ctId;})||{addendums:[],certifications:[]};
     var fin=contractFinancials(ct);
     var linkedTender=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
     var addCumul=0;var certCumul=0;
+
     return <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-        <button className="btn btn-sm" onClick={function(){setSelContract(null);setEditMode(false);}}>← Back</button>
+        <button className="btn btn-sm" onClick={function(){setNav({ctrId:nav.ctrId});}}>← Back</button>
         <div style={{flex:1}}>
-          <div className="page-title">{ct.number||"Contract"} {ct.sapNumber&&<span style={{fontSize:14,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:4}}>
-            <OwnerChip owner={ctr.name}/>
+          <div style={{fontSize:11,color:"#888"}}>{ctr.name}</div>
+          <div className="page-title" style={{fontSize:18}}>{ct.number||"Contract"} {ct.sapNumber&&<span style={{fontSize:14,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
             {ct.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>📦 {ct.package}</span>}
             {linkedTender&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {linkedTender.title}</span>}
           </div>
         </div>
-        <button className="btn btn-sm" onClick={function(){setEditMode(!editMode);}}>
-          {editMode?"✓ Done":"✏️ Edit"}
-        </button>
       </div>
 
-      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
-          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Contract Value</div>
-          <div style={{fontSize:20,fontWeight:800}}>{fin.total.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
-          <div style={{fontSize:11,color:"#aaa"}}>Base {fin.base.toLocaleString()} + Add. {fin.addTotal.toLocaleString()}</div>
-        </div>
-        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
-          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Total Instructed</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#1a73e8"}}>{fin.totalInstructed.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
-        </div>
-        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
-          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Certified</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#2e7d32"}}>{fin.certified.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
-          <div style={{fontSize:11,color:"#aaa"}}>{fin.pct}% of contract value</div>
-        </div>
-        <div className="card" style={{flex:1,minWidth:160,marginBottom:0}}>
-          <div style={{fontSize:11,color:"#888",marginBottom:2}}>Remaining</div>
-          <div style={{fontSize:20,fontWeight:800,color:fin.remaining<0?"#c62828":"#1a1a1a"}}>{fin.remaining.toLocaleString()} <span style={{fontSize:12}}>{ct.currency||"EUR"}</span></div>
-          {fin.forecast&&<div style={{fontSize:11,color:fin.forecast>(ct.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:600}}>Forecast end: {fmtDate(fin.forecast)}</div>}
-        </div>
+      {/* KPI cards */}
+      <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+        {[
+          {label:"Contract Value",val:fin.total.toLocaleString()+" "+(ct.currency||"EUR"),sub:"Base "+fin.base.toLocaleString()+" + Add. "+fin.addTotal.toLocaleString(),color:"#1a1a1a"},
+          {label:"Total Instructed",val:fin.totalInstructed.toLocaleString()+" "+(ct.currency||"EUR"),sub:"",color:"#1a73e8"},
+          {label:"Certified",val:fin.certified.toLocaleString()+" "+(ct.currency||"EUR"),sub:fin.pct+"% of contract",color:"#2e7d32"},
+          {label:"Remaining",val:fin.remaining.toLocaleString()+" "+(ct.currency||"EUR"),sub:fin.forecast?"Forecast: "+fmtMonthYear(fin.forecast):"",color:fin.remaining<0?"#c62828":"#1a1a1a"}
+        ].map(function(k){return <div key={k.label} className="card" style={{flex:1,minWidth:140,marginBottom:0}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:2}}>{k.label}</div>
+          <div style={{fontSize:17,fontWeight:800,color:k.color}}>{k.val}</div>
+          {k.sub&&<div style={{fontSize:11,color:"#aaa"}}>{k.sub}</div>}
+        </div>;})}
       </div>
+      <div className="pbar" style={{height:7,marginBottom:14}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
 
-      <div className="pbar" style={{height:8,marginBottom:16}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
-
-      {editMode&&<div className="card" style={{marginBottom:16}}>
-        <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Edit Contract</div>
+      {/* Edit contract fields */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Contract Details</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-          <div style={{flex:1,minWidth:120}}>
+          <div style={{flex:1,minWidth:110}}>
             <label>Contract #</label>
-            <input type="text" value={ct.number||""} onChange={function(e){
-              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.number=e.target.value;return u;})});});
-              saveCtr2(d);
-            }} style={{padding:"4px 8px",fontSize:12}}/>
+            <input type="text" value={ct.number||""} onChange={function(e){updateCtField(ctr.id,ct.id,"number",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
           </div>
           <div style={{flex:1,minWidth:100}}>
             <label>SAP #</label>
-            <input type="text" value={ct.sapNumber||""} onChange={function(e){
-              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.sapNumber=e.target.value;return u;})});});
-              saveCtr2(d);
-            }} style={{padding:"4px 8px",fontSize:12}}/>
+            <input type="text" value={ct.sapNumber||""} onChange={function(e){updateCtField(ctr.id,ct.id,"sapNumber",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
           </div>
-          <div style={{flex:1,minWidth:120}}>
+          <div style={{flex:1,minWidth:100}}>
             <label>Amount</label>
-            <input type="number" value={ct.amount||""} onChange={function(e){
-              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.amount=e.target.value;return u;})});});
-              saveCtr2(d);
-            }} style={{padding:"4px 8px",fontSize:12}}/>
+            <input type="number" value={ct.amount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"amount",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
           </div>
-          <div style={{flex:1,minWidth:80}}>
+          <div style={{flex:1,minWidth:60}}>
             <label>Currency</label>
-            <select value={ct.currency||"EUR"} onChange={function(e){
-              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.currency=e.target.value;return u;})});});
-              saveCtr2(d);
-            }} style={{padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}>
+            <select value={ct.currency||"EUR"} onChange={function(e){updateCtField(ctr.id,ct.id,"currency",e.target.value);}} style={{padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}>
               {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
             </select>
           </div>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-          <div style={{flex:1,minWidth:130}}>
-            <label>Start date</label>
-            <input type="date" value={ct.startDate||""} onChange={function(e){
-              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.startDate=e.target.value;return u;})});});
-              saveCtr2(d);
-            }} style={{padding:"4px 8px",fontSize:12}}/>
+          <div style={{flex:1,minWidth:110}}>
+            <label>INS #</label>
+            <input type="text" value={ct.instructionNumber||""} onChange={function(e){updateCtField(ctr.id,ct.id,"instructionNumber",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
           </div>
-          <div style={{flex:1,minWidth:130}}>
-            <label>End date</label>
-            <input type="date" value={ct.endDate||""} onChange={function(e){
-              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.endDate=e.target.value;return u;})});});
-              saveCtr2(d);
-            }} style={{padding:"4px 8px",fontSize:12}}/>
+          <div style={{flex:1,minWidth:110}}>
+            <label>INS Amount</label>
+            <input type="number" value={ct.instructionAmount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"instructionAmount",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
           </div>
-          <div style={{flex:1,minWidth:160}}>
+          <div style={{flex:1,minWidth:110}}>
+            <label>Start</label>
+            <input type="date" value={ct.startDate||""} onChange={function(e){updateCtField(ctr.id,ct.id,"startDate",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
+          </div>
+          <div style={{flex:1,minWidth:110}}>
+            <label>End</label>
+            <input type="date" value={ct.endDate||""} onChange={function(e){updateCtField(ctr.id,ct.id,"endDate",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <div style={{flex:2,minWidth:160}}>
             <label>Tender</label>
-            <select value={ct.tenderRef||""} onChange={function(e){
-              var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.tenderRef=e.target.value;return u;})});});
-              saveCtr2(d);
-            }} style={{padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}>
+            <select value={ct.tenderRef||""} onChange={function(e){updateCtField(ctr.id,ct.id,"tenderRef",e.target.value);}} style={{padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}>
               <option value="">— none —</option>
               {(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
             </select>
           </div>
-        </div>
-        <div>
-          <label>Description</label>
-          <textarea value={ct.description||""} onChange={function(e){
-            var d=(contractors||[]).map(function(cr){if(cr.id!==ctr.id)return cr;return Object.assign({},cr,{contracts:(cr.contracts||[]).map(function(c2){if(c2.id!==ct.id)return c2;var u=Object.assign({},c2);u.description=e.target.value;return u;})});});
-            saveCtr2(d);
-          }} style={{padding:"4px 8px",fontSize:12,minHeight:50,width:"100%",resize:"vertical"}}/>
-        </div>
-      </div>}
-
-      <div style={{display:"flex",gap:10}}>
-        <div style={{flex:1}}>
-          <div className="card">
-            <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Addendums ({(ct.addendums||[]).length})</div>
-            {(ct.addendums||[]).length===0?<div style={{color:"#bbb",fontSize:12}}>None</div>
-            :(ct.addendums||[]).map(function(ad,i){
-              addCumul+=Number(ad.amount||0);
-              return <div key={ad.id} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:6}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <span style={{fontWeight:700,fontSize:12}}>{ad.number||"—"}</span>
-                    {ad.instructionNumber&&<span style={{marginLeft:8,fontSize:11,color:"#1a73e8"}}>INS: {ad.instructionNumber}</span>}
-                    {ad.date&&<span style={{marginLeft:8,fontSize:11,color:"#888"}}>📅 {fmtDate(ad.date)}</span>}
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontWeight:700,fontSize:12}}>{Number(ad.amount||0).toLocaleString()}</div>
-                    {ad.instructionAmount&&<div style={{fontSize:11,color:"#1a73e8"}}>INS: {Number(ad.instructionAmount).toLocaleString()}</div>}
-                    <div style={{fontSize:10,color:"#aaa"}}>Cumul: {addCumul.toLocaleString()}</div>
-                  </div>
-                </div>
-              </div>;
-            })}
-          </div>
-        </div>
-        <div style={{flex:1}}>
-          <div className="card">
-            <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Certifications ({(ct.certifications||[]).length})</div>
-            {(ct.certifications||[]).length===0?<div style={{color:"#bbb",fontSize:12}}>None</div>
-            :(ct.certifications||[]).map(function(cf,i){
-              certCumul+=Number(cf.amount||0);
-              var rem=fin.total-certCumul;
-              return <div key={cf.id} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:6}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <span style={{fontWeight:700,fontSize:12}}>{cf.number||"—"}</span>
-                    {cf.date&&<span style={{marginLeft:8,fontSize:11,color:"#888"}}>📅 {fmtMonthYear(cf.date)}</span>}
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontWeight:700,fontSize:12,color:"#2e7d32"}}>{Number(cf.amount||0).toLocaleString()}</div>
-                    <div style={{fontSize:10,color:"#aaa"}}>Cumul: {certCumul.toLocaleString()}</div>
-                    <div style={{fontSize:10,color:rem<0?"#c62828":"#aaa"}}>Left: {rem.toLocaleString()}</div>
-                  </div>
-                </div>
-              </div>;
-            })}
+          <div style={{flex:3,minWidth:180}}>
+            <label>Description</label>
+            <input type="text" value={ct.description||""} onChange={function(e){updateCtField(ctr.id,ct.id,"description",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
           </div>
         </div>
       </div>
-      {ct.description&&<div className="card" style={{marginTop:10}}>
-        <div style={{fontSize:12,color:"#555"}}>{ct.description}</div>
-      </div>}
+
+      {/* Addendums */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{fontWeight:700,fontSize:13}}>Addendums ({(ct.addendums||[]).length})</div>
+          <button className="btn btn-sm" onClick={function(){addAdItem(ctr.id,ct.id,"addendums",newAddendum());}}>＋ Add</button>
+        </div>
+        {(ct.addendums||[]).length===0?<div style={{color:"#bbb",fontSize:12}}>None yet.</div>
+        :(ct.addendums||[]).map(function(ad,i){
+          addCumul+=Number(ad.amount||0);
+          return <div key={ad.id} style={{padding:"10px 12px",background:"#fafaf8",borderRadius:8,border:"1px solid #f0ede6",marginBottom:8}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"center"}}>
+              <div style={{flex:1,minWidth:90}}>
+                <label style={{fontSize:9}}>Add #</label>
+                <input type="text" value={ad.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"number",e.target.value);}} style={{padding:"3px 6px",fontSize:11,fontWeight:700}}/>
+              </div>
+              <div style={{flex:1,minWidth:90}}>
+                <label style={{fontSize:9}}>INS #</label>
+                <input type="text" value={ad.instructionNumber||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionNumber",e.target.value);}} style={{padding:"3px 6px",fontSize:11}}/>
+              </div>
+              <div style={{flex:1,minWidth:90}}>
+                <label style={{fontSize:9}}>Date</label>
+                <input type="date" value={ad.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"date",e.target.value);}} style={{padding:"3px 6px",fontSize:10}}/>
+              </div>
+              <button onClick={function(){if(confirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:16,alignSelf:"flex-end",paddingBottom:2}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+              <div style={{flex:1,minWidth:90}}>
+                <label style={{fontSize:9}}>Contract Amount</label>
+                <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} style={{padding:"3px 6px",fontSize:11}}/>
+              </div>
+              <div style={{flex:1,minWidth:90}}>
+                <label style={{fontSize:9}}>INS Amount</label>
+                <input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} style={{padding:"3px 6px",fontSize:11}}/>
+              </div>
+              <div style={{fontSize:10,color:"#888",whiteSpace:"nowrap",paddingTop:14}}>Cumul: <strong>{addCumul.toLocaleString()}</strong></div>
+            </div>
+            <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{marginTop:5,width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,color:"#555"}}/>
+          </div>;
+        })}
+      </div>
+
+      {/* Certifications */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{fontWeight:700,fontSize:13}}>Certifications ({(ct.certifications||[]).length})</div>
+          <button className="btn btn-sm" onClick={function(){addAdItem(ctr.id,ct.id,"certifications",newCertification());}}>＋ Add</button>
+        </div>
+        {(ct.certifications||[]).length===0?<div style={{color:"#bbb",fontSize:12}}>None yet.</div>
+        :(ct.certifications||[]).map(function(cf,i){
+          certCumul+=Number(cf.amount||0);
+          var rem=fin.total-certCumul;
+          return <div key={cf.id} style={{padding:"10px 12px",background:"#fafaf8",borderRadius:8,border:"1px solid #f0ede6",marginBottom:8}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"center"}}>
+              <div style={{flex:1,minWidth:90}}>
+                <label style={{fontSize:9}}>Cert #</label>
+                <input type="text" value={cf.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"number",e.target.value);}} style={{padding:"3px 6px",fontSize:11,fontWeight:700}}/>
+              </div>
+              <div style={{flex:1,minWidth:110}}>
+                <label style={{fontSize:9}}>Period (MM/YY)</label>
+                <input type="month" value={cf.date?cf.date.slice(0,7):""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"date",e.target.value+"-01");}} style={{padding:"3px 5px",fontSize:10}}/>
+              </div>
+              <button onClick={function(){if(confirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:16,alignSelf:"flex-end",paddingBottom:2}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:120}}>
+                <label style={{fontSize:9}}>Amount (incl. tax)</label>
+                <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} style={{padding:"3px 6px",fontSize:11}}/>
+              </div>
+              <div style={{fontSize:10,paddingTop:14,whiteSpace:"nowrap"}}>
+                <span style={{color:"#2e7d32"}}>Cumul: <strong>{certCumul.toLocaleString()}</strong></span>
+                <span style={{marginLeft:8,color:rem<0?"#c62828":"#888"}}>Left: <strong>{rem.toLocaleString()}</strong></span>
+              </div>
+            </div>
+            <input type="text" value={cf.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"comment",e.target.value);}} placeholder="Comment..." style={{marginTop:5,width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,color:"#555"}}/>
+          </div>;
+        })}
+      </div>
     </div>;
   }
 
-  // List view — summary cards
+  // ── SUBCONTRACTOR CONTRACTS VIEW ───────────────────────────────
+  if(nav&&nav.ctrId&&!nav.ctId){
+    var ctr2=(contractors||[]).find(function(c){return c.id===nav.ctrId;})||{contracts:[]};
+    var totVal2=(ctr2.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).total;},0);
+    var totCert2=(ctr2.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).certified;},0);
+    var linkedTenders2=(ctr2.tenderRefs||[ctr2.tenderRef].filter(Boolean)).map(function(id){return (tenders||[]).find(function(t){return t.id===id;});}).filter(Boolean);
+    return <div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+        <button className="btn btn-sm" onClick={function(){setNav(null);}}>← Back</button>
+        <div style={{flex:1}}>
+          <div className="page-title">{ctr2.name}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4,alignItems:"center"}}>
+            {ctr2.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>📦 {ctr2.package}</span>}
+            {ctr2.owner&&<OwnerChip owner={ctr2.owner}/>}
+            {linkedTenders2.map(function(lt){return lt?<span key={lt.id} className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {lt.title}</span>:null;})}
+          </div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:13,fontWeight:700}}>{totVal2.toLocaleString()} EUR</div>
+          <div style={{fontSize:11,color:"#2e7d32"}}>Certified: {totCert2.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {(ctr2.contracts||[]).length===0
+        ?<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No contracts for this subcontractor.</div></div>
+        :(ctr2.contracts||[]).map(function(ct){
+          var fin=contractFinancials(ct);
+          var lt2=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
+          return <div key={ct.id} className="ctr-card" onClick={function(){setNav({ctrId:ctr2.id,ctId:ct.id});}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14}}>{ct.number||"(no number)"} {ct.sapNumber&&<span style={{fontSize:12,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
+                <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
+                  {ct.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>📦 {ct.package}</span>}
+                  {lt2&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt2.title}</span>}
+                  {ct.description&&<span style={{fontSize:11,color:"#888"}}>{ct.description}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontSize:15,fontWeight:800}}>{fin.total.toLocaleString()} <span style={{fontSize:11}}>{ct.currency||"EUR"}</span></div>
+                <div style={{fontSize:11,color:"#2e7d32"}}>Certified: {fin.certified.toLocaleString()} ({fin.pct}%)</div>
+                <div style={{fontSize:11,color:fin.remaining<0?"#c62828":"#888"}}>Left: {fin.remaining.toLocaleString()}</div>
+              </div>
+            </div>
+            <div className="pbar" style={{marginTop:8}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
+            <div style={{fontSize:11,color:"#aaa",marginTop:4}}>
+              {(ct.addendums||[]).length} addendum{(ct.addendums||[]).length!==1?"s":""} · {(ct.certifications||[]).length} certification{(ct.certifications||[]).length!==1?"s":""}
+              {fin.forecast&&<span style={{marginLeft:8,color:fin.forecast>(ct.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:600}}>Forecast: {fmtMonthYear(fin.forecast)}</span>}
+            </div>
+          </div>;
+        })}
+    </div>;
+  }
+
+  // ── LIST VIEW ──────────────────────────────────────────────────
+  var allContracts=[];
+  (contractors||[]).forEach(function(ctr){(ctr.contracts||[]).forEach(function(ct){allContracts.push({ct:ct,ctr:ctr});});});
+  var allPkgs=[...new Set(allContracts.map(function(x){return x.ct.package;}).filter(Boolean))].sort();
+  var allCtrs=[...new Set((contractors||[]).map(function(c){return c.name;}).filter(Boolean))].sort();
+  var filtered=allContracts.filter(function(x){
+    if(fPkg!=="all"&&x.ct.package!==fPkg)return false;
+    if(fCtr!=="all"&&x.ctr.name!==fCtr)return false;
+    if(q){var lq=q.toLowerCase();if(!(x.ct.number||"").toLowerCase().includes(lq)&&!(x.ct.sapNumber||"").toLowerCase().includes(lq)&&!(x.ctr.name||"").toLowerCase().includes(lq))return false;}
+    return true;
+  });
+
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Contracts</div>
-        <div className="page-sub">{allContracts.length} contracts across {(contractors||[]).length} subcontractors</div>
+        <div className="page-sub">{allContracts.length} contracts · {(contractors||[]).length} subcontractors</div>
       </div>
     </div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search contract, SAP, subcontractor..." style={{width:250,padding:"5px 10px",fontSize:12}}/>
+      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search contract, SAP..." style={{width:220,padding:"5px 10px",fontSize:12}}/>
       <select value={fCtr} onChange={function(e){setFCtr(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All subcontractors</option>
         {allCtrs.map(function(n){return <option key={n} value={n}>{n}</option>;})}
@@ -1884,39 +1981,62 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
       {(q||fCtr!=="all"||fPkg!=="all")&&<button className="btn btn-sm" onClick={function(){setQ("");setFCtr("all");setFPkg("all");}}>✕ Reset</button>}
     </div>
 
-    {filtered.length===0?<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No contracts found.</div></div>
-    :<table className="tbl">
-      <thead><tr><th>Contract #</th><th>SAP #</th><th>Subcontractor</th><th>Package</th><th>Tender</th><th>Value</th><th>Instructed</th><th>Certified</th><th>Remaining</th><th>%</th><th>Forecast end</th></tr></thead>
-      <tbody>{filtered.map(function(x){
-        var ct=x.ct;var ctr=x.ctr;
-        var fin=contractFinancials(ct);
-        var lt=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
-        return <tr key={ct.id} style={{cursor:"pointer"}} onClick={function(){setSelContract(x);}}>
-          <td style={{fontWeight:700}}>{ct.number||<span style={{color:"#ddd"}}>—</span>}</td>
-          <td>{ct.sapNumber?<span style={{color:"#1a73e8",fontWeight:600}}>{ct.sapNumber}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
-          <td><OwnerChip owner={ctr.name}/></td>
-          <td>{ct.package?<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{ct.package}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
-          <td>{lt?<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:<span style={{color:"#ddd"}}>—</span>}</td>
-          <td style={{fontWeight:600,whiteSpace:"nowrap"}}>{fin.total.toLocaleString()}</td>
-          <td style={{color:"#1a73e8",fontWeight:600,whiteSpace:"nowrap"}}>{fin.totalInstructed>0?fin.totalInstructed.toLocaleString():<span style={{color:"#ddd"}}>—</span>}</td>
-          <td style={{color:"#2e7d32",fontWeight:600,whiteSpace:"nowrap"}}>{fin.certified.toLocaleString()}</td>
-          <td style={{color:fin.remaining<0?"#c62828":"#1a1a1a",fontWeight:600,whiteSpace:"nowrap"}}>{fin.remaining.toLocaleString()}</td>
-          <td>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{width:40,height:5,background:"#f0ede6",borderRadius:3,overflow:"hidden"}}>
-                <div style={{width:fin.pct+"%",height:"100%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32",borderRadius:3}}/>
-              </div>
-              <span style={{fontSize:11,color:"#888"}}>{fin.pct}%</span>
+    {/* Grouped by subcontractor */}
+    {(contractors||[]).filter(function(ctr){
+      if(fCtr!=="all"&&ctr.name!==fCtr)return false;
+      if((ctr.contracts||[]).length===0)return false;
+      if(q){return (ctr.contracts||[]).some(function(ct){var lq=q.toLowerCase();return (ct.number||"").toLowerCase().includes(lq)||(ct.sapNumber||"").toLowerCase().includes(lq)||(ctr.name||"").toLowerCase().includes(lq);});}
+      return true;
+    }).map(function(ctr){
+      var ctrs=ctr.contracts||[];
+      var totV=ctrs.reduce(function(s,ct){return s+contractFinancials(ct).total;},0);
+      var totC=ctrs.reduce(function(s,ct){return s+contractFinancials(ct).certified;},0);
+      return <div key={ctr.id} style={{marginBottom:16}}>
+        <div className="ctr-card" style={{borderBottom:"2px solid #e8e6df",borderRadius:"12px 12px 0 0",cursor:"pointer",background:"#f8f7f4"}} onClick={function(){setNav({ctrId:ctr.id});}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:15}}>{ctr.name}</div>
+              <div style={{fontSize:12,color:"#888"}}>{ctr.package&&"📦 "+ctr.package} · {ctrs.length} contract{ctrs.length!==1?"s":""}</div>
             </div>
-          </td>
-          <td style={{fontSize:11,color:fin.forecast&&fin.forecast>(ct.endDate||"9999")?"#c62828":"#888",whiteSpace:"nowrap"}}>{fin.forecast?fmtDate(fin.forecast):"—"}</td>
-        </tr>;
-      })}</tbody>
-    </table>}
+            <div style={{textAlign:"right"}}>
+              <div style={{fontWeight:700,fontSize:13}}>{totV.toLocaleString()} EUR</div>
+              <div style={{fontSize:11,color:"#2e7d32"}}>Certified: {totC.toLocaleString()}</div>
+            </div>
+            <span style={{fontSize:16,color:"#aaa"}}>›</span>
+          </div>
+        </div>
+        <div style={{borderRadius:"0 0 12px 12px",border:"1.5px solid #e8e6df",borderTop:"none",overflow:"hidden"}}>
+          {ctrs.filter(function(ct){if(!q)return true;var lq=q.toLowerCase();return (ct.number||"").toLowerCase().includes(lq)||(ct.sapNumber||"").toLowerCase().includes(lq);}).map(function(ct){
+            var fin=contractFinancials(ct);
+            var lt=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
+            return <div key={ct.id} style={{padding:"10px 14px",borderBottom:"1px solid #f5f4f0",cursor:"pointer",background:"#fff",display:"flex",alignItems:"center",gap:10}} onClick={function(){setNav({ctrId:ctr.id,ctId:ct.id});}}
+              onMouseEnter={function(e){e.currentTarget.style.background="#fafaf8";}} onMouseLeave={function(e){e.currentTarget.style.background="#fff";}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:600,fontSize:13}}>{ct.number||"(no number)"} {ct.sapNumber&&<span style={{color:"#1a73e8",fontSize:11}}>SAP {ct.sapNumber}</span>}</div>
+                <div style={{display:"flex",gap:5,marginTop:3,flexWrap:"wrap"}}>
+                  {lt&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>}
+                  {ct.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>📦 {ct.package}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontWeight:600,fontSize:12}}>{fin.total.toLocaleString()} {ct.currency||"EUR"}</div>
+                <div style={{fontSize:10,color:"#2e7d32"}}>{fin.pct}% certified</div>
+              </div>
+              <div style={{width:50}}>
+                <div style={{height:4,background:"#f0ede6",borderRadius:2,overflow:"hidden"}}>
+                  <div style={{width:fin.pct+"%",height:"100%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/>
+                </div>
+              </div>
+              <span style={{fontSize:14,color:"#ccc"}}>›</span>
+            </div>;
+          })}
+        </div>
+      </div>;
+    })}
+    {allContracts.length===0&&<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No contracts yet. Add contracts from the Subcontractors tab.</div></div>}
   </div>;
 }
 
-// ── GLOBAL VIEW ────────────────────────────────────────────────────
 function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules}){
   const [fStatus,setFStatus]=useState("all");
   const [fOwners,setFOwners]=useState([]);
