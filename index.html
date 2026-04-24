@@ -178,6 +178,7 @@ const KEYS={
 function uuid(){return"id_"+Math.random().toString(36).slice(2)+Date.now().toString(36);}
 function today(){return new Date().toISOString().slice(0,10);}
 function fmtDate(d){if(!d)return"—";const p=d.split("-");return p.length===3?p[2]+"/"+p[1]+"/"+p[0].slice(2):d;}
+function fmtMonthYear(d){if(!d)return"—";var p=d.split("-");return p.length>=2?p[1]+"/"+p[0].slice(2):d;}
 function calcScore(i,u){return (i||1)*(u||1);}
 function scoreStyle(s){
   if(s>=7)return{bg:"#ffeaea",color:"#c62828",label:"🔥 "+s};
@@ -237,6 +238,154 @@ const cloudStore={
 };
 
 // ── Quick Add Sidebar ─────────────────────────────────────────────
+function GlobalPdfModal({apiKey,contractors,saveContractors,onClose}){
+  const [step,setStep]=useState("upload"); // upload | extract | confirm
+  const [localKey,setLocalKey]=useState(function(){try{return localStorage.getItem("pp_apikey")||apiKey||"";}catch(e){return apiKey||"";}});
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [cert,setCert]=useState({number:"",date:"",amount:"",sap:""});
+  const [matched,setMatched]=useState(null); // {ctr, ct}
+  const [fileName,setFileName]=useState("");
+
+  function handleFile(e){
+    var file=e.target.files&&e.target.files[0];
+    if(!file)return;
+    setFileName(file.name);
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var b64=ev.target.result.split(",")[1];
+      doExtract(b64);
+    };
+    reader.readAsDataURL(file);
+    e.target.value="";
+  }
+
+  function doExtract(b64){
+    var key=localKey.trim();
+    if(!key){setError("Please enter your Anthropic API key.");return;}
+    try{localStorage.setItem("pp_apikey",key);}catch(e){}
+    setLoading(true);setError("");setStep("extract");
+    fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",
+        max_tokens:1000,
+        messages:[{role:"user",content:[
+          {type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},
+          {type:"text",text:"Subcontractor valuation PDF. Extract these 4 fields: A. number = Valuation no value shown top right. B. date = Work implementation date as YYYY-MM format. C. sap = Contract no value shown top left. D. amount = GROSS AMOUNT TO BE PAID for the current period only, as a plain decimal number. Reply ONLY with raw JSON with keys: number, date, sap, amount."}
+        ]}]
+      })
+    })
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.error){setError("API error: "+data.error.message);setLoading(false);setStep("upload");return;}
+      var text=(data.content||[]).filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");
+      try{
+        var clean=text.replace(/```json|```/g,"").trim();
+        var parsed=JSON.parse(clean);
+        var nc={number:parsed.number||"",date:parsed.date?parsed.date.slice(0,7):"",amount:parsed.amount||"",sap:parsed.sap||""};
+        setCert(nc);
+        // Find matching contract by SAP
+        var found=null;
+        if(nc.sap){
+          (contractors||[]).forEach(function(ctr){
+            (ctr.contracts||[]).forEach(function(ct){
+              if((ct.sapNumber||"").trim()===nc.sap.trim()){found={ctr:ctr,ct:ct};}
+            });
+          });
+        }
+        setMatched(found);
+        setStep("confirm");
+      }catch(e){setError("Could not parse result. Try again.");setStep("upload");}
+      setLoading(false);
+    })
+    .catch(function(e){setError("Network error: "+e.message);setLoading(false);setStep("upload");});
+  }
+
+  function confirm(){
+    if(!matched){setError("No matching contract found. Please import from the subcontractor page directly.");return;}
+    var cf=newCertification();
+    cf.number=cert.number;
+    cf.date=cert.date?cert.date+"-01":cert.date;
+    cf.amount=Number(cert.amount)||0;
+    var d=(contractors||[]).map(function(ctr){
+      if(ctr.id!==matched.ctr.id)return ctr;
+      return Object.assign({},ctr,{contracts:(ctr.contracts||[]).map(function(ct){
+        if(ct.id!==matched.ct.id)return ct;
+        return Object.assign({},ct,{certifications:[...(ct.certifications||[]),cf]});
+      })});
+    });
+    saveContractors(d);
+    onClose();
+  }
+
+  function set(f,v){var u=Object.assign({},cert);u[f]=v;setCert(u);}
+
+  return <div className="overlay"><div className="modal" style={{maxWidth:520}}>
+    <div className="modal-hdr">
+      <div className="modal-title">📄 Import Certification</div>
+      <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+    </div>
+    <div className="modal-body">
+      {error&&<div style={{padding:"8px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+
+      {step==="upload"&&<div>
+        <div style={{marginBottom:12,padding:"10px 12px",background:"#f8f9ff",borderRadius:8,border:"1.5px solid #e8e6df"}}>
+          <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>🔑 Anthropic API Key</div>
+          <input type="password" value={localKey} onChange={function(e){setLocalKey(e.target.value);}}
+            placeholder="sk-ant-api03-..." style={{width:"100%",padding:"6px 8px",fontSize:12,fontFamily:"monospace",border:"1.5px solid #ddd",borderRadius:6,outline:"none",boxSizing:"border-box"}}/>
+          <div style={{fontSize:10,color:"#aaa",marginTop:3}}>Saved locally in your browser.</div>
+        </div>
+        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"20px",borderRadius:10,border:"2px dashed #e8e6df",cursor:"pointer",background:"#fafaf8",textTransform:"none",letterSpacing:"normal",fontSize:14,color:"#555",fontWeight:500}}>
+          📄 Click to select valuation PDF
+          <input type="file" accept=".pdf" style={{display:"none"}} onChange={handleFile}/>
+        </label>
+        <div style={{fontSize:11,color:"#aaa",marginTop:8,textAlign:"center"}}>The SAP contract number will be used to automatically match the subcontractor and contract.</div>
+      </div>}
+
+      {step==="extract"&&<div style={{textAlign:"center",padding:"32px 0"}}>
+        <div style={{fontSize:32,marginBottom:12}}>⏳</div>
+        <div style={{fontSize:14,fontWeight:600}}>Reading {fileName}...</div>
+        <div style={{fontSize:11,color:"#aaa",marginTop:6}}>Claude AI is extracting the data</div>
+      </div>}
+
+      {step==="confirm"&&<div>
+        {matched
+          ?<div style={{padding:"10px 14px",background:"#e8f5e9",borderRadius:8,border:"1px solid #c8e6c9",marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#2e7d32",marginBottom:2}}>✅ Contract matched automatically</div>
+            <div style={{fontSize:12}}>Subcontractor: <strong>{matched.ctr.name}</strong></div>
+            <div style={{fontSize:12}}>Contract: <strong>{matched.ct.number||"(no number)"}</strong> · SAP: <strong>{matched.ct.sapNumber}</strong></div>
+          </div>
+          :<div style={{padding:"10px 14px",background:"#fff8e1",borderRadius:8,border:"1px solid #ffe082",marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#f57f17"}}>⚠️ No contract matched for SAP: {cert.sap||"(not detected)"}</div>
+            <div style={{fontSize:11,color:"#888",marginTop:2}}>Check that the SAP number is entered in the correct contract. You can still review the data below.</div>
+          </div>}
+        <div style={{display:"flex",gap:10,marginBottom:10}}>
+          <div style={{flex:1}}>
+            <label>Valuation #</label>
+            <input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}}/>
+          </div>
+          <div style={{flex:1}}>
+            <label>Period (MM/YY)</label>
+            <input type="month" value={cert.date||""} onChange={function(e){set("date",e.target.value);}}/>
+          </div>
+        </div>
+        <div className="fg">
+          <label>Amount incl. tax (this period)</label>
+          <input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}}/>
+        </div>
+        <div style={{fontSize:11,color:"#888",marginTop:4}}>SAP detected: <strong>{cert.sap||"—"}</strong></div>
+      </div>}
+    </div>
+    {step==="confirm"&&<div className="modal-footer">
+      <button className="btn" onClick={onClose}>Cancel</button>
+      {matched&&<button className="btn btn-pri" onClick={confirm}>✓ Add Certification</button>}
+      {!matched&&<button className="btn" onClick={function(){setStep("upload");}}>← Try again</button>}
+    </div>}
+  </div></div>;
+}
+
 function ImprovementBox({improvements,saveImprovements,currentPage}){
   const [open,setOpen]=useState(false);
   const [text,setText]=useState("");
@@ -893,22 +1042,26 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages}){
 
 // ── CONTRACTORS VIEW ───────────────────────────────────────────────
 function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
-  const [loading,setLoading]=useState(true);
+  const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
-  const [cert,setCert]=useState({number:"",date:"",amount:""});
+  const [cert,setCert]=useState({number:"",date:"",amount:"",sap:""});
+  const [localKey,setLocalKey]=useState(function(){try{return localStorage.getItem('pp_apikey')||apiKey||"";}catch(e){return apiKey||"";}});
+  const [extracted,setExtracted]=useState(false);
 
-  useEffect(function(){
+  function doExtract(){
+    var key=localKey.trim();
+    if(!key){setError("Please enter your Anthropic API key.");return;}
+    try{localStorage.setItem('pp_apikey',key);}catch(e){}
     setLoading(true);setError("");
-    if(!apiKey){setError("No API key set. Please add your Anthropic API key in Settings.");setLoading(false);return;}
     fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
-      headers:{"Content-Type":"application/json","x-api-key":apiKey||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body:JSON.stringify({
         model:"claude-sonnet-4-20250514",
         max_tokens:1000,
         messages:[{role:"user",content:[
           {type:"document",source:{type:"base64",media_type:"application/pdf",data:pdfData.b64}},
-          {type:"text",text:"Extract from this PDF: cert number/reference, date as YYYY-MM-DD, and certified amount as a plain number. Reply ONLY with raw JSON with keys: number, date, amount. Empty string if not found."}
+          {type:"text",text:"Subcontractor valuation PDF. Extract these 4 fields: A. number = Valuation no value shown top right. B. date = Work implementation date as YYYY-MM format. C. sap = Contract no value shown top left. D. amount = GROSS AMOUNT TO BE PAID for the current period only, as a plain decimal number. Reply ONLY with raw JSON with keys: number, date, sap, amount."}
         ]}]
       })
     })
@@ -918,15 +1071,17 @@ function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
       if(data.content&&data.content.length>0){
         data.content.forEach(function(block){if(block.type==="text")text+=block.text;});
       }
+      if(data.error){setError("API error: "+data.error.message);setLoading(false);return;}
       try{
         var clean=text.replace(/```json|```/g,"").trim();
         var parsed=JSON.parse(clean);
-        setCert({number:parsed.number||"",date:parsed.date||"",amount:parsed.amount||""});
-      }catch(e){setError("Could not parse extraction result. Please fill manually.");}
+        setCert({number:parsed.number||"",date:parsed.date?parsed.date.slice(0,7):"",amount:parsed.amount||"",sap:parsed.sap||""});
+        setExtracted(true);
+      }catch(e){setError("Could not parse result. Fill manually below.");}
       setLoading(false);
     })
-    .catch(function(e){setError("API error: "+e.message);setLoading(false);});
-  },[]);
+    .catch(function(e){setError("Network error: "+e.message+". Check your API key and internet connection.");setLoading(false);});
+  }
 
   function set(f,v){var u=Object.assign({},cert);u[f]=v;setCert(u);}
 
@@ -936,33 +1091,39 @@ function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
     </div>
     <div className="modal-body">
-      {loading&&<div style={{textAlign:"center",padding:"32px 0",color:"#888"}}>
-        <div style={{fontSize:28,marginBottom:12}}>⏳</div>
-        <div style={{fontSize:14}}>Extracting data from PDF...</div>
-        <div style={{fontSize:11,color:"#bbb",marginTop:6}}>Claude AI is reading the document</div>
+      {!extracted&&<div style={{marginBottom:14,padding:"10px 12px",background:"#f8f9ff",borderRadius:8,border:"1.5px solid #e8e6df"}}>
+        <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>🔑 Anthropic API Key</div>
+        <div style={{display:"flex",gap:6}}>
+          <input type="password" value={localKey} onChange={function(e){setLocalKey(e.target.value);}}
+            onKeyDown={function(e){if(e.key==="Enter")doExtract();}}
+            placeholder="sk-ant-api03-..." style={{flex:1,padding:"6px 8px",fontSize:12,fontFamily:"monospace",border:"1.5px solid #ddd",borderRadius:6,outline:"none"}}/>
+          <button className="btn btn-gold" onClick={doExtract} disabled={loading} style={{whiteSpace:"nowrap",padding:"6px 12px"}}>
+            {loading?"⏳ Reading...":"🔍 Extract"}
+          </button>
+        </div>
+        <div style={{fontSize:10,color:"#aaa",marginTop:4}}>Your key is saved locally in this browser for next time.</div>
       </div>}
-      {error&&<div style={{padding:"10px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
-      {!loading&&<div>
-        <div style={{padding:"8px 12px",background:"#e8f5e9",borderRadius:8,fontSize:12,color:"#2e7d32",marginBottom:16,fontWeight:600}}>
-          ✅ Extraction complete — review and confirm before saving
-        </div>
-        <div className="fg"><label>Certification #</label>
-          <input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}} placeholder="e.g. CERT-2024-03"/>
-        </div>
-        <div className="fg"><label>Date</label>
-          <input type="date" value={cert.date} onChange={function(e){set("date",e.target.value);}}/>
-        </div>
-        <div className="fg"><label>Amount</label>
-          <input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}} placeholder="0"/>
-        </div>
+      {error&&<div style={{padding:"8px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+      {extracted&&<div style={{padding:"8px 12px",background:"#e8f5e9",borderRadius:8,fontSize:12,color:"#2e7d32",marginBottom:12,fontWeight:600}}>
+        ✅ Extraction complete — review and confirm
       </div>}
+      {cert.sap&&<div style={{padding:"6px 10px",background:"#e8f0fe",borderRadius:7,marginBottom:10,fontSize:12}}>🔍 SAP detected: <strong>{cert.sap}</strong> — will match contract automatically</div>}
+      <div className="fg"><label>Valuation #</label>
+        <input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}} placeholder="003"/>
+      </div>
+      <div className="fg"><label>Date (MM/YY)</label>
+        <input type="month" value={cert.date?cert.date.slice(0,7):""} onChange={function(e){set("date",e.target.value+"-01");}}/>
+      </div>
+      <div className="fg"><label>Amount</label>
+        <input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}} placeholder="0"/>
+      </div>
     </div>
-    {!loading&&<div className="modal-footer">
+    <div className="modal-footer">
       <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn btn-pri" onClick={function(){onConfirm({number:cert.number,date:cert.date,amount:Number(cert.amount)||0},pdfData.ctrId,pdfData.ctId);}}>
+      <button className="btn btn-pri" onClick={function(){onConfirm({number:cert.number,date:cert.date?cert.date+"-01":cert.date,amount:Number(cert.amount)||0,sap:cert.sap},pdfData.ctrId,pdfData.ctId);}}>
         ✓ Add Certification
       </button>
-    </div>}
+    </div>
   </div></div>;
 }
 
@@ -1176,7 +1337,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                 return <div key={cf.id} style={{marginBottom:6,padding:"6px 8px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6"}}>
                   <div style={{display:"flex",gap:5,marginBottom:3}}>
                     <input type="text" value={cf.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"number",e.target.value);}} placeholder="Cert #" style={{flex:1,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
-                    <input type="date" value={cf.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"date",e.target.value);}} style={{width:115,padding:"3px 5px",fontSize:10}}/>
+                    <input type="month" value={cf.date?cf.date.slice(0,7):""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"date",e.target.value+"-01");}} style={{width:105,padding:"3px 5px",fontSize:10}}/>
                   </div>
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
                     <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} placeholder="Amount" style={{flex:1,padding:"3px 6px",fontSize:11}}/>
@@ -1460,10 +1621,31 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
         </div>;})}
       </div>
     </div>}
+
+    {tab==="improvements"&&<div className="card">
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontWeight:700,fontSize:14}}>💡 Improvement Register ({(improvements||[]).length})</div>
+        <button className="btn btn-sm" onClick={function(){
+          var NL=String.fromCharCode(10);
+          var txt=(improvements||[]).map(function(imp){return "["+imp.date+"] ["+imp.page+"] "+imp.text;}).join(NL);
+          navigator.clipboard.writeText(txt);
+        }}>📋 Copy all</button>
+      </div>
+      {(improvements||[]).length===0
+        ?<div style={{color:"#bbb",fontSize:13}}>No improvements recorded yet. Click the 💡 button on any page to add one.</div>
+        :(improvements||[]).map(function(imp){return <div key={imp.id} style={{padding:"8px 12px",borderRadius:8,background:"#fffbf0",border:"1px solid #fed7aa",marginBottom:6,display:"flex",gap:8,alignItems:"flex-start"}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13}}>{imp.text}</div>
+            <div style={{fontSize:11,color:"#aaa",marginTop:3}}>📅 {imp.date} · 📍 {imp.page}</div>
+          </div>
+          <button onClick={function(){saveImprovements((improvements||[]).filter(function(x){return x.id!==imp.id;}));}}
+            style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,flexShrink:0}}
+            onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}}
+            onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+        </div>;})}
+    </div>}
   </div>;
 }
-
-// ── CONTRACTS VIEW ────────────────────────────────────────────────
 function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,tasks}){
   function saveCtr2(d){saveContractors(d);if(selContract){var newCtr=d.find(function(c){return c.id===selContract.ctr.id;});var newCt=newCtr?(newCtr.contracts||[]).find(function(c){return c.id===selContract.ct.id;}):null;if(newCtr&&newCt)setSelContract({ctr:newCtr,ct:newCt});}}
   const [selContract,setSelContract]=useState(null);
@@ -1663,7 +1845,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
                     <span style={{fontWeight:700,fontSize:12}}>{cf.number||"—"}</span>
-                    {cf.date&&<span style={{marginLeft:8,fontSize:11,color:"#888"}}>📅 {fmtDate(cf.date)}</span>}
+                    {cf.date&&<span style={{marginLeft:8,fontSize:11,color:"#888"}}>📅 {fmtMonthYear(cf.date)}</span>}
                   </div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontWeight:700,fontSize:12,color:"#2e7d32"}}>{Number(cf.amount||0).toLocaleString()}</div>
@@ -2016,6 +2198,7 @@ function App(){
   const [tags,setTags]=useState(SEED_TAGS);
   const [tagrules,setTagrules]=useState({});
   const [pkgrules,setPkgrules]=useState({});
+  const [pdfGlobal,setPdfGlobal]=useState(null);
   const [improvements,setImprovements]=useState([]);
   function saveImprovements(d){setImprovements(d);sync(KEYS_IMP,d);}
   const [apiKey,setApiKey]=useState(function(){try{return localStorage.getItem('pp_apikey')||'';}catch(e){return '';}});
@@ -2156,6 +2339,13 @@ function App(){
         <QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={addTask} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
       </aside>
     <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
+    <div style={{position:"fixed",bottom:16,right:318,zIndex:500}}>
+      <button onClick={function(){setPdfGlobal({open:true});}} title="Import certification from PDF"
+        style={{width:36,height:36,borderRadius:"50%",background:"#1a73e8",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"all .15s"}}>
+        📄
+      </button>
+    </div>
+    {pdfGlobal&&pdfGlobal.open&&<GlobalPdfModal apiKey={apiKey} contractors={contractors} saveContractors={saveContractors} onClose={function(){setPdfGlobal(null);}}/>}
     </div>
   </div>;
 }
