@@ -1417,14 +1417,19 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Instruction #</span>
                   <input type="text" value={ct.instructionNumber||""} onChange={function(e){updateContract(ctr.id,ct.id,"instructionNumber",e.target.value);}} placeholder="INS-001" style={{width:90,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>INS amount</span>
-                  <input type="number" value={ct.instructionAmount||""} onChange={function(e){updateContract(ctr.id,ct.id,"instructionAmount",e.target.value);}} placeholder="0" style={{width:90,padding:"3px 7px",fontSize:12,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                  <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
+                    <input type="number" value={ct.instructionAmount||""} onChange={function(e){updateContract(ctr.id,ct.id,"instructionAmount",e.target.value);}} placeholder="0" style={{width:100,padding:"3px 36px 3px 7px",fontSize:12,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                    <span style={{position:"absolute",right:6,fontSize:10,fontWeight:700,color:"#aaa",pointerEvents:"none"}}>{ct.currency||"EUR"}</span>
+                  </div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Amount</span>
-                  <input type="number" value={ct.amount||""} onChange={function(e){updateContract(ctr.id,ct.id,"amount",e.target.value);}} placeholder="0" style={{width:100,padding:"3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
-                  <select value={ct.currency||"EUR"} onChange={function(e){updateContract(ctr.id,ct.id,"currency",e.target.value);}} style={{width:65,padding:"3px 6px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:6}}>
-                    {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
-                  </select>
+                  <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
+                    <input type="number" value={ct.amount||""} onChange={function(e){updateContract(ctr.id,ct.id,"amount",e.target.value);}} placeholder="0" style={{width:110,padding:"3px 36px 3px 7px",fontSize:12,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:6}}/>
+                    <select value={ct.currency||"EUR"} onChange={function(e){updateContract(ctr.id,ct.id,"currency",e.target.value);}} style={{position:"absolute",right:0,top:0,bottom:0,border:"none",background:"transparent",fontFamily:"inherit",fontSize:10,fontWeight:700,color:"#888",cursor:"pointer",outline:"none",paddingRight:2}}>
+                      {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
+                    </select>
+                  </div>
                 </div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -1868,17 +1873,23 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           <label>SAP #</label>
           <input type="text" value={ct.sapNumber||""} onChange={function(e){updateCtField(ctr.id,ct.id,"sapNumber",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
         </div>
-        <div style={{flex:"0 0 130px"}}>
-          <label>Amount excl. tax (EUR)</label>
-          <input type="number" value={ct.amount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"amount",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
+        <div style={{flex:"0 0 150px"}}>
+          <label>Amount excl. tax</label>
+          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <input type="number" value={ct.amount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"amount",e.target.value);}} style={{width:"100%",padding:"4px 32px 4px 8px",fontSize:12,boxSizing:"border-box"}}/>
+            <span style={{position:"absolute",right:6,fontSize:10,fontWeight:700,color:"#888",pointerEvents:"none"}}>{ct.currency||"EUR"}</span>
+          </div>
         </div>
         <div style={{flex:"0 0 120px"}}>
           <label>INS #</label>
           <input type="text" value={ct.instructionNumber||""} onChange={function(e){updateCtField(ctr.id,ct.id,"instructionNumber",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
         </div>
-        <div style={{flex:"0 0 130px"}}>
-          <label>INS Amount excl. tax (EUR)</label>
-          <input type="number" value={ct.instructionAmount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"instructionAmount",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
+        <div style={{flex:"0 0 150px"}}>
+          <label>INS Amount excl. tax</label>
+          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <input type="number" value={ct.instructionAmount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"instructionAmount",e.target.value);}} style={{width:"100%",padding:"4px 32px 4px 8px",fontSize:12,boxSizing:"border-box"}}/>
+            <span style={{position:"absolute",right:6,fontSize:10,fontWeight:700,color:"#888",pointerEvents:"none"}}>{ct.currency||"EUR"}</span>
+          </div>
         </div>
       </div>
       {/* Row 2: Dates + Tender */}
@@ -1927,7 +1938,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="text" value={ad.instructionNumber||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionNumber",e.target.value);}} placeholder="INS #" style={{width:80,padding:"3px 6px",fontSize:11}}/>
               <input type="date" value={ad.date||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"date",e.target.value);}} style={{width:130,padding:"3px 6px",fontSize:11}}/>
               <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
-              <input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} placeholder="INS Amt EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
+<div style={{position:"relative",display:"inline-flex",alignItems:"center"}}><input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} placeholder="INS Amt" style={{width:110,padding:"3px 28px 3px 6px",fontSize:11}}/><span style={{position:"absolute",right:4,fontSize:9,fontWeight:700,color:"#aaa",pointerEvents:"none"}}>{ct.currency||"EUR"}</span></div>
               <span style={{fontSize:10,color:"#888"}}>Cumul: <strong>{addCumul.toLocaleString()} EUR</strong></span>
               <button onClick={function(){if(confirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
@@ -2034,10 +2045,36 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     var ct=(ctr.contracts||[]).find(function(c){return c.id===nav.ctId;})||{addendums:[],certifications:[]};
     var fin=contractFinancials(ct);
     var linkedTender=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
+    var allCtrContracts=(contractors||[]).flatMap(function(c){return (c.contracts||[]).map(function(ct2){return {ct:ct2,ctr:c};});});
 
-    return <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
-      updateCtField={updateCtField} updateAdItem={updateAdItem} delAdItem={delAdItem} addAdItem={addAdItem}
-      tenders={tenders} nav={nav} setNav={setNav}/>;
+    return <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+      {/* Left sidebar: all contracts */}
+      <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
+        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Contracts</div>
+        <div style={{maxHeight:"80vh",overflowY:"auto"}}>
+          {(contractors||[]).filter(function(c){return (c.contracts||[]).length>0;}).map(function(c){
+            var hasSel=c.id===nav.ctrId;
+            return <div key={c.id}>
+              <div style={{padding:"6px 10px",fontSize:10,fontWeight:800,color:"#888",background:"#fafaf8",textTransform:"uppercase",letterSpacing:".3px"}}>{c.name}</div>
+              {(c.contracts||[]).map(function(ct2){
+                var isActive=ct2.id===nav.ctId;
+                var f2=contractFinancials(ct2);
+                return <div key={ct2.id} onClick={function(){setNav({ctrId:c.id,ctId:ct2.id});}} style={{padding:"6px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent")}}>
+                  <div style={{fontSize:11,fontWeight:isActive?700:400,color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct2.number||"(no #)"} {ct2.sapNumber&&<span style={{color:"#1a73e8",fontSize:9}}>SAP</span>}</div>
+                  <div style={{fontSize:9,color:"#aaa"}}>{f2.pct}% certified</div>
+                </div>;
+              })}
+            </div>;
+          })}
+        </div>
+      </div>
+      {/* Main detail */}
+      <div style={{flex:1,minWidth:0}}>
+        <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
+          updateCtField={updateCtField} updateAdItem={updateAdItem} delAdItem={delAdItem} addAdItem={addAdItem}
+          tenders={tenders} nav={nav} setNav={setNav}/>
+      </div>
+    </div>;
   }
 
   if(nav&&nav.ctrId&&!nav.ctId){
