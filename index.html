@@ -225,7 +225,7 @@ function newTracker(overrides){return Object.assign({id:uuid(),title:"",descript
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",addendums:[],certifications:[],description:"",};}
+function newContract(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",addendums:[],certifications:[],description:"",};}
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:""};}
 
@@ -1056,7 +1056,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         return <div key={ct.id} className="card" style={{marginBottom:12}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:10}}>
             <div style={{flex:1}}>
-              {ct.package&&<div style={{marginBottom:6}}><span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:11}}>📦 {ct.package}</span></div>}
+              {ct.tenderRef&&(function(){var td=tnds.find(function(t){return t.id===ct.tenderRef;});return td?<div style={{marginBottom:6}}><span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11}}>📑 {td.title}{td.package?" · "+td.package:""}</span></div>:null;})()}
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Contract #</span>
@@ -1084,10 +1084,10 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
                 {fin.forecast&&<span style={{fontSize:11,color:fin.forecast>(ct.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:700}}>Forecast: {fmtDate(fin.forecast)}</span>}
               </div>
               <div style={{display:"flex",gap:8,marginTop:6,alignItems:"center"}}>
-                <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Package</span>
-                <select value={ct.package||""} onChange={function(e){updateContract(ctr.id,ct.id,"package",e.target.value);}} style={{flex:1,padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+                <span style={{fontSize:11,fontWeight:700,color:"#888",whiteSpace:"nowrap"}}>Linked Tender</span>
+                <select value={ct.tenderRef||""} onChange={function(e){updateContract(ctr.id,ct.id,"tenderRef",e.target.value);}} style={{flex:1,padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
                   <option value="">— none —</option>
-                  {pkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
+                  {tnds.map(function(t){return <option key={t.id} value={t.id}>{t.title}{t.package?" ("+t.package+")":""}</option>;})}
                 </select>
               </div>
               <input type="text" value={ct.description||""} onChange={function(e){updateContract(ctr.id,ct.id,"description",e.target.value);}} placeholder="Description..." style={{marginTop:6,width:"100%",padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,color:"#888"}}/>
@@ -1219,7 +1219,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
             <td>{ctr.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{ctr.package}</span>}</td>
             <td>{ctr.owner&&<OwnerChip owner={ctr.owner}/>}</td>
             <td>{linkedT.length>0?<div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{linkedT.map(function(lt){return lt?<span key={lt.id} className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>:null;})}</div>:<span style={{color:"#ddd"}}>—</span>}</td>
-            <td><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[...new Set((ctr.contracts||[]).map(function(ct){return ct.package;}).filter(Boolean))].map(function(p){return <span key={p} className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{p}</span>;})}</div></td>
+            <td><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[...new Set((ctr.contracts||[]).map(function(ct){return ct.tenderRef;}).filter(Boolean))].map(function(tid){var td=tnds.find(function(t){return t.id===tid;});return td?<span key={tid} className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {td.title}</span>:null;})}</div></td>
             <td style={{textAlign:"center"}}>{(ctr.contracts||[]).length}</td>
             <td style={{fontWeight:600}}>{totVal.toLocaleString()}</td>
             <td style={{color:"#1a73e8",fontWeight:600}}>{(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).totalInstructed;},0).toLocaleString()}</td>
