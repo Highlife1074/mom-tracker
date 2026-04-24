@@ -238,76 +238,30 @@ const cloudStore={
 };
 
 // ── Quick Add Sidebar ─────────────────────────────────────────────
-function GlobalPdfModal({apiKey,contractors,saveContractors,onClose}){
-  const [step,setStep]=useState("upload"); // upload | extract | confirm
-  const [localKey,setLocalKey]=useState(function(){try{return localStorage.getItem("pp_apikey")||apiKey||"";}catch(e){return apiKey||"";}});
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
+function GlobalPdfModal({contractors,saveContractors,onClose}){
   const [cert,setCert]=useState({number:"",date:"",amount:"",sap:""});
-  const [matched,setMatched]=useState(null); // {ctr, ct}
-  const [fileName,setFileName]=useState("");
+  const [matched,setMatched]=useState(null);
+  const [error,setError]=useState("");
 
-  function handleFile(e){
-    var file=e.target.files&&e.target.files[0];
-    if(!file)return;
-    setFileName(file.name);
-    var reader=new FileReader();
-    reader.onload=function(ev){
-      var b64=ev.target.result.split(",")[1];
-      doExtract(b64);
-    };
-    reader.readAsDataURL(file);
-    e.target.value="";
-  }
-
-  function doExtract(b64){
-    var key=localKey.trim();
-    if(!key){setError("Please enter your Anthropic API key.");return;}
-    try{localStorage.setItem("pp_apikey",key);}catch(e){}
-    setLoading(true);setError("");setStep("extract");
-    fetch("https://quiet-shrimp-48.highlife1074.deno.net",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        model:"claude-sonnet-4-5",
-        max_tokens:1000,
-        messages:[{role:"user",content:[
-          {type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},
-          {type:"text",text:"Subcontractor valuation PDF. Extract these 4 fields: A. number = Valuation no value shown top right. B. date = Work implementation date as YYYY-MM format. C. sap = Contract no value shown top left. D. amount = GROSS AMOUNT TO BE PAID for the current period only, as a plain decimal number. Reply ONLY with raw JSON with keys: number, date, sap, amount."}
-        ]}]
-      })
-    })
-    .then(function(r){return r.json();})
-    .then(function(data){
-      if(data.error){setError("API error: "+data.error.message);setLoading(false);setStep("upload");return;}
-      var text=(data.content||[]).filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");
-      try{
-        var clean=text.replace(/```json|```/g,"").trim();
-        var parsed=JSON.parse(clean);
-        var nc={number:parsed.number||"",date:parsed.date?parsed.date.slice(0,7):"",amount:parsed.amount||"",sap:parsed.sap||""};
-        setCert(nc);
-        // Find matching contract by SAP
-        var found=null;
-        if(nc.sap){
-          (contractors||[]).forEach(function(ctr){
-            (ctr.contracts||[]).forEach(function(ct){
-              if((ct.sapNumber||"").trim()===nc.sap.trim()){found={ctr:ctr,ct:ct};}
-            });
-          });
-        }
-        setMatched(found);
-        setStep("confirm");
-      }catch(e){setError("Could not parse result. Try again.");setStep("upload");}
-      setLoading(false);
-    })
-    .catch(function(e){setError("Network error: "+e.message);setLoading(false);setStep("upload");});
+  function set(f,v){
+    var u=Object.assign({},cert);u[f]=v;setCert(u);
+    // Auto-match SAP when sap field changes
+    if(f==="sap"){
+      var found=null;
+      (contractors||[]).forEach(function(ctr){
+        (ctr.contracts||[]).forEach(function(ct){
+          if((ct.sapNumber||"").trim()===v.trim()){found={ctr:ctr,ct:ct};}
+        });
+      });
+      setMatched(found);
+    }
   }
 
   function confirm(){
-    if(!matched){setError("No matching contract found. Please import from the subcontractor page directly.");return;}
+    if(!matched){setError("No contract matched this SAP number. Check the SAP # in the Subcontractors tab.");return;}
     var cf=newCertification();
     cf.number=cert.number;
-    cf.date=cert.date?cert.date+"-01":cert.date;
+    cf.date=cert.date?cert.date+"-01":"";
     cf.amount=Number(cert.amount)||0;
     var d=(contractors||[]).map(function(ctr){
       if(ctr.id!==matched.ctr.id)return ctr;
@@ -320,63 +274,40 @@ function GlobalPdfModal({apiKey,contractors,saveContractors,onClose}){
     onClose();
   }
 
-  function set(f,v){var u=Object.assign({},cert);u[f]=v;setCert(u);}
-
-  return <div className="overlay"><div className="modal" style={{maxWidth:520}}>
+  return <div className="overlay"><div className="modal" style={{maxWidth:460}}>
     <div className="modal-hdr">
-      <div className="modal-title">📄 Import Certification</div>
+      <div className="modal-title">📄 Add Certification</div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
     </div>
     <div className="modal-body">
       {error&&<div style={{padding:"8px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
-
-      {step==="upload"&&<div>
-        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"24px",borderRadius:10,border:"2px dashed #e8e6df",cursor:"pointer",background:"#fafaf8",textTransform:"none",letterSpacing:"normal",fontSize:14,color:"#555",fontWeight:500}}>
-          📄 Click to select valuation PDF
-          <input type="file" accept=".pdf" style={{display:"none"}} onChange={handleFile}/>
-        </label>
-        <div style={{fontSize:11,color:"#aaa",marginTop:8,textAlign:"center"}}>The SAP number will automatically match the subcontractor and contract.</div>
-      </div>}
-
-      {step==="extract"&&<div style={{textAlign:"center",padding:"32px 0"}}>
-        <div style={{fontSize:32,marginBottom:12}}>⏳</div>
-        <div style={{fontSize:14,fontWeight:600}}>Reading {fileName}...</div>
-        <div style={{fontSize:11,color:"#aaa",marginTop:6}}>Claude AI is extracting the data</div>
-      </div>}
-
-      {step==="confirm"&&<div>
-        {matched
-          ?<div style={{padding:"10px 14px",background:"#e8f5e9",borderRadius:8,border:"1px solid #c8e6c9",marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#2e7d32",marginBottom:2}}>✅ Contract matched automatically</div>
-            <div style={{fontSize:12}}>Subcontractor: <strong>{matched.ctr.name}</strong></div>
-            <div style={{fontSize:12}}>Contract: <strong>{matched.ct.number||"(no number)"}</strong> · SAP: <strong>{matched.ct.sapNumber}</strong></div>
-          </div>
-          :<div style={{padding:"10px 14px",background:"#fff8e1",borderRadius:8,border:"1px solid #ffe082",marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#f57f17"}}>⚠️ No contract matched for SAP: {cert.sap||"(not detected)"}</div>
-            <div style={{fontSize:11,color:"#888",marginTop:2}}>Check that the SAP number is entered in the correct contract. You can still review the data below.</div>
-          </div>}
-        <div style={{display:"flex",gap:10,marginBottom:10}}>
-          <div style={{flex:1}}>
-            <label>Valuation #</label>
-            <input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}}/>
-          </div>
-          <div style={{flex:1}}>
-            <label>Period (MM/YY)</label>
-            <input type="month" value={cert.date||""} onChange={function(e){set("date",e.target.value);}}/>
-          </div>
+      <div className="fg">
+        <label>SAP Contract # <span style={{color:"#888",fontWeight:400,textTransform:"none"}}>(auto-matches subcontractor)</span></label>
+        <input type="text" value={cert.sap} onChange={function(e){set("sap",e.target.value);}} placeholder="e.g. 9001032541" autoFocus/>
+        {matched&&<div style={{marginTop:5,padding:"5px 8px",background:"#e8f5e9",borderRadius:6,fontSize:11,color:"#2e7d32",fontWeight:600}}>
+          ✅ {matched.ctr.name} · {matched.ct.number||"(no contract number)"}
+        </div>}
+        {cert.sap&&!matched&&<div style={{marginTop:5,fontSize:11,color:"#f57f17"}}>⚠️ No contract found for this SAP number</div>}
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <div className="fg" style={{flex:1}}>
+          <label>Valuation #</label>
+          <input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}} placeholder="003"/>
         </div>
-        <div className="fg">
-          <label>Amount incl. tax (this period)</label>
-          <input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}}/>
+        <div className="fg" style={{flex:1}}>
+          <label>Period (MM/YY)</label>
+          <input type="month" value={cert.date||""} onChange={function(e){set("date",e.target.value);}}/>
         </div>
-        <div style={{fontSize:11,color:"#888",marginTop:4}}>SAP detected: <strong>{cert.sap||"—"}</strong></div>
-      </div>}
+      </div>
+      <div className="fg">
+        <label>Amount incl. tax (this period)</label>
+        <input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}} placeholder="34249.84"/>
+      </div>
     </div>
-    {step==="confirm"&&<div className="modal-footer">
+    <div className="modal-footer">
       <button className="btn" onClick={onClose}>Cancel</button>
-      {matched&&<button className="btn btn-pri" onClick={confirm}>✓ Add Certification</button>}
-      {!matched&&<button className="btn" onClick={function(){setStep("upload");}}>← Try again</button>}
-    </div>}
+      <button className="btn btn-pri" disabled={!matched||!cert.amount} onClick={confirm}>✓ Add Certification</button>
+    </div>
   </div></div>;
 }
 
@@ -1525,7 +1456,7 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
     <div className="page-hdr">
       <div><div className="page-title">Settings</div><div className="page-sub">Manage tags, people, packages and CC rules</div></div>
     </div>
-<div style={{padding:"8px 12px",background:"#e8f5e9",borderRadius:8,border:"1px solid #c8e6c9",marginBottom:12,fontSize:12,color:"#2e7d32",fontWeight:600}}>✅ PDF import active — proxy server configured</div>
+
 
     <div style={{display:"flex",gap:8,marginBottom:20}}>
       {["tags","people","packages","cc-rules","improvements"].map(function(t){return <button key={t} className={"fchip"+(tab===t?" on":"")} onClick={function(){setTab(t);}} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t==="improvements"?"💡 Improvements":t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
@@ -2452,7 +2383,7 @@ function App(){
         📄
       </button>
     </div>
-    {pdfGlobal&&pdfGlobal.open&&<GlobalPdfModal apiKey={apiKey} contractors={contractors} saveContractors={saveContractors} onClose={function(){setPdfGlobal(null);}}/>}
+    {pdfGlobal&&pdfGlobal.open&&<GlobalPdfModal contractors={contractors} saveContractors={saveContractors} onClose={function(){setPdfGlobal(null);}}/>}
     </div>
   </div>;
 }
