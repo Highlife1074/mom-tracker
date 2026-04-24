@@ -200,7 +200,7 @@ function getAllCCs(tags,pkg,owner,tagrules,pkgrules){
 // Tender step statuses
 const TENDER_STEPS=[
   {key:"pkg",label:"Tender Package",opts:["—","Not started","In preparation","Submitted","Approved"]},
-  {key:"process",label:"Tender Process",opts:["—","Not started","Enquiry sent","Bids received","Under evaluation","Awarded"]},
+  {key:"process",label:"Tender Process",opts:["—","Not started","Enquiry sent","Bids received","Under evaluation","Awarded"],special:"process"},
   {key:"acc",label:"ACC/Aconex",opts:["—","Internal review ongoing","Pending client approval","Approved A","Approved B","Approved C"]},
   {key:"contract",label:"Contract",opts:["—","Request sent","In circulation","Signed"]},
   {key:"mar",label:"MAR",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]},
@@ -436,6 +436,80 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
         </select>
       </div>
       <button className="btn btn-gold" style={{width:"100%",justifyContent:"center"}} onClick={submit}>＋ Add Task</button>
+    </div>
+  </div>;
+}
+
+// ── Reusable ActionItem component ─────────────────────────────────
+function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,tenders,contractors,showCreated}){
+  const [editMode,setEditMode]=useState(false);
+  const sc=calcScore(task.importance||1,task.urgence||1);
+  const ss=scoreStyle(sc);
+  const tdr=task.tenderRef?(tenders||[]).find(function(t){return t.id===task.tenderRef;}):null;
+  const ctr=task.contractorRef?(contractors||[]).find(function(c){return c.id===task.contractorRef;}):null;
+
+  function upd(field,val){if(onUpdate)onUpdate(field,val);}
+
+  return <div className="ac-item" style={{background:editMode?"#f8f9ff":task.status==="done"?"#fafaf8":"#fff",borderColor:editMode?"#3949ab":"#e8e6df",flexDirection:"column",gap:0}}>
+    <div style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%"}}>
+      <div className={"ac-check"+(task.status==="done"?" done":"")} style={{flexShrink:0,marginTop:3,cursor:"pointer"}}
+        onClick={function(){if(onStatusChange)onStatusChange(task.status==="done"?"pending":"done");}}>
+        {task.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        {editMode
+          ?<div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <textarea value={task.text||""} autoFocus onChange={function(e){upd("text",e.target.value);}} style={{width:"100%",padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:13,resize:"vertical",outline:"none",minHeight:44,boxSizing:"border-box"}}/>
+            <div style={{display:"flex",gap:6}}>
+              <select value={task.status||"pending"} onChange={function(e){upd("status",e.target.value);}} style={{flex:1,padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid #ddd"}}>
+                {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
+              </select>
+              <input type="date" value={task.due||""} onChange={function(e){upd("due",e.target.value);}} style={{flex:1,padding:"4px 6px",fontSize:11,borderRadius:5,border:"1px solid #ddd"}}/>
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <select value={task.owner||""} onChange={function(e){upd("owner",e.target.value);}} style={{flex:1,padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid #ddd"}}>
+                <option value="">No owner</option>
+                {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+              </select>
+              <select value={task.package||""} onChange={function(e){upd("package",e.target.value);}} style={{flex:1,padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid #ddd"}}>
+                <option value="">No package</option>
+                {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"#aaa",alignSelf:"center"}}>I</span>
+              {[1,2,3].map(function(v){return <button key={v} onClick={function(){upd("importance",v);}} style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((task.importance||1)===v?"#1c1c1e":"#ddd"),background:(task.importance||1)===v?"#1c1c1e":"#fff",color:(task.importance||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
+              <span style={{fontSize:10,color:"#aaa",alignSelf:"center",marginLeft:4}}>U</span>
+              {[1,2,3].map(function(v){return <button key={v} onClick={function(){upd("urgence",v);}} style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((task.urgence||1)===v?"#1c1c1e":"#ddd"),background:(task.urgence||1)===v?"#1c1c1e":"#fff",color:(task.urgence||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
+            </div>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];upd("tags",on?cur.filter(function(x){return x!==tg;}):[...cur,tg]);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+            </div>
+            <textarea value={task.note||""} onChange={function(e){upd("note",e.target.value);}} placeholder="Notes..." style={{minHeight:32,fontSize:11,padding:"4px 8px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit",resize:"vertical"}}/>
+            <button className="btn btn-sm btn-pri" onClick={function(){setEditMode(false);}} style={{alignSelf:"flex-start"}}>✓ Done editing</button>
+          </div>
+          :<div>
+            <div className={"ac-text"+(task.status==="done"?" done":"")} style={{fontWeight:500}}>{task.text||<span style={{color:"#ccc",fontStyle:"italic"}}>No text</span>}</div>
+            {task.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{task.note}</div>}
+            <div className="ac-meta" style={{marginTop:4}}>
+              {task.due&&<span style={{fontSize:11,color:task.due<today()&&task.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(task.due)}</span>}
+              {task.owner&&<OwnerChip owner={task.owner}/>}
+              {task.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{task.package}</span>}
+              {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
+              {(task.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
+              {tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}
+              {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
+            </div>
+            {(showCreated!==false)&&task.createdAt&&<div style={{fontSize:10,color:"#ccc",marginTop:3}}>Added {fmtDate(task.createdAt)}</div>}
+          </div>}
+      </div>
+      {!editMode&&<div style={{display:"flex",gap:4,flexShrink:0}}>
+        <select className="btn btn-sm" value={task.status||"pending"} onChange={function(e){if(onStatusChange)onStatusChange(e.target.value);}} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd"}}>
+          {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
+        </select>
+        {onUpdate&&<button className="btn btn-sm" onClick={function(){setEditMode(true);}} style={{padding:"3px 7px"}}>✏️</button>}
+        {onDelete&&<button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete?"))onDelete();}} style={{padding:"3px 7px"}}>🗑</button>}
+      </div>}
     </div>
   </div>;
 }
@@ -778,6 +852,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [selTender,setSelTender]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [formData,setFormData]=useState(null);
+  const [processPct,setProcessPct]=useState({});
+  const [processBids,setProcessBids]=useState({});
 
   const allPkgs=[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))].sort();
 
@@ -868,11 +944,27 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             return <tr key={s.key}>
               <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{s.label}</td>
               <td style={{minWidth:180}}>
-                <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
-                  style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
-                  {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-                </select>
-                {val&&val!=="—"&&<span className={"chip "+cls} style={{marginLeft:4,fontSize:10}}>{val}</span>}
+                {s.special==="process"
+                  ?<div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:3}}>
+                      <span style={{fontSize:10,color:"#888"}}>%</span>
+                      <input type="number" min="0" max="100" value={(processPct[td.id]!==undefined?processPct[td.id]:((td.stepDates||{}).process||{}).pct)||""} onChange={function(e){var np=Object.assign({},processPct);np[td.id]=e.target.value;setProcessPct(np);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{pct:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:55,padding:"3px 5px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:5}}/>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:3}}>
+                      <span style={{fontSize:10,color:"#888"}}>Bids</span>
+                      <input type="number" min="0" value={(processBids[td.id]!==undefined?processBids[td.id]:((td.stepDates||{}).process||{}).bids)||""} onChange={function(e){var nb=Object.assign({},processBids);nb[td.id]=e.target.value;setProcessBids(nb);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{bids:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:45,padding:"3px 5px",fontSize:11,border:"1.5px solid #e8e6df",borderRadius:5}}/>
+                    </div>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"1px solid #e8e6df",background:"#fff",fontFamily:"inherit",fontSize:11,cursor:"pointer",outline:"none",borderRadius:5,padding:"2px 4px"}}>
+                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                    </select>
+                  </div>
+                  :<div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
+                      style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
+                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                    </select>
+                    {val&&val!=="—"&&<span className={"chip "+cls} style={{marginLeft:4,fontSize:10}}>{val}</span>}
+                  </div>}
               </td>
               <td><input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
               <td><input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
@@ -887,32 +979,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         {linkedTasks.length===0
           ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this tender. Add one from the sidebar Quick Add or Actions tab.</div>
           :linkedTasks.map(function(t){
-            var sc=calcScore(t.importance||1,t.urgence||1);var ss=scoreStyle(sc);
-            var ctr=(contractors||[]).find(function(c){return c.id===t.contractorRef;});
-            return <div key={t.id} className="ac-item" style={{marginBottom:6,flexDirection:"column",gap:6}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%"}}>
-                <div className="ac-check" style={{borderColor:t.status==="done"?"#2e7d32":"#ddd",background:t.status==="done"?"#2e7d32":"transparent",flexShrink:0,marginTop:2,cursor:"pointer"}}
-                  onClick={function(){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:t.status==="done"?"pending":"done"});}));}}>
-                  {t.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
-                </div>
-                <div style={{flex:1}}>
-                  <div className={"ac-text"+(t.status==="done"?" done":"")} style={{fontWeight:500}}>{t.text}</div>
-                  {t.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{t.note}</div>}
-                  <div className="ac-meta">
-                    {t.createdAt&&<span style={{fontSize:10,color:"#ccc"}}>Created: {fmtDate(t.createdAt)}</span>}
-                    {t.due&&<span style={{fontSize:11,color:t.due<today()&&t.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(t.due)}</span>}
-                    {t.owner&&<OwnerChip owner={t.owner}/>}
-                    {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{t.package}</span>}
-                    {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
-                    {(t.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
-                    {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
-                  </div>
-                </div>
-                <select className="btn btn-sm" value={t.status} onChange={function(e){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:e.target.value});}));}} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd",flexShrink:0}}>
-                  {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
-                </select>
-              </div>
-            </div>;
+            return <ActionItem key={t.id} task={t}
+              onStatusChange={function(val){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
+              onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=Object.assign({},x);u[field]=val;return u;}));}}
+              people={people} packages={packages} tags={[]} tenders={tenders} contractors={contractors}/>;
           })}
       </div>
       {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages}/>}
@@ -1932,11 +2002,8 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
       <select value={fPkg} onChange={function(e){
         var newPkg=e.target.value;
         setFPkg(newPkg);
-        // Reset tender filter if selected tender not in new package
-        if(fTender!=="all"&&newPkg!=="all"){
-          var td=(tenders||[]).find(function(t){return t.id===fTender;});
-          if(td&&td.package!==newPkg)setFTender("all");
-        }
+        if(fTender!=="all"&&newPkg!=="all"){var td=(tenders||[]).find(function(t){return t.id===fTender;});if(td&&td.package!==newPkg)setFTender("all");}
+        if(fContractor!=="all"&&newPkg!=="all"){var ctr=(contractors||[]).find(function(c){return c.id===fContractor;});if(ctr&&ctr.package!==newPkg&&!(ctr.contracts||[]).some(function(ct){return ct.package===newPkg;}))setFContractor("all");}
       }} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All packages</option>
         {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
@@ -2148,11 +2215,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       <select value={fPkg} onChange={function(e){
         var newPkg=e.target.value;
         setFPkg(newPkg);
-        // Reset tender filter if selected tender not in new package
-        if(fTender!=="all"&&newPkg!=="all"){
-          var td=(tenders||[]).find(function(t){return t.id===fTender;});
-          if(td&&td.package!==newPkg)setFTender("all");
-        }
+        if(fTender!=="all"&&newPkg!=="all"){var td=(tenders||[]).find(function(t){return t.id===fTender;});if(td&&td.package!==newPkg)setFTender("all");}
+        if(fContractor!=="all"&&newPkg!=="all"){var ctr=(contractors||[]).find(function(c){return c.id===fContractor;});if(ctr&&ctr.package!==newPkg&&!(ctr.contracts||[]).some(function(ct){return ct.package===newPkg;}))setFContractor("all");}
       }} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All packages</option>
         {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
@@ -2166,7 +2230,10 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       </select>
       <select value={fContractor} onChange={function(e){setFContractor(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All subcontractors</option>
-        {(contractors||[]).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
+        {(contractors||[]).filter(function(ctr){
+          if(fPkg==="all")return true;
+          return ctr.package===fPkg||(ctr.contracts||[]).some(function(ct){return ct.package===fPkg;});
+        }).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
       </select>
       <select value={fCC} onChange={function(e){setFCC(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All CC</option>
