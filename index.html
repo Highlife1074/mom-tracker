@@ -199,6 +199,8 @@ function getAllCCs(tags,pkg,owner,tagrules,pkgrules){
 
 // Tender step statuses
 const TENDER_STEPS=[
+  {key:"pkg",label:"Tender Package",opts:["—","Not started","In preparation","Submitted","Approved"]},
+  {key:"process",label:"Tender Process",opts:["—","Not started","Enquiry sent","Bids received","Under evaluation","Awarded"]},
   {key:"acc",label:"ACC/Aconex",opts:["—","Internal review ongoing","Pending client approval","Approved A","Approved B","Approved C"]},
   {key:"contract",label:"Contract",opts:["—","Request sent","In circulation","Signed"]},
   {key:"mar",label:"MAR",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]},
@@ -225,7 +227,7 @@ const STATUS_ICONS={pending:"⏳","in progress":"🔄",done:"✅",blocked:"🚫"
 function newTask(overrides){return Object.assign({id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today()},overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
-function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
+function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
 function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",addendums:[],certifications:[],description:"",};}
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:""};}
@@ -768,7 +770,7 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
 }
 
 // ── TENDERS VIEW ───────────────────────────────────────────────────
-function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
+function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors}){
   const [pkgFilter,setPkgFilter]=useState("all");
   const [searchQ,setSearchQ]=useState("");
   const [sortCol,setSortCol]=useState("title");
@@ -824,7 +826,19 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
 
   if(selTender){
     var td=selTender;
-    return <div>
+    return <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
+      {/* Sidebar tender list */}
+      <div style={{width:220,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0}}>
+        <div style={{padding:"10px 12px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Tenders</div>
+        <div style={{maxHeight:"80vh",overflowY:"auto"}}>
+          {filtered.map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"8px 12px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:12,fontWeight:isActive?700:400}}>
+            <div style={{color:isActive?"#1c1c1e":"#555",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div>
+            {t.package&&<div style={{fontSize:10,color:"#aaa",marginTop:1}}>{t.package}</div>}
+          </div>;})}
+        </div>
+      </div>
+      {/* Main detail */}
+      <div style={{flex:1,minWidth:0}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
         <button className="btn btn-sm" onClick={function(){setSelTender(null);}}>← Back</button>
         <div style={{flex:1}}>
@@ -871,15 +885,38 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
       <div className="card" style={{marginTop:10}}>
         <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
         {linkedTasks.length===0
-          ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this tender.</div>
-          :linkedTasks.map(function(t){return <div key={t.id} className="ac-item" style={{marginBottom:6}}>
-            <div style={{flex:1}}>
-              <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
-              <div className="ac-meta">{t.due&&<span style={{fontSize:11,color:"#bbb"}}>📅 {fmtDate(t.due)}</span>}{t.owner&&<OwnerChip owner={t.owner}/>}<StatusChip status={t.status}/></div>
-            </div>
-          </div>;})}
+          ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this tender. Add one from the sidebar Quick Add or Actions tab.</div>
+          :linkedTasks.map(function(t){
+            var sc=calcScore(t.importance||1,t.urgence||1);var ss=scoreStyle(sc);
+            var ctr=(contractors||[]).find(function(c){return c.id===t.contractorRef;});
+            return <div key={t.id} className="ac-item" style={{marginBottom:6,flexDirection:"column",gap:6}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%"}}>
+                <div className="ac-check" style={{borderColor:t.status==="done"?"#2e7d32":"#ddd",background:t.status==="done"?"#2e7d32":"transparent",flexShrink:0,marginTop:2,cursor:"pointer"}}
+                  onClick={function(){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:t.status==="done"?"pending":"done"});}));}}>
+                  {t.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
+                </div>
+                <div style={{flex:1}}>
+                  <div className={"ac-text"+(t.status==="done"?" done":"")} style={{fontWeight:500}}>{t.text}</div>
+                  {t.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{t.note}</div>}
+                  <div className="ac-meta">
+                    {t.createdAt&&<span style={{fontSize:10,color:"#ccc"}}>Created: {fmtDate(t.createdAt)}</span>}
+                    {t.due&&<span style={{fontSize:11,color:t.due<today()&&t.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(t.due)}</span>}
+                    {t.owner&&<OwnerChip owner={t.owner}/>}
+                    {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{t.package}</span>}
+                    {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
+                    {(t.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
+                    {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
+                  </div>
+                </div>
+                <select className="btn btn-sm" value={t.status} onChange={function(e){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:e.target.value});}));}} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd",flexShrink:0}}>
+                  {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
+                </select>
+              </div>
+            </div>;
+          })}
       </div>
       {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages}/>}
+      </div>{/* end main detail */}
     </div>;
   }
 
@@ -901,7 +938,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks}){
           <th style={{cursor:"pointer"}} onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
           <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
           <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("acc");}}>ACC{sortIcon("acc")}</th>
+          <th>Pkg</th><th>Process</th><th style={{cursor:"pointer"}} onClick={function(){toggleSort("acc");}}>ACC{sortIcon("acc")}</th>
           <th style={{cursor:"pointer"}} onClick={function(){toggleSort("contract");}}>Contract{sortIcon("contract")}</th>
           <th>MAR</th><th>ITP</th><th>WMS</th>
         </tr></thead>
@@ -1892,7 +1929,15 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
         <option value="all">All subcontractors</option>
         {allCtrs.map(function(n){return <option key={n} value={n}>{n}</option>;})}
       </select>
-      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+      <select value={fPkg} onChange={function(e){
+        var newPkg=e.target.value;
+        setFPkg(newPkg);
+        // Reset tender filter if selected tender not in new package
+        if(fTender!=="all"&&newPkg!=="all"){
+          var td=(tenders||[]).find(function(t){return t.id===fTender;});
+          if(td&&td.package!==newPkg)setFTender("all");
+        }
+      }} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All packages</option>
         {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
@@ -2100,13 +2145,24 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         <option value="all">All status</option>
         {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
       </select>
-      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+      <select value={fPkg} onChange={function(e){
+        var newPkg=e.target.value;
+        setFPkg(newPkg);
+        // Reset tender filter if selected tender not in new package
+        if(fTender!=="all"&&newPkg!=="all"){
+          var td=(tenders||[]).find(function(t){return t.id===fTender;});
+          if(td&&td.package!==newPkg)setFTender("all");
+        }
+      }} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All packages</option>
         {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
       <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All tenders</option>
-        {(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
+        {(tenders||[]).filter(function(t){
+          if(fPkg==="all")return true;
+          return t.package===fPkg;
+        }).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
       </select>
       <select value={fContractor} onChange={function(e){setFContractor(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
         <option value="all">All subcontractors</option>
@@ -2365,7 +2421,7 @@ function App(){
       <div className="content">
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules}/>}
-        {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT}/>}
+        {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors}/>}
         {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey}/>}
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules}/>}
