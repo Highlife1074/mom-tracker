@@ -1431,46 +1431,6 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
         </div>
       </div>;
     })}
-    {/* Linked Tasks */}
-    <div className="card" style={{marginBottom:10}}>
-      <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>
-        Linked Actions ({((tasks||[]).filter(function(t){return t.contractorRef===ctr.id||(ct.tenderRef&&t.tenderRef===ct.tenderRef);}).length)})
-      </div>
-      {(tasks||[]).filter(function(t){return t.contractorRef===ctr.id||(ct.tenderRef&&t.tenderRef===ct.tenderRef);}).map(function(t){
-        var sc=calcScore(t.importance||1,t.urgence||1);var ss=scoreStyle(sc);
-        return <div key={t.id} className="ac-item" style={{marginBottom:4}}>
-          <div className="ac-check" style={{background:t.status==="done"?"#2e7d32":"transparent",borderColor:t.status==="done"?"#2e7d32":"#ddd",cursor:"pointer",flexShrink:0,marginTop:2}} onClick={function(){saveT((tasks||[]).map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:t.status==="done"?"pending":"done"});}));}}>
-            {t.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
-          </div>
-          <div style={{flex:1}}>
-            <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
-            <div className="ac-meta">
-              {t.due&&<span style={{fontSize:11,color:t.due<today()&&t.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(t.due)}</span>}
-              {t.owner&&<OwnerChip owner={t.owner}/>}
-              {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{t.package}</span>}
-              {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
-              {(t.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
-            </div>
-          </div>
-          <select value={t.status} onChange={function(e){saveT((tasks||[]).map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:e.target.value});}));}} style={{fontSize:10,border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit",padding:"2px 4px",cursor:"pointer",flexShrink:0}}>
-            {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
-          </select>
-        </div>;
-      })}
-      <QuickAddTask
-        prefill={{
-          contractorRef:ctr.id,
-          tenderRef:ct.tenderRef||"",
-          package:ct.package||"",
-          owner:ct.owner||""
-        }}
-        onAdd={function(t){if(saveT)saveT([t,...(tasks||[])]);}}
-        people={people||window._ppPeople||[]}
-        tags={tags||window._ppTags||[]}
-        label="Add Task to this contract"
-      />
-    </div>
-
   </div>;
 }
 
