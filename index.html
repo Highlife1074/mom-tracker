@@ -2920,10 +2920,10 @@ function App(){
   const syncDot=<div className={"sync-dot sync-"+syncStatus} title={syncStatus==="ok"?"Synced":syncStatus==="syncing"?"Syncing…":"Sync error"}/>;
 
   return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
-    <div style={{background:"#1c1c1e",color:"#c9a84c",textAlign:"center",padding:"7px 16px",fontSize:13,fontWeight:800,letterSpacing:"2.5px",fontFamily:"'DM Serif Display',serif",flexShrink:0,borderBottom:"2px solid #c9a84c"}}>
+    <div style={{background:"#1c1c1e",color:"#c9a84c",textAlign:"center",padding:"7px 16px",fontSize:13,fontWeight:800,letterSpacing:"2.5px",fontFamily:"'DM Serif Display',serif",flexShrink:0,borderBottom:"2px solid #c9a84c",width:"100%",boxSizing:"border-box"}}>
       RIVIERA TOWER TRACKER
     </div>
-    <div className="layout" style={{flex:1,overflow:"hidden",minHeight:0}}>
+    <div className="layout" style={{flex:1,minHeight:0}}>
     {/* Left nav */}
     <nav className="leftnav">
       <div className="logo" style={{fontSize:11,lineHeight:1.2,textAlign:"center",letterSpacing:".5px"}}>Project<br/>Tracker</div>
