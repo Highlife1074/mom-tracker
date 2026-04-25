@@ -181,8 +181,49 @@ label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-
 <script id="app-source" type="text/plain"></script>
 <script>
 (function(){
+  var appSrcReady=false;
+  var dbReady=false;
+  var appCode="";
+
+  function tryRun(){
+    if(!appSrcReady||!dbReady)return;
+    try{
+      var out=Babel.transform(appCode,{presets:["react"]}).code;
+      eval(out);
+    }catch(e){
+      document.body.innerHTML='<div style="padding:24px;font-family:monospace;color:#c62828;white-space:pre-wrap;font-size:13px;background:#fff">BABEL ERROR:\n'+e.message+'\n\nStack:\n'+(e.stack||'')+'</div>';
+    }
+  }
+
+  // Load app.js
+  fetch('./app.js').then(function(r){
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return r.text();
+  }).then(function(src){
+    appCode=src;
+    appSrcReady=true;
+    tryRun();
+  }).catch(function(e){
+    document.body.innerHTML='<div style="padding:24px;color:#c62828;font-family:monospace;font-size:13px">Failed to load app.js: '+e.message+'<br>Make sure app.js is in the same folder as index.html</div>';
+  });
+
+  // Wait for Firebase
+  function waitForDb(){
+    if(window._dbReady){dbReady=true;tryRun();}
+    else window.addEventListener("db-ready",function(){dbReady=true;tryRun();},{once:true});
+  }
+  function waitForBabel(){
+    if(typeof Babel!=="undefined"&&typeof React!=="undefined"&&typeof ReactDOM!=="undefined"){
+      waitForDb();
+    }else setTimeout(waitForBabel,50);
+  }
+  document.readyState==="loading"?document.addEventListener("DOMContentLoaded",waitForBabel):waitForBabel();
+})();
+</script>
+<script>
+(function(){
   function run(){
-    fetch('app.js?v=-5859381').then(function(r){return r.text();}).then(function(src){
+    fetch('./app.js?v=-5859381').then(function(r){return r.text();}).then(function(src){
       try{
         var out=Babel.transform(src,{presets:["react"]}).code;
         eval(out);
