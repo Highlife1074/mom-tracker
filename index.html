@@ -512,12 +512,16 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
                 {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
               </select>
             </div>
-            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-              <span style={{fontSize:10,color:"#aaa",alignSelf:"center"}}>I</span>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,color:task.isInfo?"#1565c0":"#888",background:task.isInfo?"#e3f2fd":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(task.isInfo?"#1565c0":"#ddd"),alignSelf:"flex-start"}}>
+              <input type="checkbox" checked={!!task.isInfo} onChange={function(e){upd("isInfo",e.target.checked);}} style={{width:13,height:13,cursor:"pointer"}}/>
+              ℹ️ Info only (no action needed)
+            </label>
+            {!task.isInfo&&<div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{fontSize:10,color:"#aaa"}}>I</span>
               {[1,2,3].map(function(v){return <button key={v} onClick={function(){upd("importance",v);}} style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((task.importance||1)===v?"#1c1c1e":"#ddd"),background:(task.importance||1)===v?"#1c1c1e":"#fff",color:(task.importance||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
-              <span style={{fontSize:10,color:"#aaa",alignSelf:"center",marginLeft:4}}>U</span>
+              <span style={{fontSize:10,color:"#aaa",marginLeft:4}}>U</span>
               {[1,2,3].map(function(v){return <button key={v} onClick={function(){upd("urgence",v);}} style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((task.urgence||1)===v?"#1c1c1e":"#ddd"),background:(task.urgence||1)===v?"#1c1c1e":"#fff",color:(task.urgence||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
-            </div>
+            </div>}
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];upd("tags",on?cur.filter(function(x){return x!==tg;}):[...cur,tg]);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
             </div>
@@ -525,13 +529,16 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
             <button className="btn btn-sm btn-pri" onClick={function(){setEditMode(false);}} style={{alignSelf:"flex-start"}}>✓ Done editing</button>
           </div>
           :<div>
-            <div className={"ac-text"+(task.status==="done"?" done":"")} style={{fontWeight:500}}>{task.text||<span style={{color:"#ccc",fontStyle:"italic"}}>No text</span>}</div>
+            <div className={"ac-text"+(task.status==="done"?" done":"")} style={{fontWeight:500}}>
+              {task.isInfo&&<span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"1px 6px",borderRadius:8,background:"#e3f2fd",color:"#1565c0",fontSize:10,fontWeight:700,marginRight:5}}>ℹ️ INFO</span>}
+              {task.text||<span style={{color:"#ccc",fontStyle:"italic"}}>No text</span>}
+            </div>
             {task.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{task.note}</div>}
             <div className="ac-meta" style={{marginTop:4}}>
               {task.due&&<span style={{fontSize:11,color:task.due<today()&&task.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(task.due)}</span>}
               {task.owner&&<OwnerChip owner={task.owner}/>}
               {task.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{task.package}</span>}
-              {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
+              {!task.isInfo&&sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
               {(task.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
               {tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}
               {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
@@ -581,6 +588,11 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
   const [urgence,setUrgence]=useState(1);
   const [isInfo,setIsInfo]=useState(false);
   const inputRef=useRef();
+
+  useEffect(function(){
+    setOwner(prefill.owner||"");
+    setSelTags(prefill.tags||[]);
+  },[prefill.owner,prefill.tenderRef,prefill.contractorRef]);
 
   function reset(){setText("");setDue("");setOwner(prefill.owner||"");setSelTags(prefill.tags||[]);setImportance(1);setUrgence(1);setIsInfo(false);setOpen(false);}
   function submit(){
@@ -1106,8 +1118,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           })}
         <QuickAddTask
           prefill={{tenderRef:td.id, package:td.package||"", owner:td.ownerTender||""}}
-          onAdd={function(t){saveTasks([t,...(tasks||[])]);}}
-          people={people} tags={[]} label="Add Task to this tender"
+          onAdd={function(t){saveTasks([t,...(tasks||[])]);}} people={people}
+          tags={window._ppTags||[]} label="Add Task to this tender"
         />
       </div>
       {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages}/>}
@@ -1557,7 +1569,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         return <div key={ct.id} style={{marginBottom:12}}>
           <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
             updateCtField={updateContract2} updateAdItem={updateAdItem2} delAdItem={delAdItem2} addAdItem={addAdItem2}
-            tenders={tnds} nav={navFake} setNav={function(){}} saveT={saveT} tasks={tsks} people={ppl} tags={[]}/>
+            tenders={tnds} nav={navFake} setNav={function(){}} saveT={saveT} tasks={tsks} people={ppl} tags={window._ppTags||[]}/>
         </div>;
       })}
       {/* Correspondence Log */}
@@ -1574,7 +1586,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         <QuickAddTask
           prefill={{contractorRef:ctr.id, package:ctr.package||"", owner:ctr.owner||""}}
           onAdd={function(t){saveT([t,...(tsks||[])]);}}
-          people={ppl} tags={pkgs.length>0?[]:["Contract"]} label="Add Task to this subcontractor"
+          people={ppl} tags={window._ppTags||[]} label="Add Task to this subcontractor"
         />
       </div>
       {showForm&&formData&&<ContractorFormModal data={formData} onChange={setFormData} onSave={saveCtr} onClose={closeForm} people={ppl} packages={pkgs} tenders={tnds}/>}
