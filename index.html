@@ -385,10 +385,13 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
   const [selTags,setSelTags]=useState([]);
   const inputRef=useRef();
 
+  const [isInfo,setIsInfo]=useState(false);
   function submit(){
     if(!text.trim())return;
-    onAdd(newTask({text:text.trim(),owner,package:pkg,due,tenderRef,contractorRef,importance,urgence,tags:selTags}));
-    setText("");setDue("");setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);
+    var td={text:text.trim(),owner,package:pkg,due,tenderRef,contractorRef,importance,urgence,tags:selTags};
+    if(isInfo)td.isInfo=true;
+    onAdd(newTask(td));
+    setText("");setDue("");setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);setIsInfo(false);
     if(inputRef.current)inputRef.current.focus();
   }
   function toggleTag(t){setSelTags(function(prev){return prev.includes(t)?prev.filter(function(x){return x!==t;}):[...prev,t];});}
@@ -464,7 +467,11 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
           {(contractors||[]).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
         </select>
       </div>
-      <button className="btn btn-gold" style={{width:"100%",justifyContent:"center"}} onClick={submit}>＋ Add Task</button>
+      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:6,color:isInfo?"#1565c0":"#888"}}>
+        <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:13,height:13}}/>
+        ℹ️ Info only (no score needed)
+      </label>
+      <button className="btn btn-gold" style={{width:"100%",justifyContent:"center"}} onClick={submit}>＋ Add {isInfo?"Info":"Task"}</button>
     </div>
   </div>;
 }
@@ -570,36 +577,68 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
   const [due,setDue]=useState("");
   const [owner,setOwner]=useState(prefill.owner||"");
   const [selTags,setSelTags]=useState(prefill.tags||[]);
+  const [importance,setImportance]=useState(1);
+  const [urgence,setUrgence]=useState(1);
+  const [isInfo,setIsInfo]=useState(false);
   const inputRef=useRef();
 
-  function reset(){setText("");setDue("");setOwner(prefill.owner||"");setSelTags(prefill.tags||[]);setOpen(false);}
+  function reset(){setText("");setDue("");setOwner(prefill.owner||"");setSelTags(prefill.tags||[]);setImportance(1);setUrgence(1);setIsInfo(false);setOpen(false);}
   function submit(){
     if(!text.trim())return;
-    onAdd(newTask(Object.assign({},prefill,{text:text.trim(),due:due,owner:owner,tags:selTags})));
+    var td=Object.assign({},prefill,{text:text.trim(),due:due,owner:owner,tags:selTags,importance:importance,urgence:urgence});
+    if(isInfo)td.isInfo=true;
+    onAdd(newTask(td));
     reset();
   }
-  function toggleTag(t){setSelTags(function(prev){return prev.includes(t)?prev.filter(function(x){return x!==t;}):[...prev,t];});}
+  function toggleTag(tg){setSelTags(function(prev){return prev.includes(tg)?prev.filter(function(x){return x!==tg;}):[...prev,tg];});}
+
+  var sc=calcScore(importance,urgence);
+  var ss=scoreStyle(sc);
 
   if(!open)return <button className="btn btn-sm" onClick={function(){setOpen(true);setTimeout(function(){if(inputRef.current)inputRef.current.focus();},50);}} style={{marginTop:8}}>＋ {label||"Add Task"}</button>;
 
-  return <div style={{marginTop:8,padding:"10px 12px",background:"#f8f9ff",borderRadius:10,border:"1.5px solid #3949ab"}}>
-    <div style={{fontWeight:700,fontSize:12,color:"#3949ab",marginBottom:8}}>＋ {label||"Add Task"}
-      {prefill.package&&<span style={{marginLeft:8,padding:"1px 7px",borderRadius:10,background:"#f0ede6",color:"#555",fontSize:10,fontWeight:600}}>{prefill.package}</span>}
-      {prefill.tenderRef&&<span style={{marginLeft:4,padding:"1px 7px",borderRadius:10,background:"#fff8f0",color:"#b45309",fontSize:10,fontWeight:600}}>📑 linked</span>}
-      {prefill.contractorRef&&<span style={{marginLeft:4,padding:"1px 7px",borderRadius:10,background:"#e8f0fe",color:"#1a73e8",fontSize:10,fontWeight:600}}>🤝 linked</span>}
+  return <div style={{marginTop:8,padding:"12px",background:"#f8f9ff",borderRadius:10,border:"1.5px solid #3949ab"}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+      <div style={{fontWeight:700,fontSize:12,color:"#3949ab",flex:1}}>＋ {label||"Add Task"}
+        {prefill.package&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:10,background:"#f0ede6",color:"#555",fontSize:10,fontWeight:600}}>{prefill.package}</span>}
+        {prefill.tenderRef&&<span style={{marginLeft:3,fontSize:12}}>📑</span>}
+        {prefill.contractorRef&&<span style={{marginLeft:3,fontSize:12}}>🤝</span>}
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",fontSize:11,fontWeight:600,textTransform:"none",letterSpacing:"normal",color:isInfo?"#1565c0":"#888",background:isInfo?"#e3f2fd":"transparent",padding:"2px 8px",borderRadius:10,border:"1.5px solid "+(isInfo?"#1565c0":"#ddd")}}>
+        <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:12,height:12,cursor:"pointer"}}/>
+        ℹ️ Info only
+      </label>
     </div>
     <textarea ref={inputRef} value={text} onChange={function(e){setText(e.target.value);}}
       onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
-      placeholder="What needs to be done?" style={{width:"100%",padding:"6px 8px",border:"1.5px solid #ddd",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:44,boxSizing:"border-box"}}/>
+      placeholder={isInfo?"Information to record...":"What needs to be done? (Enter to add)"} style={{width:"100%",padding:"6px 8px",border:"1.5px solid #ddd",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:44,boxSizing:"border-box"}}/>
     <div style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
       <input type="date" value={due} onChange={function(e){setDue(e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #ddd",borderRadius:5}}/>
       <select value={owner} onChange={function(e){setOwner(e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit"}}>
         <option value="">No owner</option>
-        {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+        {(people||window._ppPeople||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
       </select>
-      {(tags||[]).map(function(t){var on=selTags.includes(t);var tc=tagColor(t);return <button key={t} onClick={function(){toggleTag(t);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{t}</button>;})}
     </div>
-    <div style={{display:"flex",gap:6,marginTop:8}}>
+    {!isInfo&&<div style={{display:"flex",gap:10,marginTop:8,alignItems:"center"}}>
+      <div>
+        <div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:3}}>IMPACT</div>
+        <div style={{display:"flex",gap:3}}>
+          {[1,2,3].map(function(v){return <button key={v} onClick={function(){setImportance(v);}} style={{width:24,height:24,borderRadius:5,border:"1.5px solid "+(importance===v?"#1c1c1e":"#ddd"),background:importance===v?"#1c1c1e":"#fff",color:importance===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
+        </div>
+      </div>
+      <span style={{color:"#ccc",fontSize:14}}>×</span>
+      <div>
+        <div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:3}}>URGENCY</div>
+        <div style={{display:"flex",gap:3}}>
+          {[1,2,3].map(function(v){return <button key={v} onClick={function(){setUrgence(v);}} style={{width:24,height:24,borderRadius:5,border:"1.5px solid "+(urgence===v?"#1c1c1e":"#ddd"),background:urgence===v?"#1c1c1e":"#fff",color:urgence===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
+        </div>
+      </div>
+      {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label} [{sc}]</span>}
+    </div>}
+    {(tags||window._ppTags||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:8}}>
+      {(tags||window._ppTags||[]).map(function(tg){var on=selTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){toggleTag(tg);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+    </div>}
+    <div style={{display:"flex",gap:6,marginTop:10}}>
       <button className="btn" onClick={reset} style={{padding:"4px 10px",fontSize:11}}>Cancel</button>
       <button className="btn btn-pri" onClick={submit} disabled={!text.trim()} style={{padding:"4px 10px",fontSize:11}}>＋ Add</button>
     </div>
@@ -1354,11 +1393,11 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
       </div>;
     })}
     {/* Linked Tasks */}
-    {saveT&&<div className="card" style={{marginBottom:10}}>
+    <div className="card" style={{marginBottom:10}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>
-        Linked Actions ({((tasks||[]).filter(function(t){return t.contractorRef===ctr.id||t.tenderRef===(ct.tenderRef||"__none__");}).length)})
+        Linked Actions ({((tasks||[]).filter(function(t){return t.contractorRef===ctr.id||(ct.tenderRef&&t.tenderRef===ct.tenderRef);}).length)})
       </div>
-      {(tasks||[]).filter(function(t){return t.contractorRef===ctr.id||t.tenderRef===(ct.tenderRef||"__none__");}).map(function(t){
+      {(tasks||[]).filter(function(t){return t.contractorRef===ctr.id||(ct.tenderRef&&t.tenderRef===ct.tenderRef);}).map(function(t){
         var sc=calcScore(t.importance||1,t.urgence||1);var ss=scoreStyle(sc);
         return <div key={t.id} className="ac-item" style={{marginBottom:4}}>
           <div className="ac-check" style={{background:t.status==="done"?"#2e7d32":"transparent",borderColor:t.status==="done"?"#2e7d32":"#ddd",cursor:"pointer",flexShrink:0,marginTop:2}} onClick={function(){saveT((tasks||[]).map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:t.status==="done"?"pending":"done"});}));}}>
@@ -1386,12 +1425,12 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
           package:ct.package||"",
           owner:ct.owner||""
         }}
-        onAdd={function(t){saveT([t,...(tasks||[])]);}}
+        onAdd={function(t){if(saveT)saveT([t,...(tasks||[])]);}}
         people={people||window._ppPeople||[]}
         tags={tags||window._ppTags||[]}
         label="Add Task to this contract"
       />
-    </div>}
+    </div>
   </div>;
 }
 
@@ -1522,7 +1561,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         </div>;
       })}
       {/* Correspondence Log */}
-      <CorrespondenceLog ctrId={ctr.id} ctrName={ctr.name} correspondences={correspondences||[]} saveCorrespondences={saveCorrespondences} saveT={saveT} tasks={tsks}/>
+      <CorrespondenceLog ctrId={selCtr.id} ctrName={selCtr.name} correspondences={correspondences||[]} saveCorrespondences={saveCorrespondences} saveT={saveT} tasks={tsks}/>
 
       <div className="card">
         <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
@@ -2358,6 +2397,7 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
 
   // Filter: pending/in progress, matching selected people or their CCs
   var relevant=allActions.filter(function(a){
+    if(a.isInfo)return false;
     if(a.status==="done"||a.status==="blocked")return false;
     var ccs=getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules||{},pkgrules||{});
     var allInvolved=[a.owner||""].concat(ccs);
@@ -2455,6 +2495,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   const [fContractor,setFContractor]=useState("all");
   const [fCC,setFCC]=useState("all");
   const [fScore,setFScore]=useState("all");
+  const [showInfo,setShowInfo]=useState(false);
   const [sortBy,setSortBy]=useState("none");
   const [sortDir,setSortDir]=useState("asc");
   const [q,setQ]=useState("");
@@ -2481,6 +2522,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
 
   var filtered=allActions.filter(function(a){
     if(fStatus!=="all"&&a.status!==fStatus)return false;
+    if(!showInfo&&a.isInfo)return false;
     if(fOwners.length>0&&!fOwners.includes(a.owner||""))return false;
     if(fTags.length>0&&!(a.tags||[]).some(function(tg){return fTags.includes(tg);}))return false;
     if(fPkg!=="all"&&a.package!==fPkg)return false;
@@ -2543,7 +2585,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     var NL=String.fromCharCode(10);
     var lines=["Hello,","","Please find below the action summary as of "+today+".","","─".repeat(60),""];
     var bySource={};
-    filtered.forEach(function(a){
+    filtered.filter(function(a){return !a.isInfo;}).forEach(function(a){
       var key=a._source==="task"?"📋 Tasks":"📊 "+a._sourceTitle;
       if(!bySource[key])bySource[key]=[];
       bySource[key].push(a);
@@ -2630,6 +2672,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       {allOwners.map(function(o){var on=fOwners.includes(o);var col=ownerColor(o);return <button key={o} onClick={function(){setFOwners(function(prev){return prev.includes(o)?prev.filter(function(x){return x!==o;}):[...prev,o];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?col.accent:"#ddd"),background:on?col.bg:"#fff",color:on?col.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{o.split(",")[0]}</button>;})}
       <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginLeft:8}}>Tags:</span>
       {(tags||[]).map(function(tg){var on=fTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){setFTags(function(prev){return prev.includes(tg)?prev.filter(function(x){return x!==tg;}):[...prev,tg];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+      <button onClick={function(){setShowInfo(!showInfo);}} style={{padding:"3px 10px",borderRadius:10,border:"1.5px solid "+(showInfo?"#1565c0":"#ddd"),background:showInfo?"#e3f2fd":"#fff",color:showInfo?"#1565c0":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>ℹ️ Info</button>
       {(fStatus!=="all"||fOwners.length>0||fTags.length>0||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||fCC!=="all"||fScore!=="all"||q)&&
         <button className="btn btn-sm" style={{marginLeft:8}} onClick={function(){setFStatus("all");setFOwners([]);setFTags([]);setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setFScore("all");setQ("");}}>✕ Reset all</button>}
     </div>
