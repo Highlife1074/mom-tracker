@@ -1057,12 +1057,12 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     if(searchQ){var q=searchQ.toLowerCase();if(!(t.title||"").toLowerCase().includes(q)&&!(t.ownerTender||"").toLowerCase().includes(q)&&!(t.package||"").toLowerCase().includes(q))return false;}
     return true;
   }).slice().sort(function(a,b){
-    var va="",vb="",r=0;
-    if(sortCol==="title"){va=a.title||"";vb=b.title||"";r=va.localeCompare(vb);}
-    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";r=va.localeCompare(vb)||((a.title||"").localeCompare(b.title||""));}
-    else if(sortCol==="owner"){va=a.ownerTender||"";vb=b.ownerTender||"";r=va.localeCompare(vb);}
-    else if(sortCol==="acc"){va=(a.steps||{}).acc||"";vb=(b.steps||{}).acc||"";r=va.localeCompare(vb);}
-    else if(sortCol==="contract"){va=(a.steps||{}).contract||"";vb=(b.steps||{}).contract||"";r=va.localeCompare(vb);}
+    var r=0;
+    if(sortCol==="title"||!sortCol){r=(a.title||"").localeCompare(b.title||"");}
+    else if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.title||"").localeCompare(b.title||""));}
+    else if(sortCol==="owner"){r=(a.ownerTender||"").localeCompare(b.ownerTender||"");}
+    else if(sortCol==="acc"){r=((a.steps||{}).acc||"").localeCompare(((b.steps||{}).acc)||"");}
+    else if(sortCol==="contract"){r=((a.steps||{}).contract||"").localeCompare(((b.steps||{}).contract)||"");}
     else{r=(a.title||"").localeCompare(b.title||"");}
     return sortDir==="asc"?r:-r;
   });
