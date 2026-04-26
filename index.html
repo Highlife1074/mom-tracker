@@ -81,7 +81,8 @@ body{font-family:'DM Sans',sans-serif;background:#f4f3f0;color:#1a1a1a;height:10
 .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid transparent}
 /* Table */
 .tbl{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1.5px solid #e8e6df}
-.tbl th{padding:9px 12px;font-size:10px;font-weight:800;color:#aaa;text-transform:uppercase;letter-spacing:.5px;text-align:left;background:#fafaf8;border-bottom:1.5px solid #e8e6df;white-space:nowrap}
+.tbl th{padding:9px 12px;font-size:10px;font-weight:800;color:#aaa;text-transform:uppercase;letter-spacing:.5px;text-align:left;background:#fafaf8;border-bottom:1.5px solid #e8e6df;white-space:nowrap;user-select:none}
+.tbl th[onClick]{cursor:pointer}.tbl th[onClick]:hover{color:#f97316;background:#fff9f5}
 .tbl td{padding:9px 12px;font-size:13px;border-bottom:1px solid #f5f4f0;vertical-align:middle}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tr:hover td{background:#fafaf8}
@@ -1104,7 +1105,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </select>
         </div>
         <div style={{maxHeight:"75vh",overflowY:"auto"}}>
-          {filtered.slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>
+          {filtered.map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>
             <div style={{color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
             {t.package&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{t.package}</div>}
           </div>;})}
@@ -1199,7 +1200,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     </div>;
   }
 
-  filtered=filtered.slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");});
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Tenders</div><div className="page-sub">Track submission steps by package</div></div>
