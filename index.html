@@ -1052,20 +1052,22 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   function toggleSort(col){if(sortCol===col)setSortDir(function(d){return d==="asc"?"desc":"asc";});else{setSortCol(col);setSortDir("asc");}}
   function sortIcon(col){if(sortCol!==col)return " ↕";return sortDir==="asc"?" ↑":" ↓";}
 
-  var filtered=(tenders||[]).filter(function(t){
-    if(pkgFilter!=="all"&&t.package!==pkgFilter)return false;
-    if(searchQ){var q=searchQ.toLowerCase();if(!(t.title||"").toLowerCase().includes(q)&&!(t.ownerTender||"").toLowerCase().includes(q)&&!(t.package||"").toLowerCase().includes(q))return false;}
-    return true;
-  }).slice().sort(function(a,b){
-    var r=0;
-    if(sortCol==="title"||!sortCol){r=(a.title||"").localeCompare(b.title||"");}
-    else if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.title||"").localeCompare(b.title||""));}
-    else if(sortCol==="owner"){r=(a.ownerTender||"").localeCompare(b.ownerTender||"");}
-    else if(sortCol==="acc"){r=((a.steps||{}).acc||"").localeCompare(((b.steps||{}).acc)||"");}
-    else if(sortCol==="contract"){r=((a.steps||{}).contract||"").localeCompare(((b.steps||{}).contract)||"");}
-    else{r=(a.title||"").localeCompare(b.title||"");}
-    return sortDir==="asc"?r:-r;
-  });
+  var filtered=React.useMemo(function(){
+    var list=(tenders||[]).filter(function(t){
+      if(pkgFilter!=="all"&&t.package!==pkgFilter)return false;
+      if(searchQ){var q=searchQ.toLowerCase();if(!(t.title||"").toLowerCase().includes(q)&&!(t.ownerTender||"").toLowerCase().includes(q)&&!(t.package||"").toLowerCase().includes(q))return false;}
+      return true;
+    });
+    return list.slice().sort(function(a,b){
+      var r=0;
+      if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.title||"").localeCompare(b.title||""));}
+      else if(sortCol==="owner"){r=(a.ownerTender||"").localeCompare(b.ownerTender||"");}
+      else if(sortCol==="acc"){r=((a.steps||{}).acc||"").localeCompare(((b.steps||{}).acc)||"");}
+      else if(sortCol==="contract"){r=((a.steps||{}).contract||"").localeCompare(((b.steps||{}).contract)||"");}
+      else{r=(a.title||"").localeCompare(b.title||"");}
+      return sortDir==="asc"?r:-r;
+    });
+  },[tenders,pkgFilter,searchQ,sortCol,sortDir]);
 
   function openNew(){setFormData(newTender());setShowForm(true);}
   function openEdit(td){setFormData(JSON.parse(JSON.stringify(td)));setShowForm(true);}
@@ -1532,18 +1534,20 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
   function sortIcon(col){if(sortCol!==col)return " ↕";return sortDir==="asc"?" ↑":" ↓";}
 
   const allPkgs=[...new Set(ctrs.map(function(c){return c.package;}).filter(Boolean))].sort();
-  var filtered=ctrs.filter(function(c){
-    if(pkgFilter!=="all"&&c.package!==pkgFilter)return false;
-    if(searchQ){var q=searchQ.toLowerCase();if(!(c.name||"").toLowerCase().includes(q)&&!(c.package||"").toLowerCase().includes(q))return false;}
-    return true;
-  }).slice().sort(function(a,b){
-    var r=0;
-    if(sortCol==="name"){r=(a.name||"").localeCompare(b.name||"");}
-    else if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.name||"").localeCompare(b.name||""));}
-    else if(sortCol==="owner"){r=(a.owner||"").localeCompare(b.owner||"");}
-    else{r=(a.name||"").localeCompare(b.name||"");}
-    return sortDir==="asc"?r:-r;
-  });
+  var filtered=React.useMemo(function(){
+    var list=ctrs.filter(function(c){
+      if(pkgFilter!=="all"&&c.package!==pkgFilter)return false;
+      if(searchQ){var q=searchQ.toLowerCase();if(!(c.name||"").toLowerCase().includes(q)&&!(c.package||"").toLowerCase().includes(q))return false;}
+      return true;
+    });
+    return list.slice().sort(function(a,b){
+      var r=0;
+      if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.name||"").localeCompare(b.name||""));}
+      else if(sortCol==="owner"){r=(a.owner||"").localeCompare(b.owner||"");}
+      else{r=(a.name||"").localeCompare(b.name||"");}
+      return sortDir==="asc"?r:-r;
+    });
+  },[ctrs,pkgFilter,searchQ,sortCol,sortDir]);
 
   function openNew(){var d=newContractor();setFormData(d);setShowForm(true);}
   function openEdit(ctr){setFormData(JSON.parse(JSON.stringify(ctr)));setShowForm(true);}
