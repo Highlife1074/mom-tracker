@@ -2946,9 +2946,10 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
 }
 
 // ── WeeklyPopup ───────────────────────────────────────────────────
-function WeeklyPopup({tasks,trackers,people,tags,tagrules,pkgrules,tenders,contractors,saveT,saveX,onClose}){
-  var allActions=(tasks||[]).filter(function(a){return !a.isInfo;}).map(function(t){return Object.assign({},t,{_src:"task"});});
-  (trackers||[]).forEach(function(tr){(tr.actions||[]).filter(function(a){return !a.isInfo;}).forEach(function(a){allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
+function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onClose}){
+  var allActions=[];
+  (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
+  (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){if(!a.isInfo)allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
 
   var active=allActions.filter(function(a){return a.status!=="done"&&a.status!=="blocked";})
     .slice().sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
@@ -2958,14 +2959,8 @@ function WeeklyPopup({tasks,trackers,people,tags,tagrules,pkgrules,tenders,contr
   var low=active.filter(function(a){return calcScore(a.importance||1,a.urgence||1)<4;});
 
   function changeStatus(a,val){
-    if(a._src==="task"){
-      saveT((tasks||[]).map(function(t){return t.id!==a.id?t:Object.assign({},t,{status:val});}));
-    } else {
-      saveX((trackers||[]).map(function(tr){
-        if(tr.id!==a._trId)return tr;
-        return Object.assign({},tr,{actions:(tr.actions||[]).map(function(ac){return ac.id!==a.id?ac:Object.assign({},ac,{status:val});})});
-      }));
-    }
+    if(a._src==="task"){saveT((tasks||[]).map(function(t){return t.id!==a.id?t:Object.assign({},t,{status:val});}));}
+    else{saveX((trackers||[]).map(function(tr){if(tr.id!==a._trId)return tr;return Object.assign({},tr,{actions:(tr.actions||[]).map(function(ac){return ac.id!==a.id?ac:Object.assign({},ac,{status:val});})});}));}
   }
 
   function ActionRow({a}){
@@ -2973,30 +2968,34 @@ function WeeklyPopup({tasks,trackers,people,tags,tagrules,pkgrules,tenders,contr
     var ss=scoreStyle(sc);
     var ctr2=a.contractorRef?(contractors||[]).find(function(c){return c.id===a.contractorRef;}):null;
     var tdr2=a.tenderRef?(tenders||[]).find(function(t){return t.id===a.tenderRef;}):null;
-    return <div style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 10px",borderRadius:7,background:a.status==="done"?"#f5f5f5":"#fff",border:"1px solid #f0ede6",marginBottom:5}}>
-      <select value={a.status||"pending"} onChange={function(e){changeStatus(a,e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit",cursor:"pointer",flexShrink:0,background:"#fafaf8"}}>
+    var isOverdue=a.due&&a.due<today()&&a.status!=="done";
+    return <div style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 8px",borderRadius:7,background:"#fafaf8",border:"1px solid #f0ede6",marginBottom:4}}>
+      <select value={a.status||"pending"} onChange={function(e){changeStatus(a,e.target.value);}} style={{fontSize:10,padding:"2px 3px",border:"1px solid #e0ddd8",borderRadius:5,fontFamily:"inherit",cursor:"pointer",flexShrink:0,width:90}}>
         {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
       </select>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:12,fontWeight:500,color:a.status==="done"?"#bbb":"#1a1a1a",textDecoration:a.status==="done"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.text}</div>
-        <div style={{display:"flex",gap:5,marginTop:2,flexWrap:"wrap",alignItems:"center"}}>
-          {a.owner&&<OwnerChip owner={a.owner}/>}
-          {a.due&&<span style={{fontSize:10,color:a.due<today()&&a.status!=="done"?"#c62828":"#aaa"}}>📅 {fmtDate(a.due)}</span>}
-          {tdr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:8,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {tdr2.title}</span>}
-          {ctr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:8,background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc"}}>🤝 {ctr2.name}</span>}
-          {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:9}}>{ss.label} [{sc}]</span>}
+        <div style={{fontSize:12,fontWeight:500,color:a.status==="done"?"#bbb":"#1a1a1a",textDecoration:a.status==="done"?"line-through":"none",lineHeight:1.3,marginBottom:2}}>{a.text}</div>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+          {a.owner&&<span style={{fontSize:10,color:"#888"}}>{a.owner.split(",")[0]}</span>}
+          {a.due&&<span style={{fontSize:10,fontWeight:isOverdue?700:400,color:isOverdue?"#c62828":"#aaa"}}>📅 {fmtDate(a.due)}</span>}
+          {tdr2&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:5,background:"#fff8f0",color:"#b45309"}}>📑</span>}
+          {ctr2&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:5,background:"#e8f0fe",color:"#1a73e8"}}>🤝</span>}
         </div>
       </div>
+      <span style={{fontSize:10,fontWeight:700,padding:"2px 5px",borderRadius:5,background:ss.bg,color:ss.color,flexShrink:0}}>{sc}</span>
     </div>;
   }
 
-  function Section({label,color,items}){
-    if(items.length===0)return null;
-    return <div style={{marginBottom:16}}>
-      <div style={{fontWeight:800,fontSize:12,color:color,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
-        {label} <span style={{fontSize:11,fontWeight:400,color:"#aaa"}}>({items.length})</span>
+  function Col({label,color,items}){
+    if(items.length===0)return <div style={{flex:1,minWidth:0,opacity:.4,textAlign:"center",paddingTop:20,fontSize:11,color:"#aaa"}}>No actions</div>;
+    return <div style={{flex:1,minWidth:0}}>
+      <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:8,paddingBottom:6,borderBottom:"2px solid "+color}}>
+        <span style={{fontSize:12,fontWeight:800,color:color}}>{label}</span>
+        <span style={{fontSize:11,fontWeight:400,color:"#aaa"}}>({items.length})</span>
       </div>
-      {items.map(function(a){return <ActionRow key={a.id} a={a}/>;} )}
+      <div style={{overflowY:"auto",maxHeight:"calc(75vh - 100px)"}}>
+        {items.map(function(a){return <ActionRow key={a.id} a={a}/>;} )}
+      </div>
     </div>;
   }
 
@@ -3004,34 +3003,38 @@ function WeeklyPopup({tasks,trackers,people,tags,tagrules,pkgrules,tenders,contr
   var weekStr="Week of "+now.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
 
   return <div className="overlay" style={{zIndex:700}} onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
-    <div className="modal" style={{maxWidth:860,width:"95vw",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
-      <div className="modal-hdr" style={{background:"#1c1c1e",borderRadius:"12px 12px 0 0",padding:"16px 20px"}}>
+    <div style={{background:"#fff",borderRadius:16,width:"92vw",maxWidth:1100,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 12px 48px rgba(0,0,0,.2)"}}>
+      <div style={{background:"#1c1c1e",borderRadius:"16px 16px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div>
-          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:16,fontWeight:700,color:"#f97316",letterSpacing:"1px"}}>📋 Weekly Actions</div>
-          <div style={{fontSize:11,color:"#888",marginTop:2}}>{weekStr} · {active.length} actions pending</div>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,fontWeight:700,color:"#f97316",letterSpacing:"1px"}}>📋 Weekly Actions</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>{weekStr} · {active.length} pending</div>
         </div>
-        <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#888",lineHeight:1}}>×</button>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#888",lineHeight:1,padding:"0 4px"}}>×</button>
       </div>
-      <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
-        {active.length===0
-          ?<div style={{textAlign:"center",padding:"32px 0",color:"#bbb"}}>
-            <div style={{fontSize:32,marginBottom:8}}>✅</div>
-            <div style={{fontSize:14}}>All caught up! No pending actions.</div>
+      {active.length===0
+        ?<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,color:"#bbb",padding:32}}>
+          <div style={{fontSize:40}}>✅</div>
+          <div style={{fontSize:14}}>All caught up! No pending actions.</div>
+        </div>
+        :<div style={{display:"flex",gap:0,flex:1,minHeight:0,overflow:"hidden"}}>
+          <div style={{flex:1,borderRight:"1.5px solid #f0ede6",padding:"16px 14px",overflowY:"auto"}}>
+            <Col label="🔴 High" color="#c62828" items={high}/>
           </div>
-          :<div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
-            <div style={{flex:1,minWidth:0}}><Section label="🔴 High — Score 7-9" color="#c62828" items={high}/></div>
-            <div style={{flex:1,minWidth:0}}><Section label="🟠 Medium — Score 4-6" color="#f57f17" items={mid}/></div>
-            <div style={{flex:1,minWidth:0}}><Section label="Standard — 1-3" color="#aaa" items={low}/></div>
-          </div>}
-      </div>
-      <div style={{padding:"12px 20px",borderTop:"1px solid #f0ede6",display:"flex",justifyContent:"flex-end"}}>
+          <div style={{flex:1,borderRight:"1.5px solid #f0ede6",padding:"16px 14px",overflowY:"auto"}}>
+            <Col label="🟠 Medium" color="#f57f17" items={mid}/>
+          </div>
+          <div style={{flex:1,padding:"16px 14px",overflowY:"auto"}}>
+            <Col label="⚪ Standard" color="#aaa" items={low}/>
+          </div>
+        </div>}
+      <div style={{padding:"10px 20px",borderTop:"1px solid #f0ede6",display:"flex",justifyContent:"flex-end",flexShrink:0}}>
         <button className="btn btn-pri" onClick={onClose}>Close</button>
       </div>
     </div>
   </div>;
 }
 
-// ── UserLogin ─────────────────────────────────────────────────────
+
 function simpleHash(str){
   var hash=0;
   for(var i=0;i<str.length;i++){hash=((hash<<5)-hash)+str.charCodeAt(i);hash|=0;}
