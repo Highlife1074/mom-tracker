@@ -266,7 +266,8 @@ const SEED_PACKAGES=["Facade","Structure","MEP","Civil","Podium","External Works
 const STATUS_OPTS=["pending","in progress","done","blocked"];
 const STATUS_ICONS={pending:"⏳","in progress":"🔄",done:"✅",blocked:"🚫"};
 
-function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",addedBy:window._currentUser?window._currentUser.name:""};return Object.assign(base,overrides||{});}
+function stampModified(task){var u=Object.assign({},task);u.lastModifiedBy=window._currentUser?window._currentUser.name:"";u.lastModifiedAt=today();return u;}
+function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:""};return Object.assign(base,overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",done:""},pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
@@ -526,7 +527,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
   const tdr=task.tenderRef?(tenders||[]).find(function(t){return t.id===task.tenderRef;}):null;
   const ctr=task.contractorRef?(contractors||[]).find(function(c){return c.id===task.contractorRef;}):null;
 
-  function upd(field,val){if(onUpdate)onUpdate(field,val);}
+  function upd(field,val){if(onUpdate)onUpdate(field,val,true);}
 
   return <div className="ac-item" style={{background:editMode?"#f8f9ff":task.status==="done"?"#fafaf8":"#fff",borderColor:editMode?"#3949ab":"#e8e6df",flexDirection:"column",gap:0}}>
     <div style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%"}}>
@@ -601,7 +602,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
             {(task.tags||[]).includes("RFI")&&(task.rfiSubmission||task.rfiDue)&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"2px 6px",borderRadius:5,display:"inline-block"}}>
               📋 RFI {task.rfiSubmission&&"submitted: "+fmtDate(task.rfiSubmission)} {task.rfiDue&&"· due: "+fmtDate(task.rfiDue)}
             </div>}
-            {(showCreated!==false)&&task.createdAt&&<div style={{fontSize:10,color:"#ccc",marginTop:3}}>Added {fmtDate(task.createdAt)}{task.addedBy&&" by "+task.addedBy}</div>}
+            {(showCreated!==false)&&<div style={{fontSize:10,color:"#ccc",marginTop:3}}>{task.lastModifiedBy&&task.lastModifiedAt?<span>Modified {fmtDate(task.lastModifiedAt)} by <strong>{task.lastModifiedBy}</strong></span>:task.createdAt&&<span>Added {fmtDate(task.createdAt)}{task.addedBy&&" by "+task.addedBy}</span>}</div>}
           </div>}
       </div>
       {!editMode&&<div style={{display:"flex",gap:4,flexShrink:0}}>
@@ -1180,7 +1181,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           :linkedTasks.map(function(t){
             return <ActionItem key={t.id} task={t}
               onStatusChange={function(val){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
-              onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=Object.assign({},x);u[field]=val;return u;}));}}
+              onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
               people={people} packages={packages} tags={[]} tenders={tenders} contractors={contractors}/>;
           })}
         <QuickAddTask
@@ -1649,7 +1650,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this subcontractor.</div>
           :linkedTasks.map(function(t){return <ActionItem key={t.id} task={t}
             onStatusChange={function(val){saveT(tsks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
-            onUpdate={function(field,val){saveT(tsks.map(function(x){if(x.id!==t.id)return x;var u=Object.assign({},x);u[field]=val;return u;}));}}
+            onUpdate={function(field,val){saveT(tsks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
             people={ppl} packages={pkgs} tags={[]} tenders={tnds} contractors={ctrs}/>;} )}
         <QuickAddTask
           prefill={{contractorRef:ctr.id, package:ctr.package||"", owner:ctr.owner||""}}
