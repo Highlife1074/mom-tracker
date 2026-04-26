@@ -82,7 +82,7 @@ body{font-family:'DM Sans',sans-serif;background:#f4f3f0;color:#1a1a1a;height:10
 /* Table */
 .tbl{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1.5px solid #e8e6df}
 .tbl th{padding:9px 12px;font-size:10px;font-weight:800;color:#aaa;text-transform:uppercase;letter-spacing:.5px;text-align:left;background:#fafaf8;border-bottom:1.5px solid #e8e6df;white-space:nowrap;user-select:none}
-.tbl th[onClick]{cursor:pointer}.tbl th[onClick]:hover{color:#f97316;background:#fff9f5}
+.tbl th.sortable{cursor:pointer;user-select:none}.tbl th.sortable:hover{color:#f97316;background:#fff9f5}
 .tbl td{padding:9px 12px;font-size:13px;border-bottom:1px solid #f5f4f0;vertical-align:middle}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tr:hover td{background:#fafaf8}
@@ -1057,13 +1057,13 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     if(searchQ){var q=searchQ.toLowerCase();if(!(t.title||"").toLowerCase().includes(q)&&!(t.ownerTender||"").toLowerCase().includes(q)&&!(t.package||"").toLowerCase().includes(q))return false;}
     return true;
   }).slice().sort(function(a,b){
-    var va="",vb="";
-    if(sortCol==="title"){va=a.title||"";vb=b.title||"";}
-    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";}
-    else if(sortCol==="owner"){va=a.ownerTender||"";vb=b.ownerTender||"";}
-    else if(sortCol==="acc"){va=(a.steps||{}).acc||"";vb=(b.steps||{}).acc||"";}
-    else if(sortCol==="contract"){va=(a.steps||{}).contract||"";vb=(b.steps||{}).contract||"";}
-    var r=va<vb?-1:va>vb?1:0;
+    var va="",vb="",r=0;
+    if(sortCol==="title"){va=a.title||"";vb=b.title||"";r=va.localeCompare(vb);}
+    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";r=va.localeCompare(vb)||((a.title||"").localeCompare(b.title||""));}
+    else if(sortCol==="owner"){va=a.ownerTender||"";vb=b.ownerTender||"";r=va.localeCompare(vb);}
+    else if(sortCol==="acc"){va=(a.steps||{}).acc||"";vb=(b.steps||{}).acc||"";r=va.localeCompare(vb);}
+    else if(sortCol==="contract"){va=(a.steps||{}).contract||"";vb=(b.steps||{}).contract||"";r=va.localeCompare(vb);}
+    else{r=(a.title||"").localeCompare(b.title||"");}
     return sortDir==="asc"?r:-r;
   });
 
@@ -1215,11 +1215,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
       :<table className="tbl">
         <thead><tr>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-          <th>Pkg</th><th>Process</th><th style={{cursor:"pointer"}} onClick={function(){toggleSort("acc");}}>ACC{sortIcon("acc")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("contract");}}>Contract{sortIcon("contract")}</th>
+          <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
+          <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+          <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+          <th>Pkg</th><th>Process</th><th className="sortable" onClick={function(){toggleSort("acc");}}>ACC{sortIcon("acc")}</th>
+          <th className="sortable" onClick={function(){toggleSort("contract");}}>Contract{sortIcon("contract")}</th>
           <th>MAR</th><th>ITP</th><th>WMS</th>
         </tr></thead>
         <tbody>{filtered.map(function(td){
@@ -1537,11 +1537,11 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     if(searchQ){var q=searchQ.toLowerCase();if(!(c.name||"").toLowerCase().includes(q)&&!(c.package||"").toLowerCase().includes(q))return false;}
     return true;
   }).slice().sort(function(a,b){
-    var va="",vb="";
-    if(sortCol==="name"){va=a.name||"";vb=b.name||"";}
-    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";}
-    else if(sortCol==="owner"){va=a.owner||"";vb=b.owner||"";}
-    var r=va<vb?-1:va>vb?1:0;
+    var r=0;
+    if(sortCol==="name"){r=(a.name||"").localeCompare(b.name||"");}
+    else if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.name||"").localeCompare(b.name||""));}
+    else if(sortCol==="owner"){r=(a.owner||"").localeCompare(b.owner||"");}
+    else{r=(a.name||"").localeCompare(b.name||"");}
     return sortDir==="asc"?r:-r;
   });
 
@@ -1673,7 +1673,6 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     </div>;
   }
 
-  var filtered2=filtered.slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts and certifications</div></div>
@@ -1689,12 +1688,12 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
       ?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors found.</div></div>
       :<table className="tbl">
         <thead><tr>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("name");}}>Name{sortIcon("name")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+          <th className="sortable" onClick={function(){toggleSort("name");}}>Name{sortIcon("name")}</th>
+          <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+          <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
           <th>Corresp.</th><th>Linked Tenders</th><th>Contracts</th><th>Total</th><th>Total Instructed</th><th>Certified</th><th>Remaining</th>
         </tr></thead>
-        <tbody>{(typeof filtered2!=="undefined"?filtered2:filtered).map(function(ctr){
+        <tbody>{filtered.map(function(ctr){
           var totVal=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).total;},0);
           var totCert=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).certified;},0);
           var totRem=totVal-totCert;
@@ -2711,14 +2710,13 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   // Sorting
   if(sortBy!=="none"){
     filtered=filtered.slice().sort(function(a,b){
-      var va="",vb="";
-      if(sortBy==="owner"){va=a.owner||"";vb=b.owner||"";}
-      else if(sortBy==="due"){va=a.due||"9999";vb=b.due||"9999";}
-      else if(sortBy==="score"){va=calcScore(a.importance||1,a.urgence||1);vb=calcScore(b.importance||1,b.urgence||1);return sortDir==="asc"?va-vb:vb-va;}
-      else if(sortBy==="tender"){var ta=(tenders||[]).find(function(t){return t.id===a.tenderRef;});var tb=(tenders||[]).find(function(t){return t.id===b.tenderRef;});va=ta?ta.title:"";vb=tb?tb.title:"";}
-      else if(sortBy==="status"){va=a.status||"";vb=b.status||"";}
-      else if(sortBy==="package"){va=a.package||"";vb=b.package||"";}
-      var r=va<vb?-1:va>vb?1:0;
+      var r=0;
+      if(sortBy==="owner"){r=(a.owner||"").localeCompare(b.owner||"");}
+      else if(sortBy==="due"){r=((a.due||"9999")<(b.due||"9999")?-1:(a.due||"9999")>(b.due||"9999")?1:0);}
+      else if(sortBy==="score"){var sa=calcScore(a.importance||1,a.urgence||1);var sb=calcScore(b.importance||1,b.urgence||1);r=sa-sb;}
+      else if(sortBy==="tender"){var ta=(tenders||[]).find(function(t){return t.id===a.tenderRef;});var tb=(tenders||[]).find(function(t){return t.id===b.tenderRef;});r=((ta?ta.title:"")).localeCompare((tb?tb.title:""));}
+      else if(sortBy==="status"){r=(a.status||"").localeCompare(b.status||"");}
+      else if(sortBy==="package"){r=(a.package||"").localeCompare(b.package||"");}
       return sortDir==="asc"?r:-r;
     });
   }
@@ -2857,13 +2855,13 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         <table className="tbl">
           <thead><tr>
             <th>Action</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("status");}}>Status{sortIcon("status")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("due");}}>Due{sortIcon("due")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("score");}}>Score{sortIcon("score")}</th>
+            <th className="sortable" onClick={function(){toggleSort("status");}}>Status{sortIcon("status")}</th>
+            <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+            <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+            <th className="sortable" onClick={function(){toggleSort("due");}}>Due{sortIcon("due")}</th>
+            <th className="sortable" onClick={function(){toggleSort("score");}}>Score{sortIcon("score")}</th>
             <th>Source</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("tender");}}>Tender{sortIcon("tender")}</th>
+            <th className="sortable" onClick={function(){toggleSort("tender");}}>Tender{sortIcon("tender")}</th>
           </tr></thead>
           <tbody>{filtered.map(function(a,idx){
             var sc=calcScore(a.importance||1,a.urgence||1);
