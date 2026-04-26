@@ -206,7 +206,8 @@ const KEYS_AWN="pp_awn";
 const KEYS={
   tasks:"pp_tasks", trackers:"pp_trackers", tenders:"pp_tenders",
   contractors:"pp_contractors", people:"pp_people", tags:"pp_tags",
-  packages:"pp_packages", tagrules:"pp_tagrules", pkgrules:"pp_pkgrules"
+  packages:"pp_packages", groups:"pp_groups", tagrules:"pp_tagrules", pkgrules:"pp_pkgrules",
+  pkgowners:"pp_pkgowners"
 };
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -1068,7 +1069,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       return sortDir==="asc"?r:-r;
     });
   },[tenders,pkgFilter,searchQ,sortCol,sortDir]);
-  console.log("TendersView filtered:",filtered.length,"sortCol:",sortCol,"sortDir:",sortDir,"first3:",filtered.slice(0,3).map(function(t){return t.title;}));
 
   function openNew(){setFormData(newTender());setShowForm(true);}
   function openEdit(td){setFormData(JSON.parse(JSON.stringify(td)));setShowForm(true);}
