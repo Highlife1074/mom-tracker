@@ -980,7 +980,10 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
           <button className="btn btn-sm btn-danger" onClick={()=>delAction(sel.id,ac.id)} style={{padding:"3px 7px",flexShrink:0,alignSelf:"flex-start"}}>🗑</button>
         </div>;
       })}
-      <button className="btn btn-sm" onClick={()=>addAction(sel.id)} style={{marginTop:8}}>＋ Add Action</button>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8}}>
+        <button className="btn btn-sm" onClick={function(){addAction(sel.id,false);}}>＋ Add Action</button>
+        <button className="btn btn-sm" onClick={function(){addAction(sel.id,true);}} style={{background:"#e3f2fd",color:"#1565c0",border:"1.5px solid #1565c0"}}>＋ Add Info</button>
+      </div>
       {showForm&&formData&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
     </div>;
   }
@@ -1477,6 +1480,38 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
   </div>;
 }
 
+// ── CollapsibleContract wrapper ───────────────────────────────────
+function CollapsibleContract({ct,fin,children}){
+  const [open,setOpen]=useState(false);
+  var currency=ct.currency||"EUR";
+  return <div style={{marginBottom:8,border:"1.5px solid #e8e6df",borderRadius:10,overflow:"hidden",background:"#fff"}}>
+    <div onClick={function(){setOpen(!open);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:open?"#fafaf8":"#fff"}}>
+      <span style={{fontSize:13,color:"#aaa",flexShrink:0}}>{open?"▾":"▸"}</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:13,color:"#1a1a1a"}}>{ct.number||"(no #)"} {ct.sapNumber&&<span style={{fontSize:11,color:"#1a73e8",fontWeight:600,marginLeft:4}}>SAP {ct.sapNumber}</span>}</div>
+        {ct.description&&<div style={{fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct.description}</div>}
+      </div>
+      <div style={{textAlign:"right",flexShrink:0}}>
+        {ct.closed
+          ?<span style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#e8f5e9",color:"#2e7d32",fontWeight:700}}>✅ Closed</span>
+          :<span style={{fontSize:12,fontWeight:700,color:"#1a1a1a"}}>{fin.total.toLocaleString()} {currency}</span>}
+        <div style={{fontSize:10,color:fin.pct>=80?"#2e7d32":"#f57f17"}}>{fin.pct}% certified</div>
+        {(function(){
+          var certs=ct.certifications||[];
+          if(ct.closed||certs.length===0)return null;
+          var lastDate=(certs.slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");})[0]||{}).date||"";
+          if(!lastDate)return null;
+          var d=new Date(lastDate);var now=new Date();
+          var months=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
+          if(months>=2)return <div style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ Last cert: {fmtMonthYear(lastDate)}</div>;
+          return null;
+        })()}
+      </div>
+    </div>
+    {open&&<div style={{borderTop:"1.5px solid #e8e6df",padding:"12px 14px"}}>{children}</div>}
+  </div>;
+}
+
 function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey,correspondences,saveCorrespondences,saveT}){
   var ctrs=contractors||[];
   var tnds=tenders||[];
@@ -1560,7 +1595,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
   var linkedTasks=selCtr?tsks.filter(function(t){return t.contractorRef===selCtr.id;}):[];
 
   const [sidebarPkg,setSidebarPkg]=useState("all");
-  function updateContract2(ctrId,ctId,field,val){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=val;return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
+  function updateContract2(ctrId,ctId,field,val){if(field==="__delete__"){var d2=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ctId;})});});saveContractors(d2);if(selCtr&&selCtr.id===ctrId)setSelCtr(d2.find(function(c){return c.id===ctrId;}));return;}var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=val;return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
   function updateAdItem2(ctrId,ctId,field,i,key,val){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var items=(ct2[field]||[]).map(function(item,j){if(j!==i)return item;var u=Object.assign({},item);u[key]=val;return u;});var u2=Object.assign({},ct2);u2[field]=items;return u2;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
   function delAdItem2(ctrId,ctId,field,i){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=(ct2[field]||[]).filter(function(_,j){return j!==i;});return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
   function addAdItem2(ctrId,ctId,field,newItem){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=[...(ct2[field]||[]),newItem];return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
@@ -1604,11 +1639,11 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         var fin=contractFinancials(ct);
         var linkedTender=ct.tenderRef?(tnds||[]).find(function(t){return t.id===ct.tenderRef;}):null;
         var navFake={ctrId:ctr.id,ctId:ct.id};
-        return <div key={ct.id} style={{marginBottom:12}}>
+        return <CollapsibleContract key={ct.id} ct={ct} fin={fin}>
           <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
             updateCtField={updateContract2} updateAdItem={updateAdItem2} delAdItem={delAdItem2} addAdItem={addAdItem2}
             tenders={tnds} nav={navFake} setNav={function(){}} saveT={saveT} tasks={tsks} people={ppl} tags={window._ppTags||[]}/>
-        </div>;
+        </CollapsibleContract>;
       })}
       {/* Correspondence Log */}
       <CorrespondenceLog ctrId={selCtr.id} ctrName={selCtr.name} correspondences={correspondences||[]} saveCorrespondences={saveCorrespondences} saveT={saveT} tasks={tsks}/>
@@ -2012,7 +2047,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           {linkedTender&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {linkedTender.title}</span>}
         </div>
       </div>
-      <button onClick={function(){if(confirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField)updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav({ctrId:ctr.id});}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#c62828",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
+      <button onClick={function(){if(confirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField){updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav(null);}}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#c62828",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
     </div>
 
     {/* KPI cards */}
@@ -3242,7 +3277,8 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages}){
 
 function App(){
   const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");return u||null;}catch(e){return null;}});
-  const [view,setView]=useState("global");
+  const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
+  function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
   const [showWeeklyPopup,setShowWeeklyPopup]=useState(function(){var now=new Date();var isMonday=now.getDay()===1;var key="pp_weekly_shown_"+now.toISOString().slice(0,10);var shown=false;try{shown=!!localStorage.getItem(key);}catch(e){}if(isMonday&&!shown){try{localStorage.setItem(key,"1");}catch(e){}return true;}return false;});
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok");
