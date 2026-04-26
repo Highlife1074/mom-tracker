@@ -2664,9 +2664,10 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
   </div>;
 }
 
-function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules}){
+function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules,jumpOwner,clearJump}){
   const [fStatus,setFStatus]=useState("all");
   const [fOwners,setFOwners]=useState([]);
+  useEffect(function(){if(jumpOwner){setFOwners([jumpOwner]);if(clearJump)clearJump();}else{setFOwners([]);}},[ jumpOwner]);
   const [fTags,setFTags]=useState([]);
   const [fPkg,setFPkg]=useState("all");
   const [fTender,setFTender]=useState("all");
@@ -3003,7 +3004,7 @@ function WeeklyPopup({tasks,trackers,people,tags,tagrules,pkgrules,tenders,contr
   var weekStr="Week of "+now.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
 
   return <div className="overlay" style={{zIndex:700}} onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
-    <div className="modal" style={{maxWidth:580,maxHeight:"85vh",display:"flex",flexDirection:"column"}}>
+    <div className="modal" style={{maxWidth:860,width:"95vw",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
       <div className="modal-hdr" style={{background:"#1c1c1e",borderRadius:"12px 12px 0 0",padding:"16px 20px"}}>
         <div>
           <div style={{fontFamily:"'DM Serif Display',serif",fontSize:16,fontWeight:700,color:"#f97316",letterSpacing:"1px"}}>📋 Weekly Actions</div>
@@ -3017,10 +3018,10 @@ function WeeklyPopup({tasks,trackers,people,tags,tagrules,pkgrules,tenders,contr
             <div style={{fontSize:32,marginBottom:8}}>✅</div>
             <div style={{fontSize:14}}>All caught up! No pending actions.</div>
           </div>
-          :<div>
-            <Section label="🔴 High Priority — Score 7 to 9" color="#c62828" items={high}/>
-            <Section label="🟠 Medium Priority — Score 4 to 6" color="#f57f17" items={mid}/>
-            <Section label="Standard — Score 1 to 3" color="#888" items={low}/>
+          :<div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
+            <div style={{flex:1,minWidth:0}}><Section label="🔴 High — Score 7-9" color="#c62828" items={high}/></div>
+            <div style={{flex:1,minWidth:0}}><Section label="🟠 Medium — Score 4-6" color="#f57f17" items={mid}/></div>
+            <div style={{flex:1,minWidth:0}}><Section label="Standard — 1-3" color="#aaa" items={low}/></div>
           </div>}
       </div>
       <div style={{padding:"12px 20px",borderTop:"1px solid #f0ede6",display:"flex",justifyContent:"flex-end"}}>
@@ -3152,7 +3153,7 @@ function UserLogin({people,onLogin}){
 }
 
 // ── DashboardView ─────────────────────────────────────────────────
-function DashboardView({tasks,trackers,people,tenders,contractors,packages}){
+function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJumpOwner}){
   var allActions=[];
   (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
   (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){if(!a.isInfo)allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
@@ -3198,7 +3199,7 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages}){
       <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
         <div style={{textAlign:"center",flexShrink:0}}>
           <div style={{width:36,height:36,borderRadius:"50%",background:"#f0ede6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,margin:"0 auto 4px"}}>{shortName[0]}</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#1a1a1a",whiteSpace:"nowrap"}}>{shortName}</div>
+          <div onClick={function(){if(onJumpOwner)onJumpOwner(name);}} style={{fontSize:11,fontWeight:700,color:onJumpOwner?"#3949ab":"#1a1a1a",whiteSpace:"nowrap",cursor:onJumpOwner?"pointer":"default",textDecoration:onJumpOwner?"underline":"none"}}>{shortName}</div>
         </div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
@@ -3282,6 +3283,7 @@ function App(){
   const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");return u||null;}catch(e){return null;}});
   const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
   function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
+  const [jumpOwner,setJumpOwner]=useState(null);
   const [showWeeklyPopup,setShowWeeklyPopup]=useState(function(){var now=new Date();var isMonday=now.getDay()===1;var key="pp_weekly_shown_"+now.toISOString().slice(0,10);var shown=false;try{shown=!!localStorage.getItem(key);}catch(e){}if(isMonday&&!shown){try{localStorage.setItem(key,"1");}catch(e){}return true;}return false;});
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok");
@@ -3455,8 +3457,8 @@ function App(){
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="awn"&&<AwnView awns={awns} saveAwns={saveAwns} people={people}/>}
         {view==="weekly"&&<WeeklyView tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} packages={packages} tenders={tenders} contractors={contractors}/>}
-        {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages}/>}
-    {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules}/>}
+        {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} onJumpOwner={function(name){setJumpOwner(name);setView("global");}}/>}
+    {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}}/>}
         {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);}}/>}
       </div>
 
