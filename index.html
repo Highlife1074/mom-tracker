@@ -270,13 +270,13 @@ const STATUS_OPTS=["pending","in progress","done","blocked"];
 const STATUS_ICONS={pending:"⏳","in progress":"🔄",done:"✅",blocked:"🚫"};
 
 function stampModified(task){var u=Object.assign({},task);u.lastModifiedBy=window._currentUser?window._currentUser.name:"";u.lastModifiedAt=today();return u;}
-function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",rfiOverdue:false,addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:""};return Object.assign(base,overrides||{});}
+function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",rfiOverdue:false,addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:"",links:[]};return Object.assign(base,overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
-function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",submission:"",done:""},pkg:{target:"",submission:"",done:""},process:{target:"",submission:"",done:""},acc:{target:"",submission:"",done:""},contract:{target:"",submission:"",done:""},mar:{target:"",submission:"",done:""},itp:{target:"",submission:"",done:""},wms:{target:"",submission:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
+function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",submission:"",done:""},pkg:{target:"",submission:"",done:""},process:{target:"",submission:"",done:""},acc:{target:"",submission:"",done:""},contract:{target:"",submission:"",done:""},mar:{target:"",submission:"",done:""},itp:{target:"",submission:"",done:""},wms:{target:"",submission:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepLinks:{bidders:[],pkg:[],process:[],acc:[],contract:[],mar:[],itp:[],wms:[]},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",};}
-function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:""};}
+function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
+function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:"",comment:""};}
 
 // ── Cloud store ───────────────────────────────────────────────────
@@ -591,6 +591,15 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];var newTags=on?cur.filter(function(x){return x!==tg;}):[...cur,tg];setLocalTags(newTags);upd("tags",newTags);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
             </div>
             <textarea value={task.note||""} onChange={function(e){upd("note",e.target.value);}} placeholder="Notes..." style={{minHeight:32,fontSize:11,padding:"4px 8px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit",resize:"vertical"}}/>
+            <div>
+              <div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:4,textTransform:"uppercase",letterSpacing:".4px"}}>🔗 Links</div>
+              {(task.links||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
+                <input type="text" value={lk.label||""} onChange={function(e){var ls=(task.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});upd("links",ls);}} placeholder="Label" style={{width:100,padding:"3px 6px",fontSize:11,border:"1px solid #e0ddd8",borderRadius:5}}/>
+                <input type="url" value={lk.url||""} onChange={function(e){var ls=(task.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});upd("links",ls);}} placeholder="https://..." style={{flex:1,padding:"3px 6px",fontSize:11,border:"1px solid #e0ddd8",borderRadius:5}}/>
+                <button onClick={function(){var ls=(task.links||[]).filter(function(_,j){return j!==li;});upd("links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
+              </div>;})}
+              <button className="btn btn-sm" onClick={function(){upd("links",[...(task.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"2px 8px"}}>＋ Add link</button>
+            </div>
             {localTags.includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px",background:"#fff8f0",borderRadius:7,border:"1px solid #fed7aa"}}>
               <div style={{flex:1}}>
                 <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>RFI Submission date</label>
@@ -623,6 +632,9 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
             </div>
             {(task.tags||[]).includes("RFI")&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"3px 8px",borderRadius:5,display:"inline-block"}}>
               📋 RFI {task.rfiSubmission?"submitted: "+fmtDate(task.rfiSubmission):"⚠️ No submission date"} {task.rfiDue&&"· due: "+fmtDate(task.rfiDue)}
+            </div>}
+            {(task.links||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:3}}>
+              {(task.links||[]).map(function(lk,li){return lk.url?<a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3949ab",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:2,padding:"1px 6px",borderRadius:6,background:"#f0f0ff",border:"1px solid #d0d0f0"}} onMouseEnter={function(e){e.currentTarget.style.textDecoration="underline";}} onMouseLeave={function(e){e.currentTarget.style.textDecoration="none";}}>🔗 {lk.label||lk.url}</a>:null;})}
             </div>}
             {(showCreated!==false)&&<div style={{fontSize:10,color:"#ccc",marginTop:3}}>{task.lastModifiedBy&&task.lastModifiedAt?<span>Modified {fmtDate(task.lastModifiedAt)} by <strong>{task.lastModifiedBy}</strong></span>:task.createdAt&&<span>Added {fmtDate(task.createdAt)}{task.addedBy&&" by "+task.addedBy}</span>}</div>}
           </div>}
@@ -1116,10 +1128,13 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       if(!sd[step])sd[step]={target:"",done:""};
       var steps=Object.assign({},t.steps||{});
       var sc=Object.assign({},t.stepComments||{});
+      var sl=Object.assign({},t.stepLinks||{});
+      if(!sl[step])sl[step]=[];
       if(field==="status")steps[step]=val;
       else if(field==="comment"){sc[step]=val;}
+      else if(field==="links"){sl[step]=val;}
       else{var cur=Object.assign({},sd[step]);cur[field]=val;sd[step]=cur;}
-      return Object.assign({},t,{steps:steps,stepDates:sd,stepComments:sc});
+      return Object.assign({},t,{steps:steps,stepDates:sd,stepComments:sc,stepLinks:sl});
     });
     saveTenders(d);if(selTender&&selTender.id===tdId)setSelTender(d.find(function(t){return t.id===tdId;}));
   }
@@ -1152,13 +1167,45 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         <div style={{flex:1}}>
           <div className="page-title">{td.title}</div>
           <div className="page-sub">{td.package&&<span>📦 {td.package} </span>}{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</div>
-          {(td.budget||td.instructionAmount)&&<div style={{display:"flex",gap:10,marginTop:6,flexWrap:"wrap"}}>
-            {td.budget&&<div style={{padding:"4px 10px",borderRadius:7,background:"#f0ede6",fontSize:12}}><span style={{color:"#888"}}>Budget: </span><strong>{Number(td.budget).toLocaleString()} {td.currency||"EUR"}</strong></div>}
-            {td.instructionAmount&&<div style={{padding:"4px 10px",borderRadius:7,background:"#e8f0fe",fontSize:12}}><span style={{color:"#888"}}>Instruction: </span><strong>{Number(td.instructionAmount).toLocaleString()} {td.currency||"EUR"}</strong></div>}
-            {td.budget&&td.instructionAmount&&<div style={{padding:"4px 10px",borderRadius:7,fontSize:12,background:Number(td.instructionAmount)>Number(td.budget)?"#fce4ec":"#e8f5e9"}}>
-              <span style={{color:"#888"}}>Variance: </span><strong style={{color:Number(td.instructionAmount)>Number(td.budget)?"#c62828":"#2e7d32"}}>{Number(td.instructionAmount)>Number(td.budget)?"+":""}{(Number(td.instructionAmount)-Number(td.budget)).toLocaleString()} {td.currency||"EUR"}</strong>
-            </div>}
-          </div>}
+          {(function(){
+            var cur=td.currency||"EUR";
+            var budget=Number(td.budget)||0;
+            var accSub=Number(td.accAmountSubcontract)||0;
+            var accOther=Number(td.accAmountOther)||0;
+            var accTotal=accSub+accOther;
+            var instructed=Number(td.instructionAmount)||0;
+            var variance=budget>0?instructed-budget:0;
+            // Linked contracts + addendums
+            var linkedContracts=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct,ctr};});});
+            var contractTotal=linkedContracts.reduce(function(s,x){return s+Number(x.ct.amount||0);},0);
+            var addendumTotal=linkedContracts.reduce(function(s,x){return s+(x.ct.addendums||[]).reduce(function(s2,ad){return s2+Number(ad.amount||0);},0);},0);
+            var contractGrand=contractTotal+addendumTotal;
+            return <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
+              {budget>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
+                <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
+                <div style={{fontSize:16,fontWeight:800}}>{budget.toLocaleString()} {cur}</div>
+              </div>}
+              {accTotal>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#e8f0fe"}}>
+                <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>ACC/ACONEX proposed</div>
+                <div style={{fontSize:16,fontWeight:800,color:"#1a73e8"}}>{accTotal.toLocaleString()} {cur}</div>
+                <div style={{fontSize:10,color:"#888"}}>Subcont. {accSub.toLocaleString()} + Other {accOther.toLocaleString()}</div>
+              </div>}
+              {instructed>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#e8f5e9"}}>
+                <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
+                <div style={{fontSize:16,fontWeight:800,color:"#2e7d32"}}>{instructed.toLocaleString()} {cur}</div>
+              </div>}
+              {budget>0&&instructed>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:variance>0?"#fce4ec":"#e8f5e9"}}>
+                <div style={{fontSize:10,color:variance>0?"#c62828":"#2e7d32",marginBottom:2}}>Variance</div>
+                <div style={{fontSize:16,fontWeight:800,color:variance>0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()} {cur}</div>
+                <div style={{fontSize:10,color:"#aaa"}}>{variance>0?"Over budget":"Under budget"}</div>
+              </div>}
+              {contractGrand>0&&<div className="card" style={{flex:1,minWidth:160,marginBottom:0,padding:"10px 14px",background:"#fff8f0"}}>
+                <div style={{fontSize:10,color:"#b45309",marginBottom:2}}>Contracts ({linkedContracts.length})</div>
+                <div style={{fontSize:16,fontWeight:800,color:"#b45309"}}>{contractGrand.toLocaleString()} {cur}</div>
+                <div style={{fontSize:10,color:"#aaa"}}>Base {contractTotal.toLocaleString()} + Add. {addendumTotal.toLocaleString()}</div>
+              </div>}
+            </div>;
+          })()}
         </div>
         <button className="btn btn-sm" onClick={function(){openEdit(td);}}>✏️ Edit</button>
         <button className="btn btn-sm btn-danger" onClick={function(){delTender(td.id);}}>🗑</button>
@@ -1197,12 +1244,34 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                       <input type="number" min="0" value={(processBids[td.id]!==undefined?processBids[td.id]:((td.stepDates||{}).process||{}).bids)||""} onChange={function(e){var nb=Object.assign({},processBids);nb[td.id]=e.target.value;setProcessBids(nb);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{bids:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:50,padding:"3px 7px",fontSize:13,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:5,textAlign:"center"}}/>
                     </div>
                   </div>
-                  :<div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
-                      style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
-                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-                    </select>
-                    {val&&val!=="—"&&<span className={"chip "+cls} style={{marginLeft:4,fontSize:10}}>{val}</span>}
+                  :<div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
+                        style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
+                        {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                      </select>
+                      {val&&val!=="—"&&<span className={"chip "+cls} style={{marginLeft:4,fontSize:10}}>{val}</span>}
+                    </div>
+                    {s.key==="acc"&&<div style={{display:"flex",gap:5}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:8,fontWeight:700,color:"#888",marginBottom:1}}>SUBCONT.</div>
+                        <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+                          <input type="number" value={td.accAmountSubcontract||""} onChange={function(e){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{accAmountSubcontract:e.target.value});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} placeholder="0" style={{width:"100%",padding:"2px 24px 2px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:4}}/>
+                          <span style={{position:"absolute",right:4,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
+                        </div>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:8,fontWeight:700,color:"#888",marginBottom:1}}>OTHER</div>
+                        <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+                          <input type="number" value={td.accAmountOther||""} onChange={function(e){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{accAmountOther:e.target.value});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} placeholder="0" style={{width:"100%",padding:"2px 24px 2px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:4}}/>
+                          <span style={{position:"absolute",right:4,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
+                        </div>
+                      </div>
+                      {(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0))>0&&<div style={{flex:1,background:"#e8f0fe",borderRadius:5,padding:"2px 5px",display:"flex",flexDirection:"column",justifyContent:"center"}}>
+                        <div style={{fontSize:8,color:"#1a73e8",fontWeight:700}}>TOTAL</div>
+                        <div style={{fontSize:10,fontWeight:700,color:"#1a73e8"}}>{(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0)).toLocaleString()}</div>
+                      </div>}
+                    </div>}
                   </div>}
               </td>
               <td><input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
@@ -1218,7 +1287,18 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 </div>;
               })()}</td>
               <td><input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
-              <td><textarea value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,minWidth:160,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto"}}/></td>
+              <td style={{minWidth:200}}>
+                <textarea value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto",boxSizing:"border-box"}}/>
+                <div style={{marginTop:3}}>
+                  {((td.stepLinks||{})[s.key]||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:3,marginBottom:2,alignItems:"center"}}>
+                    <input type="text" value={lk.label||""} onChange={function(e){var ls=((td.stepLinks||{})[s.key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});updateStep(td.id,s.key,"links",ls);}} placeholder="Label" style={{width:70,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
+                    <input type="url" value={lk.url||""} onChange={function(e){var ls=((td.stepLinks||{})[s.key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});updateStep(td.id,s.key,"links",ls);}} placeholder="https://..." style={{flex:1,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
+                    <button onClick={function(){var ls=((td.stepLinks||{})[s.key]||[]).filter(function(_,j){return j!==li;});updateStep(td.id,s.key,"links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:10,flexShrink:0,lineHeight:1}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ccc";}}>✕</button>
+                  </div>;})}
+                  <button onClick={function(){var ls=[...((td.stepLinks||{})[s.key]||[]),{label:"",url:""}];updateStep(td.id,s.key,"links",ls);}} style={{fontSize:9,padding:"1px 5px",border:"1px solid #e0ddd8",borderRadius:4,background:"#fafaf8",fontFamily:"inherit",cursor:"pointer",color:"#888"}}>＋ link</button>
+                  {((td.stepLinks||{})[s.key]||[]).filter(function(lk){return lk.url;}).map(function(lk,li){return <a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,color:"#3949ab",textDecoration:"none",padding:"1px 5px",borderRadius:4,background:"#f0f0ff",border:"1px solid #d0d0f0",marginLeft:3}}>🔗 {lk.label||"link"}</a>;})}
+                </div>
+              </td>
             </tr>;
           })}</tbody>
         </table>
@@ -1569,8 +1649,8 @@ function CollapsibleContract({ct,fin,children}){
   const [open,setOpen]=useState(false);
   var currency=ct.currency||"EUR";
   return <div style={{marginBottom:8,border:"1.5px solid #e8e6df",borderRadius:10,overflow:"hidden",background:"#fff"}}>
-    <div onClick={function(){setOpen(!open);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:open?"#fafaf8":"#fff"}}>
-      <span style={{fontSize:13,color:"#aaa",flexShrink:0}}>{open?"▾":"▸"}</span>
+    <div onClick={function(){setOpen(!open);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:open?"#f8f7f4":"#fff",userSelect:"none"}}>
+      <span style={{fontSize:13,color:"#aaa",flexShrink:0,transition:"transform .15s",transform:open?"rotate(0deg)":"rotate(-90deg)",display:"inline-block"}}>{open?"▾":"▾"}</span>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontWeight:700,fontSize:13,color:"#1a1a1a"}}>{ct.number||"(no #)"} {ct.sapNumber&&<span style={{fontSize:11,color:"#1a73e8",fontWeight:600,marginLeft:4}}>SAP {ct.sapNumber}</span>}</div>
         {ct.description&&<div style={{fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct.description}</div>}
@@ -1592,7 +1672,7 @@ function CollapsibleContract({ct,fin,children}){
         })()}
       </div>
     </div>
-    {open&&<div style={{borderTop:"1.5px solid #e8e6df",padding:"12px 14px"}}>{children}</div>}
+    {open&&<div style={{borderTop:"1.5px solid #e8e6df",padding:"12px 14px"}} onClick={function(e){e.stopPropagation();}}>{children}</div>}
   </div>;
 }
 
@@ -2239,6 +2319,47 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
       </div>
     </div>
 
+    {/* ACC / ACONEX */}
+    <div className="card" style={{marginBottom:10}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>ACC / ACONEX Status</div>
+      {[
+        {key:"acc",label:"ACC",color:"#1a73e8",bg:"#e8f0fe"},
+        {key:"aconex",label:"ACONEX",color:"#7b1fa2",bg:"#f3e5f5"}
+      ].map(function(doc){
+        var signed=ct[doc.key+"Signed"]||false;
+        var subDate=ct[doc.key+"Date"]||"";
+        var status=ct[doc.key+"Status"]||"";
+        var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var overdue=status!=="approved"&&due14&&due14<today();
+        return <div key={doc.key} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 10px",borderRadius:8,background:doc.bg+"44",border:"1px solid "+doc.color+"33",marginBottom:6}}>
+          <div style={{flex:"0 0 80px"}}>
+            <label style={{color:doc.color,fontSize:11,fontWeight:800,display:"block",marginBottom:4}}>{doc.label}</label>
+            <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:500}}>
+              <input type="checkbox" checked={signed} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Signed",e.target.checked);}} style={{width:13,height:13}}/>
+              Signed
+            </label>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:4}}>
+              <select value={status} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Status",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5,fontFamily:"inherit",color:status==="approved"?"#2e7d32":status==="rejected"?"#c62828":"#555",fontWeight:status?"600":"400"}}>
+                <option value="">— status —</option>
+                <option value="not submitted">Not submitted</option>
+                <option value="pending approval">Pending approval</option>
+                <option value="rejected">Rejected</option>
+                <option value="approved">Approved</option>
+              </select>
+              {status&&status!=="not submitted"&&<div style={{flex:"0 0 120px"}}>
+                <div style={{fontSize:9,fontWeight:700,color:"#888",marginBottom:2}}>SUBMISSION DATE</div>
+                <input type="date" value={subDate} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Date",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5}}/>
+              </div>}
+              {due14&&<div style={{fontSize:10,color:overdue?"#c62828":"#888",fontWeight:overdue?700:400}}>
+                {overdue?"⚠️ Overdue +"+workingDaysDiff(due14,today())+"d (due "+fmtDate(due14)+")":"Due: "+fmtDate(due14)}
+              </div>}
+            </div>
+          </div>
+        </div>;
+      })}
+    </div>
     {/* Addendums - collapsible */}
     <div className="card" style={{marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setShowAdd(!showAdd);}}>
@@ -2262,7 +2383,27 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <span style={{fontSize:10,color:"#888"}}>Cumul: <strong>{addCumul.toLocaleString()} EUR</strong></span>
               <button onClick={function(){if(confirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
-            <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box",marginBottom:6}}/>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["acc","aconex"].map(function(dk){
+                var dLabel=dk==="acc"?"ACC":"ACONEX";var dColor=dk==="acc"?"#1a73e8":"#7b1fa2";
+                var adStatus=ad[dk+"Status"]||"";var adDate=ad[dk+"Date"]||"";
+                var due14=adDate?(function(){var d=new Date(adDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+                var overdue=adStatus!=="approved"&&due14&&due14<today();
+                return <div key={dk} style={{display:"flex",gap:5,alignItems:"center",padding:"4px 7px",borderRadius:6,background:dk==="acc"?"#e8f0fe55":"#f3e5f555",border:"1px solid "+dColor+"33",flex:1,minWidth:180}}>
+                  <span style={{fontSize:10,fontWeight:700,color:dColor,flexShrink:0}}>{dLabel}</span>
+                  <select value={adStatus} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Status",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,fontFamily:"inherit",flex:1}}>
+                    <option value="">— status —</option>
+                    <option value="not submitted">Not submitted</option>
+                    <option value="pending approval">Pending approval</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="approved">✅ Approved</option>
+                  </select>
+                  <input type="date" value={adDate} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Date",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,width:105}}/>
+                  {overdue&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due14,today())}d</span>}
+                </div>;
+              })}
+            </div>
           </div>;
         })}
       </div>}
@@ -2994,6 +3135,14 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   ?<div style={{display:"flex",flexDirection:"column",gap:5,padding:"4px 0"}}>
                     <textarea value={a.text||""} autoFocus onChange={function(e){updateField(a,"text",e.target.value);}} style={{width:"100%",padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:50,boxSizing:"border-box"}}/>
                     <textarea value={a.note||a.details||""} onChange={function(e){updateField(a,a._source==="task"?"note":"details",e.target.value);}} placeholder="Notes..." style={{width:"100%",padding:"4px 8px",border:"1.5px solid #ddd",borderRadius:6,fontFamily:"inherit",fontSize:11,resize:"vertical",outline:"none",minHeight:30,boxSizing:"border-box"}}/>
+                    <div style={{marginTop:4}}>
+                      {(a.links||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
+                        <input type="text" value={lk.label||""} onChange={function(e){var ls=(a.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});updateField(a,"links",ls);}} placeholder="Label" style={{width:90,padding:"2px 5px",fontSize:10,border:"1px solid #ddd",borderRadius:4}}/>
+                        <input type="url" value={lk.url||""} onChange={function(e){var ls=(a.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});updateField(a,"links",ls);}} placeholder="https://..." style={{flex:1,padding:"2px 5px",fontSize:10,border:"1px solid #ddd",borderRadius:4}}/>
+                        <button onClick={function(){updateField(a,"links",(a.links||[]).filter(function(_,j){return j!==li;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:11}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
+                      </div>;})}
+                      <button onClick={function(){updateField(a,"links",[...(a.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"1px 7px",border:"1px solid #ddd",borderRadius:4,background:"#fafaf8",fontFamily:"inherit",cursor:"pointer"}}>＋ link</button>
+                    </div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(tags||[]).map(function(tg){var on=(a.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=a.tags||[];updateField(a,"tags",on?cur.filter(function(x){return x!==tg;}):[...cur,tg]);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
                     </div>
                     <button className="btn btn-sm btn-pri" style={{alignSelf:"flex-start"}} onClick={function(){setEditId(null);}}>✓ Done</button>
@@ -3002,6 +3151,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                     <div style={{fontWeight:500,fontSize:13,color:a.status==="done"?"#bbb":"#1a1a1a",textDecoration:a.status==="done"?"line-through":"none"}}>{a.text}</div>
                     {(a.note||a.details)&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{a.note||a.details}</div>}
                     {(a.tags||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{(a.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;})}</div>}
+                    {(a.links||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:4,flexWrap:"wrap"}}>{(a.links||[]).map(function(lk,li){return lk.url?<a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:10,color:"#3949ab",textDecoration:"none",padding:"1px 6px",borderRadius:5,background:"#f0f0ff",border:"1px solid #d0d0f0"}}>🔗 {lk.label||"link"}</a>:null;})}</div>}
                     {ccs.length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{ccs.map(function(p,i){return <span key={p} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC {p.split(",")[0]}</span>;})}</div>}
                     <div style={{fontSize:9,color:"#ddd",marginTop:2}}>✏️ click to edit</div>
                   </div>}
@@ -3067,86 +3217,97 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
 
 // ── WeeklyPopup ───────────────────────────────────────────────────
 function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onClose}){
+  // Get current week bounds (Mon-Sat)
+  var now=new Date();
+  var dayOfWeek=now.getDay();// 0=Sun
+  var monday=new Date(now);monday.setDate(now.getDate()-(dayOfWeek===0?6:dayOfWeek-1));monday.setHours(0,0,0,0);
+  var saturday=new Date(monday);saturday.setDate(monday.getDate()+5);saturday.setHours(23,59,59,999);
+  var monStr=monday.toISOString().slice(0,10);
+  var satStr=saturday.toISOString().slice(0,10);
+  var todayStr=today();
+  var weekLabel=monday.toLocaleDateString("en-GB",{day:"2-digit",month:"long"})+" – "+saturday.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
+
+  var currentUserName=window._currentUser?window._currentUser.name:"";
+
   var allActions=[];
   (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
   (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){if(!a.isInfo)allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
 
-  var active=allActions.filter(function(a){return a.status!=="done"&&a.status!=="blocked";})
-    .slice().sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
+  // Filter: current user + has a due date + not done/blocked
+  var myActions=allActions.filter(function(a){
+    if(a.status==="done"||a.status==="blocked")return false;
+    if(!a.due)return false; // no date → don't show
+    if(currentUserName&&a.owner!==currentUserName)return false; // only my actions
+    return true;
+  });
 
-  var high=active.filter(function(a){return calcScore(a.importance||1,a.urgence||1)>=7;});
-  var mid=active.filter(function(a){var s=calcScore(a.importance||1,a.urgence||1);return s>=4&&s<7;});
-  var low=active.filter(function(a){return calcScore(a.importance||1,a.urgence||1)<4;});
+  // Split: this week, overdue, upcoming
+  var overdue=myActions.filter(function(a){return a.due<monStr;})
+    .sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
+  var thisWeek=myActions.filter(function(a){return a.due>=monStr&&a.due<=satStr;})
+    .sort(function(a,b){return a.due.localeCompare(b.due)||calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
+  var upcoming=myActions.filter(function(a){return a.due>satStr;})
+    .sort(function(a,b){return a.due.localeCompare(b.due);});
 
   function changeStatus(a,val){
     if(a._src==="task"){saveT((tasks||[]).map(function(t){return t.id!==a.id?t:Object.assign({},t,{status:val});}));}
     else{saveX((trackers||[]).map(function(tr){if(tr.id!==a._trId)return tr;return Object.assign({},tr,{actions:(tr.actions||[]).map(function(ac){return ac.id!==a.id?ac:Object.assign({},ac,{status:val});})});}));}
   }
 
-  function ActionRow({a}){
-    var sc=calcScore(a.importance||1,a.urgence||1);
-    var ss=scoreStyle(sc);
+  function ActionRow({a,showDate}){
+    var sc=calcScore(a.importance||1,a.urgence||1);var ss=scoreStyle(sc);
     var ctr2=a.contractorRef?(contractors||[]).find(function(c){return c.id===a.contractorRef;}):null;
     var tdr2=a.tenderRef?(tenders||[]).find(function(t){return t.id===a.tenderRef;}):null;
-    var isOverdue=a.due&&a.due<today()&&a.status!=="done";
-    return <div style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 8px",borderRadius:7,background:"#fafaf8",border:"1px solid #f0ede6",marginBottom:4}}>
+    var isOverdue=a.due&&a.due<todayStr;
+    return <div style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 8px",borderRadius:7,background:isOverdue?"#fff9f9":"#fafaf8",border:"1px solid "+(isOverdue?"#fcc":"#f0ede6"),marginBottom:4}}>
       <select value={a.status||"pending"} onChange={function(e){changeStatus(a,e.target.value);}} style={{fontSize:10,padding:"2px 3px",border:"1px solid #e0ddd8",borderRadius:5,fontFamily:"inherit",cursor:"pointer",flexShrink:0,width:90}}>
         {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
       </select>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:12,fontWeight:500,color:a.status==="done"?"#bbb":"#1a1a1a",textDecoration:a.status==="done"?"line-through":"none",lineHeight:1.3,marginBottom:2}}>{a.text}</div>
+        <div style={{fontSize:12,fontWeight:500,color:"#1a1a1a",lineHeight:1.3,marginBottom:2}}>{a.text}</div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-          {a.owner&&<span style={{fontSize:10,color:"#888"}}>{a.owner.split(",")[0]}</span>}
-          {a.due&&<span style={{fontSize:10,fontWeight:isOverdue?700:400,color:isOverdue?"#c62828":"#aaa"}}>📅 {fmtDate(a.due)}</span>}
-          {tdr2&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:5,background:"#fff8f0",color:"#b45309"}}>📑</span>}
-          {ctr2&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:5,background:"#e8f0fe",color:"#1a73e8"}}>🤝</span>}
+          {showDate&&<span style={{fontSize:10,fontWeight:700,color:isOverdue?"#c62828":"#f57f17"}}>📅 {fmtDate(a.due)}{isOverdue?" ⚠️":""}</span>}
+          {a.package&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#f0ede6",color:"#666"}}>{a.package}</span>}
+          {tdr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#fff8f0",color:"#b45309"}}>📑 {tdr2.title}</span>}
+          {ctr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#e8f0fe",color:"#1a73e8"}}>🤝 {ctr2.name}</span>}
+          {sc>1&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:ss.bg,color:ss.color,fontWeight:700}}>{sc}</span>}
         </div>
       </div>
-      <span style={{fontSize:10,fontWeight:700,padding:"2px 5px",borderRadius:5,background:ss.bg,color:ss.color,flexShrink:0}}>{sc}</span>
     </div>;
   }
 
-  function Col({label,color,items}){
-    if(items.length===0)return <div style={{flex:1,minWidth:0,opacity:.4,textAlign:"center",paddingTop:20,fontSize:11,color:"#aaa"}}>No actions</div>;
-    return <div style={{flex:1,minWidth:0}}>
-      <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:8,paddingBottom:6,borderBottom:"2px solid "+color}}>
-        <span style={{fontSize:12,fontWeight:800,color:color}}>{label}</span>
-        <span style={{fontSize:11,fontWeight:400,color:"#aaa"}}>({items.length})</span>
+  function Section({label,color,items,showDate}){
+    if(items.length===0)return null;
+    return <div style={{marginBottom:16}}>
+      <div style={{fontWeight:800,fontSize:11,color:color,textTransform:"uppercase",letterSpacing:".6px",marginBottom:6,paddingBottom:4,borderBottom:"2px solid "+color,display:"flex",justifyContent:"space-between"}}>
+        <span>{label}</span><span style={{fontWeight:400,color:"#aaa",fontSize:10}}>({items.length})</span>
       </div>
-      <div style={{overflowY:"auto",maxHeight:"calc(75vh - 100px)"}}>
-        {items.map(function(a){return <ActionRow key={a.id} a={a}/>;} )}
-      </div>
+      {items.map(function(a){return <ActionRow key={a.id} a={a} showDate={showDate}/>;} )}
     </div>;
   }
-
-  var now=new Date();
-  var weekStr="Week of "+now.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
 
   return <div className="overlay" style={{zIndex:700}} onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:"#fff",borderRadius:16,width:"92vw",maxWidth:1100,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 12px 48px rgba(0,0,0,.2)"}}>
+    <div style={{background:"#fff",borderRadius:16,width:"88vw",maxWidth:580,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 12px 48px rgba(0,0,0,.2)"}}>
       <div style={{background:"#1c1c1e",borderRadius:"16px 16px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div>
-          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,fontWeight:700,color:"#f97316",letterSpacing:"1px"}}>📋 Weekly Actions</div>
-          <div style={{fontSize:11,color:"#888",marginTop:2}}>{weekStr} · {active.length} pending</div>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,fontWeight:700,color:"#f97316",letterSpacing:"1px"}}>📋 My Week</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>{weekLabel} · {currentUserName||"All users"}</div>
         </div>
         <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#888",lineHeight:1,padding:"0 4px"}}>×</button>
       </div>
-      {active.length===0
-        ?<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,color:"#bbb",padding:32}}>
-          <div style={{fontSize:40}}>✅</div>
-          <div style={{fontSize:14}}>All caught up! No pending actions.</div>
-        </div>
-        :<div style={{display:"flex",gap:0,flex:1,minHeight:0,overflow:"hidden"}}>
-          <div style={{flex:1,borderRight:"1.5px solid #f0ede6",padding:"16px 14px",overflowY:"auto"}}>
-            <Col label="🔴 High" color="#c62828" items={high}/>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+        {myActions.length===0
+          ?<div style={{textAlign:"center",padding:"32px 0",color:"#bbb"}}>
+            <div style={{fontSize:40,marginBottom:8}}>✅</div>
+            <div style={{fontSize:14}}>No scheduled actions for this week!</div>
+            {!currentUserName&&<div style={{fontSize:12,color:"#aaa",marginTop:4}}>Log in to see your personal actions.</div>}
           </div>
-          <div style={{flex:1,borderRight:"1.5px solid #f0ede6",padding:"16px 14px",overflowY:"auto"}}>
-            <Col label="🟠 Medium" color="#f57f17" items={mid}/>
-          </div>
-          <div style={{flex:1,padding:"16px 14px",overflowY:"auto"}}>
-            <Col label="⚪ Standard" color="#aaa" items={low}/>
-          </div>
-        </div>}
+          :<div>
+            <Section label="⚠️ Overdue" color="#c62828" items={overdue} showDate={true}/>
+            <Section label={"This week ("+monStr.slice(5).replace("-","/")+"-"+satStr.slice(5).replace("-","/")+")"}color="#f57f17" items={thisWeek} showDate={true}/>
+            <Section label="Upcoming" color="#aaa" items={upcoming} showDate={true}/>
+          </div>}
+      </div>
       <div style={{padding:"10px 20px",borderTop:"1px solid #f0ede6",display:"flex",justifyContent:"flex-end",flexShrink:0}}>
         <button className="btn btn-pri" onClick={onClose}>Close</button>
       </div>
@@ -3412,7 +3573,9 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
 
   var STAGES=[
     {key:"rfi",label:"RFI",color:"#b45309",bg:"#fff8f0"},
-    {key:"acc",label:"ACC/ACONEX",color:"#1a73e8",bg:"#e8f0fe"},
+    {key:"contract_acc",label:"Contract ACC",color:"#1a73e8",bg:"#e8f0fe"},
+    {key:"contract_aconex",label:"Contract ACONEX",color:"#7b1fa2",bg:"#f3e5f5"},
+    {key:"acc",label:"Tender ACC",color:"#1a73e8",bg:"#dce8ff"},
     {key:"mar",label:"MAR",color:"#7b1fa2",bg:"#f3e5f5"},
     {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"},
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"}
@@ -3439,6 +3602,45 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
       status:t.status,overdue:overdue,
       daysOverdue:due?workingDaysDiff(due,todayStr):0,
       _taskId:t.id,_type:"task"
+    });
+  });
+
+  // Contract and Addendum ACC/ACONEX
+  (contractors||[]).forEach(function(ctr){
+    (ctr.contracts||[]).forEach(function(ct){
+      [{key:"contract_acc",label:"Contract ACC",dk:"acc"},{key:"contract_aconex",label:"Contract ACONEX",dk:"aconex"}].forEach(function(docType){
+        var status=ct[docType.dk+"Status"]||"";
+        var subDate=ct[docType.dk+"Date"]||"";
+        if(!subDate&&!status)return; // skip if not started
+        var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var overdue=status!=="approved"&&!!due14&&due14<todayStr;
+        var daysOverdue=overdue?workingDaysDiff(due14,todayStr):0;
+        docs.push({
+          id:ct.id+"_"+docType.dk,stage:docType.key,stageLabel:docType.label,
+          text:ctr.name+(ct.number?" — "+ct.number:"")+" ("+docType.label+")",
+          owner:ct.owner||ctr.owner||"",package:ct.package||ctr.package||"",
+          tenderRef:ct.tenderRef||"",tenderTitle:"",submissionDate:subDate,
+          dueDate:due14,targetDate:subDate,overdue:overdue,daysOverdue:daysOverdue,
+          stepStatus:status,_type:"contract"
+        });
+      });
+      (ct.addendums||[]).forEach(function(ad){
+        [{key:"contract_acc",label:"Add. ACC",dk:"acc"},{key:"contract_aconex",label:"Add. ACONEX",dk:"aconex"}].forEach(function(docType){
+          var status=ad[docType.dk+"Status"]||"";
+          var subDate=ad[docType.dk+"Date"]||"";
+          if(!subDate&&!status)return;
+          var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+          var overdue=status!=="approved"&&!!due14&&due14<todayStr;
+          docs.push({
+            id:ct.id+"_add_"+ad.id+"_"+docType.dk,stage:docType.key,stageLabel:"Addum. "+docType.label.split(" ")[1],
+            text:ctr.name+(ct.number?" C"+ct.number:"")+(ad.number?" Add."+ad.number:"")+" ("+docType.label.split(" ")[1]+")",
+            owner:ct.owner||ctr.owner||"",package:ct.package||ctr.package||"",
+            tenderRef:ct.tenderRef||"",tenderTitle:"",submissionDate:subDate,
+            dueDate:due14,targetDate:subDate,overdue:overdue,daysOverdue:overdue?workingDaysDiff(due14,todayStr):0,
+            stepStatus:status,_type:"contract"
+          });
+        });
+      });
     });
   });
 
