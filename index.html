@@ -1337,6 +1337,34 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
       {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
+    {(function(){
+      var totBudget=filtered.reduce(function(s,t){return s+Number(t.budget||0);},0);
+      var totAcc=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0)+Number(t.accAmountOther||0);},0);
+      var totInstructed=filtered.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
+      var totVariance=totBudget-totAcc;
+      if(!totBudget&&!totAcc&&!totInstructed)return null;
+      return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+        {totBudget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px"}}>
+          <div style={{fontSize:10,color:"#888",marginBottom:2}}>Total Budget</div>
+          <div style={{fontSize:18,fontWeight:800}}>{totBudget.toLocaleString()}</div>
+          <div style={{fontSize:10,color:"#aaa"}}>{filtered.length} tenders</div>
+        </div>}
+        {totAcc>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0f8ff"}}>
+          <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>Total Proposed</div>
+          <div style={{fontSize:18,fontWeight:800,color:"#1a73e8"}}>{totAcc.toLocaleString()}</div>
+          <div style={{fontSize:10,color:"#aaa"}}>ACC/ACONEX</div>
+        </div>}
+        {totInstructed>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
+          <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Total Instructed</div>
+          <div style={{fontSize:18,fontWeight:800,color:"#2e7d32"}}>{totInstructed.toLocaleString()}</div>
+        </div>}
+        {totBudget>0&&totAcc>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:totVariance<0?"#fff0f0":"#f0fff4"}}>
+          <div style={{fontSize:10,color:totVariance<0?"#c62828":"#2e7d32",marginBottom:2}}>Variance (Budget − Cost)</div>
+          <div style={{fontSize:18,fontWeight:800,color:totVariance<0?"#c62828":"#2e7d32"}}>{totVariance>0?"+":""}{totVariance.toLocaleString()}</div>
+          <div style={{fontSize:10,color:"#aaa"}}>{totVariance<0?"⚠️ Over budget":"✅ Under budget"}</div>
+        </div>}
+      </div>;
+    })()}
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
       :<table className="tbl">
@@ -1344,6 +1372,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
           <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
           <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+          <th style={{textAlign:"right"}}>Budget</th>
+          <th style={{textAlign:"right"}}>Proposed</th>
+          <th style={{textAlign:"right"}}>Instructed</th>
+          <th style={{textAlign:"right",color:"#888"}}>Variance</th>
           {TENDER_STEPS.map(function(s){
             var sortable=s.key==="acc"||s.key==="contract";
             return sortable
@@ -1357,6 +1389,26 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             <td style={{fontWeight:600}}>{td.title}</td>
             <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
             <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {td.budget?<span style={{fontSize:11,fontWeight:600}}>{Number(td.budget).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0))>0
+                ?<span style={{fontSize:11,fontWeight:600,color:"#1a73e8"}}>{(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0)).toLocaleString()}</span>
+                :<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {td.instructionAmount?<span style={{fontSize:11,fontWeight:600,color:"#2e7d32"}}>{Number(td.instructionAmount).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {(function(){
+                var budget=Number(td.budget||0);
+                var proposed=Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0);
+                if(!budget||!proposed)return <span style={{color:"#ddd"}}>—</span>;
+                var v=budget-proposed;
+                return <span style={{fontSize:11,fontWeight:700,color:v<0?"#c62828":"#2e7d32"}}>{v>0?"+":""}{v.toLocaleString()}</span>;
+              })()}
+            </td>
             {TENDER_STEPS.map(function(s){var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);return <td key={s.key}>{v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}</td>;})}
           </tr>;
         })}</tbody>
@@ -1369,14 +1421,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 var totAccSub=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0);},0);
                 var totAccOther=filtered.reduce(function(s,t){return s+Number(t.accAmountOther||0);},0);
                 var totAcc=totAccSub+totAccOther;
-                var variance=totInstructed-totBudget;
+                var variance=totBudget-totAcc; // Variance = Budget - Proposed cost
                 if(totBudget===0&&totInstructed===0&&totAcc===0)return <span style={{fontSize:11,color:"#aaa"}}>No financial data yet — add Budget and Instruction amounts to tenders.</span>;
                 return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                   <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",marginRight:4}}>TOTALS ({filtered.length})</span>
                   {totBudget>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#f0ede6",fontSize:11}}><span style={{color:"#888"}}>Budget: </span><strong>{totBudget.toLocaleString()}</strong></div>}
                   {totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f0fe",fontSize:11}}><span style={{color:"#888"}}>ACC proposed: </span><strong style={{color:"#1a73e8"}}>{totAcc.toLocaleString()}</strong></div>}
                   {totInstructed>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Instructed: </span><strong style={{color:"#2e7d32"}}>{totInstructed.toLocaleString()}</strong></div>}
-                  {totBudget>0&&totInstructed>0&&<div style={{padding:"3px 10px",borderRadius:7,background:variance>0?"#fce4ec":"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Variance: </span><strong style={{color:variance>0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()}</strong><span style={{fontSize:10,marginLeft:4}}>{variance>0?"⚠️ over":"✅ under"}</span></div>}
+                  {totBudget>0&&totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:variance<0?"#fce4ec":"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Variance (B-C): </span><strong style={{color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()}</strong><span style={{fontSize:10,marginLeft:4}}>{variance<0?"⚠️ over budget":"✅ under budget"}</span></div>}
                 </div>;
               })()}
             </td>
@@ -1421,11 +1473,11 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners
         {(Number(data.budget||0)>0||Number(data.instructionAmount||0)>0)&&<div className="fg">
           <label>Variance (Budget vs Instructed)</label>
           <div style={{padding:"6px 10px",borderRadius:7,fontSize:13,fontWeight:700,
-            background:(Number(data.instructionAmount||0)-Number(data.budget||0))>0?"#fce4ec":"#e8f5e9",
-            color:(Number(data.instructionAmount||0)-Number(data.budget||0))>0?"#c62828":"#2e7d32"}}>
-            {(function(){var v=Number(data.instructionAmount||0)-Number(data.budget||0);return (v>0?"+":"")+v.toLocaleString()+" "+(data.currency||"EUR");})()}
+            background:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#fce4ec":"#e8f5e9",
+            color:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#c62828":"#2e7d32"}}>
+            {(function(){var v=Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0));return (v>0?"+":"")+v.toLocaleString()+" "+(data.currency||"EUR");})()}
             <span style={{fontSize:10,fontWeight:400,marginLeft:8}}>
-              {(Number(data.instructionAmount||0)-Number(data.budget||0))>0?"⚠️ Over budget":"✅ Under budget"}
+              {(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"⚠️ Over budget":"✅ Under budget"}
             </span>
           </div>
         </div>}
