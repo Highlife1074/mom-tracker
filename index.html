@@ -270,7 +270,7 @@ const STATUS_OPTS=["pending","in progress","done","blocked"];
 const STATUS_ICONS={pending:"⏳","in progress":"🔄",done:"✅",blocked:"🚫"};
 
 function stampModified(task){var u=Object.assign({},task);u.lastModifiedBy=window._currentUser?window._currentUser.name:"";u.lastModifiedAt=today();return u;}
-function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:""};return Object.assign(base,overrides||{});}
+function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",rfiOverdue:false,addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:""};return Object.assign(base,overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",done:""},pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
@@ -602,8 +602,8 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               {tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}
               {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
             </div>
-            {(task.tags||[]).includes("RFI")&&(task.rfiSubmission||task.rfiDue)&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"2px 6px",borderRadius:5,display:"inline-block"}}>
-              📋 RFI {task.rfiSubmission&&"submitted: "+fmtDate(task.rfiSubmission)} {task.rfiDue&&"· due: "+fmtDate(task.rfiDue)}
+            {(task.tags||[]).includes("RFI")&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"3px 8px",borderRadius:5,display:"inline-block"}}>
+              📋 RFI {task.rfiSubmission?"submitted: "+fmtDate(task.rfiSubmission):"⚠️ No submission date"} {task.rfiDue&&"· due: "+fmtDate(task.rfiDue)}
             </div>}
             {(showCreated!==false)&&<div style={{fontSize:10,color:"#ccc",marginTop:3}}>{task.lastModifiedBy&&task.lastModifiedAt?<span>Modified {fmtDate(task.lastModifiedAt)} by <strong>{task.lastModifiedBy}</strong></span>:task.createdAt&&<span>Added {fmtDate(task.createdAt)}{task.addedBy&&" by "+task.addedBy}</span>}</div>}
           </div>}
@@ -3282,6 +3282,182 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJum
   </div>;
 }
 
+// ── DocumentsView ─────────────────────────────────────────────────
+function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
+  const [fTender,setFTender]=useState("all");
+  const [fPkg,setFPkg]=useState("all");
+  const [fOwner,setFOwner]=useState("all");
+  const [fStage,setFStage]=useState("all");
+  const [fStatus,setFStatus]=useState("overdue"); // overdue | all | ok
+
+  var STAGES=[
+    {key:"rfi",label:"RFI",color:"#b45309",bg:"#fff8f0"},
+    {key:"acc",label:"ACC/ACONEX",color:"#1a73e8",bg:"#e8f0fe"},
+    {key:"mar",label:"MAR",color:"#7b1fa2",bg:"#f3e5f5"},
+    {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"},
+    {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"}
+  ];
+
+  // Build document list from both RFI tasks and tender step dates
+  var docs=[];
+  var todayStr=today();
+
+  // RFI from tasks
+  (tasks||[]).forEach(function(t){
+    if(!(t.tags||[]).includes("RFI"))return;
+    var tdr=(tenders||[]).find(function(x){return x.id===t.tenderRef;})||null;
+    var ctr=(contractors||[]).find(function(x){return x.id===t.contractorRef;})||null;
+    var submitted=t.rfiSubmission||"";
+    var due=t.rfiDue||(submitted?(function(){var d=new Date(submitted);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"");
+    var overdue=due&&due<todayStr&&t.status!=="done";
+    docs.push({
+      id:t.id,stage:"rfi",stageLabel:"RFI",
+      text:t.text,owner:t.owner||"",
+      package:t.package||"",
+      tenderRef:t.tenderRef||"",tenderTitle:tdr?tdr.title:"",
+      submissionDate:submitted,dueDate:due,
+      status:t.status,overdue:overdue,
+      daysOverdue:due?(Math.floor((new Date(todayStr)-new Date(due))/(1000*60*60*24))):0,
+      _taskId:t.id,_type:"task"
+    });
+  });
+
+  // Tender steps: ACC, MAR, ITP, WMS
+  var TENDER_DOC_STEPS=["acc","mar","itp","wms"];
+  var STEP_LABELS={acc:"ACC/ACONEX",mar:"MAR",itp:"ITP",wms:"WMS"};
+  (tenders||[]).forEach(function(td){
+    TENDER_DOC_STEPS.forEach(function(step){
+      var stepStatus=(td.steps||{})[step]||"";
+      var targetDate=((td.stepDates||{})[step]||{}).target||"";
+      var doneDate=((td.stepDates||{})[step]||{}).done||"";
+      if(!targetDate)return; // no target = not tracked
+      var isDone=!!doneDate||stepStatus.toLowerCase().includes("approved")||stepStatus.toLowerCase().includes("done");
+      var overdue=!isDone&&targetDate&&targetDate<todayStr;
+      var daysOverdue=overdue?Math.floor((new Date(todayStr)-new Date(targetDate))/(1000*60*60*24)):0;
+      docs.push({
+        id:td.id+"_"+step,stage:step,stageLabel:STEP_LABELS[step],
+        text:td.title+" — "+STEP_LABELS[step],
+        owner:td.ownerTender||"",
+        package:td.package||"",
+        tenderRef:td.id,tenderTitle:td.title,
+        submissionDate:doneDate||"",dueDate:targetDate,
+        status:isDone?"done":"pending",overdue:overdue,
+        daysOverdue:daysOverdue,
+        stepStatus:stepStatus,
+        _tenderId:td.id,_step:step,_type:"tender"
+      });
+    });
+  });
+
+  // Filter
+  var filtered=docs.filter(function(d){
+    if(fTender!=="all"&&d.tenderRef!==fTender)return false;
+    if(fPkg!=="all"&&d.package!==fPkg)return false;
+    if(fOwner!=="all"&&d.owner!==fOwner)return false;
+    if(fStage!=="all"&&d.stage!==fStage)return false;
+    if(fStatus==="overdue"&&!d.overdue)return false;
+    if(fStatus==="ok"&&d.overdue)return false;
+    return true;
+  }).sort(function(a,b){
+    if(a.overdue&&!b.overdue)return -1;
+    if(!a.overdue&&b.overdue)return 1;
+    return (b.daysOverdue-a.daysOverdue)||(a.dueDate||"").localeCompare(b.dueDate||"");
+  });
+
+  var overdueCount=docs.filter(function(d){return d.overdue;}).length;
+
+  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+    <div className="page-hdr">
+      <div>
+        <div className="page-title">Documents</div>
+        <div className="page-sub">Overdue submissions by client — RFI, ACC, MAR, ITP, WMS</div>
+      </div>
+      {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fce4ec",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#c62828",fontWeight:700,fontSize:13}}>
+        ⚠️ {overdueCount} overdue
+      </div>}
+    </div>
+
+    {/* Filters */}
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1.5px solid "+(fStatus==="overdue"?"#c62828":"#e8e6df"),borderRadius:8,fontFamily:"inherit",color:fStatus==="overdue"?"#c62828":"#555",fontWeight:fStatus==="overdue"?700:400,background:fStatus==="overdue"?"#fce4ec":"#fff"}}>
+        <option value="overdue">⚠️ Overdue only</option>
+        <option value="all">All documents</option>
+        <option value="ok">On track</option>
+      </select>
+      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All stages</option>
+        {STAGES.map(function(s){return <option key={s.key} value={s.key}>{s.label}</option>;})}
+      </select>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All packages</option>
+        {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+      </select>
+      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All tenders</option>
+        {(tenders||[]).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
+      </select>
+      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All owners</option>
+        {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+      </select>
+      {(fTender!=="all"||fPkg!=="all"||fOwner!=="all"||fStage!=="all"||fStatus!=="overdue")&&
+        <button className="btn btn-sm" onClick={function(){setFTender("all");setFPkg("all");setFOwner("all");setFStage("all");setFStatus("overdue");}}>✕ Reset</button>}
+    </div>
+
+    {filtered.length===0
+      ?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">{fStatus==="overdue"?"No overdue documents!":"No documents matching filters."}</div></div>
+      :<div>
+        {/* Summary by stage */}
+        <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+          {STAGES.map(function(s){
+            var cnt=docs.filter(function(d){return d.stage===s.key&&d.overdue;}).length;
+            if(cnt===0)return null;
+            return <div key={s.key} onClick={function(){setFStage(s.key);setFStatus("overdue");}} style={{padding:"6px 12px",borderRadius:8,background:s.bg,border:"1.5px solid "+s.color,cursor:"pointer",display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{fontWeight:700,fontSize:13,color:s.color}}>{cnt}</span>
+              <span style={{fontSize:11,color:s.color}}>{s.label}</span>
+            </div>;
+          })}
+        </div>
+
+        {/* Table */}
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
+          <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th>Document / Action</th>
+                <th>Tender</th>
+                <th>Package</th>
+                <th>Owner</th>
+                <th>Due date</th>
+                <th>Days overdue</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(function(d){
+                var stage=STAGES.find(function(s){return s.key===d.stage;})||{color:"#888",bg:"#f5f5f5",label:d.stage};
+                return <tr key={d.id} style={{background:d.overdue?"#fffaf9":"#fff"}}>
+                  <td><span style={{padding:"2px 8px",borderRadius:8,background:stage.bg,color:stage.color,fontWeight:700,fontSize:11}}>{stage.label}</span></td>
+                  <td style={{maxWidth:300}}>
+                    <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.text}</div>
+                    {d.submissionDate&&<div style={{fontSize:10,color:"#aaa"}}>Submitted: {fmtDate(d.submissionDate)}</div>}
+                  </td>
+                  <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.tenderTitle||"—"}</td>
+                  <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.package||"—"}</td>
+                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
+                  <td style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#555",whiteSpace:"nowrap"}}>{d.dueDate?fmtDate(d.dueDate):"—"}</td>
+                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>+{d.daysOverdue}d</span>:<span style={{color:"#2e7d32",fontSize:11}}>✓</span>}</td>
+                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:d.status==="done"?"#e8f5e9":"#f5f5f5",color:d.status==="done"?"#2e7d32":"#888",fontWeight:600}}>{d.stepStatus||d.status}</span></td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>}
+  </div>;
+}
+
 function App(){
   const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");return u||null;}catch(e){return null;}});
   const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
@@ -3427,6 +3603,7 @@ function App(){
     {id:"awn",icon:"⚠️",label:"AWN"},
     {id:"weekly",icon:"📊",label:"Weekly"},
     {id:"dashboard",icon:"📈",label:"Dashboard"},
+    {id:"documents",icon:"📁",label:"Documents"},
     {id:"global",icon:"🌐",label:"Actions"},
     {id:"settings",icon:"⚙️",label:"Settings"},
   ];
@@ -3460,7 +3637,8 @@ function App(){
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="awn"&&<AwnView awns={awns} saveAwns={saveAwns} people={people}/>}
         {view==="weekly"&&<WeeklyView tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} packages={packages} tenders={tenders} contractors={contractors}/>}
-        {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} onJumpOwner={function(name){setJumpOwner(name);setView("global");}}/>}
+        {view==="documents"&&<DocumentsView tasks={tasks} tenders={tenders} contractors={contractors} packages={packages} people={people} saveTasks={saveT}/> }
+    {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} onJumpOwner={function(name){setJumpOwner(name);setView("global");}}/>}
     {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}}/>}
         {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);}}/>}
       </div>
