@@ -401,12 +401,15 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
   const [urgence,setUrgence]=useState(1);
   const [selTags,setSelTags]=useState([]);
   const [isInfo,setIsInfo]=useState(false);
+  const [rfiSub,setRfiSub]=useState("");
+  const [rfiDue,setRfiDue]=useState("");
   const inputRef=useRef();
 
   function submit(){
     if(!text.trim())return;
     var td={text:text.trim(),owner,package:pkg,due,tenderRef,contractorRef,importance,urgence,tags:selTags};
     if(isInfo)td.isInfo=true;
+    if(selTags.includes("RFI")){td.rfiSubmission=rfiSub;td.rfiDue=rfiDue;}
     onAdd(newTask(td));
     setText("");setDue(today());setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);setIsInfo(false);
     if(inputRef.current)inputRef.current.focus();
@@ -538,7 +541,10 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
 
 function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,tenders,contractors,showCreated}){
   const [editMode,setEditMode]=useState(false);
+  const [localTags,setLocalTags]=useState(task.tags||[]);
   const sc=calcScore(task.importance||1,task.urgence||1);
+
+  useEffect(function(){setLocalTags(task.tags||[]);},[task.tags]);
   const ss=scoreStyle(sc);
   const tdr=task.tenderRef?(tenders||[]).find(function(t){return t.id===task.tenderRef;}):null;
   const ctr=task.contractorRef?(contractors||[]).find(function(c){return c.id===task.contractorRef;}):null;
@@ -582,10 +588,10 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               {[1,2,3].map(function(v){return <button key={v} onClick={function(){upd("urgence",v);}} style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((task.urgence||1)===v?"#1c1c1e":"#ddd"),background:(task.urgence||1)===v?"#1c1c1e":"#fff",color:(task.urgence||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
             </div>}
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-              {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];upd("tags",on?cur.filter(function(x){return x!==tg;}):[...cur,tg]);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+              {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];var newTags=on?cur.filter(function(x){return x!==tg;}):[...cur,tg];setLocalTags(newTags);upd("tags",newTags);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
             </div>
             <textarea value={task.note||""} onChange={function(e){upd("note",e.target.value);}} placeholder="Notes..." style={{minHeight:32,fontSize:11,padding:"4px 8px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit",resize:"vertical"}}/>
-            {(task.tags||[]).includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px",background:"#fff8f0",borderRadius:7,border:"1px solid #fed7aa"}}>
+            {localTags.includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px",background:"#fff8f0",borderRadius:7,border:"1px solid #fed7aa"}}>
               <div style={{flex:1}}>
                 <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>RFI Submission date</label>
                 <input type="date" value={task.rfiSubmission||""} onChange={function(e){
