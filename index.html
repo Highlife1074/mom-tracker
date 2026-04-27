@@ -273,7 +273,7 @@ function stampModified(task){var u=Object.assign({},task);u.lastModifiedBy=windo
 function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",rfiOverdue:false,addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:"",links:[]};return Object.assign(base,overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
-function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",submission:"",done:""},pkg:{target:"",submission:"",done:""},process:{target:"",submission:"",done:""},acc:{target:"",submission:"",done:""},contract:{target:"",submission:"",done:""},mar:{target:"",submission:"",done:""},itp:{target:"",submission:"",done:""},wms:{target:"",submission:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepLinks:{bidders:[],pkg:[],process:[],acc:[],contract:[],mar:[],itp:[],wms:[]},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
+function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",done:""},pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:"",approval:""},contract:{target:"",done:""},mar:{target:"",done:"",approval:""},itp:{target:"",done:"",approval:""},wms:{target:"",done:"",approval:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepLinks:{bidders:[],pkg:[],process:[],acc:[],contract:[],mar:[],itp:[],wms:[]},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
 function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
@@ -1133,7 +1133,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       if(field==="status")steps[step]=val;
       else if(field==="comment"){sc[step]=val;}
       else if(field==="links"){sl[step]=val;}
-      else{var cur=Object.assign({},sd[step]);cur[field]=val;sd[step]=cur;}
+      else if(field==="approval"||field==="target"||field==="done"||field==="bids"){var cur=Object.assign({},sd[step]||{});cur[field]=val;sd[step]=cur;}
+      else{var cur2=Object.assign({},sd[step]);cur2[field]=val;sd[step]=cur2;}
       return Object.assign({},t,{steps:steps,stepDates:sd,stepComments:sc,stepLinks:sl});
     });
     saveTenders(d);if(selTender&&selTender.id===tdId)setSelTender(d.find(function(t){return t.id===tdId;}));
@@ -1214,86 +1215,86 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       <div className="card">
         <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Submission Steps</div>
         <table className="tbl" style={{fontSize:12}}>
-          <thead><tr><th>Step</th><th>Status</th><th>Target</th><th>Done</th><th>Comment</th></tr></thead>
+          <thead><tr>
+            <th>Step</th>
+            <th>Status</th>
+            <th style={{textAlign:"center",minWidth:110}}>Target date</th>
+            <th style={{textAlign:"center",minWidth:110}}>Date done</th>
+            <th style={{textAlign:"center",minWidth:110}}>Date of approval</th>
+            <th style={{minWidth:180}}>Comments</th>
+          </tr></thead>
           <tbody>{TENDER_STEPS.map(function(s){
             var val=(td.steps||{})[s.key]||"";
             var dates=(td.stepDates||{})[s.key]||{};
             var comment=(td.stepComments||{})[s.key]||"";
             var cls=tenderStepClass(s.key,val);
             return <tr key={s.key}>
-              <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{s.label}</td>
+              <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{s.label}</td>
+
+              {/* Status */}
               <td style={{minWidth:180}}>
                 {s.special==="bidders"
-                  ?<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                    <div style={{display:"flex",gap:8}}>
-                      <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"1px solid #e8e6df",background:"#fff",fontFamily:"inherit",fontSize:12,cursor:"pointer",outline:"none",borderRadius:5,padding:"3px 7px"}}>
-                        {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-                      </select>
-                    </div>
-                    <textarea value={(td.stepComments||{}).bidders||""} onChange={function(e){updateStep(td.id,"bidders","comment",e.target.value);}} placeholder="List bidder names here..." style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",resize:"vertical",minHeight:40,maxHeight:120,overflowY:"auto"}}/>
+                  ?<div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"1px solid #e8e6df",background:"#fff",fontFamily:"inherit",fontSize:12,cursor:"pointer",outline:"none",borderRadius:5,padding:"3px 7px"}}>
+                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                    </select>
+                    <textarea value={(td.stepComments||{}).bidders||""} onChange={function(e){updateStep(td.id,"bidders","comment",e.target.value);}} placeholder="List bidder names here..." style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",resize:"vertical",minHeight:36,maxHeight:100,overflowY:"auto"}}/>
                   </div>
                   :s.special==="process"
-                  ?<div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{fontSize:11,color:"#888",fontWeight:600}}>Progress</span>
-                      <input type="number" min="0" max="100" value={(processPct[td.id]!==undefined?processPct[td.id]:((td.stepDates||{}).process||{}).pct)||""} onChange={function(e){var np=Object.assign({},processPct);np[td.id]=e.target.value;setProcessPct(np);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{pct:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:60,padding:"3px 7px",fontSize:13,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:5,textAlign:"center"}}/>
-                      <span style={{fontSize:11,color:"#888"}}>%</span>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{fontSize:11,color:"#888",fontWeight:600}}>Bids received</span>
-                      <input type="number" min="0" value={(processBids[td.id]!==undefined?processBids[td.id]:((td.stepDates||{}).process||{}).bids)||""} onChange={function(e){var nb=Object.assign({},processBids);nb[td.id]=e.target.value;setProcessBids(nb);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{bids:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:50,padding:"3px 7px",fontSize:13,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:5,textAlign:"center"}}/>
-                    </div>
+                  ?<div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none"}}>
+                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                    </select>
+                    {(td.stepDates||{}).process&&((td.stepDates||{}).process).bids!==undefined&&<span style={{fontSize:11,color:"#888"}}>{((td.stepDates||{}).process).bids} bids</span>}
                   </div>
-                  :<div style={{display:"flex",flexDirection:"column",gap:4}}>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
-                        style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
-                        {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-                      </select>
-                      {val&&val!=="—"&&<span className={"chip "+cls} style={{marginLeft:4,fontSize:10}}>{val}</span>}
-                    </div>
-                    {s.key==="acc"&&<div style={{display:"flex",gap:5}}>
+                  :<div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
+                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                    </select>
+                    {s.key==="acc"&&<div style={{display:"flex",gap:4}}>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:8,fontWeight:700,color:"#888",marginBottom:1}}>SUBCONT.</div>
+                        <div style={{fontSize:8,fontWeight:800,color:"#888",marginBottom:1}}>SUBCONT.</div>
                         <div style={{position:"relative",display:"flex",alignItems:"center"}}>
                           <input type="number" value={td.accAmountSubcontract||""} onChange={function(e){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{accAmountSubcontract:e.target.value});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} placeholder="0" style={{width:"100%",padding:"2px 24px 2px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:4}}/>
-                          <span style={{position:"absolute",right:4,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
+                          <span style={{position:"absolute",right:3,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
                         </div>
                       </div>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:8,fontWeight:700,color:"#888",marginBottom:1}}>OTHER</div>
+                        <div style={{fontSize:8,fontWeight:800,color:"#888",marginBottom:1}}>OTHER</div>
                         <div style={{position:"relative",display:"flex",alignItems:"center"}}>
                           <input type="number" value={td.accAmountOther||""} onChange={function(e){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{accAmountOther:e.target.value});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} placeholder="0" style={{width:"100%",padding:"2px 24px 2px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:4}}/>
-                          <span style={{position:"absolute",right:4,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
+                          <span style={{position:"absolute",right:3,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
                         </div>
                       </div>
-                      {(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0))>0&&<div style={{flex:1,background:"#e8f0fe",borderRadius:5,padding:"2px 5px",display:"flex",flexDirection:"column",justifyContent:"center"}}>
-                        <div style={{fontSize:8,color:"#1a73e8",fontWeight:700}}>TOTAL</div>
-                        <div style={{fontSize:10,fontWeight:700,color:"#1a73e8"}}>{(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0)).toLocaleString()}</div>
-                      </div>}
                     </div>}
                   </div>}
               </td>
-              <td><input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
-              <td>{(function(){
-                var sub=dates.submission||"";
-                var target=dates.target||"";
-                var due14=target?(function(){var d=new Date(target);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
-                var isLate=sub&&due14&&sub>due14;
-                return <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                  <input type="date" value={sub} onChange={function(e){updateStep(td.id,s.key,"submission",e.target.value);}} style={{border:"1px solid "+(isLate?"#f5c6cb":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
-                  {isLate&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ +{Math.floor((new Date(sub)-new Date(due14))/(1000*60*60*24))}d late</span>}
-                  {!sub&&due14&&<span style={{fontSize:9,color:"#aaa"}}>Due: {fmtDate(due14)}</span>}
-                </div>;
-              })()}</td>
-              <td><input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
+
+              {/* Target date */}
+              <td style={{textAlign:"center"}}>
+                <input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+              </td>
+
+              {/* Done date */}
+              <td style={{textAlign:"center"}}>
+                <input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+              </td>
+
+              {/* Approval date - only for ACC, MAR, ITP, WMS */}
+              <td style={{textAlign:"center"}}>
+                {["acc","mar","itp","wms"].indexOf(s.key)>=0
+                  ?<input type="date" value={dates.approval||""} onChange={function(e){updateStep(td.id,s.key,"approval",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+                  :<span style={{color:"#e0ddd8"}}>—</span>}
+              </td>
+
+              {/* Comment + links */}
               <td style={{minWidth:200}}>
                 <textarea value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto",boxSizing:"border-box"}}/>
                 <div style={{marginTop:3}}>
                   {((td.stepLinks||{})[s.key]||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:3,marginBottom:2,alignItems:"center"}}>
                     <input type="text" value={lk.label||""} onChange={function(e){var ls=((td.stepLinks||{})[s.key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});updateStep(td.id,s.key,"links",ls);}} placeholder="Label" style={{width:70,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
                     <input type="url" value={lk.url||""} onChange={function(e){var ls=((td.stepLinks||{})[s.key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});updateStep(td.id,s.key,"links",ls);}} placeholder="https://..." style={{flex:1,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
-                    <button onClick={function(){var ls=((td.stepLinks||{})[s.key]||[]).filter(function(_,j){return j!==li;});updateStep(td.id,s.key,"links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:10,flexShrink:0,lineHeight:1}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ccc";}}>✕</button>
+                    <button onClick={function(){var ls=((td.stepLinks||{})[s.key]||[]).filter(function(_,j){return j!==li;});updateStep(td.id,s.key,"links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:10,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ccc";}}>✕</button>
                   </div>;})}
                   <button onClick={function(){var ls=[...((td.stepLinks||{})[s.key]||[]),{label:"",url:""}];updateStep(td.id,s.key,"links",ls);}} style={{fontSize:9,padding:"1px 5px",border:"1px solid #e0ddd8",borderRadius:4,background:"#fafaf8",fontFamily:"inherit",cursor:"pointer",color:"#888"}}>＋ link</button>
                   {((td.stepLinks||{})[s.key]||[]).filter(function(lk){return lk.url;}).map(function(lk,li){return <a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,color:"#3949ab",textDecoration:"none",padding:"1px 5px",borderRadius:4,background:"#f0f0ff",border:"1px solid #d0d0f0",marginLeft:3}}>🔗 {lk.label||"link"}</a>;})}
