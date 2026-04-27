@@ -273,7 +273,7 @@ function stampModified(task){var u=Object.assign({},task);u.lastModifiedBy=windo
 function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",rfiOverdue:false,addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:""};return Object.assign(base,overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
-function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",done:""},pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
+function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",submission:"",done:""},pkg:{target:"",submission:"",done:""},process:{target:"",submission:"",done:""},acc:{target:"",submission:"",done:""},contract:{target:"",submission:"",done:""},mar:{target:"",submission:"",done:""},itp:{target:"",submission:"",done:""},wms:{target:"",submission:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
 function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",};}
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:""};}
@@ -1206,6 +1206,17 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   </div>}
               </td>
               <td><input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
+              <td>{(function(){
+                var sub=dates.submission||"";
+                var target=dates.target||"";
+                var due14=target?(function(){var d=new Date(target);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+                var isLate=sub&&due14&&sub>due14;
+                return <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  <input type="date" value={sub} onChange={function(e){updateStep(td.id,s.key,"submission",e.target.value);}} style={{border:"1px solid "+(isLate?"#f5c6cb":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+                  {isLate&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ +{Math.floor((new Date(sub)-new Date(due14))/(1000*60*60*24))}d late</span>}
+                  {!sub&&due14&&<span style={{fontSize:9,color:"#aaa"}}>Due: {fmtDate(due14)}</span>}
+                </div>;
+              })()}</td>
               <td><input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
               <td><textarea value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,minWidth:160,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto"}}/></td>
             </tr>;
@@ -3372,16 +3383,21 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
       var targetDate=((td.stepDates||{})[step]||{}).target||"";
       var doneDate=((td.stepDates||{})[step]||{}).done||"";
       if(!targetDate)return; // no target = not tracked
+      var submissionDate=((td.stepDates||{})[step]||{}).submission||"";
       var isDone=!!doneDate||stepStatus.toLowerCase().includes("approved")||stepStatus.toLowerCase().includes("done");
-      var overdue=!isDone&&targetDate&&targetDate<todayStr;
-      var daysOverdue=overdue?Math.floor((new Date(todayStr)-new Date(targetDate))/(1000*60*60*24)):0;
+      // Overdue = submission date exists and more than 14 days have passed since submission
+      var dueDateFromSubmission=submissionDate?(function(){var d=new Date(submissionDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+      var dueDateFromTarget=targetDate?(function(){var d=new Date(targetDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+      var effectiveDue=dueDateFromSubmission||dueDateFromTarget;
+      var overdue=!isDone&&effectiveDue&&effectiveDue<todayStr;
+      var daysOverdue=overdue?Math.floor((new Date(todayStr)-new Date(effectiveDue))/(1000*60*60*24)):0;
       docs.push({
         id:td.id+"_"+step,stage:step,stageLabel:STEP_LABELS[step],
         text:td.title+" — "+STEP_LABELS[step],
         owner:td.ownerTender||"",
         package:td.package||"",
         tenderRef:td.id,tenderTitle:td.title,
-        submissionDate:doneDate||"",dueDate:targetDate,
+        submissionDate:submissionDate||doneDate||"",dueDate:effectiveDue,targetDate:targetDate,
         status:isDone?"done":"pending",overdue:overdue,
         daysOverdue:daysOverdue,
         stepStatus:stepStatus,
@@ -3470,7 +3486,7 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
                 <th>Tender</th>
                 <th>Package</th>
                 <th>Owner</th>
-                <th>Due date</th>
+                <th>Target → Due (+14d)</th>
                 <th>Days overdue</th>
                 <th>Status</th>
               </tr>
@@ -3487,7 +3503,10 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
                   <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.tenderTitle||"—"}</td>
                   <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.package||"—"}</td>
                   <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
-                  <td style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#555",whiteSpace:"nowrap"}}>{d.dueDate?fmtDate(d.dueDate):"—"}</td>
+                  <td style={{whiteSpace:"nowrap"}}>
+                    {d.targetDate&&<div style={{fontSize:11,color:"#888"}}>Target: {fmtDate(d.targetDate)}</div>}
+                    <div style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#2e7d32"}}>Due: {d.dueDate?fmtDate(d.dueDate):"—"}</div>
+                  </td>
                   <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>+{d.daysOverdue}d</span>:<span style={{color:"#2e7d32",fontSize:11}}>✓</span>}</td>
                   <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:d.status==="done"?"#e8f5e9":"#f5f5f5",color:d.status==="done"?"#2e7d32":"#888",fontWeight:600}}>{d.stepStatus||d.status}</span></td>
                 </tr>;
