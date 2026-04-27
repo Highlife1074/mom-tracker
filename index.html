@@ -507,6 +507,19 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
           {(tags||[]).map(function(t){var on=selTags.includes(t);var tc=tagColor(t);return <button key={t} onClick={function(){toggleTag(t);}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{t}</button>;})}
         </div>
       </div>}
+      {selTags.includes("RFI")&&<div className="fg">
+        <label style={{color:"#b45309"}}>📋 RFI Dates</label>
+        <div style={{display:"flex",gap:6,padding:"8px",background:"#fff8f0",borderRadius:8,border:"1px solid #fed7aa"}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,fontWeight:800,color:"#b45309",marginBottom:2}}>SUBMISSION</div>
+            <input type="date" value={rfiSub||""} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);setRfiDue(d.toISOString().slice(0,10));}}} style={{padding:"3px 6px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,fontWeight:800,color:"#b45309",marginBottom:2}}>DUE (+14d)</div>
+            <input type="date" value={rfiDue||""} onChange={function(e){setRfiDue(e.target.value);}} style={{padding:"3px 6px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>
+          </div>
+        </div>
+      </div>}
 
       {/* 8. Subcontractor */}
       <div className="fg">
@@ -649,6 +662,8 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
   const [importance,setImportance]=useState(1);
   const [urgence,setUrgence]=useState(1);
   const [isInfo,setIsInfo]=useState(false);
+  const [rfiSub,setRfiSub]=useState("");
+  const [rfiDue,setRfiDue]=useState("");
   const inputRef=useRef();
 
   useEffect(function(){
@@ -656,7 +671,7 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
     setSelTags(prefill.tags||[]);
   },[prefill.owner,prefill.tenderRef,prefill.contractorRef]);
 
-  function reset(){setText("");setDue("");setOwner(prefill.owner||"");setSelTags(prefill.tags||[]);setImportance(1);setUrgence(1);setIsInfo(false);setOpen(false);}
+  function reset(){setText("");setDue("");setOwner(prefill.owner||"");setSelTags(prefill.tags||[]);setImportance(1);setUrgence(1);setIsInfo(false);setRfiSub("");setRfiDue("");setOpen(false);}
   function submit(){
     if(!text.trim())return;
     var td=Object.assign({},prefill,{text:text.trim(),due:due,owner:owner,tags:selTags,importance:importance,urgence:urgence});
@@ -711,6 +726,16 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
     </div>}
     {(tags||window._ppTags||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:8}}>
       {(tags||window._ppTags||[]).map(function(tg){var on=selTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){toggleTag(tg);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+    </div>}
+    {selTags.includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px 10px",background:"#fff8f0",borderRadius:8,border:"1px solid #fed7aa",marginTop:8}}>
+      <div style={{flex:1}}>
+        <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:3}}>RFI Submission date</label>
+        <input type="date" value={rfiSub} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);setRfiDue(d.toISOString().slice(0,10));}}} style={{padding:"4px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
+      </div>
+      <div style={{flex:1}}>
+        <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:3}}>Due date (+14 days)</label>
+        <input type="date" value={rfiDue} onChange={function(e){setRfiDue(e.target.value);}} style={{padding:"4px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
+      </div>
     </div>}
     <div style={{display:"flex",gap:6,marginTop:10}}>
       <button className="btn" onClick={reset} style={{padding:"4px 10px",fontSize:11}}>Cancel</button>
