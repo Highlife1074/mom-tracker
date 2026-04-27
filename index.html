@@ -1264,9 +1264,12 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
           <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
           <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-          <th>Pkg</th><th>Process</th><th className="sortable" onClick={function(){toggleSort("acc");}}>ACC{sortIcon("acc")}</th>
-          <th className="sortable" onClick={function(){toggleSort("contract");}}>Contract{sortIcon("contract")}</th>
-          <th>MAR</th><th>ITP</th><th>WMS</th>
+          {TENDER_STEPS.map(function(s){
+            var sortable=s.key==="acc"||s.key==="contract";
+            return sortable
+              ?<th key={s.key} className="sortable" onClick={function(){toggleSort(s.key);}}>{s.label}{sortIcon(s.key)}</th>
+              :<th key={s.key}>{s.label}</th>;
+          })}
         </tr></thead>
         <tbody>{filtered.map(function(td){
           var steps=td.steps||{};
