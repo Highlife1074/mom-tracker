@@ -631,8 +631,8 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
         <select className="btn btn-sm" value={task.status||"pending"} onChange={function(e){if(onStatusChange)onStatusChange(e.target.value);}} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd"}}>
           {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
         </select>
-        {onUpdate&&<button className="btn btn-sm" onClick={function(){setEditMode(true);}} style={{padding:"3px 7px"}}>✏️</button>}
-        {onDelete&&<button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete?"))onDelete();}} style={{padding:"3px 7px"}}>🗑</button>}
+        <button className="btn btn-sm" onClick={function(){setEditMode(true);}} style={{padding:"3px 7px"}}>✏️</button>
+        {onDelete&&<button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete this action?"))onDelete();}} style={{padding:"3px 7px"}}>🗑</button>}
       </div>}
     </div>
   </div>;
@@ -1221,7 +1221,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             return <ActionItem key={t.id} task={t}
               onStatusChange={function(val){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
               onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
-              people={people} packages={packages} tags={[]} tenders={tenders} contractors={contractors}/>;
+              onDelete={function(){if(confirm("Delete this action?"))saveTasks((tasks||[]).filter(function(x){return x.id!==t.id;}));}}
+              people={people} packages={packages} tags={window._ppTags||[]} tenders={tenders} contractors={contractors}/>;
           })}
         <QuickAddTask
           prefill={{tenderRef:td.id, package:td.package||"", owner:td.ownerTender||""}}
@@ -1691,7 +1692,8 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           :linkedTasks.map(function(t){return <ActionItem key={t.id} task={t}
             onStatusChange={function(val){saveT(tsks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
             onUpdate={function(field,val){saveT(tsks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
-            people={ppl} packages={pkgs} tags={[]} tenders={tnds} contractors={ctrs}/>;} )}
+            onDelete={function(){if(confirm("Delete this action?"))saveT((tsks||[]).filter(function(x){return x.id!==t.id;}));}}
+            people={ppl} packages={pkgs} tags={window._ppTags||[]} tenders={tnds} contractors={ctrs}/>;} )}
         <QuickAddTask
           prefill={{contractorRef:ctr.id, package:ctr.package||"", owner:ctr.owner||""}}
           onAdd={function(t){saveT([t,...(tsks||[])]);}}
@@ -2968,6 +2970,14 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                     <option value="">—</option>{(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
                   </select>
                   :<span>{tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}</span>}
+              </td>
+              <td style={{whiteSpace:"nowrap"}}>
+                <div style={{display:"flex",gap:4}}>
+                  <button className="btn btn-sm" onClick={function(){setEditId(isEdit?null:a.id);}} style={{padding:"3px 7px"}}>
+                    {isEdit?"✓":"✏️"}
+                  </button>
+                  {a._source==="task"&&<button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete this action?"))saveTasks((tasks||[]).filter(function(x){return x.id!==a.id;}));}} style={{padding:"3px 7px"}}>🗑</button>}
+                </div>
               </td>
             </tr>;
           })}</tbody>
