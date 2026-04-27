@@ -1360,6 +1360,28 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             {TENDER_STEPS.map(function(s){var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);return <td key={s.key}>{v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}</td>;})}
           </tr>;
         })}</tbody>
+        <tfoot>
+          <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
+            <td colSpan={3+TENDER_STEPS.length} style={{padding:"8px 12px"}}>
+              {(function(){
+                var totBudget=filtered.reduce(function(s,t){return s+Number(t.budget||0);},0);
+                var totInstructed=filtered.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
+                var totAccSub=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0);},0);
+                var totAccOther=filtered.reduce(function(s,t){return s+Number(t.accAmountOther||0);},0);
+                var totAcc=totAccSub+totAccOther;
+                var variance=totInstructed-totBudget;
+                if(totBudget===0&&totInstructed===0&&totAcc===0)return <span style={{fontSize:11,color:"#aaa"}}>No financial data yet — add Budget and Instruction amounts to tenders.</span>;
+                return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",marginRight:4}}>TOTALS ({filtered.length})</span>
+                  {totBudget>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#f0ede6",fontSize:11}}><span style={{color:"#888"}}>Budget: </span><strong>{totBudget.toLocaleString()}</strong></div>}
+                  {totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f0fe",fontSize:11}}><span style={{color:"#888"}}>ACC proposed: </span><strong style={{color:"#1a73e8"}}>{totAcc.toLocaleString()}</strong></div>}
+                  {totInstructed>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Instructed: </span><strong style={{color:"#2e7d32"}}>{totInstructed.toLocaleString()}</strong></div>}
+                  {totBudget>0&&totInstructed>0&&<div style={{padding:"3px 10px",borderRadius:7,background:variance>0?"#fce4ec":"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Variance: </span><strong style={{color:variance>0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()}</strong><span style={{fontSize:10,marginLeft:4}}>{variance>0?"⚠️ over":"✅ under"}</span></div>}
+                </div>;
+              })()}
+            </td>
+          </tr>
+        </tfoot>
       </table>}
     {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages} pkgOwners={pkgOwners||{}}/>}
   </div>;
@@ -1396,6 +1418,17 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners
         <div className="fg"><label>Instruction Amount</label>
           <input type="number" value={data.instructionAmount||""} onChange={function(e){set("instructionAmount",e.target.value);}} placeholder="0"/>
         </div>
+        {(Number(data.budget||0)>0||Number(data.instructionAmount||0)>0)&&<div className="fg">
+          <label>Variance (Budget vs Instructed)</label>
+          <div style={{padding:"6px 10px",borderRadius:7,fontSize:13,fontWeight:700,
+            background:(Number(data.instructionAmount||0)-Number(data.budget||0))>0?"#fce4ec":"#e8f5e9",
+            color:(Number(data.instructionAmount||0)-Number(data.budget||0))>0?"#c62828":"#2e7d32"}}>
+            {(function(){var v=Number(data.instructionAmount||0)-Number(data.budget||0);return (v>0?"+":"")+v.toLocaleString()+" "+(data.currency||"EUR");})()}
+            <span style={{fontSize:10,fontWeight:400,marginLeft:8}}>
+              {(Number(data.instructionAmount||0)-Number(data.budget||0))>0?"⚠️ Over budget":"✅ Under budget"}
+            </span>
+          </div>
+        </div>}
         <div className="fg"><label>Currency</label>
           <select value={data.currency||"EUR"} onChange={function(e){set("currency",e.target.value);}}>
             {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
