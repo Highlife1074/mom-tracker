@@ -533,7 +533,10 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
         </select>
       </div>
 
-      <button className="btn btn-gold" style={{width:"100%",justifyContent:"center",marginTop:4}} onClick={submit}>＋ Add {isInfo?"Info":"Task"}</button>
+      <div style={{display:"flex",gap:6,marginTop:4}}>
+        <button className="btn" onClick={function(){setText("");setDue(today());setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);setIsInfo(false);setRfiSub("");setRfiDue("");}} style={{flex:"0 0 auto"}}>✕ Cancel</button>
+        <button className="btn btn-gold" style={{flex:1,justifyContent:"center"}} onClick={submit}>＋ Add {isInfo?"Info":"Task"}</button>
+      </div>
     </div>
   </div>;
 }
@@ -636,7 +639,16 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
             {(task.links||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:3}}>
               {(task.links||[]).map(function(lk,li){return lk.url?<a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3949ab",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:2,padding:"1px 6px",borderRadius:6,background:"#f0f0ff",border:"1px solid #d0d0f0"}} onMouseEnter={function(e){e.currentTarget.style.textDecoration="underline";}} onMouseLeave={function(e){e.currentTarget.style.textDecoration="none";}}>🔗 {lk.label||lk.url}</a>:null;})}
             </div>}
-            {(showCreated!==false)&&<div style={{fontSize:10,color:"#ccc",marginTop:3}}>{task.lastModifiedBy&&task.lastModifiedAt?<span>Modified {fmtDate(task.lastModifiedAt)} by <strong>{task.lastModifiedBy}</strong></span>:task.createdAt&&<span>Added {fmtDate(task.createdAt)}{task.addedBy&&" by "+task.addedBy}</span>}</div>}
+            {(showCreated!==false)&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3,alignItems:"center"}}>
+              {task.addedBy&&<span style={{fontSize:9,color:"#bbb",display:"inline-flex",alignItems:"center",gap:2}}>
+                <span style={{color:"#ddd"}}>✚</span>{task.addedBy.split(",")[0]}
+                {task.createdAt&&<span style={{color:"#ddd"}}>{fmtDate(task.createdAt)}</span>}
+              </span>}
+              {task.lastModifiedBy&&task.lastModifiedAt&&<span style={{fontSize:9,color:"#bbb",display:"inline-flex",alignItems:"center",gap:2}}>
+                <span style={{color:"#ddd"}}>✎</span>{task.lastModifiedBy.split(",")[0]}
+                <span style={{color:"#ddd"}}>{fmtDate(task.lastModifiedAt)}</span>
+              </span>}
+            </div>}
           </div>}
       </div>
       {!editMode&&<div style={{display:"flex",gap:4,flexShrink:0}}>
@@ -3874,11 +3886,48 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
   </div>;
 }
 
+// ── NewTasksPopup ─────────────────────────────────────────────────
+function NewTasksPopup({tasks,tenders,contractors,onClose}){
+  return <div className="overlay" style={{zIndex:800}} onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:"#fff",borderRadius:16,width:480,maxWidth:"92vw",maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 16px 48px rgba(0,0,0,.25)"}}>
+      <div style={{background:"#3949ab",borderRadius:"16px 16px 0 0",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,fontWeight:700,color:"#fff",letterSpacing:".5px"}}>🔔 New tasks assigned to you</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.6)",marginTop:2}}>Since your last visit · {tasks.length} action{tasks.length>1?"s":""}</div>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"rgba(255,255,255,.6)",lineHeight:1}}>×</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+        {tasks.slice().sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);}).map(function(t){
+          var sc=calcScore(t.importance||1,t.urgence||1);var ss=scoreStyle(sc);
+          var tdr=t.tenderRef?(tenders||[]).find(function(x){return x.id===t.tenderRef;}):null;
+          var ctr=t.contractorRef?(contractors||[]).find(function(x){return x.id===t.contractorRef;}):null;
+          return <div key={t.id} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #f0ede6",marginBottom:6,background:"#fafaf8"}}>
+            <div style={{fontSize:12,fontWeight:500,marginBottom:3}}>{t.text}</div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+              {t.due&&<span style={{fontSize:10,color:t.due<today()?"#c62828":"#888"}}>📅 {fmtDate(t.due)}</span>}
+              {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{t.package}</span>}
+              {tdr&&<span style={{fontSize:10,color:"#b45309"}}>📑 {tdr.title}</span>}
+              {ctr&&<span style={{fontSize:10,color:"#1a73e8"}}>🤝 {ctr.name}</span>}
+              {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
+              {t.addedBy&&<span style={{fontSize:9,color:"#aaa"}}>by {t.addedBy.split(",")[0]}</span>}
+            </div>
+          </div>;
+        })}
+      </div>
+      <div style={{padding:"12px 20px",borderTop:"1px solid #f0ede6",display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="btn btn-pri" onClick={onClose}>Got it 👍</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function App(){
   const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");return u||null;}catch(e){return null;}});
   const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
   function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
   const [jumpOwner,setJumpOwner]=useState(null);
+  const [newTasksPopup,setNewTasksPopup]=useState(null); // {tasks:[]} or null
   const [showWeeklyPopup,setShowWeeklyPopup]=useState(function(){var now=new Date();var isMonday=now.getDay()===1;var key="pp_weekly_shown_"+now.toISOString().slice(0,10);var shown=false;try{shown=!!localStorage.getItem(key);}catch(e){}if(isMonday&&!shown){try{localStorage.setItem(key,"1");}catch(e){}return true;}return false;});
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok");
@@ -3981,6 +4030,24 @@ function App(){
         if(awn)setAwns(awn);
         if(pko)setPkgOwners(pko);
         if(prefs)setUserPrefs(prefs);
+        // Check for new tasks since last login
+        setTimeout(function(){
+          var currentName=window._currentUser?window._currentUser.name:"";
+          if(!currentName)return;
+          var lastKey="pp_last_visit_"+currentName.replace(/[^a-z0-9]/gi,"_");
+          var lastVisit="";try{lastVisit=localStorage.getItem(lastKey)||"";}catch(e){}
+          var now=new Date().toISOString();
+          try{localStorage.setItem(lastKey,now);}catch(e){}
+          if(!lastVisit)return; // first visit - no popup
+          var myNew=(t||[]).filter(function(task){
+            if(!task.createdAt||!task.owner)return false;
+            if(task.owner!==currentName)return false;
+            if(task.addedBy===currentName)return false; // I created it myself
+            if(task.createdAt<=lastVisit.slice(0,10))return false;
+            return true;
+          });
+          if(myNew.length>0)setNewTasksPopup(myNew);
+        },500);
         if(tr){setTagrules(tr);}
         else{
           const otr=await cloudStore.get("tagrules");
@@ -4073,6 +4140,7 @@ function App(){
     <div style={{position:"fixed",bottom:16,right:360,zIndex:490}}>
       <button onClick={function(){setShowWeeklyPopup(true);}} title="Weekly Actions" style={{width:36,height:36,borderRadius:"50%",background:"#3949ab",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>📋</button>
     </div>
+    {newTasksPopup&&<NewTasksPopup tasks={newTasksPopup} tenders={tenders} contractors={contractors} onClose={function(){setNewTasksPopup(null);}}/> }
     {showWeeklyPopup&&<WeeklyPopup tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} tenders={tenders} contractors={contractors} saveT={saveT} saveX={saveX} onClose={function(){setShowWeeklyPopup(false);}}/>}
     <div className="mobile-qa-btn" onClick={function(){setMobileQAOpen(true);}} title="Quick Add Task" style={{display:"none",position:"fixed",bottom:62,right:16,zIndex:490,width:44,height:44,borderRadius:"50%",background:"#c9a84c",boxShadow:"0 2px 8px rgba(0,0,0,.2)",alignItems:"center",justifyContent:"center",fontSize:22,cursor:"pointer",color:"#1c1c1e"}}>＋</div>
     {mobileQAOpen&&<div className="overlay" style={{zIndex:600}} onClick={function(e){if(e.target===e.currentTarget)setMobileQAOpen(false);}}><div style={{background:"#fff",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",position:"absolute",bottom:0}}><QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={function(t){addTask(t);setMobileQAOpen(false);}} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/></div></div>}
