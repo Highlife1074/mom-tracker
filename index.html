@@ -1198,7 +1198,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             var accOther=Number(td.accAmountOther)||0;
             var accTotal=accSub+accOther;
             var instructed=Number(td.instructionAmount)||0;
-            var variance=budget>0?instructed-budget:0;
+            var treated=Number(td.accAmountTreated)||0;
+            var proposed=accTotal;
+            var variance=budget>0&&treated>0?budget-treated:budget>0&&proposed>0?budget-proposed:0;
+            var varianceLabel=treated>0?"Budget − Treated":"Budget − Proposed";
             // Linked contracts + addendums
             var linkedContracts=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct,ctr};});});
             var contractTotal=linkedContracts.reduce(function(s,x){return s+Number(x.ct.amount||0);},0);
