@@ -9,7 +9,7 @@
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <script type="module" id="firebase-init">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   const firebaseConfig = {
     apiKey: "AIzaSyCs-tnK2RfDn9I1gDTZNwMs3hkyNghDbRo",
     authDomain: "rt-mom.firebaseapp.com",
@@ -29,6 +29,13 @@
       try { await setDoc(doc(db,"mom_data",key),{value}); }
       catch(e){ console.error("FB set",e); }
     }
+  };
+
+  // Real-time listener helper
+  window._dbListen = function(key, cb){
+    return onSnapshot(doc(db,"mom_data",key), function(snap){
+      if(snap.exists()) cb(snap.data().value);
+    });
   };
 
   window._dbReady = true;
@@ -275,7 +282,7 @@ function newTracker(overrides){return Object.assign({id:uuid(),title:"",descript
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
 function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",done:""},pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:"",approval:""},contract:{target:"",done:""},mar:{target:"",done:"",approval:""},itp:{target:"",done:"",approval:""},wms:{target:"",done:"",approval:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepLinks:{bidders:[],pkg:[],process:[],acc:[],contract:[],mar:[],itp:[],wms:[]},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
+function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:"",wbs:""};}
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:"",comment:""};}
 
@@ -545,9 +552,12 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
 function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,tenders,contractors,showCreated}){
   const [editMode,setEditMode]=useState(false);
   const [localTags,setLocalTags]=useState(task.tags||[]);
+  const [localRfiSub,setLocalRfiSub]=useState(task.rfiSubmission||"");
+  const [localRfiDue,setLocalRfiDue]=useState(task.rfiDue||"");
   const sc=calcScore(task.importance||1,task.urgence||1);
 
   useEffect(function(){setLocalTags(task.tags||[]);},[task.tags]);
+  useEffect(function(){setLocalRfiSub(task.rfiSubmission||"");setLocalRfiDue(task.rfiDue||"");},[task.rfiSubmission,task.rfiDue]);
   const ss=scoreStyle(sc);
   const tdr=task.tenderRef?(tenders||[]).find(function(t){return t.id===task.tenderRef;}):null;
   const ctr=task.contractorRef?(contractors||[]).find(function(c){return c.id===task.contractorRef;}):null;
@@ -606,14 +616,15 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
             {localTags.includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px",background:"#fff8f0",borderRadius:7,border:"1px solid #fed7aa"}}>
               <div style={{flex:1}}>
                 <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>RFI Submission date</label>
-                <input type="date" value={task.rfiSubmission||""} onChange={function(e){
+                <input type="date" value={localRfiSub} onChange={function(e){
+                  setLocalRfiSub(e.target.value);
                   upd("rfiSubmission",e.target.value);
-                  if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);upd("rfiDue",d.toISOString().slice(0,10));}
+                  if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);var dd=d.toISOString().slice(0,10);setLocalRfiDue(dd);upd("rfiDue",dd);}
                 }} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
               </div>
               <div style={{flex:1}}>
                 <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>RFI Due date (+14 days)</label>
-                <input type="date" value={task.rfiDue||""} onChange={function(e){upd("rfiDue",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
+                <input type="date" value={localRfiDue} onChange={function(e){setLocalRfiDue(e.target.value);upd("rfiDue",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
               </div>
             </div>}
             <button className="btn btn-sm btn-pri" onClick={function(){setEditMode(false);}} style={{alignSelf:"flex-start"}}>✓ Done editing</button>
@@ -1179,7 +1190,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         <button className="btn btn-sm" onClick={function(){setSelTender(null);}}>← Back</button>
         <div style={{flex:1}}>
           <div className="page-title">{td.title}</div>
-          <div className="page-sub">{td.package&&<span>📦 {td.package} </span>}{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</div>
+          <div className="page-sub">{td.package&&<span>📦 {td.package} </span>}{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}{td.wbs&&<span style={{marginLeft:6,fontSize:11,color:"#888",fontFamily:"monospace"}}>WBS: {td.wbs}</span>}{td.startOnSite&&<span style={{marginLeft:6,fontSize:11,color:"#555"}}>📅 On site: {fmtDate(td.startOnSite)}</span>}{td.procurementStart&&<span style={{marginLeft:6,fontSize:11,color:"#555"}}>🏗️ Procurement: {fmtDate(td.procurementStart)}</span>}</div>
           {(function(){
             var cur=td.currency||"EUR";
             var budget=Number(td.budget)||0;
@@ -1207,10 +1218,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
                 <div style={{fontSize:16,fontWeight:800,color:"#2e7d32"}}>{instructed.toLocaleString()} {cur}</div>
               </div>}
-              {budget>0&&instructed>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:variance>0?"#fce4ec":"#e8f5e9"}}>
-                <div style={{fontSize:10,color:variance>0?"#c62828":"#2e7d32",marginBottom:2}}>Variance</div>
-                <div style={{fontSize:16,fontWeight:800,color:variance>0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()} {cur}</div>
-                <div style={{fontSize:10,color:"#aaa"}}>{variance>0?"Over budget":"Under budget"}</div>
+              {budget>0&&(treated>0||proposed>0)&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:variance<0?"#fce4ec":"#e8f5e9"}}>
+                <div style={{fontSize:10,color:variance<0?"#c62828":"#2e7d32",marginBottom:2}}>{varianceLabel}</div>
+                <div style={{fontSize:16,fontWeight:800,color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()} {cur}</div>
+                <div style={{fontSize:10,color:"#aaa"}}>{variance<0?"⚠️ Over budget":"✅ Under budget"}{treated===0?" (estimate)":""}</div>
               </div>}
               {contractGrand>0&&<div className="card" style={{flex:1,minWidth:160,marginBottom:0,padding:"10px 14px",background:"#fff8f0"}}>
                 <div style={{fontSize:10,color:"#b45309",marginBottom:2}}>Contracts ({linkedContracts.length})</div>
@@ -1494,6 +1505,21 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners
             </span>
           </div>
         </div>}
+        <div className="fg"><label>Amount Treated (procured so far)</label>
+          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <input type="number" value={data.accAmountTreated||""} onChange={function(e){set("accAmountTreated",e.target.value);}} placeholder="0" style={{paddingRight:40}}/>
+            <span style={{position:"absolute",right:10,fontSize:11,color:"#aaa",pointerEvents:"none"}}>{data.currency||"EUR"}</span>
+          </div>
+        </div>
+        <div className="fg"><label>WBS Code</label>
+          <input type="text" value={data.wbs||""} onChange={function(e){set("wbs",e.target.value);}} placeholder="WBS-001"/>
+        </div>
+        <div className="fg"><label>Starting date on site</label>
+          <input type="date" value={data.startOnSite||""} onChange={function(e){set("startOnSite",e.target.value);}}/>
+        </div>
+        <div className="fg"><label>Procurement process starting date</label>
+          <input type="date" value={data.procurementStart||""} onChange={function(e){set("procurementStart",e.target.value);}}/>
+        </div>
         <div className="fg"><label>Currency</label>
           <select value={data.currency||"EUR"} onChange={function(e){set("currency",e.target.value);}}>
             {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
@@ -2347,6 +2373,10 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
         <div style={{flex:"0 0 130px"}}>
           <label>Contract #</label>
           <input type="text" value={ct.number||""} onChange={function(e){updateCtField(ctr.id,ct.id,"number",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
+        </div>
+        <div style={{flex:"0 0 120px"}}>
+          <label>WBS</label>
+          <input type="text" value={ct.wbs||""} onChange={function(e){updateCtField(ctr.id,ct.id,"wbs",e.target.value);}} style={{padding:"4px 8px",fontSize:12}} placeholder="WBS-001"/>
         </div>
         <div style={{flex:"0 0 120px"}}>
           <label>SAP #</label>
@@ -3291,6 +3321,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   :<span>{sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}</span>}
               </td>
               <td><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
+              <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
               <td>
                 {isEdit
                   ?<select value={a.tenderRef||""} onChange={function(e){updateField(a,"tenderRef",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
@@ -3963,10 +3994,41 @@ function App(){
     catch(e){setSyncStatus("err");}
   },[]);
 
-  const saveT=d=>{setTasks(d);sync(KEYS.tasks,d);};
-  const saveX=d=>{setTrackers(d);sync(KEYS.trackers,d);};
-  const saveTenders=d=>{setTenders(d);sync(KEYS.tenders,d);};
-  const saveContractors=d=>{setContractors(d);sync(KEYS.contractors,d);};
+  // Merge-write: read current Firebase value, merge with local changes, then write
+  // For arrays: local changes (adds/edits/deletes) take priority per item id
+  // Items in Firebase not in local (added by others) are preserved
+  const mergeSync=useCallback(async(key,localVal,idField)=>{
+    setSyncStatus("syncing");
+    try{
+      if(!idField){
+        // Non-array data (strings, objects without id) — just write
+        await cloudStore.set(key,localVal);
+      } else {
+        // Read current Firebase state
+        var remote=await cloudStore.get(key)||[];
+        var localIds=new Set((localVal||[]).map(function(x){return x[idField];}));
+        // Keep remote items not in local (added by other users)
+        var remoteOnly=remote.filter(function(x){return !localIds.has(x[idField]);});
+        // Merge: local changes + remote-only items
+        var merged=[...(localVal||[]),...remoteOnly];
+        await cloudStore.set(key,merged);
+        // Update local state to include remote additions
+        if(remoteOnly.length>0){
+          if(key===KEYS.tasks)setTasks(merged);
+          else if(key===KEYS.trackers)setTrackers(merged);
+          else if(key===KEYS.tenders)setTenders(merged);
+          else if(key===KEYS.contractors)setContractors(merged);
+        }
+      }
+      setSyncStatus("ok");
+    }
+    catch(e){console.error("Merge sync error",e);setSyncStatus("err");}
+  },[]);
+
+  const saveT=d=>{setTasks(d);mergeSync(KEYS.tasks,d,"id");};
+  const saveX=d=>{setTrackers(d);mergeSync(KEYS.trackers,d,"id");};
+  const saveTenders=d=>{setTenders(d);mergeSync(KEYS.tenders,d,"id");};
+  const saveContractors=d=>{setContractors(d);mergeSync(KEYS.contractors,d,"id");};
   const savePeople=d=>{setPeople(d);sync(KEYS.people,d);};
   const savePackages=d=>{setPackages(d);sync(KEYS.packages,d);};
   const saveTags=d=>{setTags(d);sync(KEYS.tags,d);};
@@ -4030,6 +4092,8 @@ function App(){
         if(awn)setAwns(awn);
         if(pko)setPkgOwners(pko);
         if(prefs)setUserPrefs(prefs);
+        // Start real-time listeners
+        startListeners({setTasks,setTrackers,setTenders,setContractors,setCorrespondences});
         // Check for new tasks since last login
         setTimeout(function(){
           var currentName=window._currentUser?window._currentUser.name:"";
@@ -4060,6 +4124,14 @@ function App(){
         }
       }catch(e){console.error("Load error",e);}
       setLoaded(true);
+      // Start real-time listeners for multi-user sync
+      if(window._dbListen){
+        window._dbListen(KEYS.tasks,function(val){if(val)setTasks(val);});
+        window._dbListen(KEYS.trackers,function(val){if(val)setTrackers(val);});
+        window._dbListen(KEYS.tenders,function(val){if(val)setTenders(val);});
+        window._dbListen(KEYS.contractors,function(val){if(val)setContractors(val);});
+        window._dbListen(KEYS_CORR,function(val){if(val)setCorrespondences(val);});
+      }
     };
     if(window._dbReady)load();
     else window.addEventListener("db-ready",load,{once:true});
@@ -4102,7 +4174,7 @@ function App(){
         <button onClick={function(){try{localStorage.removeItem("pp_current_user");}catch(e){}setCurrentUser(null);}} title="Change user" style={{background:"none",border:"1px solid #444",borderRadius:4,color:"#888",cursor:"pointer",fontSize:8,padding:"1px 3px",fontFamily:"inherit",marginTop:2}}>change</button>
       </div>}
 
-      <div style={{marginBottom:4}}>{syncDot}</div>
+      <div style={{marginBottom:4,display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>{syncDot}<span style={{fontSize:7,color:"#888",textAlign:"center"}}>{syncStatus==="syncing"?"saving...":syncStatus==="ok"?"saved":"err"}</span></div>
       {NAV.map(n=><button key={n.id} className={"navbtn"+(view===n.id?" on":"")} onClick={()=>setView(n.id)} title={n.label}>
         <span style={{fontSize:20}}>{n.icon}</span>
         <span className="lbl">{n.label}</span>
