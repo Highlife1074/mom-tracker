@@ -1632,6 +1632,77 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
 
       <div className="card">
+        {/* Procurement Timeline */}
+        {(function(){
+          var proc=calcProcurement(td);
+          var todayStr=today();
+          return <div className="card" style={{marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:13}}>📊 Procurement Timeline</div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:9,fontWeight:700,color:"#aaa"}}>LEAD TIME (days)</span>
+                  <input type="number" value={td.leadTimeDays||""} onChange={function(e){updTd("leadTimeDays",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="30" style={{width:55,padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:9,fontWeight:700,color:"#aaa"}}>SD RESUB</span>
+                  <select value={td.sdResubCount||0} onChange={function(e){updTd("sdResubCount",Number(e.target.value));}} style={{padding:"2px 5px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+                    <option value={0}>0</option><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+              <div style={{flex:1,minWidth:110,padding:"7px 10px",borderRadius:8,background:"#f8f7f4",border:"1px solid #ede9e3"}}>
+                <div style={{fontSize:9,color:"#888",fontWeight:700,marginBottom:2}}>PROCUREMENT START</div>
+                <div style={{fontSize:13,fontWeight:800,color:proc.procStart&&proc.procStart<todayStr?"#c62828":"#1a1a1a"}}>{proc.procStart?fmtDate(proc.procStart):"—"}</div>
+                {proc.procStart&&proc.procStart<todayStr&&<div style={{fontSize:9,color:"#c62828"}}>⚠️ Already past</div>}
+              </div>
+              <div style={{flex:1,minWidth:110,padding:"7px 10px",borderRadius:8,background:"#f0f8ff",border:"1px solid #bbdefb"}}>
+                <div style={{fontSize:9,color:"#1a73e8",fontWeight:700,marginBottom:2}}>DELIVERY DATE</div>
+                <div style={{fontSize:13,fontWeight:800,color:"#1a73e8"}}>{proc.deliveryDate?fmtDate(proc.deliveryDate):"—"}</div>
+                <div style={{fontSize:9,color:"#aaa"}}>Total: {proc.totalDays}d incl. {proc.LEAD}d lead</div>
+              </div>
+              {proc.margin!==null&&proc.margin!==undefined&&<div style={{flex:1,minWidth:110,padding:"7px 10px",borderRadius:8,background:proc.margin<0?"#fff0f0":proc.margin<7?"#fff8e1":"#f0fff4",border:"1px solid "+(proc.margin<0?"#f5c6cb":proc.margin<7?"#ffe082":"#c8e6c9")}}>
+                <div style={{fontSize:9,color:proc.margin<0?"#c62828":proc.margin<7?"#f57f17":"#2e7d32",fontWeight:700,marginBottom:2}}>MARGIN VS SITE DATE</div>
+                <div style={{fontSize:13,fontWeight:800,color:proc.margin<0?"#c62828":proc.margin<7?"#f57f17":"#2e7d32"}}>{proc.margin>0?"+":""}{proc.margin}d</div>
+                <div style={{fontSize:9,color:"#aaa"}}>{proc.margin<0?"⚠️ Late":proc.margin<7?"⚡ Tight":"✅ On track"}</div>
+              </div>}
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead><tr style={{background:"#f8f7f4"}}>
+                <th style={{padding:"5px 8px",textAlign:"left",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Step</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Target date</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Date done</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Duration</th>
+                <th style={{padding:"5px 8px",textAlign:"left",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Status</th>
+              </tr></thead>
+              <tbody>{proc.steps.map(function(s){
+                var isDone=!!s.done;
+                var isOverdue=!isDone&&s.date&&s.date<todayStr;
+                var daysLate=isOverdue?workingDaysDiff(s.date,todayStr):0;
+                var bg=s.highlight?"#f0fff4":"#fff";
+                return <tr key={s.key} style={{background:bg,borderBottom:"1px solid #f4f2ef"}}>
+                  <td style={{padding:"6px 8px",fontWeight:s.highlight?700:500,color:s.highlight?"#2e7d32":"#333",whiteSpace:"nowrap"}}>
+                    {s.sd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:4,background:"#e3f2fd",color:"#1565c0",marginRight:4}}>SD</span>}
+                    {s.manual&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:4,background:"#fff8e1",color:"#f57f17",marginRight:4}}>●</span>}
+                    {s.label}
+                  </td>
+                  <td style={{padding:"6px 8px",textAlign:"center",color:isOverdue?"#c62828":"#555",fontWeight:isOverdue?700:400}}>{s.date?fmtDate(s.date):"—"}</td>
+                  <td style={{padding:"6px 8px",textAlign:"center",color:isDone?"#2e7d32":"#aaa"}}>{s.done?fmtDate(s.done):"—"}</td>
+                  <td style={{padding:"6px 8px",textAlign:"center"}}>{s.duration?<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:"#e8f0fe",color:"#1a73e8",fontWeight:600}}>{s.duration}d</span>:s.note?<span style={{fontSize:10,color:"#7b1fa2",fontWeight:600}}>{s.note}</span>:"—"}</td>
+                  <td style={{padding:"6px 8px"}}>
+                    {isDone&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"#e8f5e9",color:"#2e7d32",fontWeight:600}}>✅ Done</span>}
+                    {isOverdue&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"#fce4ec",color:"#c62828",fontWeight:700}}>⚠️ +{daysLate}d</span>}
+                    {!isDone&&!isOverdue&&s.date&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"#f5f5f5",color:"#888"}}>Pending</span>}
+                    {s.review&&<span style={{fontSize:10,marginLeft:4,padding:"1px 6px",borderRadius:8,background:s.review==="A"?"#e8f5e9":s.review==="Rejected"?"#fce4ec":"#fff8e1",color:s.review==="A"?"#2e7d32":s.review==="Rejected"?"#c62828":"#f57f17",fontWeight:700}}>{s.review}</span>}
+                  </td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>;
+        })()}
+
         <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Submission Steps</div>
         <table className="tbl" style={{fontSize:12}}>
           <thead><tr>
