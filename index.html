@@ -1102,9 +1102,32 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
 }
 
 // ── TENDERS VIEW ───────────────────────────────────────────────────
-function MaterialsPanel({td,updTd}){
+function MaterialsPanel({td,updTd,saveT,tasks}){
   const [open,setOpen]=useState(true);
   var mats=td.materials||[];
+
+  // Create auto-task for MSS/MAR when status = under preparation
+  function autoTask(mat,kind,targetDate){
+    if(!saveT||!tasks)return;
+    // Check if task already exists for this material+kind
+    var taskText="["+kind+"] "+mat.name+" — "+td.title;
+    var exists=(tasks||[]).some(function(t){
+      return t.tenderRef===td.id&&t.text===taskText&&!t.isInfo;
+    });
+    if(exists)return;
+    var task=newTask({
+      text:taskText,
+      owner:td.ownerTender||"",
+      due:targetDate||"",
+      tenderRef:td.id,
+      package:td.package||"",
+      importance:1,urgence:1,
+      tags:[kind],
+      note:"Auto-created from material tracking ("+kind+")",
+      addedBy:"System"
+    });
+    saveT([...(tasks||[]),task]);
+  }
 
   function updMat(mi,field,val){
     var ms=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{[field]:val});});
@@ -1239,7 +1262,11 @@ function MaterialsPanel({td,updTd}){
               {/* MSS Submission */}
               <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none",marginTop:4}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:90}}>MSS Submission</span>
-                <select value={mat.mssStatus||""} onChange={function(e){updMat(mi,"mssStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4,fontFamily:"inherit"}}>
+                <select value={mat.mssStatus||""} onChange={function(e){
+                  var newStatus=e.target.value;
+                  updMat(mi,"mssStatus",newStatus);
+                  if(newStatus==="under preparation")autoTask(mat,"MSS",mat.mssTarget||"");
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4,fontFamily:"inherit"}}>
                   <option value="">— Status —</option>
                   <option value="under preparation">Under preparation</option>
                   <option value="submitted">Submitted</option>
@@ -1249,7 +1276,7 @@ function MaterialsPanel({td,updTd}){
                 <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat(mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4}}/></div>
                 <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.mssDone||""} onChange={function(e){
                   var dv=e.target.value;updMat(mi,"mssDone",dv);
-                  if(dv&&mat.mssStatus==="submitted"&&!mat.mssApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"mssApprovalTarget",d.toISOString().slice(0,10));}
+                  if(dv){var d=new Date(dv);d.setDate(d.getDate()+14);var tgt=d.toISOString().slice(0,10);updMat(mi,"mssApprovalTarget",tgt);}
                 }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4}}/></div>
                 <div style={{display:"flex",gap:2,alignItems:"center"}}>
                   <input type="text" value={mat.mssLinkLabel||""} onChange={function(e){updMat(mi,"mssLinkLabel",e.target.value);}} placeholder="Link label" style={{width:65,padding:"2px 4px",fontSize:9,border:"1px solid #bbdefb",borderRadius:4}}/>
@@ -1299,7 +1326,11 @@ function MaterialsPanel({td,updTd}){
               {/* MAR Submission */}
               <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f3e5f522",borderRadius:"6px 6px 0 0",border:"1px solid #ce93d8",borderBottom:"none",marginTop:4}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:90}}>MAR Submission</span>
-                <select value={mat.marStatus||""} onChange={function(e){updMat(mi,"marStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+                <select value={mat.marStatus||""} onChange={function(e){
+                  var newStatus=e.target.value;
+                  updMat(mi,"marStatus",newStatus);
+                  if(newStatus==="under preparation")autoTask(mat,"MAR",mat.marTarget||"");
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
                   <option value="">— Status —</option>
                   <option value="under preparation">Under preparation</option>
                   <option value="submitted">Submitted</option>
@@ -1309,7 +1340,7 @@ function MaterialsPanel({td,updTd}){
                 <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.marTarget||""} onChange={function(e){updMat(mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
                 <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.marDone||""} onChange={function(e){
                   var dv=e.target.value;updMat(mi,"marDone",dv);
-                  if(dv&&mat.marStatus==="submitted"&&!mat.marApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"marApprovalTarget",d.toISOString().slice(0,10));}
+                  if(dv){var d=new Date(dv);d.setDate(d.getDate()+14);var tgt=d.toISOString().slice(0,10);updMat(mi,"marApprovalTarget",tgt);}
                 }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
                 <div style={{display:"flex",gap:2,alignItems:"center"}}>
                   <input type="text" value={mat.marLinkLabel||""} onChange={function(e){updMat(mi,"marLinkLabel",e.target.value);}} placeholder="Link label" style={{width:65,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
@@ -1544,7 +1575,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>;
         })()}
 
-        <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender}/>
+        <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} saveT={saveT} tasks={tasks}/>
 
         {/* SD (Shop Drawing) */}
         {(function(){
