@@ -1167,76 +1167,190 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
   if(selTender){
     var td=selTender;
+    var linkedTasks=(tasks||[]).filter(function(t){return t.tenderRef===td.id;});
+    function updTd(field,val){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{[field]:val});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}
+    var cur=td.currency||"EUR";
+    var budget=Number(td.budget)||0;
+    var accSub=Number(td.accAmountSubcontract)||0;
+    var accOther=Number(td.accAmountOther)||0;
+    var accTotal=accSub+accOther;
+    var treated=Number(td.accAmountTreated)||0;
+    var proposed=accTotal;
+    var instructed=Number(td.instructionAmount)||0;
+    var isReleased=td.released||false;
+    var effectiveCost=treated>0?treated:proposed;
+    var variance=budget>0&&effectiveCost>0?budget-effectiveCost:0;
+    var varianceLabel=treated>0?"Budget − Treated":"Budget − Proposed";
+    var linkedContracts=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct,ctr};});});
+    var contractTotal=linkedContracts.reduce(function(s,x){return s+Number(x.ct.amount||0);},0);
+    var addendumTotal=linkedContracts.reduce(function(s,x){return s+(x.ct.addendums||[]).reduce(function(s2,ad){return s2+Number(ad.amount||0);},0);},0);
+    var contractGrand=contractTotal+addendumTotal;
+
     return <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
       {/* Sidebar tender list */}
       <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Tenders</div>
         <div style={{padding:"6px 8px",borderBottom:"1px solid #f0ede6"}}>
-          <select value={pkgFilter} onChange={function(e){setPkgFilter(e.target.value);}} style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+          <select value={pkgFilter} onChange={function(e){setPkgFilter(e.target.value);}} style={{fontSize:11,border:"none",background:"transparent",fontFamily:"inherit",width:"100%"}}>
             <option value="all">All packages</option>
-            {[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))].sort().map(function(p){return <option key={p} value={p}>{p}</option>;})}
+            {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
           </select>
         </div>
-        <div style={{maxHeight:"75vh",overflowY:"auto"}}>
-          {filtered.map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>
-            <div style={{color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-            {t.package&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{t.package}</div>}
-          </div>;})}
+        <div style={{maxHeight:600,overflowY:"auto"}}>
+          {filtered.map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>{t.title}</div>;})}
         </div>
       </div>
+
       {/* Main detail */}
       <div style={{flex:1,minWidth:0}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-        <button className="btn btn-sm" onClick={function(){setSelTender(null);}}>← Back</button>
-        <div style={{flex:1}}>
-          <div className="page-title">{td.title}</div>
-          <div className="page-sub">{td.package&&<span>📦 {td.package} </span>}{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}{td.wbs&&<span style={{marginLeft:6,fontSize:11,color:"#888",fontFamily:"monospace"}}>WBS: {td.wbs}</span>}{td.startOnSite&&<span style={{marginLeft:6,fontSize:11,color:"#555"}}>📅 On site: {fmtDate(td.startOnSite)}</span>}{td.procurementStart&&<span style={{marginLeft:6,fontSize:11,color:"#555"}}>🏗️ Procurement: {fmtDate(td.procurementStart)}</span>}</div>
-          {(function(){
-            var cur=td.currency||"EUR";
-            var budget=Number(td.budget)||0;
-            var accSub=Number(td.accAmountSubcontract)||0;
-            var accOther=Number(td.accAmountOther)||0;
-            var accTotal=accSub+accOther;
-            var instructed=Number(td.instructionAmount)||0;
-            var treated=Number(td.accAmountTreated)||0;
-            var proposed=accTotal;
-            var variance=budget>0&&treated>0?budget-treated:budget>0&&proposed>0?budget-proposed:0;
-            var varianceLabel=treated>0?"Budget − Treated":"Budget − Proposed";
-            // Linked contracts + addendums
-            var linkedContracts=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct,ctr};});});
-            var contractTotal=linkedContracts.reduce(function(s,x){return s+Number(x.ct.amount||0);},0);
-            var addendumTotal=linkedContracts.reduce(function(s,x){return s+(x.ct.addendums||[]).reduce(function(s2,ad){return s2+Number(ad.amount||0);},0);},0);
-            var contractGrand=contractTotal+addendumTotal;
-            return <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
-              {budget>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
-                <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
-                <div style={{fontSize:16,fontWeight:800}}>{budget.toLocaleString()} {cur}</div>
-              </div>}
-              {accTotal>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#e8f0fe"}}>
-                <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>ACC/ACONEX proposed</div>
-                <div style={{fontSize:16,fontWeight:800,color:"#1a73e8"}}>{accTotal.toLocaleString()} {cur}</div>
-                <div style={{fontSize:10,color:"#888"}}>Subcont. {accSub.toLocaleString()} + Other {accOther.toLocaleString()}</div>
-              </div>}
-              {instructed>0&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#e8f5e9"}}>
-                <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
-                <div style={{fontSize:16,fontWeight:800,color:"#2e7d32"}}>{instructed.toLocaleString()} {cur}</div>
-              </div>}
-              {budget>0&&(treated>0||proposed>0)&&<div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:variance<0?"#fce4ec":"#e8f5e9"}}>
-                <div style={{fontSize:10,color:variance<0?"#c62828":"#2e7d32",marginBottom:2}}>{varianceLabel}</div>
-                <div style={{fontSize:16,fontWeight:800,color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()} {cur}</div>
-                <div style={{fontSize:10,color:"#aaa"}}>{variance<0?"⚠️ Over budget":"✅ Under budget"}{treated===0?" (estimate)":""}</div>
-              </div>}
-              {contractGrand>0&&<div className="card" style={{flex:1,minWidth:160,marginBottom:0,padding:"10px 14px",background:"#fff8f0"}}>
-                <div style={{fontSize:10,color:"#b45309",marginBottom:2}}>Contracts ({linkedContracts.length})</div>
-                <div style={{fontSize:16,fontWeight:800,color:"#b45309"}}>{contractGrand.toLocaleString()} {cur}</div>
-                <div style={{fontSize:10,color:"#aaa"}}>Base {contractTotal.toLocaleString()} + Add. {addendumTotal.toLocaleString()}</div>
-              </div>}
-            </div>;
-          })()}
+
+        {/* Header */}
+        <div className="page-hdr" style={{marginBottom:12}}>
+          <div style={{flex:1}}>
+            <div className="page-title">{td.title}</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,alignItems:"center"}}>
+              {/* Inline editable fields */}
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>PKG</span>
+                <select value={td.package||""} onChange={function(e){updTd("package",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
+                  <option value="">—</option>
+                  {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+                </select>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>OWNER</span>
+                <select value={td.ownerTender||""} onChange={function(e){updTd("ownerTender",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
+                  <option value="">—</option>
+                  {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+                </select>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>WBS</span>
+                <input type="text" value={td.wbs||""} onChange={function(e){updTd("wbs",e.target.value);}} placeholder="WBS-001" style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",width:90}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>CURRENCY</span>
+                <select value={td.currency||"EUR"} onChange={function(e){updTd("currency",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
+                  {["EUR","USD","GBP","CHF","AED","SAR"].map(function(x){return <option key={x} value={x}>{x}</option>;})}
+                </select>
+              </div>
+              <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
+                <input type="checkbox" checked={isReleased} onChange={function(e){updTd("released",e.target.checked);}} style={{width:13,height:13}}/>
+                <span style={{color:isReleased?"#2e7d32":"#888"}}>✅ Released / Budget unlocked</span>
+              </label>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            <button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete this tender?"))delTender(td.id);}}>🗑</button>
+          </div>
         </div>
-        <button className="btn btn-sm" onClick={function(){openEdit(td);}}>✏️ Edit</button>
-        <button className="btn btn-sm btn-danger" onClick={function(){delTender(td.id);}}>🗑</button>
-      </div>
+
+        {/* KPI Cards */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
+            <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
+            <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+              <input type="number" value={td.budget||""} onChange={function(e){updTd("budget",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"none",background:"transparent",width:"100%",padding:0,outline:"none",fontFamily:"inherit"}}/>
+              <span style={{fontSize:10,color:"#aaa",flexShrink:0}}>{cur}</span>
+            </div>
+          </div>
+          <div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#f0f8ff"}}>
+            <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>ACC proposed</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#1a73e8"}}>{accTotal>0?accTotal.toLocaleString():"—"} {cur}</div>
+            <div style={{fontSize:10,color:"#888"}}>Sub {accSub.toLocaleString()} + Other {accOther.toLocaleString()}</div>
+          </div>
+          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
+            <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
+            <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+              <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"none",background:"transparent",width:"100%",padding:0,outline:"none",fontFamily:"inherit",color:"#2e7d32"}}/>
+              <span style={{fontSize:10,color:"#aaa",flexShrink:0}}>{cur}</span>
+            </div>
+          </div>
+          {budget>0&&effectiveCost>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:variance<0?"#fff0f0":"#f0fff4"}}>
+            <div style={{fontSize:10,color:variance<0?"#c62828":"#2e7d32",marginBottom:2}}>{varianceLabel}</div>
+            <div style={{fontSize:16,fontWeight:800,color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()} {cur}</div>
+            <div style={{fontSize:10,color:"#aaa"}}>{variance<0?"⚠️ Over":"✅ Under"}{treated===0?" (est.)":""}</div>
+          </div>}
+          {contractGrand>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#fff8f0"}}>
+            <div style={{fontSize:10,color:"#b45309",marginBottom:2}}>Contracts ({linkedContracts.length})</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#b45309"}}>{contractGrand.toLocaleString()} {cur}</div>
+            <div style={{fontSize:10,color:"#aaa"}}>Base {contractTotal.toLocaleString()} + Add. {addendumTotal.toLocaleString()}</div>
+          </div>}
+        </div>
+
+        {/* Notes */}
+        <div className="card" style={{marginBottom:10}}>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:6}}>📝 Notes</div>
+          <textarea value={td.notes||""} onChange={function(e){updTd("notes",e.target.value);}} placeholder="Add notes, context or information about this tender..." style={{width:"100%",minHeight:50,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+        </div>
+
+        {/* SD (Shop Drawing) */}
+        {(function(){
+          var hasSd=td.hasSD||false;
+          return <div className="card" style={{marginBottom:10}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:600,fontSize:13,marginBottom:hasSd?10:0}}>
+              <input type="checkbox" checked={hasSd} onChange={function(e){updTd("hasSD",e.target.checked);}} style={{width:14,height:14}}/>
+              📐 Shop Drawing (SD) required
+            </label>
+            {hasSd&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#f8f7f4",borderRadius:7,border:"1px solid #e8e6df"}}>
+              <select value={td.sdStatus||""} onChange={function(e){updTd("sdStatus",e.target.value);}} style={{padding:"4px 8px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+                <option value="">— status —</option>
+                <option value="under preparation">Under preparation</option>
+                <option value="submitted">Submitted</option>
+                <option value="pending approval">Pending approval</option>
+                <option value="approved">✅ Approved</option>
+              </select>
+              <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdTarget||""} onChange={function(e){updTd("sdTarget",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+              <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){updTd("sdDone",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+              <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Approval</span><input type="date" value={td.sdApproval||""} onChange={function(e){updTd("sdApproval",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+              {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>:null;})()}
+            </div>}
+          </div>;
+        })()}
+
+        {/* Materials */}
+        {(function(){
+          var mats=td.materials||[];
+          return <div className="card" style={{marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:mats.length>0?10:0}}>
+              <div style={{fontWeight:700,fontSize:13}}>🏗️ Materials {mats.length>0&&"("+mats.length+")"}</div>
+              <button className="btn btn-sm" onClick={function(){
+                var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",mssStatus:"",mssTarget:"",mssDone:"",mssApproval:""}];
+                updTd("materials",ms);
+              }}>＋ Material</button>
+            </div>
+            {mats.map(function(mat,mi){
+              function updMat(field,val){var ms=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{[field]:val});});updTd("materials",ms);}
+              var due14=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+              var ov=mat.mssStatus!=="approved"&&due14&&due14<today();
+              return <div key={mat.id||mi} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:8}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"center"}}>
+                  <input type="text" value={mat.name||""} onChange={function(e){updMat("name",e.target.value);}} placeholder="Material name" style={{flex:2,minWidth:120,padding:"4px 7px",fontSize:12,fontWeight:600,border:"1px solid #e8e6df",borderRadius:5}}/>
+                  <input type="text" value={mat.specified||""} onChange={function(e){updMat("specified",e.target.value);}} placeholder="Specified" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+                  <input type="text" value={mat.proposed||""} onChange={function(e){updMat("proposed",e.target.value);}} placeholder="Proposed" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+                  <input type="text" value={mat.leadTime||""} onChange={function(e){updMat("leadTime",e.target.value);}} placeholder="Lead time" style={{flex:1,minWidth:80,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+                  <button onClick={function(){if(confirm("Remove?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+                </div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#e8f0fe22",borderRadius:6,border:"1px solid #e8e6df"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#1a73e8"}}>MSS</span>
+                  <select value={mat.mssStatus||""} onChange={function(e){updMat("mssStatus",e.target.value);}} style={{fontSize:10,padding:"2px 6px",border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit"}}>
+                    <option value="">— status —</option>
+                    <option value="under preparation">Under preparation</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="pending approval">Pending approval</option>
+                    <option value="approved">✅ Approved</option>
+                  </select>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat("mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssDone||""} onChange={function(e){updMat("mssDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Approval</span><input type="date" value={mat.mssApproval||""} onChange={function(e){updMat("mssApproval",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                  {ov&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>}
+                </div>
+              </div>;
+            })}
+          </div>;
+        })()}
+
+
 
       <div className="card">
         <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Submission Steps</div>
@@ -1330,6 +1444,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           })}</tbody>
         </table>
       </div>
+
 
       <div className="card" style={{marginTop:10}}>
         <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
