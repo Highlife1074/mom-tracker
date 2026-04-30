@@ -255,7 +255,6 @@ const TENDER_STEPS=[
   {key:"process",label:"Tender Process",opts:[],special:"process"},
   {key:"acc",label:"ACC/Aconex",opts:["—","Internal review ongoing","Pending client approval","Approved A","Approved B","Approved C"]},
   {key:"contract",label:"Contract",opts:["—","Request sent","In circulation","Signed"]},
-  {key:"mar",label:"MAR",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]},
   {key:"itp",label:"ITP",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]},
   {key:"wms",label:"WMS",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]}
 ];
@@ -1251,7 +1250,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
             <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
             <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-              <input type="number" value={td.budget||""} onChange={function(e){updTd("budget",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"none",background:"transparent",width:"100%",padding:0,outline:"none",fontFamily:"inherit"}}/>
+              <input type="number" value={td.budget||""} onChange={function(e){updTd("budget",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #e8e6df",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit"}}/>
               <span style={{fontSize:10,color:"#aaa",flexShrink:0}}>{cur}</span>
             </div>
           </div>
@@ -1263,7 +1262,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
             <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
             <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-              <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"none",background:"transparent",width:"100%",padding:0,outline:"none",fontFamily:"inherit",color:"#2e7d32"}}/>
+              <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #c8e6c9",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#2e7d32"}}/>
               <span style={{fontSize:10,color:"#aaa",flexShrink:0}}>{cur}</span>
             </div>
           </div>
@@ -1279,11 +1278,32 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>}
         </div>
 
-        {/* Notes */}
-        <div className="card" style={{marginBottom:10}}>
-          <div style={{fontWeight:700,fontSize:13,marginBottom:6}}>📝 Notes</div>
-          <textarea value={td.notes||""} onChange={function(e){updTd("notes",e.target.value);}} placeholder="Add notes, context or information about this tender..." style={{width:"100%",minHeight:50,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-        </div>
+        {/* Notes - multi-note system */}
+        {(function(){
+          var notes=Array.isArray(td.tenderNotes)?td.tenderNotes:(td.notes?[{id:uuid(),title:"Note",content:td.notes}]:[]);
+          return <div className="card" style={{marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:notes.length>0?10:0}}>
+              <div style={{fontWeight:700,fontSize:13}}>📝 Notes ({notes.length})</div>
+              <button className="btn btn-sm" onClick={function(){
+                var ns=[...notes,{id:uuid(),title:"Note "+(notes.length+1),content:"",open:true}];
+                updTd("tenderNotes",ns);
+              }}>＋ Note</button>
+            </div>
+            {notes.map(function(note,ni){
+              function updNote(field,val){var ns=notes.map(function(n,j){return j!==ni?n:Object.assign({},n,{[field]:val});});updTd("tenderNotes",ns);}
+              return <div key={note.id||ni} style={{border:"1px solid #e8e6df",borderRadius:8,marginBottom:8,overflow:"hidden"}}>
+                <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
+                  <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
+                  <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <button onClick={function(e){e.stopPropagation();if(confirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+                </div>
+                {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
+                  <textarea value={note.content||""} onChange={function(e){updNote("content",e.target.value);}} placeholder="Write your note here..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                </div>}
+              </div>;
+            })}
+          </div>;
+        })()}
 
         {/* SD (Shop Drawing) */}
         {(function(){
@@ -1305,7 +1325,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   <option value="approved">✅ Approved</option>
                 </select>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdTarget||""} onChange={function(e){updTd("sdTarget",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){updTd("sdDone",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){var dv=e.target.value;updTd("sdDone",dv);if(dv&&td.sdStatus==="submitted"&&!td.sdApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updTd("sdApprovalTarget",d.toISOString().slice(0,10));}}}/></div>
                 {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>:null;})()}
               </div>
               {/* Approval row */}
@@ -1359,9 +1379,13 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   <input type="text" value={mat.leadTime||""} onChange={function(e){updMat("leadTime",e.target.value);}} placeholder="Lead time" style={{flex:1,minWidth:80,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
                   <button onClick={function(){if(confirm("Remove?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
                 </div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#e8f0fe22",borderRadius:6,border:"1px solid #e8e6df"}}>
-                  <span style={{fontSize:10,fontWeight:700,color:"#1a73e8"}}>MSS</span>
-                  <select value={mat.mssStatus||""} onChange={function(e){updMat("mssStatus",e.target.value);}} style={{fontSize:10,padding:"2px 6px",border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit"}}>
+                {/* MSS - Submission row */}
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:72}}>MSS Sub.</span>
+                  <select value={mat.mssStatus||""} onChange={function(e){
+                    var newStatus=e.target.value;
+                    updMat("mssStatus",newStatus);
+                  }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit"}}>
                     <option value="">— status —</option>
                     <option value="under preparation">Under preparation</option>
                     <option value="submitted">Submitted</option>
@@ -1369,9 +1393,39 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                     <option value="approved">✅ Approved</option>
                   </select>
                   <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target sub.</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat("mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssDone||""} onChange={function(e){updMat("mssDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Approval</span><input type="date" value={mat.mssApproval||""} onChange={function(e){updMat("mssApproval",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-                  {ov&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>}
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssDone||""} onChange={function(e){
+                    var doneDate=e.target.value;
+                    updMat("mssDone",doneDate);
+                    if(doneDate&&mat.mssStatus==="submitted"&&!mat.mssApprovalTarget){
+                      var d=new Date(doneDate);d.setDate(d.getDate()+14);
+                      updMat("mssApprovalTarget",d.toISOString().slice(0,10));
+                    }
+                  }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                  {(function(){var due14=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.mssStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due14,today())}d</span>:null;})()}
+                </div>
+                {/* MSS - Approval row */}
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f0fff422",borderRadius:"0 0 6px 6px",border:"1px solid #e8e6df"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:72}}>MSS Approv.</span>
+                  <select value={mat.mssApprovalStatus||""} onChange={function(e){updMat("mssApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit"}}>
+                    <option value="">— status —</option>
+                    <option value="under preparation">Under preparation</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="pending approval">Pending approval</option>
+                    <option value="approved">✅ Approved</option>
+                  </select>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssApprovalTarget||""} onChange={function(e){updMat("mssApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssApprovalDone||""} onChange={function(e){updMat("mssApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                    <span style={{fontSize:9,color:"#888"}}>Review</span>
+                    <select value={mat.mssReview||""} onChange={function(e){updMat("mssReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit",fontWeight:mat.mssReview?"700":"400",color:mat.mssReview==="A"?"#2e7d32":mat.mssReview==="Rejected"?"#c62828":"#555"}}>
+                      <option value="">—</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                      <option value="Rejected">Rejected</option>
+                    </select>
+                  </div>
+                  {(function(){var due=mat.mssApprovalTarget||"";var ov=mat.mssApprovalStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
                 </div>
               </div>;
             })}
@@ -3852,7 +3906,6 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
     {key:"contract_acc",label:"Contract ACC",color:"#1a73e8",bg:"#e8f0fe"},
     {key:"contract_aconex",label:"Contract ACONEX",color:"#7b1fa2",bg:"#f3e5f5"},
     {key:"acc",label:"Tender ACC",color:"#1a73e8",bg:"#dce8ff"},
-    {key:"mar",label:"MAR",color:"#7b1fa2",bg:"#f3e5f5"},
     {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"},
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"}
   ];
