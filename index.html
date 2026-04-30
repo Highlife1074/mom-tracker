@@ -1363,7 +1363,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:mats.length>0?10:0}}>
               <div style={{fontWeight:700,fontSize:13}}>🏗️ Materials {mats.length>0&&"("+mats.length+")"}</div>
               <button className="btn btn-sm" onClick={function(){
-                var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",mssStatus:"",mssTarget:"",mssDone:"",mssApproval:""}];
+                var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:""}];
                 updTd("materials",ms);
               }}>＋ Material</button>
             </div>
@@ -1426,6 +1426,47 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                     </select>
                   </div>
                   {(function(){var due=mat.mssApprovalTarget||"";var ov=mat.mssApprovalStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+                </div>
+                {/* MAR - Submission row */}
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f522",borderRadius:"6px 6px 0 0",border:"1px solid #ce93d8",borderBottom:"none",marginTop:4}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:72}}>MAR Sub.</span>
+                  <select value={mat.marStatus||""} onChange={function(e){updMat("marStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+                    <option value="">— status —</option>
+                    <option value="under preparation">Under preparation</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="pending approval">Pending approval</option>
+                    <option value="approved">✅ Approved</option>
+                  </select>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marTarget||""} onChange={function(e){updMat("marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marDone||""} onChange={function(e){
+                    var dv=e.target.value;updMat("marDone",dv);
+                    if(dv&&mat.marStatus==="submitted"&&!mat.marApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat("marApprovalTarget",d.toISOString().slice(0,10));}
+                  }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                  {(function(){var due14=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.marStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due14,today())}d</span>:null;})()}
+                </div>
+                {/* MAR - Approval row */}
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f511",borderRadius:"0 0 6px 6px",border:"1px solid #ce93d8"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#6a1b9a",minWidth:72}}>MAR Approv.</span>
+                  <select value={mat.marApprovalStatus||""} onChange={function(e){updMat("marApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+                    <option value="">— status —</option>
+                    <option value="under preparation">Under preparation</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="pending approval">Pending approval</option>
+                    <option value="approved">✅ Approved</option>
+                  </select>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marApprovalTarget||""} onChange={function(e){updMat("marApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marApprovalDone||""} onChange={function(e){updMat("marApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                    <span style={{fontSize:9,color:"#888"}}>Review</span>
+                    <select value={mat.marReview||""} onChange={function(e){updMat("marReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit",fontWeight:mat.marReview?"700":"400",color:mat.marReview==="A"?"#2e7d32":mat.marReview==="Rejected"?"#c62828":"#6a1b9a"}}>
+                      <option value="">—</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                      <option value="Rejected">Rejected</option>
+                    </select>
+                  </div>
+                  {(function(){var due=mat.marApprovalTarget||"";var ov=mat.marApprovalStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
                 </div>
               </div>;
             })}
