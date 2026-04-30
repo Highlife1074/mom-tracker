@@ -1102,7 +1102,7 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
 }
 
 // ── TENDERS VIEW ───────────────────────────────────────────────────
-function MaterialsPanel({td,updTd,tenders,saveTenders,setSelTender}){
+function MaterialsPanel({td,updTd}){
   const [open,setOpen]=useState(true);
   var mats=td.materials||[];
 
@@ -1112,121 +1112,171 @@ function MaterialsPanel({td,updTd,tenders,saveTenders,setSelTender}){
   }
 
   return <div className="card" style={{marginBottom:10}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
+    {/* Card header with collapse toggle */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",marginBottom:open&&mats.length>0?10:0}} onClick={function(){setOpen(!open);}}>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
         <span style={{fontSize:13,color:"#aaa"}}>{open?"▾":"▸"}</span>
         <div style={{fontWeight:700,fontSize:13}}>🏗️ Materials {mats.length>0&&<span style={{fontWeight:400,color:"#aaa",fontSize:12}}>({mats.length})</span>}</div>
       </div>
       <button className="btn btn-sm" onClick={function(e){e.stopPropagation();
         var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",
-          mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",mssLink:"",mssLinkLabel:"",mssNumber:"",
-          marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:"",marLink:"",marLinkLabel:"",marNumber:""}];
+          mssOpen:false,mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",mssLink:"",mssLinkLabel:"",mssNumber:"",
+          marOpen:false,marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:"",marLink:"",marLinkLabel:"",marNumber:"",
+          hasPO:false,poNumber:"",poStatus:""}];
         updTd("materials",ms);setOpen(true);
       }}>＋ Material</button>
     </div>
-    {open&&<div style={{marginTop:10}}>
-      {mats.length===0&&<div style={{color:"#bbb",fontSize:12,padding:"8px 0"}}>No materials yet. Click "＋ Material" to add one.</div>}
+
+    {open&&<div>
+      {mats.length===0&&<div style={{color:"#bbb",fontSize:12,padding:"4px 0"}}>No materials. Click "＋ Material" to add one.</div>}
       {mats.map(function(mat,mi){
-        var mssDue14=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var mssDue=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
         var mssOv=mat.mssApprovalStatus!=="approved"&&mat.mssApprovalTarget&&mat.mssApprovalTarget<today();
-        var marDue14=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var marDue=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
         var marOv=mat.marApprovalStatus!=="approved"&&mat.marApprovalTarget&&mat.marApprovalTarget<today();
+        var mssOpen=mat.mssOpen||false;
+        var marOpen=mat.marOpen||false;
 
         return <div key={mat.id||mi} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:8}}>
-          {/* Material fields */}
+          {/* Material header fields */}
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"center"}}>
             <input type="text" value={mat.name||""} onChange={function(e){updMat(mi,"name",e.target.value);}} placeholder="Material name" style={{flex:2,minWidth:120,padding:"4px 7px",fontSize:12,fontWeight:600,border:"1px solid #e8e6df",borderRadius:5}}/>
-            <input type="text" value={mat.specified||""} onChange={function(e){updMat(mi,"specified",e.target.value);}} placeholder="Specified" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-            <input type="text" value={mat.proposed||""} onChange={function(e){updMat(mi,"proposed",e.target.value);}} placeholder="Proposed" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-            <input type="text" value={mat.leadTime||""} onChange={function(e){updMat(mi,"leadTime",e.target.value);}} placeholder="Lead time" style={{flex:1,minWidth:80,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+            <input type="text" value={mat.specified||""} onChange={function(e){updMat(mi,"specified",e.target.value);}} placeholder="Specified material" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+            <input type="text" value={mat.proposed||""} onChange={function(e){updMat(mi,"proposed",e.target.value);}} placeholder="Proposed material" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+            <input type="text" value={mat.leadTime||""} onChange={function(e){updMat(mi,"leadTime",e.target.value);}} placeholder="Lead time (wks)" style={{flex:1,minWidth:70,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
             <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
           </div>
 
-          {/* MSS Submission */}
-          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none"}}>
-            <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:72}}>MSS Sub.</span>
-            <select value={mat.mssStatus||""} onChange={function(e){updMat(mi,"mssStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit"}}>
-              <option value="">— status —</option>
-              <option value="under preparation">Under preparation</option>
-              <option value="submitted">Submitted</option>
-              <option value="pending approval">Pending approval</option>
-              <option value="approved">✅ Approved</option>
-            </select>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat(mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssDone||""} onChange={function(e){
-              var dv=e.target.value; updMat(mi,"mssDone",dv);
-              if(dv&&mat.mssStatus==="submitted"&&!mat.mssApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"mssApprovalTarget",d.toISOString().slice(0,10));}
-            }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-            <input type="text" value={mat.mssNumber||""} onChange={function(e){updMat(mi,"mssNumber",e.target.value);}} placeholder="N°" style={{width:55,padding:"2px 5px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4}} title="Document number"/>
-            <div style={{display:"flex",gap:2,alignItems:"center"}}>
-              <input type="text" value={mat.mssLinkLabel||""} onChange={function(e){updMat(mi,"mssLinkLabel",e.target.value);}} placeholder="Label" style={{width:50,padding:"2px 4px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4}}/>
-              <input type="url" value={mat.mssLink||""} onChange={function(e){updMat(mi,"mssLink",e.target.value);}} placeholder="URL" style={{width:90,padding:"2px 4px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4}}/>
-              {mat.mssLink&&<a href={mat.mssLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#3949ab",padding:"1px 4px",borderRadius:4,background:"#f0f0ff",textDecoration:"none"}}>🔗</a>}
+          {/* PO toggle */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+            <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
+              <input type="checkbox" checked={mat.hasPO||false} onChange={function(e){updMat(mi,"hasPO",e.target.checked);}} style={{width:13,height:13}}/>
+              <span style={{color:mat.hasPO?"#b45309":"#888"}}>📦 PO</span>
+            </label>
+            {mat.hasPO&&<input type="text" value={mat.poNumber||""} onChange={function(e){updMat(mi,"poNumber",e.target.value);}} placeholder="PO number" style={{width:110,padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>}
+            {mat.hasPO&&<select value={mat.poStatus||""} onChange={function(e){updMat(mi,"poStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,fontFamily:"inherit",color:mat.poStatus==="issued"?"#2e7d32":mat.poStatus==="pending"?"#f57f17":"#555"}}>
+              <option value="">— PO status —</option>
+              <option value="pending">Pending</option>
+              <option value="issued">✅ Issued</option>
+              <option value="on hold">On hold</option>
+            </select>}
+          </div>
+
+          {/* MSS Section - collapsible */}
+          <div style={{marginBottom:4}}>
+            <div onClick={function(){updMat(mi,"mssOpen",!mssOpen);}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:mssOpen?"#e8f0fe33":"transparent",borderRadius:5,marginBottom:mssOpen?4:0}}>
+              <span style={{fontSize:10,color:"#1a73e8"}}>{mssOpen?"▾":"▸"}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#1a73e8"}}>MSS</span>
+              {!mssOpen&&(mat.mssStatus||mat.mssApprovalStatus)&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#e8f0fe",color:"#1a73e8",marginLeft:2}}>{mat.mssApprovalStatus||mat.mssStatus}</span>}
+              {!mssOpen&&mssOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
             </div>
-            {(function(){var due=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.mssStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+            {mssOpen&&<div>
+              {/* MSS Submission */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:90}}>MSS Submission</span>
+                <select value={mat.mssStatus||""} onChange={function(e){updMat(mi,"mssStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat(mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.mssDone||""} onChange={function(e){
+                  var dv=e.target.value;updMat(mi,"mssDone",dv);
+                  if(dv&&mat.mssStatus==="submitted"&&!mat.mssApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"mssApprovalTarget",d.toISOString().slice(0,10));}
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                  <input type="text" value={mat.mssNumber||""} onChange={function(e){updMat(mi,"mssNumber",e.target.value);}} placeholder="Doc N°" style={{width:65,padding:"2px 5px",fontSize:9,border:"1px solid #bbdefb",borderRadius:4}}/>
+                  <input type="text" value={mat.mssLinkLabel||""} onChange={function(e){updMat(mi,"mssLinkLabel",e.target.value);}} placeholder="Link label" style={{width:65,padding:"2px 4px",fontSize:9,border:"1px solid #bbdefb",borderRadius:4}}/>
+                  <input type="url" value={mat.mssLink||""} onChange={function(e){updMat(mi,"mssLink",e.target.value);}} placeholder="https://..." style={{width:100,padding:"2px 4px",fontSize:9,border:"1px solid #bbdefb",borderRadius:4}}/>
+                  {mat.mssLink&&<a href={mat.mssLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#3949ab",padding:"1px 4px",borderRadius:4,background:"#f0f0ff",textDecoration:"none"}}>🔗</a>}
+                </div>
+                {(function(){var due=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.mssStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+              </div>
+              {/* MSS Approval */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f0fff422",borderRadius:"0 0 6px 6px",border:"1px solid #e8e6df"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:90}}>MSS Approval</span>
+                <select value={mat.mssApprovalStatus||""} onChange={function(e){updMat(mi,"mssApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.mssApprovalTarget||""} onChange={function(e){updMat(mi,"mssApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.mssApprovalDone||""} onChange={function(e){updMat(mi,"mssApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#555",fontWeight:600}}>Review</span>
+                  <select value={mat.mssReview||""} onChange={function(e){updMat(mi,"mssReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit",fontWeight:mat.mssReview?"700":"400",color:mat.mssReview==="A"?"#2e7d32":mat.mssReview==="Rejected"?"#c62828":"#555"}}>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {mssOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(mat.mssApprovalTarget,today())}d</span>}
+              </div>
+            </div>}
           </div>
-          {/* MSS Approval */}
-          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f0fff422",borderRadius:"0 0 0 0",border:"1px solid #e8e6df",borderTop:"none",borderBottom:"none"}}>
-            <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:72}}>MSS Approv.</span>
-            <select value={mat.mssApprovalStatus||""} onChange={function(e){updMat(mi,"mssApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit"}}>
-              <option value="">— status —</option>
-              <option value="under preparation">Under preparation</option>
-              <option value="submitted">Submitted</option>
-              <option value="pending approval">Pending approval</option>
-              <option value="approved">✅ Approved</option>
-            </select>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssApprovalTarget||""} onChange={function(e){updMat(mi,"mssApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssApprovalDone||""} onChange={function(e){updMat(mi,"mssApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
-            <select value={mat.mssReview||""} onChange={function(e){updMat(mi,"mssReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit",fontWeight:mat.mssReview?"700":"400",color:mat.mssReview==="A"?"#2e7d32":mat.mssReview==="Rejected"?"#c62828":"#555"}}>
-              <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
-            </select>
-            {mssOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(mat.mssApprovalTarget,today())}d</span>}
-          </div>
-          {/* MAR Submission */}
-          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f522",borderRadius:"0",border:"1px solid #ce93d8",borderTop:"2px solid #e8e6df",borderBottom:"none",marginTop:4}}>
-            <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:72}}>MAR Sub.</span>
-            <select value={mat.marStatus||""} onChange={function(e){updMat(mi,"marStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
-              <option value="">— status —</option>
-              <option value="under preparation">Under preparation</option>
-              <option value="submitted">Submitted</option>
-              <option value="pending approval">Pending approval</option>
-              <option value="approved">✅ Approved</option>
-            </select>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marTarget||""} onChange={function(e){updMat(mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marDone||""} onChange={function(e){
-              var dv=e.target.value; updMat(mi,"marDone",dv);
-              if(dv&&mat.marStatus==="submitted"&&!mat.marApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"marApprovalTarget",d.toISOString().slice(0,10));}
-            }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-            <input type="text" value={mat.marNumber||""} onChange={function(e){updMat(mi,"marNumber",e.target.value);}} placeholder="N°" style={{width:55,padding:"2px 5px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}} title="Document number"/>
-            <div style={{display:"flex",gap:2,alignItems:"center"}}>
-              <input type="text" value={mat.marLinkLabel||""} onChange={function(e){updMat(mi,"marLinkLabel",e.target.value);}} placeholder="Label" style={{width:50,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
-              <input type="url" value={mat.marLink||""} onChange={function(e){updMat(mi,"marLink",e.target.value);}} placeholder="URL" style={{width:90,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
-              {mat.marLink&&<a href={mat.marLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#7b1fa2",padding:"1px 4px",borderRadius:4,background:"#f3e5f5",textDecoration:"none"}}>🔗</a>}
+
+          {/* MAR Section - collapsible */}
+          <div>
+            <div onClick={function(){updMat(mi,"marOpen",!marOpen);}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:marOpen?"#f3e5f533":"transparent",borderRadius:5,marginBottom:marOpen?4:0}}>
+              <span style={{fontSize:10,color:"#7b1fa2"}}>{marOpen?"▾":"▸"}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#7b1fa2"}}>MAR</span>
+              {!marOpen&&(mat.marStatus||mat.marApprovalStatus)&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#f3e5f5",color:"#7b1fa2",marginLeft:2}}>{mat.marApprovalStatus||mat.marStatus}</span>}
+              {!marOpen&&marOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
             </div>
-            {(function(){var due=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.marStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
-          </div>
-          {/* MAR Approval */}
-          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f511",borderRadius:"0 0 6px 6px",border:"1px solid #ce93d8",borderTop:"none"}}>
-            <span style={{fontSize:10,fontWeight:700,color:"#6a1b9a",minWidth:72}}>MAR Approv.</span>
-            <select value={mat.marApprovalStatus||""} onChange={function(e){updMat(mi,"marApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
-              <option value="">— status —</option>
-              <option value="under preparation">Under preparation</option>
-              <option value="submitted">Submitted</option>
-              <option value="pending approval">Pending approval</option>
-              <option value="approved">✅ Approved</option>
-            </select>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marApprovalTarget||""} onChange={function(e){updMat(mi,"marApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marApprovalDone||""} onChange={function(e){updMat(mi,"marApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-            <select value={mat.marReview||""} onChange={function(e){updMat(mi,"marReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit",fontWeight:mat.marReview?"700":"400",color:mat.marReview==="A"?"#2e7d32":mat.marReview==="Rejected"?"#c62828":"#6a1b9a"}}>
-              <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
-            </select>
-            {marOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(mat.marApprovalTarget,today())}d</span>}
+            {marOpen&&<div>
+              {/* MAR Submission */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f3e5f522",borderRadius:"6px 6px 0 0",border:"1px solid #ce93d8",borderBottom:"none"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:90}}>MAR Submission</span>
+                <select value={mat.marStatus||""} onChange={function(e){updMat(mi,"marStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.marTarget||""} onChange={function(e){updMat(mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.marDone||""} onChange={function(e){
+                  var dv=e.target.value;updMat(mi,"marDone",dv);
+                  if(dv&&mat.marStatus==="submitted"&&!mat.marApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"marApprovalTarget",d.toISOString().slice(0,10));}
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                  <input type="text" value={mat.marNumber||""} onChange={function(e){updMat(mi,"marNumber",e.target.value);}} placeholder="Doc N°" style={{width:65,padding:"2px 5px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
+                  <input type="text" value={mat.marLinkLabel||""} onChange={function(e){updMat(mi,"marLinkLabel",e.target.value);}} placeholder="Link label" style={{width:65,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
+                  <input type="url" value={mat.marLink||""} onChange={function(e){updMat(mi,"marLink",e.target.value);}} placeholder="https://..." style={{width:100,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
+                  {mat.marLink&&<a href={mat.marLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#7b1fa2",padding:"1px 4px",borderRadius:4,background:"#f3e5f5",textDecoration:"none"}}>🔗</a>}
+                </div>
+                {(function(){var due=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.marStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+              </div>
+              {/* MAR Approval */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f3e5f511",borderRadius:"0 0 6px 6px",border:"1px solid #ce93d8"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#6a1b9a",minWidth:90}}>MAR Approval</span>
+                <select value={mat.marApprovalStatus||""} onChange={function(e){updMat(mi,"marApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.marApprovalTarget||""} onChange={function(e){updMat(mi,"marApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.marApprovalDone||""} onChange={function(e){updMat(mi,"marApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#555",fontWeight:600}}>Review</span>
+                  <select value={mat.marReview||""} onChange={function(e){updMat(mi,"marReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit",fontWeight:mat.marReview?"700":"400",color:mat.marReview==="A"?"#2e7d32":mat.marReview==="Rejected"?"#c62828":"#6a1b9a"}}>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {marOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(mat.marApprovalTarget,today())}d</span>}
+              </div>
+            </div>}
           </div>
         </div>;
       })}
     </div>}
   </div>;
 }
+
 
 function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners}){
   const [pkgFilter,setPkgFilter]=useState("all");
