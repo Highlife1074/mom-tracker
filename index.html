@@ -2713,6 +2713,88 @@ function workingDaysDiff(dateStr1,dateStr2){
   while(cur<=d2){var day=cur.getDay();if(day!==0)count++;cur.setDate(cur.getDate()+1);}
   return count;
 }
+// ── Procurement Timeline Calculator ──────────────────────────────
+function calcProcurement(td){
+  var LEAD = Number(td.leadTimeDays||0)||30;
+  var hasSd = td.hasSD||false;
+  var sdResubCount = Number(td.sdResubCount||0);
+
+  // Get dates from tender step data
+  var accSubmittal = ((td.stepDates||{}).acc||{}).submission||"";
+  var accDone = ((td.stepDates||{}).acc||{}).done||"";
+  var accApproval = ((td.stepDates||{}).acc||{}).approval||"";
+  var contractDone = ((td.stepDates||{}).contract||{}).done||"";
+
+  function addDays(dateStr, days){
+    if(!dateStr) return "";
+    var d = new Date(dateStr);
+    d.setDate(d.getDate()+days);
+    return d.toISOString().slice(0,10);
+  }
+
+  var steps = [];
+
+  // 1. ACC Submittal
+  steps.push({key:"accSub", label:"ACC Submittal", date:accSubmittal, done:accSubmittal, duration:null, manual:true});
+
+  // 2. ACC Approval (+14d from submittal)
+  var accApprTarget = addDays(accSubmittal, 14);
+  steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:14, manual:false});
+
+  // 3. Contract Signing (+28d from acc approval)
+  var contractTarget = addDays(accApproval||accApprTarget, 28);
+  steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:false});
+
+  var fabStart = contractDone||contractTarget;
+
+  if(hasSd){
+    // 4. SD Submission (+14d from contract)
+    var sdSubDate = td.sdDone||(addDays(contractDone||contractTarget, 14));
+    var sdSubTarget = addDays(contractDone||contractTarget, 14);
+    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:td.sdDone||"", duration:14, manual:false, sd:true});
+
+    // 5. SD Approval (+14d from submission)
+    var sdAppTarget = addDays(td.sdDone||sdSubTarget, 14);
+    steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
+      review:td.sdReview||""});
+
+    // 6. SD Resubmissions if any
+    var lastSdDate = td.sdApprovalDone||sdAppTarget;
+    for(var r=0; r<sdResubCount; r++){
+      var rSubTarget = addDays(lastSdDate, 14);
+      var rAppTarget = addDays(rSubTarget, 14);
+      steps.push({key:"sdResub"+(r+1), label:"SD Resubmission "+(r+1), date:rSubTarget, done:"", duration:14, manual:false, sd:true});
+      steps.push({key:"sdReapp"+(r+1), label:"SD Approval "+(r+1), date:rAppTarget, done:"", duration:14, manual:false, sd:true});
+      lastSdDate = rAppTarget;
+    }
+    fabStart = lastSdDate;
+  }
+
+  // Fabrication Launch
+  steps.push({key:"fab", label:"Fabrication Launch", date:fabStart, done:"", duration:null, manual:false,
+    note:"Lead: "+LEAD+"d"});
+
+  // Delivery on site
+  var deliveryDate = addDays(fabStart, LEAD);
+  steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:"", duration:LEAD, manual:false, highlight:true});
+
+  // Procurement start = start on site - total duration
+  var startOnSite = td.startOnSite||"";
+  var margin = "";
+  var procStart = "";
+  var totalDays = steps.filter(function(s){return s.duration;}).reduce(function(a,s){return a+(s.duration||0);},0) + LEAD;
+  if(startOnSite){
+    var sos = new Date(startOnSite);
+    var del = deliveryDate ? new Date(deliveryDate) : null;
+    margin = del ? Math.round((sos - del)/(1000*60*60*24)) : null;
+    var ps = new Date(startOnSite);
+    ps.setDate(ps.getDate() - totalDays);
+    procStart = ps.toISOString().slice(0,10);
+  }
+
+  return {steps:steps, deliveryDate:deliveryDate, procStart:procStart, margin:margin, totalDays:totalDays, LEAD:LEAD};
+}
+
 function contractFinancials(ct){
   var base=Number(ct.amount)||0;
   var addTotal=(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
