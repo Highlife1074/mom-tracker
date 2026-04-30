@@ -1206,6 +1206,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
         {/* Header */}
         <div className="page-hdr" style={{marginBottom:12}}>
+          <button className="btn btn-sm" onClick={function(){setSelTender(null);}} style={{marginRight:8,flexShrink:0,alignSelf:"flex-start",marginTop:4}}>← Back</button>
           <div style={{flex:1}}>
             <div className="page-title">{td.title}</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,alignItems:"center"}}>
@@ -1292,18 +1293,45 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <input type="checkbox" checked={hasSd} onChange={function(e){updTd("hasSD",e.target.checked);}} style={{width:14,height:14}}/>
               📐 Shop Drawing (SD) required
             </label>
-            {hasSd&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#f8f7f4",borderRadius:7,border:"1px solid #e8e6df"}}>
-              <select value={td.sdStatus||""} onChange={function(e){updTd("sdStatus",e.target.value);}} style={{padding:"4px 8px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
-                <option value="">— status —</option>
-                <option value="under preparation">Under preparation</option>
-                <option value="submitted">Submitted</option>
-                <option value="pending approval">Pending approval</option>
-                <option value="approved">✅ Approved</option>
-              </select>
-              <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdTarget||""} onChange={function(e){updTd("sdTarget",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-              <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){updTd("sdDone",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-              <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Approval</span><input type="date" value={td.sdApproval||""} onChange={function(e){updTd("sdApproval",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-              {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>:null;})()}
+            {hasSd&&<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:4}}>
+              {/* Submission row */}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f8f7f4",borderRadius:7,border:"1px solid #e8e6df"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#555",minWidth:80}}>Submission</span>
+                <select value={td.sdStatus||""} onChange={function(e){updTd("sdStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+                  <option value="">— status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdTarget||""} onChange={function(e){updTd("sdTarget",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){updTd("sdDone",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>:null;})()}
+              </div>
+              {/* Approval row */}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f0fff4",borderRadius:7,border:"1px solid #c8e6c9"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:80}}>Approval</span>
+                <select value={td.sdApprovalStatus||""} onChange={function(e){updTd("sdApprovalStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5,fontFamily:"inherit"}}>
+                  <option value="">— status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdApprovalTarget||""} onChange={function(e){updTd("sdApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdApprovalDone||""} onChange={function(e){updTd("sdApprovalDone",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <span style={{fontSize:10,color:"#888"}}>Review</span>
+                  <select value={td.sdReview||""} onChange={function(e){updTd("sdReview",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5,fontFamily:"inherit",fontWeight:td.sdReview?"700":"400",color:td.sdReview==="A"?"#2e7d32":td.sdReview==="Rejected"?"#c62828":"#555"}}>
+                    <option value="">— review —</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {(function(){var due14=td.sdApprovalDone?(function(){var d=new Date(td.sdApprovalDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdApprovalStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>:null;})()}
+              </div>
             </div>}
           </div>;
         })()}
@@ -1340,7 +1368,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                     <option value="pending approval">Pending approval</option>
                     <option value="approved">✅ Approved</option>
                   </select>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat("mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target sub.</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat("mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
                   <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssDone||""} onChange={function(e){updMat("mssDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
                   <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Approval</span><input type="date" value={mat.mssApproval||""} onChange={function(e){updMat("mssApproval",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
                   {ov&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>}
@@ -1480,28 +1508,29 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
     {(function(){
-      var totBudget=filtered.reduce(function(s,t){return s+Number(t.budget||0);},0);
-      var totAcc=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0)+Number(t.accAmountOther||0);},0);
-      var totInstructed=filtered.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
+      var releasedTenders=filtered.filter(function(t){return t.released;});
+      var totBudget=releasedTenders.reduce(function(s,t){return s+Number(t.budget||0);},0);
+      var totAcc=releasedTenders.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0)+Number(t.accAmountOther||0);},0);
+      var totInstructed=releasedTenders.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
       var totVariance=totBudget-totAcc;
-      if(!totBudget&&!totAcc&&!totInstructed)return null;
+      if(!totBudget&&!totAcc&&!totInstructed&&releasedTenders.length===0)return null;
       return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
         {totBudget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px"}}>
-          <div style={{fontSize:10,color:"#888",marginBottom:2}}>Total Budget</div>
+          <div style={{fontSize:10,color:"#888",marginBottom:2}}>Total Budget (released)</div>
           <div style={{fontSize:18,fontWeight:800}}>{totBudget.toLocaleString()}</div>
-          <div style={{fontSize:10,color:"#aaa"}}>{filtered.length} tenders</div>
+          <div style={{fontSize:10,color:"#aaa"}}>{releasedTenders.length}/{filtered.length} released</div>
         </div>}
         {totAcc>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0f8ff"}}>
-          <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>Total Proposed</div>
+          <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>Total Proposed (released)</div>
           <div style={{fontSize:18,fontWeight:800,color:"#1a73e8"}}>{totAcc.toLocaleString()}</div>
           <div style={{fontSize:10,color:"#aaa"}}>ACC/ACONEX</div>
         </div>}
         {totInstructed>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
-          <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Total Instructed</div>
+          <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Total Instructed (released)</div>
           <div style={{fontSize:18,fontWeight:800,color:"#2e7d32"}}>{totInstructed.toLocaleString()}</div>
         </div>}
         {totBudget>0&&totAcc>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:totVariance<0?"#fff0f0":"#f0fff4"}}>
-          <div style={{fontSize:10,color:totVariance<0?"#c62828":"#2e7d32",marginBottom:2}}>Variance (Budget − Cost)</div>
+          <div style={{fontSize:10,color:totVariance<0?"#c62828":"#2e7d32",marginBottom:2}}>Variance (released)</div>
           <div style={{fontSize:18,fontWeight:800,color:totVariance<0?"#c62828":"#2e7d32"}}>{totVariance>0?"+":""}{totVariance.toLocaleString()}</div>
           <div style={{fontSize:10,color:"#aaa"}}>{totVariance<0?"⚠️ Over budget":"✅ Under budget"}</div>
         </div>}
