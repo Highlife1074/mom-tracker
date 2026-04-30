@@ -1122,7 +1122,7 @@ function MaterialsPanel({td,updTd}){
         var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",
           mssOpen:false,mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",mssLink:"",mssLinkLabel:"",mssNumber:"",
           marOpen:false,marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:"",marLink:"",marLinkLabel:"",marNumber:"",
-          hasPO:false,poNumber:"",poStatus:""}];
+          hasPO:false,poNumber:"",poStatus:"",poAccOpen:false,poAccStatus:"",poAccTarget:"",poAccDone:"",poAccApprovalStatus:"",poAccApprovalTarget:"",poAccApprovalDone:"",poAccReview:""}];
         updTd("materials",ms);setOpen(true);
       }}>＋ Material</button>
     </div>
@@ -1139,12 +1139,24 @@ function MaterialsPanel({td,updTd}){
 
         return <div key={mat.id||mi} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:8}}>
           {/* Material header fields */}
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"center"}}>
-            <input type="text" value={mat.name||""} onChange={function(e){updMat(mi,"name",e.target.value);}} placeholder="Material name" style={{flex:2,minWidth:120,padding:"4px 7px",fontSize:12,fontWeight:600,border:"1px solid #e8e6df",borderRadius:5}}/>
-            <input type="text" value={mat.specified||""} onChange={function(e){updMat(mi,"specified",e.target.value);}} placeholder="Specified material" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-            <input type="text" value={mat.proposed||""} onChange={function(e){updMat(mi,"proposed",e.target.value);}} placeholder="Proposed material" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-            <input type="text" value={mat.leadTime||""} onChange={function(e){updMat(mi,"leadTime",e.target.value);}} placeholder="Lead time (wks)" style={{flex:1,minWidth:70,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-            <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"flex-end"}}>
+            <div style={{flex:2,minWidth:120}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Material name</div>
+              <input type="text" value={mat.name||""} onChange={function(e){updMat(mi,"name",e.target.value);}} placeholder="Name" style={{width:"100%",padding:"4px 7px",fontSize:12,fontWeight:600,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:2,minWidth:100}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Specified</div>
+              <input type="text" value={mat.specified||""} onChange={function(e){updMat(mi,"specified",e.target.value);}} placeholder="Specified material" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:2,minWidth:100}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Proposed</div>
+              <input type="text" value={mat.proposed||""} onChange={function(e){updMat(mi,"proposed",e.target.value);}} placeholder="Proposed material" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:1,minWidth:70}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Lead time</div>
+              <input type="text" value={mat.leadTime||""} onChange={function(e){updMat(mi,"leadTime",e.target.value);}} placeholder="e.g. 8 wks" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0,marginBottom:2}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
           </div>
 
           {/* PO toggle */}
@@ -1161,6 +1173,53 @@ function MaterialsPanel({td,updTd}){
               <option value="on hold">On hold</option>
             </select>}
           </div>
+
+          {/* PO ACC Section - when PO checked */}
+          {mat.hasPO&&<div style={{marginBottom:6}}>
+            <div onClick={function(){updMat(mi,"poAccOpen",!(mat.poAccOpen));}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:(mat.poAccOpen)?"#fff8f033":"transparent",borderRadius:5,marginBottom:(mat.poAccOpen)?4:0}}>
+              <span style={{fontSize:10,color:"#b45309"}}>{mat.poAccOpen?"▾":"▸"}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#b45309"}}>PO ACC/ACONEX</span>
+              {!(mat.poAccOpen)&&(mat.poAccStatus||mat.poAccApprovalStatus)&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#fff8f0",color:"#b45309",marginLeft:2}}>{mat.poAccApprovalStatus||mat.poAccStatus}</span>}
+              {!(mat.poAccOpen)&&mat.poAccApprovalStatus!=="approved"&&mat.poAccApprovalTarget&&mat.poAccApprovalTarget<today()&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
+            </div>
+            {mat.poAccOpen&&<div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#fff8f022",borderRadius:"6px 6px 0 0",border:"1px solid #fdd9b5",borderBottom:"none"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#b45309",minWidth:90}}>ACC Submission</span>
+                <select value={mat.poAccStatus||""} onChange={function(e){updMat(mi,"poAccStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.poAccTarget||""} onChange={function(e){updMat(mi,"poAccTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.poAccDone||""} onChange={function(e){
+                  var dv=e.target.value;updMat(mi,"poAccDone",dv);
+                  if(dv&&mat.poAccStatus==="submitted"&&!mat.poAccApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"poAccApprovalTarget",d.toISOString().slice(0,10));}
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                {(function(){var due=mat.poAccDone?(function(){var d=new Date(mat.poAccDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.poAccStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+              </div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#fff8f011",borderRadius:"0 0 6px 6px",border:"1px solid #fdd9b5"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#e65100",minWidth:90}}>ACC Approval</span>
+                <select value={mat.poAccApprovalStatus||""} onChange={function(e){updMat(mi,"poAccApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.poAccApprovalTarget||""} onChange={function(e){updMat(mi,"poAccApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.poAccApprovalDone||""} onChange={function(e){updMat(mi,"poAccApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#555",fontWeight:600}}>Review</span>
+                  <select value={mat.poAccReview||""} onChange={function(e){updMat(mi,"poAccReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4,fontFamily:"inherit",fontWeight:mat.poAccReview?"700":"400",color:mat.poAccReview==="A"?"#2e7d32":mat.poAccReview==="Rejected"?"#c62828":"#b45309"}}>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {mat.poAccApprovalStatus!=="approved"&&mat.poAccApprovalTarget&&mat.poAccApprovalTarget<today()&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(mat.poAccApprovalTarget,today())}d</span>}
+              </div>
+            </div>}
+          </div>}
 
           {/* MSS Section - collapsible */}
           <div style={{marginBottom:4}}>
