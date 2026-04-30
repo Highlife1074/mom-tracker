@@ -2791,8 +2791,10 @@ function calcProcurement(td){
   var sdResubCount = Number(td.sdResubCount||0);
 
   // Get dates from tender step data
-  var accSubmittal = ((td.stepDates||{}).acc||{}).submission||"";
-  var accDone = ((td.stepDates||{}).acc||{}).done||"";
+  // accSubmittal = Date done of ACC step (when ACC was sent to client)
+  // accApproval = Date of approval of ACC step
+  // contractDone = Date done of Contract step
+  var accSubmittal = ((td.stepDates||{}).acc||{}).done||"";
   var accApproval = ((td.stepDates||{}).acc||{}).approval||"";
   var contractDone = ((td.stepDates||{}).contract||{}).done||"";
 
@@ -2806,7 +2808,7 @@ function calcProcurement(td){
   var steps = [];
 
   // 1. ACC Submittal
-  steps.push({key:"accSub", label:"ACC Submittal", date:accSubmittal, done:accSubmittal, duration:null, manual:true});
+  steps.push({key:"accSub", label:"ACC Submittal (Date done)", date:accSubmittal, done:accSubmittal, duration:null, manual:true, note:"From 'Date done' of ACC step"});
 
   // 2. ACC Approval (+14d from submittal)
   var accApprTarget = addDays(accSubmittal, 14);
