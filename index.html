@@ -1519,7 +1519,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               </div>
               <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
                 <input type="checkbox" checked={isReleased} onChange={function(e){updTd("released",e.target.checked);}} style={{width:13,height:13}}/>
-                <span style={{color:isReleased?"#2e7d32":"#888"}}>✅ Released</span>
+                <span style={{color:isReleased?"#2e7d32":"#888"}}>✅ Budget Release</span>
               </label>
             </div>
           </div>
@@ -1547,10 +1547,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
             </div>
           </div>
-          {budget>0&&effectiveCost>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:variance<0?"#fff0f0":"#f0fff4"}}>
-            <div style={{fontSize:10,color:variance<0?"#c62828":"#2e7d32",marginBottom:2}}>{varianceLabel}</div>
-            <div style={{fontSize:16,fontWeight:800,color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()} {cur}</div>
-            <div style={{fontSize:10,color:"#aaa"}}>{variance<0?"⚠️ Over":"✅ Under"}{treated===0?" (est.)":""}</div>
+          {budget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:effectiveCost>0&&variance<0?"#fff0f0":effectiveCost>0?"#f0fff4":"#f8f7f4"}}>
+            <div style={{fontSize:10,color:effectiveCost>0?(variance<0?"#c62828":"#2e7d32"):"#888",marginBottom:2}}>{effectiveCost>0?varianceLabel:"Variance"}</div>
+            <div style={{fontSize:16,fontWeight:800,color:effectiveCost>0?(variance<0?"#c62828":"#2e7d32"):"#bbb"}}>{effectiveCost>0?(variance>0?"+":"")+variance.toLocaleString()+" "+cur:"—"}</div>
+            <div style={{fontSize:10,color:"#aaa"}}>{effectiveCost>0?(variance<0?"⚠️ Over budget":"✅ Under budget"):"No cost entered yet"}{effectiveCost>0&&treated===0?" (est.)":""}</div>
           </div>}
           {contractGrand>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#fff8f0"}}>
             <div style={{fontSize:10,color:"#b45309",marginBottom:2}}>Contracts ({linkedContracts.length})</div>
@@ -1781,7 +1781,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <div style={{fontSize:18,fontWeight:800,color:"#2e7d32"}}>{totInstructed.toLocaleString()}</div>
         </div>}
         {totBudget>0&&totAcc>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:totVariance<0?"#fff0f0":"#f0fff4"}}>
-          <div style={{fontSize:10,color:totVariance<0?"#c62828":"#2e7d32",marginBottom:2}}>Variance (released)</div>
+          <div style={{fontSize:10,color:totVariance<0?"#c62828":"#2e7d32",marginBottom:2}}>Variance Budget − Cost</div>
           <div style={{fontSize:18,fontWeight:800,color:totVariance<0?"#c62828":"#2e7d32"}}>{totVariance>0?"+":""}{totVariance.toLocaleString()}</div>
           <div style={{fontSize:10,color:"#aaa"}}>{totVariance<0?"⚠️ Over budget":"✅ Under budget"}</div>
         </div>}
