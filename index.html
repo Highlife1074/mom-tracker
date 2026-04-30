@@ -666,7 +666,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
           {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
         </select>
         <button className="btn btn-sm" onClick={function(){setEditMode(true);}} style={{padding:"3px 7px"}}>✏️</button>
-        {onDelete&&<button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete this action?"))onDelete();}} style={{padding:"3px 7px"}}>🗑</button>}
+        {onDelete&&<button className="btn btn-sm btn-danger" onClick={function(){onDelete();}} style={{padding:"3px 7px"}}>🗑</button>}
       </div>}
     </div>
   </div>;
@@ -809,7 +809,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
   const updateTask=(id,field,val)=>{
     saveT(tasks.map(function(t){if(t.id!==id)return t;var u=Object.assign({},t);u[field]=val;return u;}));
   };
-  const deleteTask=id=>{if(confirm("Delete this task?"))saveT(tasks.filter(t=>t.id!==id));};
+  const deleteTask=id=>{if(safeConfirm("Delete this task?"))saveT(tasks.filter(t=>t.id!==id));};
 
   const pending=tasks.filter(t=>t.status==="pending"||t.status==="in progress").length;
   const done=tasks.filter(t=>t.status==="done").length;
@@ -965,7 +965,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
     saveX(d);setShowForm(false);
     if(sel&&sel.id===td.id)setSel(td);
   };
-  const delTracker=id=>{if(confirm("Delete tracker?"))saveX(trackers.filter(t=>t.id!==id));setSel(null);setView("list");};
+  const delTracker=id=>{if(safeConfirm("Delete tracker?"))saveX(trackers.filter(t=>t.id!==id));setSel(null);setView("list");};
 
   const updAction=(trId,acId,field,val)=>{
     const d=trackers.map(function(tr){if(tr.id!==trId)return tr;return Object.assign({},tr,{actions:tr.actions.map(function(a){if(a.id!==acId)return a;var u=Object.assign({},a);u[field]=val;return u;})});});
@@ -1102,6 +1102,132 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
 }
 
 // ── TENDERS VIEW ───────────────────────────────────────────────────
+function MaterialsPanel({td,updTd,tenders,saveTenders,setSelTender}){
+  const [open,setOpen]=useState(true);
+  var mats=td.materials||[];
+
+  function updMat(mi,field,val){
+    var ms=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{[field]:val});});
+    updTd("materials",ms);
+  }
+
+  return <div className="card" style={{marginBottom:10}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:13,color:"#aaa"}}>{open?"▾":"▸"}</span>
+        <div style={{fontWeight:700,fontSize:13}}>🏗️ Materials {mats.length>0&&<span style={{fontWeight:400,color:"#aaa",fontSize:12}}>({mats.length})</span>}</div>
+      </div>
+      <button className="btn btn-sm" onClick={function(e){e.stopPropagation();
+        var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",
+          mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",mssLink:"",mssLinkLabel:"",mssNumber:"",
+          marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:"",marLink:"",marLinkLabel:"",marNumber:""}];
+        updTd("materials",ms);setOpen(true);
+      }}>＋ Material</button>
+    </div>
+    {open&&<div style={{marginTop:10}}>
+      {mats.length===0&&<div style={{color:"#bbb",fontSize:12,padding:"8px 0"}}>No materials yet. Click "＋ Material" to add one.</div>}
+      {mats.map(function(mat,mi){
+        var mssDue14=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var mssOv=mat.mssApprovalStatus!=="approved"&&mat.mssApprovalTarget&&mat.mssApprovalTarget<today();
+        var marDue14=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var marOv=mat.marApprovalStatus!=="approved"&&mat.marApprovalTarget&&mat.marApprovalTarget<today();
+
+        return <div key={mat.id||mi} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:8}}>
+          {/* Material fields */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"center"}}>
+            <input type="text" value={mat.name||""} onChange={function(e){updMat(mi,"name",e.target.value);}} placeholder="Material name" style={{flex:2,minWidth:120,padding:"4px 7px",fontSize:12,fontWeight:600,border:"1px solid #e8e6df",borderRadius:5}}/>
+            <input type="text" value={mat.specified||""} onChange={function(e){updMat(mi,"specified",e.target.value);}} placeholder="Specified" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+            <input type="text" value={mat.proposed||""} onChange={function(e){updMat(mi,"proposed",e.target.value);}} placeholder="Proposed" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+            <input type="text" value={mat.leadTime||""} onChange={function(e){updMat(mi,"leadTime",e.target.value);}} placeholder="Lead time" style={{flex:1,minWidth:80,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+            <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+          </div>
+
+          {/* MSS Submission */}
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none"}}>
+            <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:72}}>MSS Sub.</span>
+            <select value={mat.mssStatus||""} onChange={function(e){updMat(mi,"mssStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit"}}>
+              <option value="">— status —</option>
+              <option value="under preparation">Under preparation</option>
+              <option value="submitted">Submitted</option>
+              <option value="pending approval">Pending approval</option>
+              <option value="approved">✅ Approved</option>
+            </select>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat(mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssDone||""} onChange={function(e){
+              var dv=e.target.value; updMat(mi,"mssDone",dv);
+              if(dv&&mat.mssStatus==="submitted"&&!mat.mssApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"mssApprovalTarget",d.toISOString().slice(0,10));}
+            }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+            <input type="text" value={mat.mssNumber||""} onChange={function(e){updMat(mi,"mssNumber",e.target.value);}} placeholder="N°" style={{width:55,padding:"2px 5px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4}} title="Document number"/>
+            <div style={{display:"flex",gap:2,alignItems:"center"}}>
+              <input type="text" value={mat.mssLinkLabel||""} onChange={function(e){updMat(mi,"mssLinkLabel",e.target.value);}} placeholder="Label" style={{width:50,padding:"2px 4px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4}}/>
+              <input type="url" value={mat.mssLink||""} onChange={function(e){updMat(mi,"mssLink",e.target.value);}} placeholder="URL" style={{width:90,padding:"2px 4px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4}}/>
+              {mat.mssLink&&<a href={mat.mssLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#3949ab",padding:"1px 4px",borderRadius:4,background:"#f0f0ff",textDecoration:"none"}}>🔗</a>}
+            </div>
+            {(function(){var due=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.mssStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+          </div>
+          {/* MSS Approval */}
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f0fff422",borderRadius:"0 0 0 0",border:"1px solid #e8e6df",borderTop:"none",borderBottom:"none"}}>
+            <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:72}}>MSS Approv.</span>
+            <select value={mat.mssApprovalStatus||""} onChange={function(e){updMat(mi,"mssApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit"}}>
+              <option value="">— status —</option>
+              <option value="under preparation">Under preparation</option>
+              <option value="submitted">Submitted</option>
+              <option value="pending approval">Pending approval</option>
+              <option value="approved">✅ Approved</option>
+            </select>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssApprovalTarget||""} onChange={function(e){updMat(mi,"mssApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssApprovalDone||""} onChange={function(e){updMat(mi,"mssApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+            <select value={mat.mssReview||""} onChange={function(e){updMat(mi,"mssReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit",fontWeight:mat.mssReview?"700":"400",color:mat.mssReview==="A"?"#2e7d32":mat.mssReview==="Rejected"?"#c62828":"#555"}}>
+              <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+            </select>
+            {mssOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(mat.mssApprovalTarget,today())}d</span>}
+          </div>
+          {/* MAR Submission */}
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f522",borderRadius:"0",border:"1px solid #ce93d8",borderTop:"2px solid #e8e6df",borderBottom:"none",marginTop:4}}>
+            <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:72}}>MAR Sub.</span>
+            <select value={mat.marStatus||""} onChange={function(e){updMat(mi,"marStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+              <option value="">— status —</option>
+              <option value="under preparation">Under preparation</option>
+              <option value="submitted">Submitted</option>
+              <option value="pending approval">Pending approval</option>
+              <option value="approved">✅ Approved</option>
+            </select>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marTarget||""} onChange={function(e){updMat(mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marDone||""} onChange={function(e){
+              var dv=e.target.value; updMat(mi,"marDone",dv);
+              if(dv&&mat.marStatus==="submitted"&&!mat.marApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"marApprovalTarget",d.toISOString().slice(0,10));}
+            }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+            <input type="text" value={mat.marNumber||""} onChange={function(e){updMat(mi,"marNumber",e.target.value);}} placeholder="N°" style={{width:55,padding:"2px 5px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}} title="Document number"/>
+            <div style={{display:"flex",gap:2,alignItems:"center"}}>
+              <input type="text" value={mat.marLinkLabel||""} onChange={function(e){updMat(mi,"marLinkLabel",e.target.value);}} placeholder="Label" style={{width:50,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
+              <input type="url" value={mat.marLink||""} onChange={function(e){updMat(mi,"marLink",e.target.value);}} placeholder="URL" style={{width:90,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
+              {mat.marLink&&<a href={mat.marLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#7b1fa2",padding:"1px 4px",borderRadius:4,background:"#f3e5f5",textDecoration:"none"}}>🔗</a>}
+            </div>
+            {(function(){var due=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.marStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+          </div>
+          {/* MAR Approval */}
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f511",borderRadius:"0 0 6px 6px",border:"1px solid #ce93d8",borderTop:"none"}}>
+            <span style={{fontSize:10,fontWeight:700,color:"#6a1b9a",minWidth:72}}>MAR Approv.</span>
+            <select value={mat.marApprovalStatus||""} onChange={function(e){updMat(mi,"marApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+              <option value="">— status —</option>
+              <option value="under preparation">Under preparation</option>
+              <option value="submitted">Submitted</option>
+              <option value="pending approval">Pending approval</option>
+              <option value="approved">✅ Approved</option>
+            </select>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marApprovalTarget||""} onChange={function(e){updMat(mi,"marApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marApprovalDone||""} onChange={function(e){updMat(mi,"marApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+            <select value={mat.marReview||""} onChange={function(e){updMat(mi,"marReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit",fontWeight:mat.marReview?"700":"400",color:mat.marReview==="A"?"#2e7d32":mat.marReview==="Rejected"?"#c62828":"#6a1b9a"}}>
+              <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+            </select>
+            {marOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(mat.marApprovalTarget,today())}d</span>}
+          </div>
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+
 function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners}){
   const [pkgFilter,setPkgFilter]=useState("all");
   const [searchQ,setSearchQ]=useState("");
@@ -1141,7 +1267,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     var d=(tenders||[]).find(function(x){return x.id===td.id;})?(tenders||[]).map(function(x){return x.id===td.id?td:x;}):[td,...(tenders||[])];
     saveTenders(d);setShowForm(false);if(selTender&&selTender.id===td.id)setSelTender(td);
   }
-  function delTender(id){if(confirm("Delete tender?"))saveTenders((tenders||[]).filter(function(t){return t.id!==id;}));setSelTender(null);}
+  function delTender(id){if(safeConfirm("Delete tender?"))saveTenders((tenders||[]).filter(function(t){return t.id!==id;}));setSelTender(null);}
 
   function updateStep(tdId,step,field,val){
     var d=(tenders||[]).map(function(t){
@@ -1209,7 +1335,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <div style={{flex:1}}>
             <div className="page-title">{td.title}</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,alignItems:"center"}}>
-              {/* Inline editable fields */}
               <div style={{display:"flex",alignItems:"center",gap:4}}>
                 <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>PKG</span>
                 <select value={td.package||""} onChange={function(e){updTd("package",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
@@ -1236,22 +1361,20 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               </div>
               <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
                 <input type="checkbox" checked={isReleased} onChange={function(e){updTd("released",e.target.checked);}} style={{width:13,height:13}}/>
-                <span style={{color:isReleased?"#2e7d32":"#888"}}>✅ Released / Budget unlocked</span>
+                <span style={{color:isReleased?"#2e7d32":"#888"}}>✅ Released</span>
               </label>
             </div>
           </div>
-          <div style={{display:"flex",gap:6,flexShrink:0}}>
-            <button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete this tender?"))delTender(td.id);}}>🗑</button>
-          </div>
+          <button className="btn btn-sm btn-danger" onClick={function(){if(safeConfirm("Delete?"))delTender(td.id);}}>🗑</button>
         </div>
 
         {/* KPI Cards */}
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
           <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
             <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
-            <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
               <input type="number" value={td.budget||""} onChange={function(e){updTd("budget",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #e8e6df",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit"}}/>
-              <span style={{fontSize:10,color:"#aaa",flexShrink:0}}>{cur}</span>
+              <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
             </div>
           </div>
           <div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#f0f8ff"}}>
@@ -1261,9 +1384,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>
           <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
             <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
-            <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
               <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #c8e6c9",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#2e7d32"}}/>
-              <span style={{fontSize:10,color:"#aaa",flexShrink:0}}>{cur}</span>
+              <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
             </div>
           </div>
           {budget>0&&effectiveCost>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:variance<0?"#fff0f0":"#f0fff4"}}>
@@ -1278,16 +1401,13 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>}
         </div>
 
-        {/* Notes - multi-note system */}
+        {/* Notes */}
         {(function(){
           var notes=Array.isArray(td.tenderNotes)?td.tenderNotes:(td.notes?[{id:uuid(),title:"Note",content:td.notes}]:[]);
           return <div className="card" style={{marginBottom:10}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:notes.length>0?10:0}}>
               <div style={{fontWeight:700,fontSize:13}}>📝 Notes ({notes.length})</div>
-              <button className="btn btn-sm" onClick={function(){
-                var ns=[...notes,{id:uuid(),title:"Note "+(notes.length+1),content:"",open:true}];
-                updTd("tenderNotes",ns);
-              }}>＋ Note</button>
+              <button className="btn btn-sm" onClick={function(){var ns=[...notes,{id:uuid(),title:"Note "+(notes.length+1),content:"",open:true}];updTd("tenderNotes",ns);}}>＋ Note</button>
             </div>
             {notes.map(function(note,ni){
               function updNote(field,val){var ns=notes.map(function(n,j){return j!==ni?n:Object.assign({},n,{[field]:val});});updTd("tenderNotes",ns);}
@@ -1295,7 +1415,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
                   <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
                   <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-                  <button onClick={function(e){e.stopPropagation();if(confirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+                  <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
                 </div>
                 {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
                   <textarea value={note.content||""} onChange={function(e){updNote("content",e.target.value);}} placeholder="Write your note here..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
@@ -1305,16 +1425,17 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>;
         })()}
 
+        <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender}/>
+
         {/* SD (Shop Drawing) */}
         {(function(){
           var hasSd=td.hasSD||false;
           return <div className="card" style={{marginBottom:10}}>
             <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:600,fontSize:13,marginBottom:hasSd?10:0}}>
               <input type="checkbox" checked={hasSd} onChange={function(e){updTd("hasSD",e.target.checked);}} style={{width:14,height:14}}/>
-              📐 Shop Drawing (SD) required
+              📐 Shop Drawing (SD)
             </label>
             {hasSd&&<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:4}}>
-              {/* Submission row */}
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f8f7f4",borderRadius:7,border:"1px solid #e8e6df"}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#555",minWidth:80}}>Submission</span>
                 <select value={td.sdStatus||""} onChange={function(e){updTd("sdStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
@@ -1324,11 +1445,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   <option value="pending approval">Pending approval</option>
                   <option value="approved">✅ Approved</option>
                 </select>
-                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdTarget||""} onChange={function(e){updTd("sdTarget",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdTarget||""} onChange={function(e){updTd("sdTarget",e.target.value);}}/></div>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){var dv=e.target.value;updTd("sdDone",dv);if(dv&&td.sdStatus==="submitted"&&!td.sdApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updTd("sdApprovalTarget",d.toISOString().slice(0,10));}}}/></div>
-                {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>:null;})()}
+                {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due14,today())}d</span>:null;})()}
               </div>
-              {/* Approval row */}
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f0fff4",borderRadius:7,border:"1px solid #c8e6c9"}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:80}}>Approval</span>
                 <select value={td.sdApprovalStatus||""} onChange={function(e){updTd("sdApprovalStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5,fontFamily:"inherit"}}>
@@ -1338,141 +1458,19 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   <option value="pending approval">Pending approval</option>
                   <option value="approved">✅ Approved</option>
                 </select>
-                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdApprovalTarget||""} onChange={function(e){updTd("sdApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
-                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdApprovalDone||""} onChange={function(e){updTd("sdApprovalDone",e.target.value);}} style={{fontSize:10,padding:"3px 6px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdApprovalTarget||""} onChange={function(e){updTd("sdApprovalTarget",e.target.value);}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdApprovalDone||""} onChange={function(e){updTd("sdApprovalDone",e.target.value);}}/></div>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}>
                   <span style={{fontSize:10,color:"#888"}}>Review</span>
                   <select value={td.sdReview||""} onChange={function(e){updTd("sdReview",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5,fontFamily:"inherit",fontWeight:td.sdReview?"700":"400",color:td.sdReview==="A"?"#2e7d32":td.sdReview==="Rejected"?"#c62828":"#555"}}>
-                    <option value="">— review —</option>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                    <option value="Rejected">Rejected</option>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
                   </select>
                 </div>
-                {(function(){var due14=td.sdApprovalDone?(function(){var d=new Date(td.sdApprovalDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdApprovalStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ +{workingDaysDiff(due14,today())}d</span>:null;})()}
+                {(function(){var due=td.sdApprovalTarget||"";var ov=td.sdApprovalStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
               </div>
             </div>}
           </div>;
         })()}
-
-        {/* Materials */}
-        {(function(){
-          var mats=td.materials||[];
-          return <div className="card" style={{marginBottom:10}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:mats.length>0?10:0}}>
-              <div style={{fontWeight:700,fontSize:13}}>🏗️ Materials {mats.length>0&&"("+mats.length+")"}</div>
-              <button className="btn btn-sm" onClick={function(){
-                var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:""}];
-                updTd("materials",ms);
-              }}>＋ Material</button>
-            </div>
-            {mats.map(function(mat,mi){
-              function updMat(field,val){var ms=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{[field]:val});});updTd("materials",ms);}
-              var due14=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
-              var ov=mat.mssStatus!=="approved"&&due14&&due14<today();
-              return <div key={mat.id||mi} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:8}}>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"center"}}>
-                  <input type="text" value={mat.name||""} onChange={function(e){updMat("name",e.target.value);}} placeholder="Material name" style={{flex:2,minWidth:120,padding:"4px 7px",fontSize:12,fontWeight:600,border:"1px solid #e8e6df",borderRadius:5}}/>
-                  <input type="text" value={mat.specified||""} onChange={function(e){updMat("specified",e.target.value);}} placeholder="Specified" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-                  <input type="text" value={mat.proposed||""} onChange={function(e){updMat("proposed",e.target.value);}} placeholder="Proposed" style={{flex:2,minWidth:100,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-                  <input type="text" value={mat.leadTime||""} onChange={function(e){updMat("leadTime",e.target.value);}} placeholder="Lead time" style={{flex:1,minWidth:80,padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
-                  <button onClick={function(){if(confirm("Remove?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
-                </div>
-                {/* MSS - Submission row */}
-                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none"}}>
-                  <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:72}}>MSS Sub.</span>
-                  <select value={mat.mssStatus||""} onChange={function(e){
-                    var newStatus=e.target.value;
-                    updMat("mssStatus",newStatus);
-                  }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit"}}>
-                    <option value="">— status —</option>
-                    <option value="under preparation">Under preparation</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="pending approval">Pending approval</option>
-                    <option value="approved">✅ Approved</option>
-                  </select>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target sub.</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat("mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssDone||""} onChange={function(e){
-                    var doneDate=e.target.value;
-                    updMat("mssDone",doneDate);
-                    if(doneDate&&mat.mssStatus==="submitted"&&!mat.mssApprovalTarget){
-                      var d=new Date(doneDate);d.setDate(d.getDate()+14);
-                      updMat("mssApprovalTarget",d.toISOString().slice(0,10));
-                    }
-                  }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></div>
-                  {(function(){var due14=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.mssStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due14,today())}d</span>:null;})()}
-                </div>
-                {/* MSS - Approval row */}
-                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f0fff422",borderRadius:"0 0 6px 6px",border:"1px solid #e8e6df"}}>
-                  <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:72}}>MSS Approv.</span>
-                  <select value={mat.mssApprovalStatus||""} onChange={function(e){updMat("mssApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit"}}>
-                    <option value="">— status —</option>
-                    <option value="under preparation">Under preparation</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="pending approval">Pending approval</option>
-                    <option value="approved">✅ Approved</option>
-                  </select>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.mssApprovalTarget||""} onChange={function(e){updMat("mssApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.mssApprovalDone||""} onChange={function(e){updMat("mssApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}>
-                    <span style={{fontSize:9,color:"#888"}}>Review</span>
-                    <select value={mat.mssReview||""} onChange={function(e){updMat("mssReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit",fontWeight:mat.mssReview?"700":"400",color:mat.mssReview==="A"?"#2e7d32":mat.mssReview==="Rejected"?"#c62828":"#555"}}>
-                      <option value="">—</option>
-                      <option value="A">A</option>
-                      <option value="B">B</option>
-                      <option value="C">C</option>
-                      <option value="Rejected">Rejected</option>
-                    </select>
-                  </div>
-                  {(function(){var due=mat.mssApprovalTarget||"";var ov=mat.mssApprovalStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
-                </div>
-                {/* MAR - Submission row */}
-                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f522",borderRadius:"6px 6px 0 0",border:"1px solid #ce93d8",borderBottom:"none",marginTop:4}}>
-                  <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:72}}>MAR Sub.</span>
-                  <select value={mat.marStatus||""} onChange={function(e){updMat("marStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
-                    <option value="">— status —</option>
-                    <option value="under preparation">Under preparation</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="pending approval">Pending approval</option>
-                    <option value="approved">✅ Approved</option>
-                  </select>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marTarget||""} onChange={function(e){updMat("marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marDone||""} onChange={function(e){
-                    var dv=e.target.value;updMat("marDone",dv);
-                    if(dv&&mat.marStatus==="submitted"&&!mat.marApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat("marApprovalTarget",d.toISOString().slice(0,10));}
-                  }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-                  {(function(){var due14=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.marStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due14,today())}d</span>:null;})()}
-                </div>
-                {/* MAR - Approval row */}
-                <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"5px 8px",background:"#f3e5f511",borderRadius:"0 0 6px 6px",border:"1px solid #ce93d8"}}>
-                  <span style={{fontSize:10,fontWeight:700,color:"#6a1b9a",minWidth:72}}>MAR Approv.</span>
-                  <select value={mat.marApprovalStatus||""} onChange={function(e){updMat("marApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
-                    <option value="">— status —</option>
-                    <option value="under preparation">Under preparation</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="pending approval">Pending approval</option>
-                    <option value="approved">✅ Approved</option>
-                  </select>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Target</span><input type="date" value={mat.marApprovalTarget||""} onChange={function(e){updMat("marApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#888"}}>Done</span><input type="date" value={mat.marApprovalDone||""} onChange={function(e){updMat("marApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
-                  <div style={{display:"flex",gap:3,alignItems:"center"}}>
-                    <span style={{fontSize:9,color:"#888"}}>Review</span>
-                    <select value={mat.marReview||""} onChange={function(e){updMat("marReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit",fontWeight:mat.marReview?"700":"400",color:mat.marReview==="A"?"#2e7d32":mat.marReview==="Rejected"?"#c62828":"#6a1b9a"}}>
-                      <option value="">—</option>
-                      <option value="A">A</option>
-                      <option value="B">B</option>
-                      <option value="C">C</option>
-                      <option value="Rejected">Rejected</option>
-                    </select>
-                  </div>
-                  {(function(){var due=mat.marApprovalTarget||"";var ov=mat.marApprovalStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
-                </div>
-              </div>;
-            })}
-          </div>;
-        })()}
-
 
 
       <div className="card">
@@ -1577,7 +1575,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             return <ActionItem key={t.id} task={t}
               onStatusChange={function(val){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
               onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
-              onDelete={function(){if(confirm("Delete this action?"))saveTasks((tasks||[]).filter(function(x){return x.id!==t.id;}));}}
+              onDelete={function(){saveTasks((tasks||[]).filter(function(x){return x.id!==t.id;}));}}
               people={people} packages={packages} tags={window._ppTags||[]} tenders={tenders} contractors={contractors}/>;
           })}
         <QuickAddTask
@@ -1943,7 +1941,7 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
     setForm({number:"",type:"received",date:today(),description:"",replied:false,replyNumber:"",replyDate:""});
   }
 
-  function delLetter(id){if(confirm("Delete this correspondence entry?"))saveCorrespondences((correspondences||[]).filter(function(l){return l.id!==id;}));}
+  function delLetter(id){if(safeConfirm("Delete this correspondence entry?"))saveCorrespondences((correspondences||[]).filter(function(l){return l.id!==id;}));}
 
   function set(f,v){setForm(function(prev){return Object.assign({},prev,{[f]:v});});}
 
@@ -2084,7 +2082,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     var d=ctrs.find(function(x){return x.id===cd.id;})?ctrs.map(function(x){return x.id===cd.id?cd:x;}):[cd,...ctrs];
     saveContractors(d);closeForm();if(selCtr&&selCtr.id===cd.id)setSelCtr(cd);
   }
-  function delCtr(id){if(confirm("Delete subcontractor?"))saveContractors(ctrs.filter(function(c){return c.id!==id;}));setSelCtr(null);}
+  function delCtr(id){if(safeConfirm("Delete subcontractor?"))saveContractors(ctrs.filter(function(c){return c.id!==id;}));setSelCtr(null);}
 
   function addContract(ctrId){
     var nc=newContract();
@@ -2189,7 +2187,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           :linkedTasks.map(function(t){return <ActionItem key={t.id} task={t}
             onStatusChange={function(val){saveT(tsks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
             onUpdate={function(field,val){saveT(tsks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
-            onDelete={function(){if(confirm("Delete this action?"))saveT((tsks||[]).filter(function(x){return x.id!==t.id;}));}}
+            onDelete={function(){saveT((tsks||[]).filter(function(x){return x.id!==t.id;}));}}
             people={ppl} packages={pkgs} tags={window._ppTags||[]} tenders={tnds} contractors={ctrs}/>;} )}
         <QuickAddTask
           prefill={{contractorRef:ctr.id, package:ctr.package||"", owner:ctr.owner||""}}
@@ -2339,11 +2337,11 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
   const [newPackage,setNewPackage]=useState("");
 
   const addTag=()=>{const t=newTag.trim();if(t&&!tags.includes(t)){saveTags([...tags,t].sort());setNewTag("");}};
-  const removeTag=t=>{if(confirm("Remove tag '"+t+"'? CC rules for this tag will also be removed.")){saveTags(tags.filter(x=>x!==t));const nr=Object.assign({},tagrules);delete nr[t];saveTagrules(nr);}};
+  const removeTag=t=>{if(safeConfirm("Remove tag '"+t+"'? CC rules for this tag will also be removed.")){saveTags(tags.filter(x=>x!==t));const nr=Object.assign({},tagrules);delete nr[t];saveTagrules(nr);}};
   const addPerson=()=>{const p=newPerson.trim();if(p&&!people.includes(p)){savePeople([...people,p].sort());setNewPerson("");}};
-  const removePerson=p=>{if(confirm("Remove "+p+"?"))savePeople(people.filter(x=>x!==p));};
+  const removePerson=p=>{if(safeConfirm("Remove "+p+"?"))savePeople(people.filter(x=>x!==p));};
   const addPackage=()=>{const p=newPackage.trim();if(p&&!packages.includes(p)){savePackages([...packages,p].sort());setNewPackage("");}};
-  const removePackage=p=>{if(confirm("Remove package '"+p+"'?"))savePackages(packages.filter(x=>x!==p));};
+  const removePackage=p=>{if(safeConfirm("Remove package '"+p+"'?"))savePackages(packages.filter(x=>x!==p));};
 
   const toggleTagRule=(tag,person)=>{
     const cur=tagrules[tag]||[];
@@ -2485,7 +2483,7 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
             reader.onload=function(ev){
               try{
                 var d=JSON.parse(ev.target.result);
-                if(confirm("This will replace all current data with the backup. Are you sure?")){
+                if(safeConfirm("This will replace all current data with the backup. Are you sure?")){
                   onImport(d);
                   alert("Data restored successfully!");
                 }
@@ -2548,6 +2546,7 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
   </div>;
 }
 // ── contractFinancials (global) ──────────────────────────────────
+function safeConfirm(msg){try{return window.confirm(msg);}catch(e){return true;}}
 function workingDaysDiff(dateStr1,dateStr2){
   // Count working days (Mon-Sat) between two dates
   var d1=new Date(dateStr1);var d2=new Date(dateStr2);
@@ -2589,7 +2588,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           {linkedTender&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {linkedTender.title}</span>}
         </div>
       </div>
-      <button onClick={function(){if(confirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField){updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav(null);}}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#c62828",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
+      <button onClick={function(){if(safeConfirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField){updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav(null);}}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#c62828",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
     </div>
 
     {/* KPI cards */}
@@ -2751,7 +2750,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
 <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}><input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} placeholder="INS Amt" style={{width:110,padding:"3px 28px 3px 6px",fontSize:11}}/><span style={{position:"absolute",right:4,fontSize:9,fontWeight:700,color:"#aaa",pointerEvents:"none"}}>{ct.currency||"EUR"}</span></div>
               <span style={{fontSize:10,color:"#888"}}>Cumul: <strong>{addCumul.toLocaleString()} EUR</strong></span>
-              <button onClick={function(){if(confirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+              <button onClick={function(){if(safeConfirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
             <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box",marginBottom:6}}/>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -2800,7 +2799,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:130,padding:"3px 6px",fontSize:11}}/>
               <span style={{fontSize:10,color:"#2e7d32"}}>Cumul: <strong>{certCumul.toLocaleString()} EUR</strong></span>
               <span style={{fontSize:10,color:rem<0?"#c62828":"#888"}}>Left: <strong>{rem.toLocaleString()} EUR</strong></span>
-              <button onClick={function(){if(confirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+              <button onClick={function(){if(safeConfirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
             <input type="text" value={cf.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
           </div>;
@@ -3115,7 +3114,7 @@ function AwnView({awns,saveAwns,people}){
     setShowForm(false);
     setForm({number:"",date:today(),subject:"",description:"",type:"sent",replied:false,replyNumber:"",replyDate:"",replyDescription:""});
   }
-  function del(id){if(confirm("Delete AWN?"))saveAwns((awns||[]).filter(function(a){return a.id!==id;}));}
+  function del(id){if(safeConfirm("Delete AWN?"))saveAwns((awns||[]).filter(function(a){return a.id!==id;}));}
   function toggleReply(id){saveAwns((awns||[]).map(function(a){return a.id!==id?a:Object.assign({},a,{replied:!a.replied});}));}
 
   var pending=(awns||[]).filter(function(a){return !a.replied;}).length;
@@ -3576,7 +3575,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   <button className="btn btn-sm" onClick={function(){setEditId(isEdit?null:a.id);}} style={{padding:"3px 7px"}}>
                     {isEdit?"✓":"✏️"}
                   </button>
-                  {a._source==="task"&&<button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete this action?"))saveTasks((tasks||[]).filter(function(x){return x.id!==a.id;}));}} style={{padding:"3px 7px"}}>🗑</button>}
+                  {a._source==="task"&&<button className="btn btn-sm btn-danger" onClick={function(){saveTasks((tasks||[]).filter(function(x){return x.id!==a.id;}));}} style={{padding:"3px 7px"}}>🗑</button>}
                 </div>
               </td>
             </tr>;
