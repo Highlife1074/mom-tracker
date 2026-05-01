@@ -187,30 +187,11 @@ label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-
   .filter-bar{gap:4px;}
   .filter-bar select,.filter-bar input{font-size:11px;padding:4px 6px;}
 }
-
-@media print {
-  body { background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px; }
-  .layout { display: block !important; height: auto !important; overflow: visible !important; }
-  .leftnav, .rsidebar, .imp-btn-wrap, .mobile-qa-btn,
-  button.btn-gold, button.btn-sm, button.btn-danger,
-  .page-hdr button, #app-banner { display: none !important; }
-  .main-area { display: block !important; overflow: visible !important; }
-  .content { overflow: visible !important; padding: 8px !important; }
-  .tbl { font-size: 9px !important; }
-  .tbl th, .tbl td { padding: 4px 6px !important; }
-  .chip { font-size: 8px !important; padding: 1px 5px !important; }
-  .card { break-inside: avoid; margin-bottom: 6px !important; padding: 8px !important; }
-  #pp-print-only { display: block !important; }
-  #pp-noprint { display: none !important; }
-  .pp-hide-print { display: none !important; }
-}
-@media screen {
-  #pp-print-only { display: none !important; }
 }
 </style>
 </head>
 <body>
-<div id="app-banner">RIVIERA TOWER TRACKER — MAGIC TEAM</div>
+<div id="app-banner">RIVIERA TOWER TRACKER — MAGIC TEAM <span style="font-size:9px;opacity:.5">v4976</span></div>
 <div id="root"></div>
 <script id="app-source" type="text/plain">
 const {useState,useEffect,useRef,useCallback}=React;
@@ -228,7 +209,6 @@ class ErrorBoundary extends React.Component{
   }
 }
 
-// ── Storage keys ─────────────────────────────────────────────────
 const KEYS_IMP="pp_improvements";
 const KEYS_PINS="pp_user_pins";
 const KEYS_PREFS="pp_user_prefs";
@@ -241,7 +221,6 @@ const KEYS={
   pkgowners:"pp_pkgowners"
 };
 
-// ── Helpers ───────────────────────────────────────────────────────
 function uuid(){return"id_"+Math.random().toString(36).slice(2)+Date.now().toString(36);}
 function today(){return new Date().toISOString().slice(0,10);}
 function fmtDate(d){if(!d)return"—";const p=d.split("-");return p.length===3?p[2]+"/"+p[1]+"/"+p[0].slice(2):d;}
@@ -265,7 +244,7 @@ function getAllCCs(tags,pkg,owner,tagrules,pkgrules){
   const prefs=window._ppUserPrefs||{};
   return[...new Set(all)].filter(function(p){
     if(p===owner)return false;
-    // Never CC someone who has opted out of pkg CC
+
     var pref=(prefs[p]||{});
     if(pref.noPkgCC)return false;
     return true;
@@ -285,11 +264,11 @@ const TENDER_STEPS=[
 function tenderStepClass(step,val){
   if(!val||val==="—")return"s-default";
   var v=val.toLowerCase();
-  // Green: any "approved" or "signed"
+
   if(v.includes("approved")||v==="signed")return"s-approved-a";
-  // Red: rejected, not approved, not done
+
   if(v.includes("reject")||v.includes("not approved")||v.includes("not done"))return"s-notdone";
-  // Orange: pending, in circulation, sent, ongoing, in preparation, submitted
+
   if(v.includes("pending")||v.includes("ongoing")||v.includes("circulation")||v.includes("sent")||v.includes("preparation")||v.includes("submitted")||v.includes("request")||v.includes("bids"))return"s-pending";
   return"s-default";
 }
@@ -312,13 +291,11 @@ function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber
 function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:"",comment:""};}
 
-// ── Cloud store ───────────────────────────────────────────────────
 const cloudStore={
   get:async(key)=>{if(!window._db)return null;return await window._db.get(key);},
   set:async(key,val)=>{if(!window._db)return;await window._db.set(key,val);}
 };
 
-// ── Quick Add Sidebar ─────────────────────────────────────────────
 function GlobalPdfModal({contractors,saveContractors,onClose}){
   const [cert,setCert]=useState({number:"",date:"",amount:"",sap:""});
   const [matched,setMatched]=useState(null);
@@ -326,7 +303,7 @@ function GlobalPdfModal({contractors,saveContractors,onClose}){
 
   function set(f,v){
     var u=Object.assign({},cert);u[f]=v;setCert(u);
-    // Auto-match SAP when sap field changes
+
     if(f==="sap"){
       var found=null;
       (contractors||[]).forEach(function(ctr){
@@ -456,7 +433,6 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
   var sc=calcScore(importance,urgence);
   var ss=scoreStyle(sc);
 
-  // Filter tenders by package if package selected
   var filteredTenders=(tenders||[]).filter(function(t){return !pkg||t.package===pkg;})
     .slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");});
   var filteredContractors=(contractors||[]).filter(function(ctr){return !pkg||ctr.package===pkg||(ctr.contracts||[]).some(function(ct){return ct.package===pkg;});})
@@ -469,13 +445,11 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
     </div>
     <div style={{flex:1,overflowY:"auto",padding:12}} className="sform">
 
-      {/* 1. Date */}
       <div className="fg">
         <label>Date</label>
         <input type="date" value={due} onChange={function(e){setDue(e.target.value);}}/>
       </div>
 
-      {/* 2. Action */}
       <div className="fg">
         <label>Action *</label>
         <textarea ref={inputRef} value={text} onChange={function(e){setText(e.target.value);}}
@@ -483,13 +457,11 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
           placeholder="What needs to be done?" style={{minHeight:60}}/>
       </div>
 
-      {/* Info toggle */}
       <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:8,color:isInfo?"#1565c0":"#888",background:isInfo?"#e3f2fd":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(isInfo?"#1565c0":"#ddd"),alignSelf:"flex-start"}}>
         <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:13,height:13}}/>
         ℹ️ Info only
       </label>
 
-      {/* 3. Owner */}
       <div className="fg">
         <label>Owner</label>
         <select value={owner} onChange={function(e){setOwner(e.target.value);}} style={{fontFamily:"inherit"}}>
@@ -498,7 +470,6 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
         </select>
       </div>
 
-      {/* 4. Tender (filtered by package) */}
       <div className="fg">
         <label>Tender</label>
         <select value={tenderRef} onChange={function(e){onTenderChange(e.target.value);}} style={{fontFamily:"inherit"}}>
@@ -507,7 +478,6 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
         </select>
       </div>
 
-      {/* 5. Package (auto-filled from tender) */}
       <div className="fg">
         <label>Package</label>
         <select value={pkg} onChange={function(e){setPkg(e.target.value);if(tenderRef){var td2=(tenders||[]).find(function(t){return t.id===tenderRef;});if(td2&&td2.package!==e.target.value)setTenderRef("");}}} style={{fontFamily:"inherit"}}>
@@ -516,7 +486,6 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
         </select>
       </div>
 
-      {/* 6. Score I×U (hidden if Info) */}
       {!isInfo&&<div className="fg">
         <label>Score I×U {sc>1&&<span style={{padding:"1px 7px",borderRadius:10,background:ss.bg,color:ss.color,fontWeight:700,fontSize:10}}>{ss.label} [{sc}]</span>}</label>
         <div style={{display:"flex",gap:12,alignItems:"center",marginTop:2}}>
@@ -536,7 +505,6 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
         </div>
       </div>}
 
-      {/* 7. Tags */}
       {(tags||[]).length>0&&<div className="fg">
         <label>Tags</label>
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:2}}>
@@ -557,7 +525,6 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
         </div>
       </div>}
 
-      {/* 8. Subcontractor */}
       <div className="fg">
         <label>Subcontractor</label>
         <select value={contractorRef} onChange={function(e){setContractorRef(e.target.value);}} style={{fontFamily:"inherit"}}>
@@ -573,7 +540,6 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
     </div>
   </div>;
 }
-
 
 function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,tenders,contractors,showCreated}){
   const [editMode,setEditMode]=useState(false);
@@ -699,26 +665,22 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
   </div>;
 }
 
-// ── StatusChip ────────────────────────────────────────────────────
 function StatusChip({status}){
   const cls={"pending":"s-default","in progress":"s-pending","done":"s-approved-a","blocked":"s-notdone"}[status]||"s-default";
   return <span className={"chip "+cls}>{STATUS_ICONS[status]} {status}</span>;
 }
 
-// ── Owner chip ────────────────────────────────────────────────────
 function OwnerChip({owner}){
   if(!owner)return null;
   const c=ownerColor(owner);
   return <span className="pill" style={{background:c.bg,color:c.accent,fontSize:11,fontWeight:700}}>{owner.split(",")[0]}</span>;
 }
 
-// ── Tag chip ─────────────────────────────────────────────────────
 function TagChip({tag}){
   const c=tagColor(tag);
   return <span className="tag" style={{background:c.bg,color:c.color}}>{tag}</span>;
 }
 
-// ── ACTIONS VIEW ──────────────────────────────────────────────────
 // ── QuickAddTask: inline contextual task creation ─────────────────
 function QuickAddTask({prefill,onAdd,people,tags,label}){
   const [open,setOpen]=useState(false);
@@ -881,9 +843,9 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
         <div style={{flex:1,minWidth:0}}>
           {isEdit
           ?<div style={{display:"flex",flexDirection:"column",gap:7}}>
-            {/* Text */}
+
             <textarea value={t.text} onChange={e=>updateTask(t.id,"text",e.target.value)} autoFocus style={{fontSize:13,fontWeight:500,minHeight:50,resize:"vertical"}}/>
-            {/* Row: date + status */}
+
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1}}><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Due date</label>
                 <input type="date" value={t.due||""} onChange={e=>updateTask(t.id,"due",e.target.value)}/></div>
@@ -892,7 +854,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                   {STATUS_OPTS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}
                 </select></div>
             </div>
-            {/* Row: owner + package */}
+
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1}}><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Owner</label>
                 <select value={t.owner||""} onChange={e=>updateTask(t.id,"owner",e.target.value)}>
@@ -903,7 +865,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                   <option value="">— none —</option>{packages.map(p=><option key={p} value={p}>{p}</option>)}
                 </select></div>
             </div>
-            {/* Score I×U */}
+
             <div><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:4}}>Score I×U</label>
               <div style={{display:"flex",gap:10,alignItems:"center"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
@@ -920,7 +882,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                 {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,marginLeft:4,fontSize:11,fontWeight:700}}>{ss.label}</span>}
               </div>
             </div>
-            {/* Tags */}
+
             <div><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:4}}>Tags</label>
               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                 {tags.map(tg=>{const on=(t.tags||[]).includes(tg);const tc=tagColor(tg);return <button key={tg} onClick={()=>{const cur=t.tags||[];updateTask(t.id,"tags",on?cur.filter(x=>x!==tg):[...cur,tg]);}}
@@ -931,7 +893,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                 {getAllCCs(t.tags||[],t.package||"",t.owner||"",tagrules,pkgrules).map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}
               </div>}
             </div>
-            {/* Links */}
+
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1}}><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Link Tender</label>
                 <select value={t.tenderRef||""} onChange={e=>updateTask(t.id,"tenderRef",e.target.value)}>
@@ -942,7 +904,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                   <option value="">— none —</option>{contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                 </select></div>
             </div>
-            {/* Note */}
+
             <div><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Note</label>
               <textarea value={t.note||""} onChange={e=>updateTask(t.id,"note",e.target.value)} placeholder="Notes, context…" style={{minHeight:36,fontSize:12}}/></div>
             <button className="btn btn-sm btn-pri" onClick={()=>setEditId(null)} style={{alignSelf:"flex-start"}}>✓ Close editor</button>
@@ -975,7 +937,6 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
   </div>;
 }
 
-// ── TRACKERS VIEW ──────────────────────────────────────────────────
 function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,contractors,tagrules,pkgrules}){
   const [trackerQ,setTrackerQ]=useState("");
   const [view,setView]=useState("list");
@@ -1047,7 +1008,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
                 <option value="">— package —</option>{packages.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
             </div>
-            {/* Score */}
+
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
               <span style={{fontSize:10,fontWeight:700,color:"#aaa",minWidth:20}}>I</span>
               {[1,2,3].map(v=><button key={v} onClick={()=>updAction(sel.id,ac.id,"importance",v)}
@@ -1057,17 +1018,17 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
                 style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((ac.urgence||1)===v?"#1c1c1e":"#ddd"),background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>)}
               {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10,marginLeft:4}}>{ss.label}</span>}
             </div>
-            {/* Tags */}
+
             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
               {tags.map(tg=>{const on=(ac.tags||[]).includes(tg);const tc=tagColor(tg);return <button key={tg} onClick={()=>{const cur=ac.tags||[];updAction(sel.id,ac.id,"tags",on?cur.filter(x=>x!==tg):[...cur,tg]);}}
                 style={{padding:"2px 8px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
             </div>
-            {/* CCs */}
+
             {ccs.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
               <span style={{fontSize:10,fontWeight:700,color:"#aaa"}}>CC:</span>
               {ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}
             </div>}
-            {/* Details */}
+
             {ac.details!==undefined&&<textarea value={ac.details||""} onChange={e=>updAction(sel.id,ac.id,"details",e.target.value)} placeholder="Details…"
               style={{width:"100%",marginTop:5,fontSize:11,minHeight:30,border:"1px solid #f0ede6",borderRadius:5,padding:"3px 6px",background:"#fafaf8",resize:"vertical"}}/>}
           </div>
@@ -1128,7 +1089,6 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
   </div></div>;
 }
 
-// ── TENDERS VIEW ───────────────────────────────────────────────────
 function parseLeadDays(str){
   if(!str)return 0;
   var s=String(str).toLowerCase().trim();
@@ -1136,16 +1096,15 @@ function parseLeadDays(str){
   if(!n)return 0;
   if(s.includes("week")||s.includes("sem")||s.includes("wk")||s.includes("sem"))return Math.round(n*6);
   if(s.includes("month")||s.includes("mois"))return Math.round(n*26);
-  return Math.round(n); // assume days
+  return Math.round(n);
 }
 function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender}){
   const [open,setOpen]=useState(true);
   var mats=td.materials||[];
 
-  // Create auto-task for MSS/MAR when status = under preparation
   function autoTask(mat,kind,targetDate){
     if(!saveT||!tasks)return;
-    // Check if task already exists for this material+kind
+
     var taskText="["+kind+"] "+mat.name+" — "+td.title;
     var exists=(tasks||[]).some(function(t){
       return t.tenderRef===td.id&&t.text===taskText&&!t.isInfo;
@@ -1171,7 +1130,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
   }
 
   return <div className="card" style={{marginBottom:10}}>
-    {/* Card header with collapse toggle */}
+
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",marginBottom:open&&mats.length>0?10:0}} onClick={function(){setOpen(!open);}}>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
         <span style={{fontSize:13,color:"#aaa"}}>{open?"▾":"▸"}</span>
@@ -1197,7 +1156,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
         var marOpen=mat.marOpen||false;
 
         return <div key={mat.id||mi} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:8}}>
-          {/* Material header fields */}
+
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"flex-end"}}>
             <div style={{flex:2,minWidth:120}}>
               <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Material name</div>
@@ -1216,11 +1175,11 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
               <input type="text" value={mat.leadTime||""} onChange={function(e){
                 var newLead=e.target.value;
                 var updatedMats=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{leadTime:newLead});});
-                // Compute max lead time across all materials
+
                 var maxDays=updatedMats.reduce(function(mx,m){var d=parseLeadDays(m.leadTime||"");return d>mx?d:mx;},0);
-                // Single write: update materials AND leadTimeDays together
+
                 var updates={materials:updatedMats};
-                updates.leadTimeDays=maxDays>0?String(maxDays):"30"; // fallback 30 if all blank
+                updates.leadTimeDays=maxDays>0?String(maxDays):"30";
                 var combined=Object.assign({},td,updates);
                 var d=(tenders||[]).map(function(t){return t.id!==combined.id?t:combined;});
                 saveTenders(d);setSelTender(d.find(function(t){return t.id===combined.id;}));
@@ -1229,7 +1188,6 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
             <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0,marginBottom:2}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
           </div>
 
-          {/* PO toggle */}
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
             <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
               <input type="checkbox" checked={mat.hasPO||false} onChange={function(e){updMat(mi,"hasPO",e.target.checked);}} style={{width:13,height:13}}/>
@@ -1244,7 +1202,6 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
             </select>}
           </div>
 
-          {/* PO ACC Section - when PO checked */}
           {mat.hasPO&&<div style={{marginBottom:6}}>
             <div onClick={function(){updMat(mi,"poAccOpen",!(mat.poAccOpen));}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:(mat.poAccOpen)?"#fff8f033":"transparent",borderRadius:5,marginBottom:(mat.poAccOpen)?4:0}}>
               <span style={{fontSize:10,color:"#b45309"}}>{mat.poAccOpen?"▾":"▸"}</span>
@@ -1291,7 +1248,6 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
             </div>}
           </div>}
 
-          {/* MSS Section - collapsible */}
           <div style={{marginBottom:4}}>
             <div onClick={function(){updMat(mi,"mssOpen",!mssOpen);}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:mssOpen?"#e8f0fe33":"transparent",borderRadius:5,marginBottom:mssOpen?4:0}}>
               <span style={{fontSize:10,color:"#1a73e8"}}>{mssOpen?"▾":"▸"}</span>
@@ -1301,12 +1257,12 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
               {!mssOpen&&mssOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
             </div>
             {mssOpen&&<div>
-              {/* MSS number - shown at top of open section */}
+
               <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px 0 8px"}}>
                 <span style={{fontSize:9,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>MSS N°</span>
                 <input type="text" value={mat.mssNumber||""} onChange={function(e){updMat(mi,"mssNumber",e.target.value);}} placeholder="MSS reference number" style={{flex:1,padding:"3px 7px",fontSize:10,border:"1px solid #bbdefb",borderRadius:5}}/>
               </div>
-              {/* MSS Submission */}
+
               <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none",marginTop:4}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:90}}>MSS Submission</span>
                 <select value={mat.mssStatus||""} onChange={function(e){
@@ -1332,7 +1288,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
                 </div>
                 {(function(){var due=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.mssStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
               </div>
-              {/* MSS Approval */}
+
               <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f0fff422",borderRadius:"0 0 6px 6px",border:"1px solid #e8e6df"}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:90}}>MSS Approval</span>
                 <select value={mat.mssApprovalStatus||""} onChange={function(e){updMat(mi,"mssApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit"}}>
@@ -1355,7 +1311,6 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
             </div>}
           </div>
 
-          {/* MAR Section - collapsible */}
           <div>
             <div onClick={function(){updMat(mi,"marOpen",!marOpen);}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:marOpen?"#f3e5f533":"transparent",borderRadius:5,marginBottom:marOpen?4:0}}>
               <span style={{fontSize:10,color:"#7b1fa2"}}>{marOpen?"▾":"▸"}</span>
@@ -1365,12 +1320,12 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
               {!marOpen&&marOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
             </div>
             {marOpen&&<div>
-              {/* MAR number - shown at top of open section */}
+
               <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px 0 8px"}}>
                 <span style={{fontSize:9,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>MAR N°</span>
                 <input type="text" value={mat.marNumber||""} onChange={function(e){updMat(mi,"marNumber",e.target.value);}} placeholder="MAR reference number" style={{flex:1,padding:"3px 7px",fontSize:10,border:"1px solid #ce93d8",borderRadius:5}}/>
               </div>
-              {/* MAR Submission */}
+
               <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f3e5f522",borderRadius:"6px 6px 0 0",border:"1px solid #ce93d8",borderBottom:"none",marginTop:4}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:90}}>MAR Submission</span>
                 <select value={mat.marStatus||""} onChange={function(e){
@@ -1396,7 +1351,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
                 </div>
                 {(function(){var due=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.marStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
               </div>
-              {/* MAR Approval */}
+
               <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f3e5f511",borderRadius:"0 0 6px 6px",border:"1px solid #ce93d8"}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#6a1b9a",minWidth:90}}>MAR Approval</span>
                 <select value={mat.marApprovalStatus||""} onChange={function(e){updMat(mi,"marApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
@@ -1423,7 +1378,6 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
     </div>}
   </div>;
 }
-
 
 function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners,jumpTender,clearJumpTender,jumpFrom,onBack}){
   const [pkgFilter,setPkgFilter]=useState("all");
@@ -1509,7 +1463,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     var contractGrand=contractTotal+addendumTotal;
 
     return <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
-      {/* Sidebar tender list */}
+
       <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Tenders</div>
         <div style={{padding:"6px 8px",borderBottom:"1px solid #f0ede6"}}>
@@ -1523,10 +1477,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         </div>
       </div>
 
-      {/* Main detail */}
       <div style={{flex:1,minWidth:0}}>
 
-        {/* Header */}
         <div className="page-hdr" style={{marginBottom:12}}>
           {onBack&&<button className="btn btn-sm" onClick={onBack} style={{marginRight:4,flexShrink:0,alignSelf:"flex-start",marginTop:4,color:"#3949ab",border:"1px solid #3949ab"}}>← Back to {jumpFrom}</button>}
           <button className="btn btn-sm" onClick={function(){setSelTender(null);onBack?null:null;}} style={{marginRight:8,flexShrink:0,alignSelf:"flex-start",marginTop:4}}>← Tenders</button>
@@ -1582,7 +1534,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <button className="btn btn-sm btn-danger" onClick={function(){if(safeConfirm("Delete?"))delTender(td.id);}}>🗑</button>
         </div>
 
-        {/* KPI Cards */}
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
           <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
             <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
@@ -1615,7 +1566,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>}
         </div>
 
-        {/* Notes */}
         {(function(){
           var notes=Array.isArray(td.tenderNotes)?td.tenderNotes:(td.notes?[{id:uuid(),title:"Note",content:td.notes}]:[]);
           return <div className="card" style={{marginBottom:10}}>
@@ -1641,7 +1591,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
         <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} saveT={saveTasks} tasks={tasks}/>
 
-        {/* SD (Shop Drawing) */}
         {(function(){
           var hasSd=td.hasSD||false;
           return <div className="card" style={{marginBottom:10}}>
@@ -1686,9 +1635,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>;
         })()}
 
-
       <div className="card">
-        {/* Procurement Timeline */}
+
         {(function(){
           var proc=calcProcurement(td);
           var todayStr=today();
@@ -1702,7 +1650,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   var displayVal=useManual?(td.leadTimeDays||""):(matMax>0?matMax:30);
                   return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     <span style={{fontSize:9,fontWeight:700,color:"#7b1fa2"}}>LEAD</span>
-                    {/* Toggle buttons */}
+
                     <div style={{display:"flex",border:"1px solid #ce93d8",borderRadius:6,overflow:"hidden"}}>
                       <button onClick={function(e){e.stopPropagation();var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{leadTimeManual:false,leadTimeDays:String(matMax>0?matMax:30)});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}}
                         style={{padding:"2px 8px",fontSize:9,fontWeight:700,border:"none",cursor:"pointer",fontFamily:"inherit",
@@ -1715,7 +1663,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                         ✏️ Manual
                       </button>
                     </div>
-                    {/* Value display / input */}
+
                     {useManual
                       ?<input type="number" value={td.leadTimeDays||""} onChange={function(e){e.stopPropagation();updTd("leadTimeDays",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="30" autoFocus style={{width:55,padding:"2px 6px",fontSize:12,fontWeight:700,border:"1.5px solid #ce93d8",borderRadius:5,color:"#7b1fa2"}}/>
                       :<span style={{fontSize:12,fontWeight:800,color:"#7b1fa2",minWidth:30}}>{displayVal}</span>}
@@ -1807,7 +1755,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             return <tr key={s.key}>
               <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{s.label}</td>
 
-              {/* Status */}
               <td style={{minWidth:180}}>
                 {s.special==="bidders"
                   ?<div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -1846,24 +1793,20 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   </div>}
               </td>
 
-              {/* Target date */}
               <td style={{textAlign:"center"}}>
                 <input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
               </td>
 
-              {/* Done date */}
               <td style={{textAlign:"center"}}>
                 <input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
               </td>
 
-              {/* Approval date - only for ACC, MAR, ITP, WMS */}
               <td style={{textAlign:"center"}}>
                 {["acc","mar","itp","wms"].indexOf(s.key)>=0
                   ?<input type="date" value={dates.approval||""} onChange={function(e){updateStep(td.id,s.key,"approval",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
                   :<span style={{color:"#e0ddd8"}}>—</span>}
               </td>
 
-              {/* Comment + links */}
               <td style={{minWidth:200}}>
                 <textarea value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto",boxSizing:"border-box"}}/>
                 <div style={{marginTop:3}}>
@@ -1881,7 +1824,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         </table>}
           </div>;
         })()}
-
 
       <div className="card" style={{marginTop:10}}>
         <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
@@ -1901,21 +1843,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         />
       </div>
       {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages} pkgOwners={pkgOwners||{}}/>}
-      </div>{/* end main detail */}
+      </div>
     </div>;
   }
 
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Tenders</div><div className="page-sub">Track submission steps by package</div></div>
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        <button className="btn" onClick={function(){
-          // Build a printable version of the current filtered tenders
-          window._ppPrintTenders={tenders:filtered,packages:packages,people:people};
-          window.print();
-        }} title="Print tender list as PDF" style={{fontSize:12,padding:"6px 12px"}}>🖨️ Print PDF</button>
-        <button className="btn btn-gold" onClick={openNew}>＋ New Tender</button>
-      </div>
+      <button className="btn btn-gold" onClick={openNew}>＋ New Tender</button>
     </div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search tender, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
@@ -1954,15 +1889,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     })()}
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
-      :<div>
-        <div id="pp-print-only" style={{marginBottom:12,borderBottom:"2px solid #1a1a1a",paddingBottom:8}}>
-          <div style={{fontFamily:"serif",fontSize:18,fontWeight:800}}>RIVIERA TOWER TRACKER — TENDERS</div>
-          <div style={{fontSize:11,color:"#555",marginTop:3}}>Printed: {(function(){var d=new Date();return d.toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})+" à "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});})()}</div>
-          {pkgFilter!=="all"&&<div style={{fontSize:11,color:"#555"}}>Package: {pkgFilter}</div>}
-          {searchQ&&<div style={{fontSize:11,color:"#555"}}>Recherche: {searchQ}</div>}
-          <div style={{fontSize:11,color:"#555"}}>{filtered.length} tender{filtered.length>1?"s":""}</div>
-        </div>
-        <table className="tbl">
+      :<table className="tbl">
         <thead><tr>
           <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
           <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
@@ -2046,7 +1973,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 var totAccSub=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0);},0);
                 var totAccOther=filtered.reduce(function(s,t){return s+Number(t.accAmountOther||0);},0);
                 var totAcc=totAccSub+totAccOther;
-                var variance=totBudget-totAcc; // Variance = Budget - Proposed cost
+                var variance=totBudget-totAcc;
                 if(totBudget===0&&totInstructed===0&&totAcc===0)return <span style={{fontSize:11,color:"#aaa"}}>No financial data yet — add Budget and Instruction amounts to tenders.</span>;
                 return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                   <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",marginRight:4}}>TOTALS ({filtered.length})</span>
@@ -2060,84 +1987,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </tr>
         </tfoot>
       </table>}
-    </div>
     {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages} pkgOwners={pkgOwners||{}}/>}
   </div>;
 }
 
-function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners}){
-  function set(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);}
-  return <div className="overlay"><div className="modal" style={{maxWidth:560}}>
-    <div className="modal-hdr"><div className="modal-title">{data.title||"New Tender"}</div>
-      <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
-    <div className="modal-body">
-      <div className="fg"><label>Tender name *</label><input type="text" value={data.title||""} onChange={function(e){set("title",e.target.value);}} placeholder="e.g. Facade Cladding — Lot A"/></div>
-      <div className="frow">
-        <div className="fg"><label>Package</label>
-          <select value={data.package||""} onChange={function(e){set("package",e.target.value);var po=(pkgOwners||{})[e.target.value];if(po){var u=Object.assign({},data);u.package=e.target.value;u.ownerPackage=po;onChange(u);}}}>
-            <option value="">— none —</option>{(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
-          </select>
-        </div>
-        <div className="fg" style={{display:"none"}}><label>Package Owner</label>
-          <select value={data.ownerPackage||""} onChange={function(e){set("ownerPackage",e.target.value);}}>
-            <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
-          </select>
-        </div>
-      </div>
-      <div className="fg"><label>Tender Owner</label>
-        <select value={data.ownerTender||""} onChange={function(e){set("ownerTender",e.target.value);}}>
-          <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
-        </select>
-      </div>
-      <div className="frow">
-        <div className="fg"><label>Budget (estimate)</label>
-          <input type="number" value={data.budget||""} onChange={function(e){set("budget",e.target.value);}} placeholder="0"/>
-        </div>
-        <div className="fg"><label>Instruction Amount</label>
-          <input type="number" value={data.instructionAmount||""} onChange={function(e){set("instructionAmount",e.target.value);}} placeholder="0"/>
-        </div>
-        {(Number(data.budget||0)>0||Number(data.instructionAmount||0)>0)&&<div className="fg">
-          <label>Variance (Budget vs Instructed)</label>
-          <div style={{padding:"6px 10px",borderRadius:7,fontSize:13,fontWeight:700,
-            background:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#fce4ec":"#e8f5e9",
-            color:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#c62828":"#2e7d32"}}>
-            {(function(){var v=Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0));return (v>0?"+":"")+v.toLocaleString()+" "+(data.currency||"EUR");})()}
-            <span style={{fontSize:10,fontWeight:400,marginLeft:8}}>
-              {(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"⚠️ Over budget":"✅ Under budget"}
-            </span>
-          </div>
-        </div>}
-        <div className="fg"><label>Amount Treated (procured so far)</label>
-          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-            <input type="number" value={data.accAmountTreated||""} onChange={function(e){set("accAmountTreated",e.target.value);}} placeholder="0" style={{paddingRight:40}}/>
-            <span style={{position:"absolute",right:10,fontSize:11,color:"#aaa",pointerEvents:"none"}}>{data.currency||"EUR"}</span>
-          </div>
-        </div>
-        <div className="fg"><label>WBS Code</label>
-          <input type="text" value={data.wbs||""} onChange={function(e){set("wbs",e.target.value);}} placeholder="WBS-001"/>
-        </div>
-        <div className="fg"><label>Starting date on site</label>
-          <input type="date" value={data.startOnSite||""} onChange={function(e){set("startOnSite",e.target.value);}}/>
-        </div>
-        <div className="fg"><label>Procurement process starting date</label>
-          <input type="date" value={data.procurementStart||""} onChange={function(e){set("procurementStart",e.target.value);}}/>
-        </div>
-        <div className="fg"><label>Currency</label>
-          <select value={data.currency||"EUR"} onChange={function(e){set("currency",e.target.value);}}>
-            {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
-          </select>
-        </div>
-      </div>
-      <div className="fg"><label>Description</label><textarea value={data.description||""} onChange={function(e){set("description",e.target.value);}} placeholder="Context..."/></div>
-    </div>
-    <div className="modal-footer">
-      <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn btn-pri" disabled={!(data.title||"").trim()} onClick={function(){onSave(data);}}>Save Tender</button>
-    </div>
-  </div></div>;
-}
-
-// ── CONTRACTORS VIEW ───────────────────────────────────────────────
+function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners}){ function set(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);} return ( <div className="overlay"><div className="modal" style={{maxWidth:560}}> <div className="modal-hdr"><div className="modal-title">{data.title||"New Tender"}</div> <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div> <div className="modal-body"> <div className="fg"><label>Tender name *</label><input type="text" value={data.title||""} onChange={function(e){set("title",e.target.value);}} placeholder="e.g. Facade Cladding — Lot A"/></div> <div className="frow"> <div className="fg"><label>Package</label> <select value={data.package||""} onChange={function(e){set("package",e.target.value);var po=(pkgOwners||{})[e.target.value];if(po){var u=Object.assign({},data);u.package=e.target.value;u.ownerPackage=po;onChange(u);}}}> <option value="">— none —</option>{(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})} </select> </div> <div className="fg" style={{display:"none"}}><label>Package Owner</label> <select value={data.ownerPackage||""} onChange={function(e){set("ownerPackage",e.target.value);}}> <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})} </select> </div> </div> <div className="fg"><label>Tender Owner</label> <select value={data.ownerTender||""} onChange={function(e){set("ownerTender",e.target.value);}}> <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})} </select> </div> <div className="frow"> <div className="fg"><label>Budget (estimate)</label> <input type="number" value={data.budget||""} onChange={function(e){set("budget",e.target.value);}} placeholder="0"/> </div> <div className="fg"><label>Instruction Amount</label> <input type="number" value={data.instructionAmount||""} onChange={function(e){set("instructionAmount",e.target.value);}} placeholder="0"/> </div> {(Number(data.budget||0)>0||Number(data.instructionAmount||0)>0)&&<div className="fg"> <label>Variance (Budget vs Instructed)</label> <div style={{padding:"6px 10px",borderRadius:7,fontSize:13,fontWeight:700, background:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#fce4ec":"#e8f5e9", color:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#c62828":"#2e7d32"}}> {(function(){var v=Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0));return (v>0?"+":"")+v.toLocaleString()+" "+(data.currency||"EUR");})()} <span style={{fontSize:10,fontWeight:400,marginLeft:8}}> {(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"⚠️ Over budget":"✅ Under budget"} </span> </div> </div>} <div className="fg"><label>Amount Treated (procured so far)</label> <div style={{position:"relative",display:"flex",alignItems:"center"}}> <input type="number" value={data.accAmountTreated||""} onChange={function(e){set("accAmountTreated",e.target.value);}} placeholder="0" style={{paddingRight:40}}/> <span style={{position:"absolute",right:10,fontSize:11,color:"#aaa",pointerEvents:"none"}}>{data.currency||"EUR"}</span> </div> </div> <div className="fg"><label>WBS Code</label> <input type="text" value={data.wbs||""} onChange={function(e){set("wbs",e.target.value);}} placeholder="WBS-001"/> </div> <div className="fg"><label>Starting date on site</label> <input type="date" value={data.startOnSite||""} onChange={function(e){set("startOnSite",e.target.value);}}/> </div> <div className="fg"><label>Procurement process starting date</label> <input type="date" value={data.procurementStart||""} onChange={function(e){set("procurementStart",e.target.value);}}/> </div> <div className="fg"><label>Currency</label> <select value={data.currency||"EUR"} onChange={function(e){set("currency",e.target.value);}}> {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})} </select> </div> </div> <div className="fg"><label>Description</label><textarea value={data.description||""} onChange={function(e){set("description",e.target.value);}} placeholder="Context..."/></div> </div> <div className="modal-footer"> <button className="btn" onClick={onClose}>Cancel</button> <button className="btn btn-pri" disabled={!(data.title||"").trim()} onClick={function(){onSave(data);}}>Save Tender</button> </div> </div></div> ); }
 function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
@@ -2224,7 +2078,6 @@ function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
   </div></div>;
 }
 
-// ── Correspondence Log ────────────────────────────────────────────
 function ReplyForm({letter,onSave,onCancel}){
   const [rnum,setRnum]=useState(letter.replyNumber||"");
   const [rdate,setRdate]=useState(letter.replyDate||today());
@@ -2281,11 +2134,11 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
     var entry=Object.assign({id:uuid(),ctrId:ctrId,ctrName:ctrName},form);
     var newCorr=[entry,...(correspondences||[])];
     saveCorrespondences(newCorr);
-    // Auto-create action if received and not replied
+
     if(form.type==="received"&&!form.replied&&saveT&&tasks){
       var dueDate=new Date(form.date);dueDate.setDate(dueDate.getDate()+7);
       var duStr=dueDate.toISOString().slice(0,10);
-      // Find contract owner for this subcontractor
+
       var ctrOwner="";
       if(window._ppContractors){
         var ctrObj=(window._ppContractors||[]).find(function(c){return c.id===ctrId;});
@@ -2370,7 +2223,6 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
   </div>;
 }
 
-// ── CollapsibleContract wrapper ───────────────────────────────────
 function CollapsibleContract({ct,fin,children}){
   const [open,setOpen]=useState(false);
   var currency=ct.currency||"EUR";
@@ -2482,8 +2334,6 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
   }
 
-  // contractFinancials is defined globally
-
   var linkedTasks=selCtr?tsks.filter(function(t){return t.contractorRef===selCtr.id;}):[];
 
   const [sidebarPkg,setSidebarPkg]=useState("all");
@@ -2496,7 +2346,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     var linkedTenders=(ctr.tenderRefs||[ctr.tenderRef].filter(Boolean)).map(function(id){return tnds.find(function(t){return t.id===id;});}).filter(Boolean);
     var sortedCtrs=(ctrs||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
     return <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
-      {/* Left sidebar: subcontractor list */}
+
       <div style={{width:180,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Subcontractors</div>
@@ -2539,7 +2389,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
             tenders={tnds} nav={navFake} setNav={function(){}} saveT={saveT} tasks={tsks} people={ppl} tags={window._ppTags||[]}/>
         </CollapsibleContract>;
       })}
-      {/* Correspondence Log */}
+
       <CorrespondenceLog ctrId={selCtr.id} ctrName={selCtr.name} correspondences={correspondences||[]} saveCorrespondences={saveCorrespondences} saveT={saveT} tasks={tsks}/>
 
       <div className="card">
@@ -2676,7 +2526,6 @@ function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tende
   </div></div>;
 }
 
-
 function EmailModal({em,onClose}){
   return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
     <div className="modal-hdr"><div className="modal-title">📧 Action email</div><button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
@@ -2691,7 +2540,6 @@ function EmailModal({em,onClose}){
   </div></div>;
 }
 
-// ── SETTINGS VIEW ─────────────────────────────────────────────────
 function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tagrules,saveTagrules,pkgrules,savePkgrules,apiKey,saveApiKey,improvements,saveImprovements,pkgOwners,savePkgOwners,userPrefs,saveUserPrefs,allData,onImport}){
   const [tab,setTab]=useState("tags");
   const [newTag,setNewTag]=useState("");
@@ -2720,7 +2568,6 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
     <div className="page-hdr">
       <div><div className="page-title">Settings</div><div className="page-sub">Manage tags, people, packages and CC rules</div></div>
     </div>
-
 
     <div style={{display:"flex",gap:8,marginBottom:20}}>
       {["tags","people","packages","pkg-owners","cc-rules","my-prefs","improvements","backup"].map(function(t){return <button key={t} className={"fchip"+(tab===t?" on":"")} onClick={function(){setTab(t);}} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t==="improvements"?"💡 Improvements":t==="pkg-owners"?"📦 Pkg Owners":t==="backup"?"💾 Backup":t==="my-prefs"?"👤 My Prefs":t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
@@ -2907,72 +2754,63 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
     </div>}
   </div>;
 }
-// ── contractFinancials (global) ──────────────────────────────────
 function safeConfirm(msg){try{return window.confirm(msg);}catch(e){return true;}}
 function workingDaysDiff(dateStr1,dateStr2){
-  // Count working days (Mon-Sat) between two dates
+
   var d1=new Date(dateStr1);var d2=new Date(dateStr2);
   if(d1>=d2)return 0;
   var count=0;var cur=new Date(d1);cur.setDate(cur.getDate()+1);
   while(cur<=d2){var day=cur.getDay();if(day!==0)count++;cur.setDate(cur.getDate()+1);}
   return count;
 }
-// ── Procurement Timeline Calculator ──────────────────────────────
 function calcProcurement(td){
-  // Auto-compute max lead time from materials
+
   var matMaxLead = (td.materials||[]).reduce(function(max,mat){
     var d=parseLeadDays(mat.leadTime||"");return d>max?d:max;
   },0);
-  // leadTimeDays: manual value > material max > fallback 30
+
   var manualLead = Number(td.leadTimeDays||0);
   var LEAD = manualLead>0 ? manualLead : (matMaxLead>0 ? matMaxLead : 30);
   var hasSd = td.hasSD||false;
   var sdResubCount = Number(td.sdResubCount||0);
 
-  // accSubmittal = Date done of ACC step, fallback to target date if done not set
   var accSubmittal = ((td.stepDates||{}).acc||{}).done || ((td.stepDates||{}).acc||{}).target || "";
   var accApproval = ((td.stepDates||{}).acc||{}).approval||"";
   var contractDone = ((td.stepDates||{}).contract||{}).done || ((td.stepDates||{}).contract||{}).target || "";
 
-  // Add working days (Mon-Sat, skip Sundays)
   function addWorkDays(dateStr, days){
     if(!dateStr) return "";
     var d = new Date(dateStr);
     var added = 0;
     while(added < days){
       d.setDate(d.getDate()+1);
-      if(d.getDay()!==0) added++; // skip Sunday
+      if(d.getDay()!==0) added++;
     }
     return d.toISOString().slice(0,10);
   }
 
   var steps = [];
 
-  // 1. ACC Submittal
   steps.push({key:"accSub", label:"ACC Submittal (Date done)", date:accSubmittal, done:accSubmittal, duration:null, manual:true, note:"From 'Date done' of ACC step"});
 
-  // 2. ACC Approval (+14d from submittal)
   var accApprTarget = addWorkDays(accSubmittal, 14);
   steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:14, manual:false});
 
-  // 3. Contract Signing (+28d from acc approval)
   var contractTarget = addWorkDays(accApproval||accApprTarget, 28);
   steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:false});
 
   var fabStart = contractDone||contractTarget;
 
   if(hasSd){
-    // 4. SD Submission (+14d from contract)
+
     var sdSubDate = td.sdDone||(addWorkDays(contractDone||contractTarget, 14));
     var sdSubTarget = addWorkDays(contractDone||contractTarget, 14);
     steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:td.sdDone||"", duration:14, manual:false, sd:true});
 
-    // 5. SD Approval (+14d from submission)
     var sdAppTarget = addWorkDays(td.sdDone||sdSubTarget, 14);
     steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
       review:td.sdReview||""});
 
-    // 6. SD Resubmissions if any
     var lastSdDate = td.sdApprovalDone||sdAppTarget;
     for(var r=0; r<sdResubCount; r++){
       var rSubTarget = addWorkDays(lastSdDate, 14);
@@ -2984,15 +2822,12 @@ function calcProcurement(td){
     fabStart = lastSdDate;
   }
 
-  // Fabrication Launch
   steps.push({key:"fab", label:"Fabrication Launch", date:fabStart, done:"", duration:null, manual:false,
     note:"Lead: "+LEAD+"d"});
 
-  // Delivery on site
   var deliveryDate = addWorkDays(fabStart, LEAD);
   steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:"", duration:LEAD, manual:false, highlight:true});
 
-  // Procurement start = start on site - total duration
   var startOnSite = td.startOnSite||"";
   var margin = "";
   var procStart = "";
@@ -3045,7 +2880,6 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
       <button onClick={function(){if(safeConfirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField){updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav(null);}}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#c62828",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
     </div>
 
-    {/* KPI cards */}
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {[
         {label:"Contract Value excl. tax",val:fin.total.toLocaleString()+" EUR",sub:"Base "+fin.base.toLocaleString()+" + Add. "+fin.addTotal.toLocaleString(),color:"#1a1a1a"},
@@ -3060,10 +2894,9 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
     </div>
     <div className="pbar" style={{height:6,marginBottom:14}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
 
-    {/* Contract fields - compact layout */}
     <div className="card" style={{marginBottom:10}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Contract Details</div>
-      {/* Row 1: Contract#, SAP#, Amount, Currency */}
+
       <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         <div style={{flex:"0 0 130px"}}>
           <label>Contract #</label>
@@ -3096,7 +2929,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           </div>
         </div>
       </div>
-      {/* Row 2: Dates + Tender */}
+
       <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"flex-end"}}>
         <div style={{flex:"0 0 140px"}}>
           <label>Start date</label>
@@ -3142,7 +2975,6 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
       </div>
     </div>
 
-    {/* ACC / ACONEX */}
     <div className="card" style={{marginBottom:10}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>ACC / ACONEX Status</div>
       {[
@@ -3183,7 +3015,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
         </div>;
       })}
     </div>
-    {/* Addendums - collapsible */}
+
     <div className="card" style={{marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setShowAdd(!showAdd);}}>
         <div style={{fontWeight:700,fontSize:13}}>Addendums ({(ct.addendums||[]).length}){(ct.addendums||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#1a73e8"}}>Total: {(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0).toLocaleString()} EUR</span>}</div>
@@ -3232,7 +3064,6 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
       </div>}
     </div>
 
-    {/* Certifications - collapsible */}
     <div className="card" style={{marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setShowCert(!showCert);}}>
         <div style={{fontWeight:700,fontSize:13}}>Certifications ({(ct.certifications||[]).length}){(ct.certifications||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#2e7d32"}}>Certified: {(ct.certifications||[]).reduce(function(s,cf){return s+Number(cf.amount||0);},0).toLocaleString()} EUR</span>}</div>
@@ -3264,15 +3095,12 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
 }
 
 function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,tasks}){
-  // nav: null=list, {ctrId}=subcontractor contracts, {ctrId,ctId}=contract detail
+
   const [nav,setNav]=useState(null);
   const [q,setQ]=useState("");
   const [fPkg,setFPkg]=useState("all");
   const [fCtr,setFCtr]=useState("all");
 
-  // contractFinancials is global
-
-  // Helper: save and keep nav in sync
   function save(d){
     saveContractors(d);
     if(nav&&nav.ctId){
@@ -3344,7 +3172,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     var allCtrContracts=(contractors||[]).flatMap(function(c){return (c.contracts||[]).map(function(ct2){return {ct:ct2,ctr:c};});});
 
     return <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
-      {/* Left sidebar: all contracts */}
+
       <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Contracts</div>
@@ -3370,7 +3198,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
           })}
         </div>
       </div>
-      {/* Main detail */}
+
       <div style={{flex:1,minWidth:0}}>
         <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
           updateCtField={updateCtField} updateAdItem={updateAdItem} delAdItem={delAdItem} addAdItem={addAdItem}
@@ -3432,7 +3260,6 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     </div>;
   }
 
-  // ── LIST VIEW ──────────────────────────────────────────────────
   var allContracts=[];
   (contractors||[]).forEach(function(ctr){(ctr.contracts||[]).forEach(function(ct){allContracts.push({ct:ct,ctr:ctr});});});
   var allPkgs=[...new Set(allContracts.map(function(x){return x.ct.package;}).filter(Boolean))].sort();
@@ -3480,7 +3307,6 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
       {(q||fCtr!=="all"||fPkg!=="all")&&<button className="btn btn-sm" onClick={function(){setQ("");setFCtr("all");setFPkg("all");}}>✕ Reset</button>}
     </div>
 
-    {/* Grouped by subcontractor - sorted alphabetically */}
     {(contractors||[]).filter(function(ctr){
       if(fCtr!=="all"&&ctr.name!==fCtr)return false;
       if((ctr.contracts||[]).length===0)return false;
@@ -3640,7 +3466,6 @@ function AwnView({awns,saveAwns,people}){
   </div>;
 }
 
-// ── WEEKLY REPORT VIEW ─────────────────────────────────────────────
 function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tenders,contractors}){
   const [selPeople,setSelPeople]=useState([]);
   const [selTags,setSelTags]=useState([]);
@@ -3649,7 +3474,6 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
   var allActions=(tasks||[]).map(function(t){return Object.assign({},t,{_src:"task"});});
   (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){allActions.push(Object.assign({},a,{_src:"tracker",_srcTitle:tr.title}));});});
 
-  // Filter: pending/in progress, matching selected people or their CCs
   var relevant=allActions.filter(function(a){
     if(a.isInfo)return false;
     if(a.status==="done"||a.status==="blocked")return false;
@@ -3670,7 +3494,6 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
     var weekStr="Week of "+now.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
     var lines=["PROJECT PILOT — WEEKLY ACTION REPORT","=".repeat(50),weekStr,""];
 
-    // Group by score
     var high=relevant.filter(function(a){return calcScore(a.importance||1,a.urgence||1)>=7;});
     var mid=relevant.filter(function(a){var s=calcScore(a.importance||1,a.urgence||1);return s>=4&&s<7;});
     var low=relevant.filter(function(a){return calcScore(a.importance||1,a.urgence||1)<4;});
@@ -3703,7 +3526,6 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
     setTimeout(function(){setCopied(false);},2000);
   }
 
-  // Check if today is Friday
   var isFriday=new Date().getDay()===5;
 
   return <div>
@@ -3789,7 +3611,6 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     return true;
   });
 
-  // Sorting
   if(sortBy!=="none"){
     filtered=filtered.slice().sort(function(a,b){
       var r=0;
@@ -4039,9 +3860,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   </div>;
 }
 
-// ── WeeklyPopup ───────────────────────────────────────────────────
 function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onClose}){
-  // Get current week bounds (Mon-Sat)
+
   var now=new Date();
   var dayOfWeek=now.getDay();// 0=Sun
   var monday=new Date(now);monday.setDate(now.getDate()-(dayOfWeek===0?6:dayOfWeek-1));monday.setHours(0,0,0,0);
@@ -4057,15 +3877,13 @@ function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onCl
   (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
   (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){if(!a.isInfo)allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
 
-  // Filter: current user + has a due date + not done/blocked
   var myActions=allActions.filter(function(a){
     if(a.status==="done"||a.status==="blocked")return false;
-    if(!a.due)return false; // no date → don't show
-    if(currentUserName&&a.owner!==currentUserName)return false; // only my actions
+    if(!a.due)return false;
+    if(currentUserName&&a.owner!==currentUserName)return false;
     return true;
   });
 
-  // Split: this week, overdue, upcoming
   var overdue=myActions.filter(function(a){return a.due<monStr;})
     .sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
   var thisWeek=myActions.filter(function(a){return a.due>=monStr&&a.due<=satStr;})
@@ -4139,7 +3957,6 @@ function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onCl
   </div>;
 }
 
-
 function simpleHash(str){
   var hash=0;
   for(var i=0;i<str.length;i++){hash=((hash<<5)-hash)+str.charCodeAt(i);hash|=0;}
@@ -4154,10 +3971,10 @@ function UserLogin({people,onLogin}){
   const [newPin2,setNewPin2]=useState("");
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
-  const [pins,setPins]=useState({}); // loaded from Firebase
+  const [pins,setPins]=useState({});
 
   useEffect(function(){
-    // Load PINs from Firebase
+
     if(window._db){
       window._db.get(KEYS_PINS).then(function(data){
         if(data)setPins(data);
@@ -4260,7 +4077,6 @@ function UserLogin({people,onLogin}){
   </div>;
 }
 
-// ── DashboardView ─────────────────────────────────────────────────
 function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJumpOwner,onNavTender}){
   var allActions=[];
   (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
@@ -4270,10 +4086,8 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJum
   var overdue=active.filter(function(a){return a.due&&a.due<today();});
   var done=allActions.filter(function(a){return a.status==="done";});
 
-  // Per-person stats
   var personList=(people||[]).filter(function(p){return active.some(function(a){return a.owner===p;});});
 
-  // Score distribution
   var high=active.filter(function(a){return calcScore(a.importance||1,a.urgence||1)>=7;}).length;
   var mid=active.filter(function(a){var s=calcScore(a.importance||1,a.urgence||1);return s>=4&&s<7;}).length;
   var low=active.filter(function(a){return calcScore(a.importance||1,a.urgence||1)<4;}).length;
@@ -4337,7 +4151,6 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJum
       <div><div className="page-title">Dashboard</div><div className="page-sub">Team overview · {active.length} active · {overdue.length} overdue</div></div>
     </div>
 
-    {/* KPI row */}
     <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
       {[
         {label:"Total active",val:active.length,color:"#1a1a1a"},
@@ -4352,7 +4165,6 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJum
       </div>;})}
     </div>
 
-    {/* Score pie + overdue */}
     <div style={{display:"flex",gap:14,marginBottom:20,flexWrap:"wrap"}}>
       <div className="card" style={{flex:1,minWidth:200}}>
         <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Priority Distribution</div>
@@ -4380,20 +4192,18 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJum
       </div>
     </div>
 
-    {/* Per person */}
     <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>By Team Member</div>
     {personList.length===0?<div className="empty"><div className="empty-ico">👥</div><div className="empty-txt">No actions assigned to team members yet.</div></div>
     :personList.map(function(name){return <PersonCard key={name} name={name}/>;} )}
   </div>;
 }
 
-// ── DocumentsView ─────────────────────────────────────────────────
 function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNavTender}){
   const [fTender,setFTender]=useState("all");
   const [fPkg,setFPkg]=useState("all");
   const [fOwner,setFOwner]=useState("all");
   const [fStage,setFStage]=useState("all");
-  const [fStatus,setFStatus]=useState("overdue"); // overdue | all | ok
+  const [fStatus,setFStatus]=useState("overdue");
 
   var STAGES=[
     {key:"rfi",label:"RFI",color:"#b45309",bg:"#fff8f0"},
@@ -4404,11 +4214,9 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"}
   ];
 
-  // Build document list from both RFI tasks and tender step dates
   var docs=[];
   var todayStr=today();
 
-  // RFI from tasks
   (tasks||[]).forEach(function(t){
     if(!(t.tags||[]).includes("RFI"))return;
     var tdr=(tenders||[]).find(function(x){return x.id===t.tenderRef;})||null;
@@ -4428,13 +4236,12 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     });
   });
 
-  // Contract and Addendum ACC/ACONEX
   (contractors||[]).forEach(function(ctr){
     (ctr.contracts||[]).forEach(function(ct){
       [{key:"contract_acc",label:"Contract ACC",dk:"acc"},{key:"contract_aconex",label:"Contract ACONEX",dk:"aconex"}].forEach(function(docType){
         var status=ct[docType.dk+"Status"]||"";
         var subDate=ct[docType.dk+"Date"]||"";
-        if(!subDate&&!status)return; // skip if not started
+        if(!subDate&&!status)return;
         var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
         var overdue=status!=="approved"&&!!due14&&due14<todayStr;
         var daysOverdue=overdue?workingDaysDiff(due14,todayStr):0;
@@ -4467,13 +4274,12 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     });
   });
 
-  // SD from tenders - overdue if approval not done 14 days after submission done
   (tenders||[]).forEach(function(td){
     if(!td.hasSD)return;
     var subDone=td.sdDone||"";
     var appDone=td.sdApprovalDone||"";
     var appStatus=td.sdApprovalStatus||"";
-    if(!subDone)return; // not submitted yet
+    if(!subDone)return;
     var due14=(function(){var d=new Date(subDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}());
     var overdue=appStatus!=="approved"&&!appDone&&due14<todayStr;
     var daysOverdue=overdue?workingDaysDiff(due14,todayStr):0;
@@ -4488,7 +4294,6 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     });
   });
 
-  // Tender steps: ACC, MAR, ITP, WMS
   var TENDER_DOC_STEPS=["acc","mar","itp","wms"];
   var STEP_LABELS={acc:"ACC/ACONEX",mar:"MAR",itp:"ITP",wms:"WMS"};
   (tenders||[]).forEach(function(td){
@@ -4497,20 +4302,18 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
       var targetDate=((td.stepDates||{})[step]||{}).target||"";
       var doneDate=((td.stepDates||{})[step]||{}).done||"";
       var approvalDate=((td.stepDates||{})[step]||{}).approval||"";
-      // Track overdue in 2 ways:
-      // 1. Submission overdue: doneDate + 14 days passed without approval
-      // 2. Target overdue: target date passed without done date
+
       var isApproved=stepStatus.toLowerCase().includes("approved");
       var isDone=!!doneDate||isApproved;
       var isApprovalDone=!!approvalDate||isApproved;
-      // Case 1: submission done, no approval yet, 14 days passed
+
       var dueDateFromDone=doneDate?(function(){var d=new Date(doneDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
-      // Case 2: target date passed, nothing done
+
       var dueDateFromTarget=targetDate?(function(){var d=new Date(targetDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
-      // Use done date overdue if done, else target overdue
+
       var effectiveDue=doneDate?dueDateFromDone:dueDateFromTarget;
       var effectiveSubmission=doneDate||"";
-      if(!effectiveDue)return; // nothing to track
+      if(!effectiveDue)return;
       var overdue=(doneDate?!isApprovalDone:!isDone)&&effectiveDue<todayStr;
       var daysOverdue=overdue?workingDaysDiff(effectiveDue,todayStr):0;
       docs.push({
@@ -4528,7 +4331,6 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     });
   });
 
-  // Filter
   var filtered=docs.filter(function(d){
     if(fTender!=="all"&&d.tenderRef!==fTender)return false;
     if(fPkg!=="all"&&d.package!==fPkg)return false;
@@ -4556,7 +4358,6 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
       </div>}
     </div>
 
-    {/* Filters */}
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
       <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1.5px solid "+(fStatus==="overdue"?"#c62828":"#e8e6df"),borderRadius:8,fontFamily:"inherit",color:fStatus==="overdue"?"#c62828":"#555",fontWeight:fStatus==="overdue"?700:400,background:fStatus==="overdue"?"#fce4ec":"#fff"}}>
         <option value="overdue">⚠️ Overdue only</option>
@@ -4586,7 +4387,7 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">{fStatus==="overdue"?"No overdue documents!":"No documents matching filters."}</div></div>
       :<div>
-        {/* Summary by stage */}
+
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
           {STAGES.map(function(s){
             var cnt=docs.filter(function(d){return d.stage===s.key&&d.overdue;}).length;
@@ -4598,7 +4399,6 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
           })}
         </div>
 
-        {/* Table */}
         <div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
           <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
             <thead>
@@ -4640,7 +4440,6 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
   </div>;
 }
 
-// ── NewTasksPopup ─────────────────────────────────────────────────
 function NewTasksPopup({tasks,tenders,contractors,onClose}){
   return <div className="overlay" style={{zIndex:800}} onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:"#fff",borderRadius:16,width:480,maxWidth:"92vw",maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 16px 48px rgba(0,0,0,.25)"}}>
@@ -4681,13 +4480,13 @@ function App(){
   const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
   function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
   const [jumpOwner,setJumpOwner]=useState(null);
-  window._navToTender=navToTender; // global access for deep components
+  window._navToTender=navToTender;
   const [newTasksPopup,setNewTasksPopup]=useState(null);
-  // Deep navigation: jump to a specific tender or contractor from another page
-  const [jumpTender,setJumpTender]=useState(null); // tender id
-  const [jumpFrom,setJumpFrom]=useState(null);     // view to return to
+
+  const [jumpTender,setJumpTender]=useState(null);
+  const [jumpFrom,setJumpFrom]=useState(null);
   function navToTender(tenderId,fromView){setJumpTender(tenderId);setJumpFrom(fromView||view);setView("tenders");}
-  function navToContractor(ctrId,fromView){setJumpFrom(fromView||view);setView("contractors");} // {tasks:[]} or null
+  function navToContractor(ctrId,fromView){setJumpFrom(fromView||view);setView("contractors");}
   const [showWeeklyPopup,setShowWeeklyPopup]=useState(function(){var now=new Date();var isMonday=now.getDay()===1;var key="pp_weekly_shown_"+now.toISOString().slice(0,10);var shown=false;try{shown=!!localStorage.getItem(key);}catch(e){}if(isMonday&&!shown){try{localStorage.setItem(key,"1");}catch(e){}return true;}return false;});
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok");
@@ -4723,25 +4522,22 @@ function App(){
     catch(e){setSyncStatus("err");}
   },[]);
 
-  // Merge-write: read current Firebase value, merge with local changes, then write
-  // For arrays: local changes (adds/edits/deletes) take priority per item id
-  // Items in Firebase not in local (added by others) are preserved
   const mergeSync=useCallback(async(key,localVal,idField)=>{
     setSyncStatus("syncing");
     try{
       if(!idField){
-        // Non-array data (strings, objects without id) — just write
+
         await cloudStore.set(key,localVal);
       } else {
-        // Read current Firebase state
+
         var remote=await cloudStore.get(key)||[];
         var localIds=new Set((localVal||[]).map(function(x){return x[idField];}));
-        // Keep remote items not in local (added by other users)
+
         var remoteOnly=remote.filter(function(x){return !localIds.has(x[idField]);});
-        // Merge: local changes + remote-only items
+
         var merged=[...(localVal||[]),...remoteOnly];
         await cloudStore.set(key,merged);
-        // Update local state to include remote additions
+
         if(remoteOnly.length>0){
           if(key===KEYS.tasks)setTasks(merged);
           else if(key===KEYS.trackers)setTrackers(merged);
@@ -4774,7 +4570,7 @@ function App(){
         ]);
         if(t){setTasks(t);}
         else{
-          // Migrate old tasks from previous app
+
           const oldTasks=await cloudStore.get("tasks");
           if(oldTasks&&oldTasks.length){
             const migrated=oldTasks.map(t=>newTask({id:t.id,text:t.text||"",owner:t.owner||"",package:t.package||"",status:t.status||"pending",importance:t.importance||1,urgence:t.urgence||1,due:t.due||"",note:t.note||"",tags:t.tags||[],createdAt:t.createdAt||today()}));
@@ -4783,7 +4579,7 @@ function App(){
         }
         if(x){setTrackers(x);}
         else{
-          // Migrate old trackers (ex-MoMs = records) from previous app
+
           const oldRecords=await cloudStore.get("records");
           const oldTrackers=await cloudStore.get("trackers");
           const migratedTrackers=[];
@@ -4821,9 +4617,9 @@ function App(){
         if(awn)setAwns(awn);
         if(pko)setPkgOwners(pko);
         if(prefs)setUserPrefs(prefs);
-        // Start real-time listeners
+
         startListeners({setTasks,setTrackers,setTenders,setContractors,setCorrespondences});
-        // Check for new tasks since last login
+
         setTimeout(function(){
           var currentName=window._currentUser?window._currentUser.name:"";
           if(!currentName)return;
@@ -4831,11 +4627,11 @@ function App(){
           var lastVisit="";try{lastVisit=localStorage.getItem(lastKey)||"";}catch(e){}
           var now=new Date().toISOString();
           try{localStorage.setItem(lastKey,now);}catch(e){}
-          if(!lastVisit)return; // first visit - no popup
+          if(!lastVisit)return;
           var myNew=(t||[]).filter(function(task){
             if(!task.createdAt||!task.owner)return false;
             if(task.owner!==currentName)return false;
-            if(task.addedBy===currentName)return false; // I created it myself
+            if(task.addedBy===currentName)return false;
             if(task.createdAt<=lastVisit.slice(0,10))return false;
             return true;
           });
@@ -4853,7 +4649,7 @@ function App(){
         }
       }catch(e){console.error("Load error",e);}
       setLoaded(true);
-      // Start real-time listeners for multi-user sync
+
       if(window._dbListen){
         window._dbListen(KEYS.tasks,function(val){if(val)setTasks(val);});
         window._dbListen(KEYS.trackers,function(val){if(val)setTrackers(val);});
@@ -4895,7 +4691,7 @@ function App(){
   const syncDot=<div className={"sync-dot sync-"+syncStatus} title={syncStatus==="ok"?"Synced":syncStatus==="syncing"?"Syncing…":"Sync error"}/>;
 
   if(!currentUser)return <UserLogin people={people} onLogin={function(name){setCurrentUser(name);window._currentUser={name:name};}}/>;  return <div className="layout">
-    {/* Left nav */}
+
     <nav className="leftnav">
       <div className="logo" style={{fontSize:11,lineHeight:1.2,textAlign:"center",letterSpacing:".5px"}}>Project<br/>Tracker</div>
       {currentUser&&<div style={{marginTop:4,padding:"4px 2px",textAlign:"center"}}>
@@ -4911,7 +4707,6 @@ function App(){
       <div className="nav-sep"/>
     </nav>
 
-    {/* Main content */}
     <div className="main-area">
       <div className="content">
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
@@ -4927,7 +4722,6 @@ function App(){
         {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);}}/>}
       </div>
 
-      {/* Right sidebar — Quick Add */}
       <aside className={"rsidebar "+(sidebarOpen?"open":"closed")}>
         <div style={{display:"flex",alignItems:"center",justifyContent:sidebarOpen?"flex-end":"center",padding:"8px 8px 0",flexShrink:0}}>
           <button onClick={function(){setSidebarOpen(!sidebarOpen);}} title={sidebarOpen?"Collapse sidebar":"Expand sidebar"}
