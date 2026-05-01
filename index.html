@@ -251,7 +251,7 @@ function getAllCCs(tags,pkg,owner,tagrules,pkgrules){
 // Tender step statuses
 const TENDER_STEPS=[
   {key:"bidders",label:"Bidders List",opts:["—","Not Submitted","Submitted","Comments received","No comments received"],special:"bidders"},
-  {key:"pkg",label:"Tender Package",opts:["—","Not started","In preparation","Submitted","Approved"]},
+  {key:"pkg",label:"Tender Package",opts:["—","Not needed","Not started","In preparation","Submitted","Approved"]},
   {key:"process",label:"Tender Process",opts:[],special:"process"},
   {key:"acc",label:"ACC/Aconex",opts:["—","Internal review ongoing","Pending client approval","Approved A","Approved B","Approved C"]},
   {key:"contract",label:"Contract",opts:["—","Request sent","In circulation","Signed"]},
@@ -260,10 +260,13 @@ const TENDER_STEPS=[
 ];
 function tenderStepClass(step,val){
   if(!val||val==="—")return"s-default";
-  if(val==="Approved A"||val==="Signed")return"s-approved-a";
-  if(val==="Approved B")return"s-approved-b";
-  if(val==="Approved C"||val==="Not done")return"s-notdone";
-  if(val.includes("Pending")||val.includes("ongoing")||val.includes("circulation")||val.includes("sent"))return"s-pending";
+  var v=val.toLowerCase();
+  // Green: any "approved" or "signed"
+  if(v.includes("approved")||v==="signed")return"s-approved-a";
+  // Red: rejected, not approved, not done
+  if(v.includes("reject")||v.includes("not approved")||v.includes("not done"))return"s-notdone";
+  // Orange: pending, in circulation, sent, ongoing, in preparation, submitted
+  if(v.includes("pending")||v.includes("ongoing")||v.includes("circulation")||v.includes("sent")||v.includes("preparation")||v.includes("submitted")||v.includes("request")||v.includes("bids"))return"s-pending";
   return"s-default";
 }
 
@@ -1621,8 +1624,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <input type="checkbox" checked={hasSd} onChange={function(e){updTd("hasSD",e.target.checked);}} style={{width:14,height:14}}/>
               📐 Shop Drawing (SD)
             </label>
-            {hasSd&&<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:4}}>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f8f7f4",borderRadius:7,border:"1px solid #e8e6df"}}>
+            {hasSd&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
+              <div style={{flex:1,minWidth:220,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f8f7f4",borderRadius:7,border:"1px solid #e8e6df"}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#555",minWidth:80}}>Submission</span>
                 <select value={td.sdStatus||""} onChange={function(e){updTd("sdStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
                   <option value="">— status —</option>
@@ -1635,7 +1638,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){var dv=e.target.value;updTd("sdDone",dv);if(dv&&td.sdStatus==="submitted"&&!td.sdApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updTd("sdApprovalTarget",d.toISOString().slice(0,10));}}}/></div>
                 {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due14,today())}d</span>:null;})()}
               </div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f0fff4",borderRadius:7,border:"1px solid #c8e6c9"}}>
+              <div style={{flex:1,minWidth:220,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f0fff4",borderRadius:7,border:"1px solid #c8e6c9"}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:80}}>Approval</span>
                 <select value={td.sdApprovalStatus||""} onChange={function(e){updTd("sdApprovalStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5,fontFamily:"inherit"}}>
                   <option value="">— status —</option>
@@ -4399,6 +4402,27 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
           });
         });
       });
+    });
+  });
+
+  // SD from tenders - overdue if approval not done 14 days after submission done
+  (tenders||[]).forEach(function(td){
+    if(!td.hasSD)return;
+    var subDone=td.sdDone||"";
+    var appDone=td.sdApprovalDone||"";
+    var appStatus=td.sdApprovalStatus||"";
+    if(!subDone)return; // not submitted yet
+    var due14=(function(){var d=new Date(subDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}());
+    var overdue=appStatus!=="approved"&&!appDone&&due14<todayStr;
+    var daysOverdue=overdue?workingDaysDiff(due14,todayStr):0;
+    docs.push({
+      id:td.id+"_sd",stage:"sd_approval",stageLabel:"SD Approval",
+      text:td.title+" — SD Approval",
+      owner:td.ownerTender||"",package:td.package||"",
+      tenderRef:td.id,tenderTitle:td.title,
+      submissionDate:subDone,dueDate:due14,targetDate:subDone,
+      overdue:overdue,daysOverdue:daysOverdue,
+      stepStatus:appStatus||"pending approval",_type:"tender"
     });
   });
 
