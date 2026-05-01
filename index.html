@@ -643,7 +643,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               {task.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{task.package}</span>}
               {!task.isInfo&&sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
               {(task.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
-              {tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}
+              {tdr&&(onNavTender?<button onClick={function(e){e.stopPropagation();onNavTender(tdr.id,"global");}} style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10,padding:"2px 8px",borderRadius:20,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📑 {tdr.title}</button>:<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>)}
               {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
             </div>
             {(task.tags||[]).includes("RFI")&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"3px 8px",borderRadius:5,display:"inline-block"}}>
@@ -1401,7 +1401,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
 }
 
 
-function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners}){
+function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners,jumpTender,clearJumpTender,jumpFrom,onBack}){
   const [pkgFilter,setPkgFilter]=useState("all");
   const [searchQ,setSearchQ]=useState("");
   const [sortCol,setSortCol]=useState("title");
@@ -1504,7 +1504,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
         {/* Header */}
         <div className="page-hdr" style={{marginBottom:12}}>
-          <button className="btn btn-sm" onClick={function(){setSelTender(null);}} style={{marginRight:8,flexShrink:0,alignSelf:"flex-start",marginTop:4}}>← Back</button>
+          {onBack&&<button className="btn btn-sm" onClick={onBack} style={{marginRight:4,flexShrink:0,alignSelf:"flex-start",marginTop:4,color:"#3949ab",border:"1px solid #3949ab"}}>← Back to {jumpFrom}</button>}
+          <button className="btn btn-sm" onClick={function(){setSelTender(null);onBack?null:null;}} style={{marginRight:8,flexShrink:0,alignSelf:"flex-start",marginTop:4}}>← Tenders</button>
           <div style={{flex:1}}>
             <input type="text" value={td.title||""} onChange={function(e){updTd("title",e.target.value);}} placeholder="Tender title" style={{fontSize:22,fontWeight:700,fontFamily:"'DM Serif Display',serif",border:"none",borderBottom:"1.5px solid #e8e6df",background:"transparent",outline:"none",width:"100%",padding:"2px 0",marginBottom:4}}/>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,alignItems:"center"}}>
@@ -1679,7 +1680,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                     <span style={{fontSize:9,fontWeight:700,color:"#7b1fa2"}}>LEAD</span>
                     {/* Toggle buttons */}
                     <div style={{display:"flex",border:"1px solid #ce93d8",borderRadius:6,overflow:"hidden"}}>
-                      <button onClick={function(e){e.stopPropagation();updTd("leadTimeManual",false);updTd("leadTimeDays",String(matMax>0?matMax:30));}}
+                      <button onClick={function(e){e.stopPropagation();var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{leadTimeManual:false,leadTimeDays:String(matMax>0?matMax:30)});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}}
                         style={{padding:"2px 8px",fontSize:9,fontWeight:700,border:"none",cursor:"pointer",fontFamily:"inherit",
                           background:!useManual?"#ce93d8":"#fff",color:!useManual?"#fff":"#7b1fa2"}}>
                         📦 Material
@@ -1758,8 +1759,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>;
         })()}
 
-        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Submission Steps</div>
-        <table className="tbl" style={{fontSize:12}}>
+        {(function(){
+          var [stepsOpen,setStepsOpen]=useState(true);
+          return <div>
+            <div onClick={function(){setStepsOpen(!stepsOpen);}} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:stepsOpen?12:0}}>
+              <span style={{fontSize:13,color:"#aaa"}}>{stepsOpen?"▾":"▸"}</span>
+              <div style={{fontWeight:700,fontSize:14}}>Submission Steps</div>
+            </div>
+            {stepsOpen&&<table className="tbl" style={{fontSize:12}}>
           <thead><tr>
             <th>Step</th>
             <th>Status</th>
@@ -1847,8 +1854,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               </td>
             </tr>;
           })}</tbody>
-        </table>
-      </div>
+        </table>}
+          </div>;
+        })()}
 
 
       <div className="card" style={{marginTop:10}}>
@@ -1927,7 +1935,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <th style={{textAlign:"center",color:"#555",minWidth:90}}>Target start</th>
           <th style={{textAlign:"center",color:"#1a73e8",minWidth:90}}>Proc. delivery</th>
           <th style={{textAlign:"center",color:"#888",minWidth:60}}>Margin</th>
-          {TENDER_STEPS.map(function(s){
+          {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s){
             var sortable=s.key==="acc"||s.key==="contract";
             return sortable
               ?<th key={s.key} className="sortable" onClick={function(){toggleSort(s.key);}}>{s.label}{sortIcon(s.key)}</th>
@@ -1974,15 +1982,15 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 return <span style={{fontWeight:700,fontSize:11,color:m<0?"#c62828":m<7?"#f57f17":"#2e7d32"}}>{m>0?"+":""}{m}d</span>;
               })()}
             </td>
-            {TENDER_STEPS.map(function(s){
+            {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s){
               var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);
               var dates=(td.stepDates||{})[s.key]||{};
-              var target=dates.target||"";
               var done=dates.done||"";
+              var target=dates.target||"";
               var isOverdue=target&&target<today()&&!done&&v!=="Approved"&&!v.toLowerCase().includes("approved");
-              return <td key={s.key} style={{verticalAlign:"top",minWidth:100}}>
+              return <td key={s.key} style={{verticalAlign:"top",minWidth:90}}>
                 {v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}
-                {target&&<div style={{fontSize:9,marginTop:2,color:isOverdue?"#c62828":"#888",fontWeight:isOverdue?700:400}}>
+                {!done&&target&&<div style={{fontSize:9,marginTop:2,color:isOverdue?"#c62828":"#888",fontWeight:isOverdue?700:400}}>
                   {isOverdue?"⚠️ ":""}{fmtDate(target)}
                 </div>}
                 {done&&<div style={{fontSize:9,marginTop:1,color:"#2e7d32",fontWeight:600}}>✓ {fmtDate(done)}</div>}
@@ -1992,7 +2000,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         })}</tbody>
         <tfoot>
           <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
-            <td colSpan={3+TENDER_STEPS.length} style={{padding:"8px 12px"}}>
+            <td colSpan={3+TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length+3} style={{padding:"8px 12px"}}>
               {(function(){
                 var totBudget=filtered.reduce(function(s,t){return s+Number(t.budget||0);},0);
                 var totInstructed=filtered.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
@@ -2354,7 +2362,7 @@ function CollapsibleContract({ct,fin,children}){
   </div>;
 }
 
-function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey,correspondences,saveCorrespondences,saveT}){
+function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey,correspondences,saveCorrespondences,saveT,onNavTender}){
   var ctrs=contractors||[];
   var tnds=tenders||[];
   var pkgs=packages||[];
@@ -3692,7 +3700,7 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
   </div>;
 }
 
-function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules,jumpOwner,clearJump}){
+function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules,jumpOwner,clearJump,onNavTender}){
   const [fStatus,setFStatus]=useState("all");
   const [fOwners,setFOwners]=useState([]);
   useEffect(function(){if(jumpOwner){setFOwners([jumpOwner]);if(clearJump)clearJump();}else{setFOwners([]);}},[ jumpOwner]);
@@ -3974,7 +3982,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   ?<select value={a.tenderRef||""} onChange={function(e){updateField(a,"tenderRef",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
                     <option value="">—</option>{(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
                   </select>
-                  :<span>{tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}</span>}
+                  :<span>{tdr&&(onNavTender?<button onClick={function(e){e.stopPropagation();onNavTender(tdr.id,"global");}} style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10,padding:"2px 8px",borderRadius:20,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📑 {tdr.title}</button>:<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>)}</span>}
               </td>
               <td style={{whiteSpace:"nowrap"}}>
                 <div style={{display:"flex",gap:4}}>
@@ -4213,7 +4221,7 @@ function UserLogin({people,onLogin}){
 }
 
 // ── DashboardView ─────────────────────────────────────────────────
-function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJumpOwner}){
+function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJumpOwner,onNavTender}){
   var allActions=[];
   (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
   (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){if(!a.isInfo)allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
@@ -4340,7 +4348,7 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJum
 }
 
 // ── DocumentsView ─────────────────────────────────────────────────
-function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
+function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNavTender}){
   const [fTender,setFTender]=useState("all");
   const [fPkg,setFPkg]=useState("all");
   const [fOwner,setFOwner]=useState("all");
@@ -4571,15 +4579,15 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
                 return <tr key={d.id} style={{background:d.overdue?"#fffaf9":"#fff"}}>
                   <td><span style={{padding:"2px 8px",borderRadius:8,background:stage.bg,color:stage.color,fontWeight:700,fontSize:11}}>{stage.label}</span></td>
                   <td style={{maxWidth:300}}>
-                    <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.text}</div>
+                    <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:d.tenderRef?"pointer":"default",color:d.tenderRef?"#1a1a1a":"#555"}} onClick={function(){if(d.tenderRef&&onNavTender)onNavTender(d.tenderRef,"documents");}}>{d.text}</div>
                     {d.submissionDate&&<div style={{fontSize:10,color:"#aaa"}}>Submitted: {fmtDate(d.submissionDate)}</div>}
                   </td>
-                  <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.tenderTitle||"—"}</td>
+                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.tenderTitle&&d.tenderRef?<button onClick={function(){if(onNavTender)onNavTender(d.tenderRef,"documents");}} style={{background:"none",border:"none",cursor:"pointer",color:"#3949ab",fontSize:11,fontWeight:500,textDecoration:"underline",padding:0,fontFamily:"inherit"}}>{d.tenderTitle}</button>:<span style={{color:"#888"}}>{d.tenderTitle||"—"}</span>}</td>
                   <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.package||"—"}</td>
                   <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
                   <td style={{whiteSpace:"nowrap"}}>
-                    {d.targetDate&&<div style={{fontSize:11,color:"#888"}}>Target: {fmtDate(d.targetDate)}</div>}
-                    <div style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#2e7d32"}}>Due: {d.dueDate?fmtDate(d.dueDate):"—"}</div>
+                    {d.submissionDate&&<div style={{fontSize:11,color:"#888"}}>Submittal: {fmtDate(d.submissionDate)}</div>}
+                    <div style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#2e7d32"}}>+14d: {d.dueDate?fmtDate(d.dueDate):"—"}</div>
                   </td>
                   <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>+{d.daysOverdue}d</span>:<span style={{color:"#2e7d32",fontSize:11}}>✓</span>}</td>
                   <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:d.status==="done"?"#e8f5e9":"#f5f5f5",color:d.status==="done"?"#2e7d32":"#888",fontWeight:600}}>{d.stepStatus||d.status}</span></td>
@@ -4633,7 +4641,13 @@ function App(){
   const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
   function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
   const [jumpOwner,setJumpOwner]=useState(null);
-  const [newTasksPopup,setNewTasksPopup]=useState(null); // {tasks:[]} or null
+  window._navToTender=navToTender; // global access for deep components
+  const [newTasksPopup,setNewTasksPopup]=useState(null);
+  // Deep navigation: jump to a specific tender or contractor from another page
+  const [jumpTender,setJumpTender]=useState(null); // tender id
+  const [jumpFrom,setJumpFrom]=useState(null);     // view to return to
+  function navToTender(tenderId,fromView){setJumpTender(tenderId);setJumpFrom(fromView||view);setView("tenders");}
+  function navToContractor(ctrId,fromView){setJumpFrom(fromView||view);setView("contractors");} // {tasks:[]} or null
   const [showWeeklyPopup,setShowWeeklyPopup]=useState(function(){var now=new Date();var isMonday=now.getDay()===1;var key="pp_weekly_shown_"+now.toISOString().slice(0,10);var shown=false;try{shown=!!localStorage.getItem(key);}catch(e){}if(isMonday&&!shown){try{localStorage.setItem(key,"1");}catch(e){}return true;}return false;});
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok");
@@ -4862,14 +4876,14 @@ function App(){
       <div className="content">
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules}/>}
-        {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} pkgOwners={pkgOwners}/>}
-        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT}/>}
+        {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} pkgOwners={pkgOwners} jumpTender={jumpTender} clearJumpTender={function(){setJumpTender(null);}} jumpFrom={jumpFrom} clearJumpFrom={function(){setJumpFrom(null);}} onBack={jumpFrom?function(){setView(jumpFrom);setJumpTender(null);setJumpFrom(null);}:null}/>}
+        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT} onNavTender={navToTender}/>}
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="awn"&&<AwnView awns={awns} saveAwns={saveAwns} people={people}/>}
         {view==="weekly"&&<WeeklyView tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} packages={packages} tenders={tenders} contractors={contractors}/>}
         {view==="documents"&&<DocumentsView tasks={tasks} tenders={tenders} contractors={contractors} packages={packages} people={people} saveTasks={saveT}/> }
-    {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} onJumpOwner={function(name){setJumpOwner(name);setView("global");}}/>}
-    {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}}/>}
+    {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} onJumpOwner={function(name){setJumpOwner(name);setView("global");}} onNavTender={navToTender}/>}
+    {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}} onNavTender={navToTender}/>}
         {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);}}/>}
       </div>
 
