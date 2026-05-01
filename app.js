@@ -1,3 +1,4 @@
+
 const {useState,useEffect,useRef,useCallback}=React;
 
 class ErrorBoundary extends React.Component{
@@ -13,17 +14,18 @@ class ErrorBoundary extends React.Component{
   }
 }
 
-// ── Storage keys ─────────────────────────────────────────────────
 const KEYS_IMP="pp_improvements";
+const KEYS_PINS="pp_user_pins";
+const KEYS_PREFS="pp_user_prefs";
 const KEYS_CORR="pp_correspondences";
 const KEYS_AWN="pp_awn";
 const KEYS={
   tasks:"pp_tasks", trackers:"pp_trackers", tenders:"pp_tenders",
   contractors:"pp_contractors", people:"pp_people", tags:"pp_tags",
-  packages:"pp_packages", tagrules:"pp_tagrules", pkgrules:"pp_pkgrules"
+  packages:"pp_packages", groups:"pp_groups", tagrules:"pp_tagrules", pkgrules:"pp_pkgrules",
+  pkgowners:"pp_pkgowners"
 };
 
-// ── Helpers ───────────────────────────────────────────────────────
 function uuid(){return"id_"+Math.random().toString(36).slice(2)+Date.now().toString(36);}
 function today(){return new Date().toISOString().slice(0,10);}
 function fmtDate(d){if(!d)return"—";const p=d.split("-");return p.length===3?p[2]+"/"+p[1]+"/"+p[0].slice(2):d;}
@@ -43,53 +45,62 @@ function getCCsForTags(tags,tagrules){return[...new Set((tags||[]).flatMap(t=>ta
 function getCCsForPkg(pkg,pkgrules){return pkgrules[pkg]||[];}
 function getAllCCs(tags,pkg,owner,tagrules,pkgrules){
   const all=[...getCCsForTags(tags,tagrules),...getCCsForPkg(pkg,pkgrules)];
-  return[...new Set(all)].filter(p=>p!==owner);
+  const currentUserName=window._currentUser?window._currentUser.name:null;
+  const prefs=window._ppUserPrefs||{};
+  return[...new Set(all)].filter(function(p){
+    if(p===owner)return false;
+
+    var pref=(prefs[p]||{});
+    if(pref.noPkgCC)return false;
+    return true;
+  });
 }
 
 // Tender step statuses
 const TENDER_STEPS=[
   {key:"bidders",label:"Bidders List",opts:["—","Not Submitted","Submitted","Comments received","No comments received"],special:"bidders"},
-  {key:"pkg",label:"Tender Package",opts:["—","Not started","In preparation","Submitted","Approved"]},
+  {key:"pkg",label:"Tender Package",opts:["—","Not needed","Not started","In preparation","Submitted","Approved"]},
   {key:"process",label:"Tender Process",opts:[],special:"process"},
   {key:"acc",label:"ACC/Aconex",opts:["—","Internal review ongoing","Pending client approval","Approved A","Approved B","Approved C"]},
   {key:"contract",label:"Contract",opts:["—","Request sent","In circulation","Signed"]},
-  {key:"mar",label:"MAR",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]},
   {key:"itp",label:"ITP",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]},
   {key:"wms",label:"WMS",opts:["—","Not done","Pending Approval","Approved A","Approved B","Approved C"]}
 ];
 function tenderStepClass(step,val){
   if(!val||val==="—")return"s-default";
-  if(val==="Approved A"||val==="Signed")return"s-approved-a";
-  if(val==="Approved B")return"s-approved-b";
-  if(val==="Approved C"||val==="Not done")return"s-notdone";
-  if(val.includes("Pending")||val.includes("ongoing")||val.includes("circulation")||val.includes("sent"))return"s-pending";
+  var v=val.toLowerCase();
+
+  if(v.includes("approved")||v==="signed")return"s-approved-a";
+
+  if(v.includes("reject")||v.includes("not approved")||v.includes("not done"))return"s-notdone";
+
+  if(v.includes("pending")||v.includes("ongoing")||v.includes("circulation")||v.includes("sent")||v.includes("preparation")||v.includes("submitted")||v.includes("request")||v.includes("bids"))return"s-pending";
   return"s-default";
 }
 
 // Defaults
 const SEED_PEOPLE=["BALLAS, Antonios","CHATZIROUMPIS, Vasilis","FYTOPOULOU, Katerina","KLEFTOSPYROU, Georgia","KOUTOULAKI, Anna","MAKROVASILI, Anastasia","NASIS, Athanasios","PLOUMISTOS, Georgios","ROSIOS, Irodion","ROUSSIN, Yanis","TSIAMPAOS, Konstantinos","VRETTOU, Eirini"];
-const SEED_TAGS=["Contract","Design","HR","Procurement","Production","RFI"];
+const SEED_TAGS=["Contract","Design","HR","Procurement","Production","RFI","Top Management"];
 const SEED_PACKAGES=["Facade","Structure","MEP","Civil","Podium","External Works"];
 
 const STATUS_OPTS=["pending","in progress","done","blocked"];
 const STATUS_ICONS={pending:"⏳","in progress":"🔄",done:"✅",blocked:"🚫"};
 
-function newTask(overrides){return Object.assign({id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:""},overrides||{});}
+function stampModified(task){var u=Object.assign({},task);u.lastModifiedBy=window._currentUser?window._currentUser.name:"";u.lastModifiedAt=today();return u;}
+function newTask(overrides){var base={id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",note:"",tags:[],tenderRef:"",contractorRef:"",trackerRef:"",createdAt:today(),rfiSubmission:"",rfiDue:"",rfiOverdue:false,addedBy:window._currentUser?window._currentUser.name:"",lastModifiedBy:"",lastModifiedAt:"",links:[]};return Object.assign(base,overrides||{});}
 function newTracker(overrides){return Object.assign({id:uuid(),title:"",description:"",createdAt:today(),actions:[]},overrides||{});}
 function newTrackerAction(){return{id:uuid(),text:"",owner:"",package:"",status:"pending",importance:1,urgence:1,due:"",tags:[],tenderRef:"",contractorRef:"",details:"",createdAt:today()};}
-function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",done:""},pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:""},contract:{target:"",done:""},mar:{target:"",done:""},itp:{target:"",done:""},wms:{target:"",done:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
+function newTender(overrides){return Object.assign({id:uuid(),title:"",package:"",ownerPackage:"",ownerTender:"",createdAt:today(),targetDate:"",steps:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepDates:{bidders:{target:"",done:""},pkg:{target:"",done:""},process:{target:"",done:""},acc:{target:"",done:"",approval:""},contract:{target:"",done:""},mar:{target:"",done:"",approval:""},itp:{target:"",done:"",approval:""},wms:{target:"",done:"",approval:""}},stepComments:{bidders:"",pkg:"",process:"",acc:"",contract:"",mar:"",itp:"",wms:""},stepLinks:{bidders:[],pkg:[],process:[],acc:[],contract:[],mar:[],itp:[],wms:[]},description:"",budget:"",instructionAmount:"",currency:"EUR"},overrides||{});}
 function newContractor(overrides){return Object.assign({id:uuid(),name:"",package:"",owner:"",tenderRefs:[],contracts:[],createdAt:today()},overrides||{});}
-function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",};}
-function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:""};}
+function newContract(){return{id:uuid(),number:"",sapNumber:"",instructionNumber:"",instructionAmount:0,startDate:"",endDate:"",amount:0,currency:"EUR",package:"",tenderRef:"",owner:"",closed:false,cacSigned:false,addendums:[],certifications:[],description:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:"",wbs:""};}
+function newAddendum(){return{id:uuid(),number:"",instructionNumber:"",instructionAmount:0,date:"",amount:0,description:"",comment:"",accSigned:false,accDate:"",accStatus:"",aconexSigned:false,aconexDate:"",aconexStatus:""};}
 function newCertification(){return{id:uuid(),number:"",date:"",amount:0,description:"",comment:""};}
 
-// ── Cloud store ───────────────────────────────────────────────────
 const cloudStore={
   get:async(key)=>{if(!window._db)return null;return await window._db.get(key);},
   set:async(key,val)=>{if(!window._db)return;await window._db.set(key,val);}
 };
 
-// ── Quick Add Sidebar ─────────────────────────────────────────────
 function GlobalPdfModal({contractors,saveContractors,onClose}){
   const [cert,setCert]=useState({number:"",date:"",amount:"",sap:""});
   const [matched,setMatched]=useState(null);
@@ -97,7 +108,7 @@ function GlobalPdfModal({contractors,saveContractors,onClose}){
 
   function set(f,v){
     var u=Object.assign({},cert);u[f]=v;setCert(u);
-    // Auto-match SAP when sap field changes
+
     if(f==="sap"){
       var found=null;
       (contractors||[]).forEach(function(ctr){
@@ -196,7 +207,7 @@ function ImprovementBox({improvements,saveImprovements,currentPage}){
 
 function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,improvements,saveImprovements,currentPage}){
   const [text,setText]=useState("");
-  const [due,setDue]=useState("");
+  const [due,setDue]=useState(today());
   const [owner,setOwner]=useState("");
   const [pkg,setPkg]=useState("");
   const [tenderRef,setTenderRef]=useState("");
@@ -204,108 +215,151 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
   const [importance,setImportance]=useState(1);
   const [urgence,setUrgence]=useState(1);
   const [selTags,setSelTags]=useState([]);
+  const [isInfo,setIsInfo]=useState(false);
+  const [rfiSub,setRfiSub]=useState("");
+  const [rfiDue,setRfiDue]=useState("");
   const inputRef=useRef();
 
-  const [isInfo,setIsInfo]=useState(false);
   function submit(){
     if(!text.trim())return;
     var td={text:text.trim(),owner,package:pkg,due,tenderRef,contractorRef,importance,urgence,tags:selTags};
     if(isInfo)td.isInfo=true;
+    if(selTags.includes("RFI")){td.rfiSubmission=rfiSub;td.rfiDue=rfiDue;}
     onAdd(newTask(td));
-    setText("");setDue("");setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);setIsInfo(false);
+    setText("");setDue(today());setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);setIsInfo(false);
     if(inputRef.current)inputRef.current.focus();
   }
   function toggleTag(t){setSelTags(function(prev){return prev.includes(t)?prev.filter(function(x){return x!==t;}):[...prev,t];});}
+  function onTenderChange(tid){
+    setTenderRef(tid);
+    if(tid){var td2=(tenders||[]).find(function(t){return t.id===tid;});if(td2&&td2.package)setPkg(td2.package);}
+  }
 
-  const sc=calcScore(importance,urgence);
-  const ss=scoreStyle(sc);
+  var sc=calcScore(importance,urgence);
+  var ss=scoreStyle(sc);
+
+  var filteredTenders=(tenders||[]).filter(function(t){return !pkg||t.package===pkg;})
+    .slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");});
+  var filteredContractors=(contractors||[]).filter(function(ctr){return !pkg||ctr.package===pkg||(ctr.contracts||[]).some(function(ct){return ct.package===pkg;});})
+    .slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
 
   return <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
     <div style={{padding:"14px 14px 10px",borderBottom:"1.5px solid #e8e6df"}}>
-      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,marginBottom:2}}>Quick Add Task</div>
-      <div style={{fontSize:11,color:"#bbb"}}>Enter to add</div>
+      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,marginBottom:2}}>Quick Add</div>
+      <div style={{fontSize:11,color:"#bbb"}}>Enter to add · {today().split("-").reverse().join("/")}</div>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:12}} className="sform">
+
+      <div className="fg">
+        <label>Date</label>
+        <input type="date" value={due} onChange={function(e){setDue(e.target.value);}}/>
+      </div>
+
       <div className="fg">
         <label>Action *</label>
         <textarea ref={inputRef} value={text} onChange={function(e){setText(e.target.value);}}
-          onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();} }}
+          onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
           placeholder="What needs to be done?" style={{minHeight:60}}/>
       </div>
-      <div className="fg"><label>Due date</label><input type="date" value={due} onChange={function(e){setDue(e.target.value);}}/></div>
-      <div className="fg"><label>Owner</label>
-        <select value={owner} onChange={function(e){setOwner(e.target.value);}}>
+
+      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:8,color:isInfo?"#1565c0":"#888",background:isInfo?"#e3f2fd":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(isInfo?"#1565c0":"#ddd"),alignSelf:"flex-start"}}>
+        <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:13,height:13}}/>
+        ℹ️ Info only
+      </label>
+
+      <div className="fg">
+        <label>Owner</label>
+        <select value={owner} onChange={function(e){setOwner(e.target.value);}} style={{fontFamily:"inherit"}}>
           <option value="">— none —</option>
           {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
         </select>
       </div>
-      <div className="fg"><label>Package</label>
-        <select value={pkg} onChange={function(e){setPkg(e.target.value);}}>
+
+      <div className="fg">
+        <label>Tender</label>
+        <select value={tenderRef} onChange={function(e){onTenderChange(e.target.value);}} style={{fontFamily:"inherit"}}>
+          <option value="">— none —</option>
+          {filteredTenders.map(function(t){return <option key={t.id} value={t.id}>{t.title}{t.package?" ("+t.package+")":""}</option>;})}
+        </select>
+      </div>
+
+      <div className="fg">
+        <label>Package</label>
+        <select value={pkg} onChange={function(e){setPkg(e.target.value);if(tenderRef){var td2=(tenders||[]).find(function(t){return t.id===tenderRef;});if(td2&&td2.package!==e.target.value)setTenderRef("");}}} style={{fontFamily:"inherit"}}>
           <option value="">— none —</option>
           {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
         </select>
       </div>
-      <div className="fg">
-        <label>Score I×U {sc>1&&<span style={{padding:"1px 7px",borderRadius:10,background:ss.bg,color:ss.color,fontWeight:700,fontSize:10}}>{ss.label}</span>}</label>
-        <div style={{display:"flex",gap:10,alignItems:"center",marginTop:2}}>
+
+      {!isInfo&&<div className="fg">
+        <label>Score I×U {sc>1&&<span style={{padding:"1px 7px",borderRadius:10,background:ss.bg,color:ss.color,fontWeight:700,fontSize:10}}>{ss.label} [{sc}]</span>}</label>
+        <div style={{display:"flex",gap:12,alignItems:"center",marginTop:2}}>
           <div>
             <div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:3}}>IMPACT</div>
             <div style={{display:"flex",gap:3}}>
-              {[1,2,3].map(function(v){return <button key={v} onClick={function(){setImportance(v);}}
-                style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(importance===v?"#1c1c1e":"#ddd"),background:importance===v?"#1c1c1e":"#fff",color:importance===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
+              {[1,2,3].map(function(v){return <button key={v} onClick={function(){setImportance(v);}} style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(importance===v?"#1c1c1e":"#ddd"),background:importance===v?"#1c1c1e":"#fff",color:importance===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
             </div>
           </div>
           <span style={{color:"#ccc",fontSize:16}}>×</span>
           <div>
             <div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:3}}>URGENCY</div>
             <div style={{display:"flex",gap:3}}>
-              {[1,2,3].map(function(v){return <button key={v} onClick={function(){setUrgence(v);}}
-                style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(urgence===v?"#1c1c1e":"#ddd"),background:urgence===v?"#1c1c1e":"#fff",color:urgence===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
+              {[1,2,3].map(function(v){return <button key={v} onClick={function(){setUrgence(v);}} style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(urgence===v?"#1c1c1e":"#ddd"),background:urgence===v?"#1c1c1e":"#fff",color:urgence===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
             </div>
           </div>
         </div>
-      </div>
+      </div>}
+
       {(tags||[]).length>0&&<div className="fg">
         <label>Tags</label>
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:2}}>
-          {(tags||[]).map(function(t){var on=selTags.includes(t);var tc=tagColor(t);return <button key={t} onClick={function(){toggleTag(t);}}
-            style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{t}</button>;})}
+          {(tags||[]).map(function(t){var on=selTags.includes(t);var tc=tagColor(t);return <button key={t} onClick={function(){toggleTag(t);}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{t}</button>;})}
         </div>
       </div>}
-      <div className="fg"><label>Link Tender</label>
-        <select value={tenderRef} onChange={function(e){
-          var tid=e.target.value;
-          setTenderRef(tid);
-          if(tid){var td=(tenders||[]).find(function(t){return t.id===tid;});if(td){if(td.package)setPkg(td.package);}}
-        }}>
+      {selTags.includes("RFI")&&<div className="fg">
+        <label style={{color:"#b45309"}}>📋 RFI Dates</label>
+        <div style={{display:"flex",gap:6,padding:"8px",background:"#fff8f0",borderRadius:8,border:"1px solid #fed7aa"}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,fontWeight:800,color:"#b45309",marginBottom:2}}>SUBMISSION</div>
+            <input type="date" value={rfiSub||""} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);setRfiDue(d.toISOString().slice(0,10));}}} style={{padding:"3px 6px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,fontWeight:800,color:"#b45309",marginBottom:2}}>DUE (+14d)</div>
+            <input type="date" value={rfiDue||""} onChange={function(e){setRfiDue(e.target.value);}} style={{padding:"3px 6px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>
+          </div>
+        </div>
+      </div>}
+
+      <div className="fg">
+        <label>Subcontractor</label>
+        <select value={contractorRef} onChange={function(e){setContractorRef(e.target.value);}} style={{fontFamily:"inherit"}}>
           <option value="">— none —</option>
-          {(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}{t.package?" ("+t.package+")":""}</option>;})}
+          {filteredContractors.map(function(ctr){return <option key={ctr.id} value={ctr.id}>{ctr.name}</option>;})}
         </select>
       </div>
-      <div className="fg"><label>Link Subcontractor</label>
-        <select value={contractorRef} onChange={function(e){setContractorRef(e.target.value);}}>
-          <option value="">— none —</option>
-          {(contractors||[]).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
-        </select>
+
+      <div style={{display:"flex",gap:6,marginTop:4}}>
+        <button className="btn" onClick={function(){setText("");setDue(today());setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);setIsInfo(false);setRfiSub("");setRfiDue("");}} style={{flex:"0 0 auto"}}>✕ Cancel</button>
+        <button className="btn btn-gold" style={{flex:1,justifyContent:"center"}} onClick={submit}>＋ Add {isInfo?"Info":"Task"}</button>
       </div>
-      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:6,color:isInfo?"#1565c0":"#888"}}>
-        <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:13,height:13}}/>
-        ℹ️ Info only (no score needed)
-      </label>
-      <button className="btn btn-gold" style={{width:"100%",justifyContent:"center"}} onClick={submit}>＋ Add {isInfo?"Info":"Task"}</button>
     </div>
   </div>;
 }
 
-// ── Reusable ActionItem component ─────────────────────────────────
 function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,tenders,contractors,showCreated}){
   const [editMode,setEditMode]=useState(false);
+  const [localTags,setLocalTags]=useState(task.tags||[]);
+  const [localRfiSub,setLocalRfiSub]=useState(task.rfiSubmission||"");
+  const [localRfiDue,setLocalRfiDue]=useState(task.rfiDue||"");
   const sc=calcScore(task.importance||1,task.urgence||1);
+
+  useEffect(function(){setLocalTags(task.tags||[]);},[task.tags]);
+  useEffect(function(){setLocalRfiSub(task.rfiSubmission||"");setLocalRfiDue(task.rfiDue||"");},[task.rfiSubmission,task.rfiDue]);
   const ss=scoreStyle(sc);
   const tdr=task.tenderRef?(tenders||[]).find(function(t){return t.id===task.tenderRef;}):null;
   const ctr=task.contractorRef?(contractors||[]).find(function(c){return c.id===task.contractorRef;}):null;
 
-  function upd(field,val){if(onUpdate)onUpdate(field,val);}
+  function upd(field,val){if(onUpdate)onUpdate(field,val,true);}
 
   return <div className="ac-item" style={{background:editMode?"#f8f9ff":task.status==="done"?"#fafaf8":"#fff",borderColor:editMode?"#3949ab":"#e8e6df",flexDirection:"column",gap:0}}>
     <div style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%"}}>
@@ -344,20 +398,30 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               {[1,2,3].map(function(v){return <button key={v} onClick={function(){upd("urgence",v);}} style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((task.urgence||1)===v?"#1c1c1e":"#ddd"),background:(task.urgence||1)===v?"#1c1c1e":"#fff",color:(task.urgence||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer"}}>{v}</button>;})}
             </div>}
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-              {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];upd("tags",on?cur.filter(function(x){return x!==tg;}):[...cur,tg]);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+              {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];var newTags=on?cur.filter(function(x){return x!==tg;}):[...cur,tg];setLocalTags(newTags);upd("tags",newTags);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
             </div>
             <textarea value={task.note||""} onChange={function(e){upd("note",e.target.value);}} placeholder="Notes..." style={{minHeight:32,fontSize:11,padding:"4px 8px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit",resize:"vertical"}}/>
-            {(task.tags||[]).includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px",background:"#fff8f0",borderRadius:7,border:"1px solid #fed7aa"}}>
+            <div>
+              <div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:4,textTransform:"uppercase",letterSpacing:".4px"}}>🔗 Links</div>
+              {(task.links||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
+                <input type="text" value={lk.label||""} onChange={function(e){var ls=(task.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});upd("links",ls);}} placeholder="Label" style={{width:100,padding:"3px 6px",fontSize:11,border:"1px solid #e0ddd8",borderRadius:5}}/>
+                <input type="url" value={lk.url||""} onChange={function(e){var ls=(task.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});upd("links",ls);}} placeholder="https://..." style={{flex:1,padding:"3px 6px",fontSize:11,border:"1px solid #e0ddd8",borderRadius:5}}/>
+                <button onClick={function(){var ls=(task.links||[]).filter(function(_,j){return j!==li;});upd("links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
+              </div>;})}
+              <button className="btn btn-sm" onClick={function(){upd("links",[...(task.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"2px 8px"}}>＋ Add link</button>
+            </div>
+            {localTags.includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px",background:"#fff8f0",borderRadius:7,border:"1px solid #fed7aa"}}>
               <div style={{flex:1}}>
                 <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>RFI Submission date</label>
-                <input type="date" value={task.rfiSubmission||""} onChange={function(e){
+                <input type="date" value={localRfiSub} onChange={function(e){
+                  setLocalRfiSub(e.target.value);
                   upd("rfiSubmission",e.target.value);
-                  if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);upd("rfiDue",d.toISOString().slice(0,10));}
+                  if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);var dd=d.toISOString().slice(0,10);setLocalRfiDue(dd);upd("rfiDue",dd);}
                 }} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
               </div>
               <div style={{flex:1}}>
                 <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>RFI Due date (+14 days)</label>
-                <input type="date" value={task.rfiDue||""} onChange={function(e){upd("rfiDue",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
+                <input type="date" value={localRfiDue} onChange={function(e){setLocalRfiDue(e.target.value);upd("rfiDue",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
               </div>
             </div>}
             <button className="btn btn-sm btn-pri" onClick={function(){setEditMode(false);}} style={{alignSelf:"flex-start"}}>✓ Done editing</button>
@@ -368,52 +432,60 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               {task.text||<span style={{color:"#ccc",fontStyle:"italic"}}>No text</span>}
             </div>
             {task.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{task.note}</div>}
-            <div className="ac-meta" style={{marginTop:4}}>
+            <div className="ac-meta" style={{marginTop:4,display:"flex",flexWrap:"wrap",alignItems:"center",gap:4}}>
               {task.due&&<span style={{fontSize:11,color:task.due<today()&&task.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(task.due)}</span>}
               {task.owner&&<OwnerChip owner={task.owner}/>}
               {task.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{task.package}</span>}
               {!task.isInfo&&sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
               {(task.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
-              {tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}
+              {tdr&&(onNavTender?<button onClick={function(e){e.stopPropagation();onNavTender(tdr.id,"global");}} style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10,padding:"2px 8px",borderRadius:20,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📑 {tdr.title}</button>:<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>)}
               {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
             </div>
-            {(task.tags||[]).includes("RFI")&&(task.rfiSubmission||task.rfiDue)&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"2px 6px",borderRadius:5,display:"inline-block"}}>
-              📋 RFI {task.rfiSubmission&&"submitted: "+fmtDate(task.rfiSubmission)} {task.rfiDue&&"· due: "+fmtDate(task.rfiDue)}
+            {(task.tags||[]).includes("RFI")&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"3px 8px",borderRadius:5,display:"inline-block"}}>
+              📋 RFI {task.rfiSubmission?"submitted: "+fmtDate(task.rfiSubmission):"⚠️ No submission date"} {task.rfiDue&&"· due: "+fmtDate(task.rfiDue)}
             </div>}
-            {(showCreated!==false)&&task.createdAt&&<div style={{fontSize:10,color:"#ccc",marginTop:3}}>Added {fmtDate(task.createdAt)}</div>}
+            {(task.links||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:3}}>
+              {(task.links||[]).map(function(lk,li){return lk.url?<a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3949ab",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:2,padding:"1px 6px",borderRadius:6,background:"#f0f0ff",border:"1px solid #d0d0f0"}} onMouseEnter={function(e){e.currentTarget.style.textDecoration="underline";}} onMouseLeave={function(e){e.currentTarget.style.textDecoration="none";}}>🔗 {lk.label||lk.url}</a>:null;})}
+            </div>}
+            {(showCreated!==false)&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3,alignItems:"center"}}>
+              {task.addedBy&&<span style={{fontSize:9,color:"#bbb",display:"inline-flex",alignItems:"center",gap:2}}>
+                <span style={{color:"#ddd"}}>✚</span>{task.addedBy.split(",")[0]}
+                {task.createdAt&&<span style={{color:"#ddd"}}>{fmtDate(task.createdAt)}</span>}
+              </span>}
+              {task.lastModifiedBy&&task.lastModifiedAt&&<span style={{fontSize:9,color:"#bbb",display:"inline-flex",alignItems:"center",gap:2}}>
+                <span style={{color:"#ddd"}}>✎</span>{task.lastModifiedBy.split(",")[0]}
+                <span style={{color:"#ddd"}}>{fmtDate(task.lastModifiedAt)}</span>
+              </span>}
+            </div>}
           </div>}
       </div>
       {!editMode&&<div style={{display:"flex",gap:4,flexShrink:0}}>
         <select className="btn btn-sm" value={task.status||"pending"} onChange={function(e){if(onStatusChange)onStatusChange(e.target.value);}} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd"}}>
           {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
         </select>
-        {onUpdate&&<button className="btn btn-sm" onClick={function(){setEditMode(true);}} style={{padding:"3px 7px"}}>✏️</button>}
-        {onDelete&&<button className="btn btn-sm btn-danger" onClick={function(){if(confirm("Delete?"))onDelete();}} style={{padding:"3px 7px"}}>🗑</button>}
+        <button className="btn btn-sm" onClick={function(){setEditMode(true);}} style={{padding:"3px 7px"}}>✏️</button>
+        {onDelete&&<button className="btn btn-sm btn-danger" onClick={function(){onDelete();}} style={{padding:"3px 7px"}}>🗑</button>}
       </div>}
     </div>
   </div>;
 }
 
-// ── StatusChip ────────────────────────────────────────────────────
 function StatusChip({status}){
   const cls={"pending":"s-default","in progress":"s-pending","done":"s-approved-a","blocked":"s-notdone"}[status]||"s-default";
   return <span className={"chip "+cls}>{STATUS_ICONS[status]} {status}</span>;
 }
 
-// ── Owner chip ────────────────────────────────────────────────────
 function OwnerChip({owner}){
   if(!owner)return null;
   const c=ownerColor(owner);
   return <span className="pill" style={{background:c.bg,color:c.accent,fontSize:11,fontWeight:700}}>{owner.split(",")[0]}</span>;
 }
 
-// ── Tag chip ─────────────────────────────────────────────────────
 function TagChip({tag}){
   const c=tagColor(tag);
   return <span className="tag" style={{background:c.bg,color:c.color}}>{tag}</span>;
 }
 
-// ── ACTIONS VIEW ──────────────────────────────────────────────────
 // ── QuickAddTask: inline contextual task creation ─────────────────
 function QuickAddTask({prefill,onAdd,people,tags,label}){
   const [open,setOpen]=useState(false);
@@ -424,6 +496,8 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
   const [importance,setImportance]=useState(1);
   const [urgence,setUrgence]=useState(1);
   const [isInfo,setIsInfo]=useState(false);
+  const [rfiSub,setRfiSub]=useState("");
+  const [rfiDue,setRfiDue]=useState("");
   const inputRef=useRef();
 
   useEffect(function(){
@@ -431,7 +505,7 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
     setSelTags(prefill.tags||[]);
   },[prefill.owner,prefill.tenderRef,prefill.contractorRef]);
 
-  function reset(){setText("");setDue("");setOwner(prefill.owner||"");setSelTags(prefill.tags||[]);setImportance(1);setUrgence(1);setIsInfo(false);setOpen(false);}
+  function reset(){setText("");setDue("");setOwner(prefill.owner||"");setSelTags(prefill.tags||[]);setImportance(1);setUrgence(1);setIsInfo(false);setRfiSub("");setRfiDue("");setOpen(false);}
   function submit(){
     if(!text.trim())return;
     var td=Object.assign({},prefill,{text:text.trim(),due:due,owner:owner,tags:selTags,importance:importance,urgence:urgence});
@@ -487,6 +561,16 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
     {(tags||window._ppTags||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:8}}>
       {(tags||window._ppTags||[]).map(function(tg){var on=selTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){toggleTag(tg);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
     </div>}
+    {selTags.includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px 10px",background:"#fff8f0",borderRadius:8,border:"1px solid #fed7aa",marginTop:8}}>
+      <div style={{flex:1}}>
+        <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:3}}>RFI Submission date</label>
+        <input type="date" value={rfiSub} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+14);setRfiDue(d.toISOString().slice(0,10));}}} style={{padding:"4px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
+      </div>
+      <div style={{flex:1}}>
+        <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:3}}>Due date (+14 days)</label>
+        <input type="date" value={rfiDue} onChange={function(e){setRfiDue(e.target.value);}} style={{padding:"4px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
+      </div>
+    </div>}
     <div style={{display:"flex",gap:6,marginTop:10}}>
       <button className="btn" onClick={reset} style={{padding:"4px 10px",fontSize:11}}>Cancel</button>
       <button className="btn btn-pri" onClick={submit} disabled={!text.trim()} style={{padding:"4px 10px",fontSize:11}}>＋ Add</button>
@@ -519,7 +603,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
   const updateTask=(id,field,val)=>{
     saveT(tasks.map(function(t){if(t.id!==id)return t;var u=Object.assign({},t);u[field]=val;return u;}));
   };
-  const deleteTask=id=>{if(confirm("Delete this task?"))saveT(tasks.filter(t=>t.id!==id));};
+  const deleteTask=id=>{if(safeConfirm("Delete this task?"))saveT(tasks.filter(t=>t.id!==id));};
 
   const pending=tasks.filter(t=>t.status==="pending"||t.status==="in progress").length;
   const done=tasks.filter(t=>t.status==="done").length;
@@ -564,9 +648,9 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
         <div style={{flex:1,minWidth:0}}>
           {isEdit
           ?<div style={{display:"flex",flexDirection:"column",gap:7}}>
-            {/* Text */}
+
             <textarea value={t.text} onChange={e=>updateTask(t.id,"text",e.target.value)} autoFocus style={{fontSize:13,fontWeight:500,minHeight:50,resize:"vertical"}}/>
-            {/* Row: date + status */}
+
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1}}><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Due date</label>
                 <input type="date" value={t.due||""} onChange={e=>updateTask(t.id,"due",e.target.value)}/></div>
@@ -575,7 +659,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                   {STATUS_OPTS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}
                 </select></div>
             </div>
-            {/* Row: owner + package */}
+
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1}}><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Owner</label>
                 <select value={t.owner||""} onChange={e=>updateTask(t.id,"owner",e.target.value)}>
@@ -586,7 +670,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                   <option value="">— none —</option>{packages.map(p=><option key={p} value={p}>{p}</option>)}
                 </select></div>
             </div>
-            {/* Score I×U */}
+
             <div><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:4}}>Score I×U</label>
               <div style={{display:"flex",gap:10,alignItems:"center"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
@@ -603,7 +687,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                 {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,marginLeft:4,fontSize:11,fontWeight:700}}>{ss.label}</span>}
               </div>
             </div>
-            {/* Tags */}
+
             <div><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:4}}>Tags</label>
               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                 {tags.map(tg=>{const on=(t.tags||[]).includes(tg);const tc=tagColor(tg);return <button key={tg} onClick={()=>{const cur=t.tags||[];updateTask(t.id,"tags",on?cur.filter(x=>x!==tg):[...cur,tg]);}}
@@ -614,7 +698,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                 {getAllCCs(t.tags||[],t.package||"",t.owner||"",tagrules,pkgrules).map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}
               </div>}
             </div>
-            {/* Links */}
+
             <div style={{display:"flex",gap:6}}>
               <div style={{flex:1}}><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Link Tender</label>
                 <select value={t.tenderRef||""} onChange={e=>updateTask(t.id,"tenderRef",e.target.value)}>
@@ -625,7 +709,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
                   <option value="">— none —</option>{contractors.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                 </select></div>
             </div>
-            {/* Note */}
+
             <div><label style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:2}}>Note</label>
               <textarea value={t.note||""} onChange={e=>updateTask(t.id,"note",e.target.value)} placeholder="Notes, context…" style={{minHeight:36,fontSize:12}}/></div>
             <button className="btn btn-sm btn-pri" onClick={()=>setEditId(null)} style={{alignSelf:"flex-start"}}>✓ Close editor</button>
@@ -658,7 +742,6 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
   </div>;
 }
 
-// ── TRACKERS VIEW ──────────────────────────────────────────────────
 function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,contractors,tagrules,pkgrules}){
   const [trackerQ,setTrackerQ]=useState("");
   const [view,setView]=useState("list");
@@ -675,7 +758,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
     saveX(d);setShowForm(false);
     if(sel&&sel.id===td.id)setSel(td);
   };
-  const delTracker=id=>{if(confirm("Delete tracker?"))saveX(trackers.filter(t=>t.id!==id));setSel(null);setView("list");};
+  const delTracker=id=>{if(safeConfirm("Delete tracker?"))saveX(trackers.filter(t=>t.id!==id));setSel(null);setView("list");};
 
   const updAction=(trId,acId,field,val)=>{
     const d=trackers.map(function(tr){if(tr.id!==trId)return tr;return Object.assign({},tr,{actions:tr.actions.map(function(a){if(a.id!==acId)return a;var u=Object.assign({},a);u[field]=val;return u;})});});
@@ -730,7 +813,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
                 <option value="">— package —</option>{packages.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
             </div>
-            {/* Score */}
+
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
               <span style={{fontSize:10,fontWeight:700,color:"#aaa",minWidth:20}}>I</span>
               {[1,2,3].map(v=><button key={v} onClick={()=>updAction(sel.id,ac.id,"importance",v)}
@@ -740,24 +823,27 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
                 style={{width:22,height:22,borderRadius:4,border:"1.5px solid "+((ac.urgence||1)===v?"#1c1c1e":"#ddd"),background:(ac.urgence||1)===v?"#1c1c1e":"#fff",color:(ac.urgence||1)===v?"#fff":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:800,cursor:"pointer"}}>{v}</button>)}
               {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10,marginLeft:4}}>{ss.label}</span>}
             </div>
-            {/* Tags */}
+
             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
               {tags.map(tg=>{const on=(ac.tags||[]).includes(tg);const tc=tagColor(tg);return <button key={tg} onClick={()=>{const cur=ac.tags||[];updAction(sel.id,ac.id,"tags",on?cur.filter(x=>x!==tg):[...cur,tg]);}}
                 style={{padding:"2px 8px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
             </div>
-            {/* CCs */}
+
             {ccs.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
               <span style={{fontSize:10,fontWeight:700,color:"#aaa"}}>CC:</span>
               {ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}
             </div>}
-            {/* Details */}
+
             {ac.details!==undefined&&<textarea value={ac.details||""} onChange={e=>updAction(sel.id,ac.id,"details",e.target.value)} placeholder="Details…"
               style={{width:"100%",marginTop:5,fontSize:11,minHeight:30,border:"1px solid #f0ede6",borderRadius:5,padding:"3px 6px",background:"#fafaf8",resize:"vertical"}}/>}
           </div>
           <button className="btn btn-sm btn-danger" onClick={()=>delAction(sel.id,ac.id)} style={{padding:"3px 7px",flexShrink:0,alignSelf:"flex-start"}}>🗑</button>
         </div>;
       })}
-      <button className="btn btn-sm" onClick={()=>addAction(sel.id)} style={{marginTop:8}}>＋ Add Action</button>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8}}>
+        <button className="btn btn-sm" onClick={function(){addAction(sel.id,false);}}>＋ Add Action</button>
+        <button className="btn btn-sm" onClick={function(){addAction(sel.id,true);}} style={{background:"#e3f2fd",color:"#1565c0",border:"1.5px solid #1565c0"}}>＋ Add Info</button>
+      </div>
       {showForm&&formData&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
     </div>;
   }
@@ -808,8 +894,297 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
   </div></div>;
 }
 
-// ── TENDERS VIEW ───────────────────────────────────────────────────
-function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners}){
+function parseLeadDays(str){
+  if(!str)return 0;
+  var s=String(str).toLowerCase().trim();
+  var n=parseFloat(s)||0;
+  if(!n)return 0;
+  if(s.includes("week")||s.includes("sem")||s.includes("wk")||s.includes("sem"))return Math.round(n*6);
+  if(s.includes("month")||s.includes("mois"))return Math.round(n*26);
+  return Math.round(n);
+}
+function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender}){
+  const [open,setOpen]=useState(true);
+  var mats=td.materials||[];
+
+  function autoTask(mat,kind,targetDate){
+    if(!saveT||!tasks)return;
+
+    var taskText="["+kind+"] "+mat.name+" — "+td.title;
+    var exists=(tasks||[]).some(function(t){
+      return t.tenderRef===td.id&&t.text===taskText&&!t.isInfo;
+    });
+    if(exists)return;
+    var task=newTask({
+      text:taskText,
+      owner:td.ownerTender||"",
+      due:targetDate||"",
+      tenderRef:td.id,
+      package:td.package||"",
+      importance:1,urgence:1,
+      tags:[kind],
+      note:"Auto-created from material tracking ("+kind+")",
+      addedBy:"System"
+    });
+    saveT([...(tasks||[]),task]);
+  }
+
+  function updMat(mi,field,val){
+    var ms=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{[field]:val});});
+    updTd("materials",ms);
+  }
+
+  return <div className="card" style={{marginBottom:10}}>
+
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",marginBottom:open&&mats.length>0?10:0}} onClick={function(){setOpen(!open);}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:13,color:"#aaa"}}>{open?"▾":"▸"}</span>
+        <div style={{fontWeight:700,fontSize:13}}>🏗️ Materials {mats.length>0&&<span style={{fontWeight:400,color:"#aaa",fontSize:12}}>({mats.length})</span>}</div>
+      </div>
+      <button className="btn btn-sm" onClick={function(e){e.stopPropagation();
+        var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",
+          mssOpen:false,mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",mssLink:"",mssLinkLabel:"",mssNumber:"",
+          marOpen:false,marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:"",marLink:"",marLinkLabel:"",marNumber:"",
+          hasPO:false,poNumber:"",poStatus:"",poAccOpen:false,poAccStatus:"",poAccTarget:"",poAccDone:"",poAccApprovalStatus:"",poAccApprovalTarget:"",poAccApprovalDone:"",poAccReview:""}];
+        updTd("materials",ms);setOpen(true);
+      }}>＋ Material</button>
+    </div>
+
+    {open&&<div>
+      {mats.length===0&&<div style={{color:"#bbb",fontSize:12,padding:"4px 0"}}>No materials. Click "＋ Material" to add one.</div>}
+      {mats.map(function(mat,mi){
+        var mssDue=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var mssOv=mat.mssApprovalStatus!=="approved"&&mat.mssApprovalTarget&&mat.mssApprovalTarget<today();
+        var marDue=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var marOv=mat.marApprovalStatus!=="approved"&&mat.marApprovalTarget&&mat.marApprovalTarget<today();
+        var mssOpen=mat.mssOpen||false;
+        var marOpen=mat.marOpen||false;
+
+        return <div key={mat.id||mi} style={{padding:"8px 10px",background:"#fafaf8",borderRadius:7,border:"1px solid #f0ede6",marginBottom:8}}>
+
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,alignItems:"flex-end"}}>
+            <div style={{flex:2,minWidth:120}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Material name</div>
+              <input type="text" value={mat.name||""} onChange={function(e){updMat(mi,"name",e.target.value);}} placeholder="Name" style={{width:"100%",padding:"4px 7px",fontSize:12,fontWeight:600,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:2,minWidth:100}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Specified</div>
+              <input type="text" value={mat.specified||""} onChange={function(e){updMat(mi,"specified",e.target.value);}} placeholder="Specified material" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:2,minWidth:100}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Proposed</div>
+              <input type="text" value={mat.proposed||""} onChange={function(e){updMat(mi,"proposed",e.target.value);}} placeholder="Proposed material" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:1,minWidth:70}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Lead time</div>
+              <input type="text" value={mat.leadTime||""} onChange={function(e){
+                var newLead=e.target.value;
+                var updatedMats=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{leadTime:newLead});});
+
+                var maxDays=updatedMats.reduce(function(mx,m){var d=parseLeadDays(m.leadTime||"");return d>mx?d:mx;},0);
+
+                var updates={materials:updatedMats};
+                updates.leadTimeDays=maxDays>0?String(maxDays):"30";
+                var combined=Object.assign({},td,updates);
+                var d=(tenders||[]).map(function(t){return t.id!==combined.id?t:combined;});
+                saveTenders(d);setSelTender(d.find(function(t){return t.id===combined.id;}));
+              }} placeholder="e.g. 8 wks" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            </div>
+            <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0,marginBottom:2}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+          </div>
+
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+            <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
+              <input type="checkbox" checked={mat.hasPO||false} onChange={function(e){updMat(mi,"hasPO",e.target.checked);}} style={{width:13,height:13}}/>
+              <span style={{color:mat.hasPO?"#b45309":"#888"}}>📦 PO</span>
+            </label>
+            {mat.hasPO&&<input type="text" value={mat.poNumber||""} onChange={function(e){updMat(mi,"poNumber",e.target.value);}} placeholder="PO number" style={{width:110,padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>}
+            {mat.hasPO&&<select value={mat.poStatus||""} onChange={function(e){updMat(mi,"poStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,fontFamily:"inherit",color:mat.poStatus==="issued"?"#2e7d32":mat.poStatus==="pending"?"#f57f17":"#555"}}>
+              <option value="">— PO status —</option>
+              <option value="pending">Pending</option>
+              <option value="issued">✅ Issued</option>
+              <option value="on hold">On hold</option>
+            </select>}
+          </div>
+
+          {mat.hasPO&&<div style={{marginBottom:6}}>
+            <div onClick={function(){updMat(mi,"poAccOpen",!(mat.poAccOpen));}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:(mat.poAccOpen)?"#fff8f033":"transparent",borderRadius:5,marginBottom:(mat.poAccOpen)?4:0}}>
+              <span style={{fontSize:10,color:"#b45309"}}>{mat.poAccOpen?"▾":"▸"}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#b45309"}}>PO ACC/ACONEX</span>
+              {!(mat.poAccOpen)&&(mat.poAccStatus||mat.poAccApprovalStatus)&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#fff8f0",color:"#b45309",marginLeft:2}}>{mat.poAccApprovalStatus||mat.poAccStatus}</span>}
+              {!(mat.poAccOpen)&&mat.poAccApprovalStatus!=="approved"&&mat.poAccApprovalTarget&&mat.poAccApprovalTarget<today()&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
+            </div>
+            {mat.poAccOpen&&<div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#fff8f022",borderRadius:"6px 6px 0 0",border:"1px solid #fdd9b5",borderBottom:"none"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#b45309",minWidth:90}}>ACC Submission</span>
+                <select value={mat.poAccStatus||""} onChange={function(e){updMat(mi,"poAccStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.poAccTarget||""} onChange={function(e){updMat(mi,"poAccTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.poAccDone||""} onChange={function(e){
+                  var dv=e.target.value;updMat(mi,"poAccDone",dv);
+                  if(dv&&mat.poAccStatus==="submitted"&&!mat.poAccApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updMat(mi,"poAccApprovalTarget",d.toISOString().slice(0,10));}
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                {(function(){var due=mat.poAccDone?(function(){var d=new Date(mat.poAccDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.poAccStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+              </div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#fff8f011",borderRadius:"0 0 6px 6px",border:"1px solid #fdd9b5"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#e65100",minWidth:90}}>ACC Approval</span>
+                <select value={mat.poAccApprovalStatus||""} onChange={function(e){updMat(mi,"poAccApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.poAccApprovalTarget||""} onChange={function(e){updMat(mi,"poAccApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.poAccApprovalDone||""} onChange={function(e){updMat(mi,"poAccApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#555",fontWeight:600}}>Review</span>
+                  <select value={mat.poAccReview||""} onChange={function(e){updMat(mi,"poAccReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #fdd9b5",borderRadius:4,fontFamily:"inherit",fontWeight:mat.poAccReview?"700":"400",color:mat.poAccReview==="A"?"#2e7d32":mat.poAccReview==="Rejected"?"#c62828":"#b45309"}}>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {mat.poAccApprovalStatus!=="approved"&&mat.poAccApprovalTarget&&mat.poAccApprovalTarget<today()&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(mat.poAccApprovalTarget,today())}d</span>}
+              </div>
+            </div>}
+          </div>}
+
+          <div style={{marginBottom:4}}>
+            <div onClick={function(){updMat(mi,"mssOpen",!mssOpen);}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:mssOpen?"#e8f0fe33":"transparent",borderRadius:5,marginBottom:mssOpen?4:0}}>
+              <span style={{fontSize:10,color:"#1a73e8"}}>{mssOpen?"▾":"▸"}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#1a73e8"}}>MSS</span>
+              {!mssOpen&&mat.mssNumber&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#e8f0fe",color:"#1a73e8",fontFamily:"monospace",marginLeft:2}}>{mat.mssNumber}</span>}
+              {!mssOpen&&(mat.mssStatus||mat.mssApprovalStatus)&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#e8f0fe",color:"#1a73e8",marginLeft:2}}>{mat.mssApprovalStatus||mat.mssStatus}</span>}
+              {!mssOpen&&mssOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
+            </div>
+            {mssOpen&&<div>
+
+              <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px 0 8px"}}>
+                <span style={{fontSize:9,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>MSS N°</span>
+                <input type="text" value={mat.mssNumber||""} onChange={function(e){updMat(mi,"mssNumber",e.target.value);}} placeholder="MSS reference number" style={{flex:1,padding:"3px 7px",fontSize:10,border:"1px solid #bbdefb",borderRadius:5}}/>
+              </div>
+
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#e8f0fe22",borderRadius:"6px 6px 0 0",border:"1px solid #e8e6df",borderBottom:"none",marginTop:4}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#1a73e8",minWidth:90}}>MSS Submission</span>
+                <select value={mat.mssStatus||""} onChange={function(e){
+                  var newStatus=e.target.value;
+                  updMat(mi,"mssStatus",newStatus);
+                  if(newStatus==="under preparation")autoTask(mat,"MSS",mat.mssTarget||"");
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.mssTarget||""} onChange={function(e){updMat(mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.mssDone||""} onChange={function(e){
+                  var dv=e.target.value;updMat(mi,"mssDone",dv);
+                  if(dv){var d=new Date(dv);d.setDate(d.getDate()+14);var tgt=d.toISOString().slice(0,10);updMat(mi,"mssApprovalTarget",tgt);}
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #bbdefb",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                  <input type="text" value={mat.mssLinkLabel||""} onChange={function(e){updMat(mi,"mssLinkLabel",e.target.value);}} placeholder="Link label" style={{width:65,padding:"2px 4px",fontSize:9,border:"1px solid #bbdefb",borderRadius:4}}/>
+                  <input type="url" value={mat.mssLink||""} onChange={function(e){updMat(mi,"mssLink",e.target.value);}} placeholder="https://..." style={{width:100,padding:"2px 4px",fontSize:9,border:"1px solid #bbdefb",borderRadius:4}}/>
+                  {mat.mssLink&&<a href={mat.mssLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#3949ab",padding:"1px 4px",borderRadius:4,background:"#f0f0ff",textDecoration:"none"}}>🔗</a>}
+                </div>
+                {(function(){var due=mat.mssDone?(function(){var d=new Date(mat.mssDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.mssStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+              </div>
+
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f0fff422",borderRadius:"0 0 6px 6px",border:"1px solid #e8e6df"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:90}}>MSS Approval</span>
+                <select value={mat.mssApprovalStatus||""} onChange={function(e){updMat(mi,"mssApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.mssApprovalTarget||""} onChange={function(e){updMat(mi,"mssApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.mssApprovalDone||""} onChange={function(e){updMat(mi,"mssApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#555",fontWeight:600}}>Review</span>
+                  <select value={mat.mssReview||""} onChange={function(e){updMat(mi,"mssReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #c8e6c9",borderRadius:4,fontFamily:"inherit",fontWeight:mat.mssReview?"700":"400",color:mat.mssReview==="A"?"#2e7d32":mat.mssReview==="Rejected"?"#c62828":"#555"}}>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {mssOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(mat.mssApprovalTarget,today())}d</span>}
+              </div>
+            </div>}
+          </div>
+
+          <div>
+            <div onClick={function(){updMat(mi,"marOpen",!marOpen);}} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"4px 6px",background:marOpen?"#f3e5f533":"transparent",borderRadius:5,marginBottom:marOpen?4:0}}>
+              <span style={{fontSize:10,color:"#7b1fa2"}}>{marOpen?"▾":"▸"}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#7b1fa2"}}>MAR</span>
+              {!marOpen&&mat.marNumber&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#f3e5f5",color:"#7b1fa2",fontFamily:"monospace",marginLeft:2}}>{mat.marNumber}</span>}
+              {!marOpen&&(mat.marStatus||mat.marApprovalStatus)&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#f3e5f5",color:"#7b1fa2",marginLeft:2}}>{mat.marApprovalStatus||mat.marStatus}</span>}
+              {!marOpen&&marOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️</span>}
+            </div>
+            {marOpen&&<div>
+
+              <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px 0 8px"}}>
+                <span style={{fontSize:9,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>MAR N°</span>
+                <input type="text" value={mat.marNumber||""} onChange={function(e){updMat(mi,"marNumber",e.target.value);}} placeholder="MAR reference number" style={{flex:1,padding:"3px 7px",fontSize:10,border:"1px solid #ce93d8",borderRadius:5}}/>
+              </div>
+
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f3e5f522",borderRadius:"6px 6px 0 0",border:"1px solid #ce93d8",borderBottom:"none",marginTop:4}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#7b1fa2",minWidth:90}}>MAR Submission</span>
+                <select value={mat.marStatus||""} onChange={function(e){
+                  var newStatus=e.target.value;
+                  updMat(mi,"marStatus",newStatus);
+                  if(newStatus==="under preparation")autoTask(mat,"MAR",mat.marTarget||"");
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.marTarget||""} onChange={function(e){updMat(mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.marDone||""} onChange={function(e){
+                  var dv=e.target.value;updMat(mi,"marDone",dv);
+                  if(dv){var d=new Date(dv);d.setDate(d.getDate()+14);var tgt=d.toISOString().slice(0,10);updMat(mi,"marApprovalTarget",tgt);}
+                }} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                  <input type="text" value={mat.marLinkLabel||""} onChange={function(e){updMat(mi,"marLinkLabel",e.target.value);}} placeholder="Link label" style={{width:65,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
+                  <input type="url" value={mat.marLink||""} onChange={function(e){updMat(mi,"marLink",e.target.value);}} placeholder="https://..." style={{width:100,padding:"2px 4px",fontSize:9,border:"1px solid #ce93d8",borderRadius:4}}/>
+                  {mat.marLink&&<a href={mat.marLink} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:9,color:"#7b1fa2",padding:"1px 4px",borderRadius:4,background:"#f3e5f5",textDecoration:"none"}}>🔗</a>}
+                </div>
+                {(function(){var due=mat.marDone?(function(){var d=new Date(mat.marDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=mat.marStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+              </div>
+
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"6px 8px",background:"#f3e5f511",borderRadius:"0 0 6px 6px",border:"1px solid #ce93d8"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#6a1b9a",minWidth:90}}>MAR Approval</span>
+                <select value={mat.marApprovalStatus||""} onChange={function(e){updMat(mi,"marApprovalStatus",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit"}}>
+                  <option value="">— Status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Target date</span><input type="date" value={mat.marApprovalTarget||""} onChange={function(e){updMat(mi,"marApprovalTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:9,color:"#555",fontWeight:600}}>Date done</span><input type="date" value={mat.marApprovalDone||""} onChange={function(e){updMat(mi,"marApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4}}/></div>
+                <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#555",fontWeight:600}}>Review</span>
+                  <select value={mat.marReview||""} onChange={function(e){updMat(mi,"marReview",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #ce93d8",borderRadius:4,fontFamily:"inherit",fontWeight:mat.marReview?"700":"400",color:mat.marReview==="A"?"#2e7d32":mat.marReview==="Rejected"?"#c62828":"#6a1b9a"}}>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {marOv&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(mat.marApprovalTarget,today())}d</span>}
+              </div>
+            </div>}
+          </div>
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+
+function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners,jumpTender,clearJumpTender,jumpFrom,onBack}){
   const [pkgFilter,setPkgFilter]=useState("all");
   const [searchQ,setSearchQ]=useState("");
   const [sortCol,setSortCol]=useState("title");
@@ -825,20 +1200,22 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   function toggleSort(col){if(sortCol===col)setSortDir(function(d){return d==="asc"?"desc":"asc";});else{setSortCol(col);setSortDir("asc");}}
   function sortIcon(col){if(sortCol!==col)return " ↕";return sortDir==="asc"?" ↑":" ↓";}
 
-  var filtered=(tenders||[]).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).filter(function(t){
-    if(pkgFilter!=="all"&&t.package!==pkgFilter)return false;
-    if(searchQ){var q=searchQ.toLowerCase();if(!(t.title||"").toLowerCase().includes(q)&&!(t.ownerTender||"").toLowerCase().includes(q)&&!(t.package||"").toLowerCase().includes(q))return false;}
-    return true;
-  }).slice().sort(function(a,b){
-    var va="",vb="";
-    if(sortCol==="title"){va=a.title||"";vb=b.title||"";}
-    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";}
-    else if(sortCol==="owner"){va=a.ownerTender||"";vb=b.ownerTender||"";}
-    else if(sortCol==="acc"){va=(a.steps||{}).acc||"";vb=(b.steps||{}).acc||"";}
-    else if(sortCol==="contract"){va=(a.steps||{}).contract||"";vb=(b.steps||{}).contract||"";}
-    var r=va<vb?-1:va>vb?1:0;
-    return sortDir==="asc"?r:-r;
-  });
+  var filtered=React.useMemo(function(){
+    var list=(tenders||[]).filter(function(t){
+      if(pkgFilter!=="all"&&t.package!==pkgFilter)return false;
+      if(searchQ){var q=searchQ.toLowerCase();if(!(t.title||"").toLowerCase().includes(q)&&!(t.ownerTender||"").toLowerCase().includes(q)&&!(t.package||"").toLowerCase().includes(q))return false;}
+      return true;
+    });
+    return list.slice().sort(function(a,b){
+      var r=0;
+      if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.title||"").localeCompare(b.title||""));}
+      else if(sortCol==="owner"){r=(a.ownerTender||"").localeCompare(b.ownerTender||"");}
+      else if(sortCol==="acc"){r=((a.steps||{}).acc||"").localeCompare(((b.steps||{}).acc)||"");}
+      else if(sortCol==="contract"){r=((a.steps||{}).contract||"").localeCompare(((b.steps||{}).contract)||"");}
+      else{r=(a.title||"").localeCompare(b.title||"");}
+      return sortDir==="asc"?r:-r;
+    });
+  },[tenders,pkgFilter,searchQ,sortCol,sortDir]);
 
   function openNew(){setFormData(newTender());setShowForm(true);}
   function openEdit(td){setFormData(JSON.parse(JSON.stringify(td)));setShowForm(true);}
@@ -846,7 +1223,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     var d=(tenders||[]).find(function(x){return x.id===td.id;})?(tenders||[]).map(function(x){return x.id===td.id?td:x;}):[td,...(tenders||[])];
     saveTenders(d);setShowForm(false);if(selTender&&selTender.id===td.id)setSelTender(td);
   }
-  function delTender(id){if(confirm("Delete tender?"))saveTenders((tenders||[]).filter(function(t){return t.id!==id;}));setSelTender(null);}
+  function delTender(id){if(safeConfirm("Delete tender?"))saveTenders((tenders||[]).filter(function(t){return t.id!==id;}));setSelTender(null);}
 
   function updateStep(tdId,step,field,val){
     var d=(tenders||[]).map(function(t){
@@ -855,10 +1232,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       if(!sd[step])sd[step]={target:"",done:""};
       var steps=Object.assign({},t.steps||{});
       var sc=Object.assign({},t.stepComments||{});
+      var sl=Object.assign({},t.stepLinks||{});
+      if(!sl[step])sl[step]=[];
       if(field==="status")steps[step]=val;
       else if(field==="comment"){sc[step]=val;}
-      else{var cur=Object.assign({},sd[step]);cur[field]=val;sd[step]=cur;}
-      return Object.assign({},t,{steps:steps,stepDates:sd,stepComments:sc});
+      else if(field==="links"){sl[step]=val;}
+      else if(field==="approval"||field==="target"||field==="done"||field==="bids"){var cur=Object.assign({},sd[step]||{});cur[field]=val;sd[step]=cur;}
+      else{var cur2=Object.assign({},sd[step]);cur2[field]=val;sd[step]=cur2;}
+      return Object.assign({},t,{steps:steps,stepDates:sd,stepComments:sc,stepLinks:sl});
     });
     saveTenders(d);if(selTender&&selTender.id===tdId)setSelTender(d.find(function(t){return t.id===tdId;}));
   }
@@ -867,90 +1248,387 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
   if(selTender){
     var td=selTender;
+    var linkedTasks=(tasks||[]).filter(function(t){return t.tenderRef===td.id;});
+    function updTd(field,val){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{[field]:val});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}
+    var cur=td.currency||"EUR";
+    var budget=Number(td.budget)||0;
+    var accSub=Number(td.accAmountSubcontract)||0;
+    var accOther=Number(td.accAmountOther)||0;
+    var accTotal=accSub+accOther;
+    var treated=Number(td.accAmountTreated)||0;
+    var proposed=accTotal;
+    var instructed=Number(td.instructionAmount)||0;
+    var isReleased=td.released||false;
+    var effectiveCost=treated>0?treated:proposed;
+    var variance=budget>0&&effectiveCost>0?budget-effectiveCost:0;
+    var varianceLabel=treated>0?"Budget − Treated":"Budget − Proposed";
+    var linkedContracts=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct,ctr};});});
+    var contractTotal=linkedContracts.reduce(function(s,x){return s+Number(x.ct.amount||0);},0);
+    var addendumTotal=linkedContracts.reduce(function(s,x){return s+(x.ct.addendums||[]).reduce(function(s2,ad){return s2+Number(ad.amount||0);},0);},0);
+    var contractGrand=contractTotal+addendumTotal;
+
     return <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
-      {/* Sidebar tender list */}
+
       <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Tenders</div>
         <div style={{padding:"6px 8px",borderBottom:"1px solid #f0ede6"}}>
-          <select value={pkgFilter} onChange={function(e){setPkgFilter(e.target.value);}} style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+          <select value={pkgFilter} onChange={function(e){setPkgFilter(e.target.value);}} style={{fontSize:11,border:"none",background:"transparent",fontFamily:"inherit",width:"100%"}}>
             <option value="all">All packages</option>
-            {[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))].sort().map(function(p){return <option key={p} value={p}>{p}</option>;})}
+            {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
           </select>
         </div>
-        <div style={{maxHeight:"75vh",overflowY:"auto"}}>
-          {filtered.slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>
-            <div style={{color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-            {t.package&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{t.package}</div>}
-          </div>;})}
+        <div style={{maxHeight:600,overflowY:"auto"}}>
+          {filtered.map(function(t){var isActive=t.id===selTender.id;return <div key={t.id} onClick={function(){setSelTender(t);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>{t.title}</div>;})}
         </div>
-      </div>
-      {/* Main detail */}
-      <div style={{flex:1,minWidth:0}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-        <button className="btn btn-sm" onClick={function(){setSelTender(null);}}>← Back</button>
-        <div style={{flex:1}}>
-          <div className="page-title">{td.title}</div>
-          <div className="page-sub">{td.package&&<span>📦 {td.package} </span>}{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</div>
-          {(td.budget||td.instructionAmount)&&<div style={{display:"flex",gap:10,marginTop:6,flexWrap:"wrap"}}>
-            {td.budget&&<div style={{padding:"4px 10px",borderRadius:7,background:"#f0ede6",fontSize:12}}><span style={{color:"#888"}}>Budget: </span><strong>{Number(td.budget).toLocaleString()} {td.currency||"EUR"}</strong></div>}
-            {td.instructionAmount&&<div style={{padding:"4px 10px",borderRadius:7,background:"#e8f0fe",fontSize:12}}><span style={{color:"#888"}}>Instruction: </span><strong>{Number(td.instructionAmount).toLocaleString()} {td.currency||"EUR"}</strong></div>}
-            {td.budget&&td.instructionAmount&&<div style={{padding:"4px 10px",borderRadius:7,fontSize:12,background:Number(td.instructionAmount)>Number(td.budget)?"#fce4ec":"#e8f5e9"}}>
-              <span style={{color:"#888"}}>Variance: </span><strong style={{color:Number(td.instructionAmount)>Number(td.budget)?"#c62828":"#2e7d32"}}>{Number(td.instructionAmount)>Number(td.budget)?"+":""}{(Number(td.instructionAmount)-Number(td.budget)).toLocaleString()} {td.currency||"EUR"}</strong>
-            </div>}
-          </div>}
-        </div>
-        <button className="btn btn-sm" onClick={function(){openEdit(td);}}>✏️ Edit</button>
-        <button className="btn btn-sm btn-danger" onClick={function(){delTender(td.id);}}>🗑</button>
       </div>
 
+      <div style={{flex:1,minWidth:0}}>
+
+        <div className="page-hdr" style={{marginBottom:12}}>
+          {onBack&&<button className="btn btn-sm" onClick={onBack} style={{marginRight:4,flexShrink:0,alignSelf:"flex-start",marginTop:4,color:"#3949ab",border:"1px solid #3949ab"}}>← Back to {jumpFrom}</button>}
+          <button className="btn btn-sm" onClick={function(){setSelTender(null);onBack?null:null;}} style={{marginRight:8,flexShrink:0,alignSelf:"flex-start",marginTop:4}}>← Tenders</button>
+          <div style={{flex:1}}>
+            <input type="text" value={td.title||""} onChange={function(e){updTd("title",e.target.value);}} placeholder="Tender title" style={{fontSize:22,fontWeight:700,fontFamily:"'DM Serif Display',serif",border:"none",borderBottom:"1.5px solid #e8e6df",background:"transparent",outline:"none",width:"100%",padding:"2px 0",marginBottom:4}}/>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>PKG</span>
+                <select value={td.package||""} onChange={function(e){updTd("package",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
+                  <option value="">—</option>
+                  {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+                </select>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>OWNER</span>
+                <select value={td.ownerTender||""} onChange={function(e){updTd("ownerTender",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
+                  <option value="">—</option>
+                  {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+                </select>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>WBS</span>
+                <input type="text" value={td.wbs||""} onChange={function(e){updTd("wbs",e.target.value);}} placeholder="WBS-001" style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",width:90}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>CURRENCY</span>
+                <select value={td.currency||"EUR"} onChange={function(e){updTd("currency",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
+                  {["EUR","USD","GBP","CHF","AED","SAR"].map(function(x){return <option key={x} value={x}>{x}</option>;})}
+                </select>
+              </div>
+
+              <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>TARGET START</span>
+                <input type="date" value={td.startOnSite||""} onChange={function(e){updTd("startOnSite",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px"}}/>
+                {(function(){
+                  var proc=calcProcurement(td);
+                  var procDelivery=proc.deliveryDate||"";
+                  var startOnSite=td.startOnSite||"";
+                  if(!procDelivery)return null;
+                  var marginDays=startOnSite?(function(){var d1=new Date(procDelivery);var d2=new Date(startOnSite);return Math.round((d2-d1)/(1000*60*60*24));})():null;
+                  return <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                    <span style={{fontSize:10,color:"#555"}}>→ Procurement delivers: <strong style={{color:marginDays!==null&&marginDays<0?"#c62828":"#2e7d32"}}>{fmtDate(procDelivery)}</strong></span>
+                    {marginDays!==null&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:6,background:marginDays<0?"#fce4ec":marginDays<7?"#fff8e1":"#e8f5e9",color:marginDays<0?"#c62828":marginDays<7?"#f57f17":"#2e7d32"}}>{marginDays>0?"+":""}{marginDays}d</span>}
+                  </div>;
+                })()}
+              </div>
+              <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
+                <input type="checkbox" checked={isReleased} onChange={function(e){updTd("released",e.target.checked);}} style={{width:13,height:13}}/>
+                <span style={{color:isReleased?"#2e7d32":"#888"}}>✅ Budget Release</span>
+              </label>
+            </div>
+          </div>
+          <button className="btn btn-sm btn-danger" onClick={function(){if(safeConfirm("Delete?"))delTender(td.id);}}>🗑</button>
+        </div>
+
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
+            <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <input type="number" value={td.budget||""} onChange={function(e){updTd("budget",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #e8e6df",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit"}}/>
+              <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
+            </div>
+          </div>
+          <div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#f0f8ff"}}>
+            <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>ACC proposed</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#1a73e8"}}>{accTotal>0?accTotal.toLocaleString():"—"} {cur}</div>
+            <div style={{fontSize:10,color:"#888"}}>Sub {accSub.toLocaleString()} + Other {accOther.toLocaleString()}</div>
+          </div>
+          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
+            <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #c8e6c9",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#2e7d32"}}/>
+              <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
+            </div>
+          </div>
+          {budget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:effectiveCost>0&&variance<0?"#fff0f0":effectiveCost>0?"#f0fff4":"#f8f7f4"}}>
+            <div style={{fontSize:10,color:effectiveCost>0?(variance<0?"#c62828":"#2e7d32"):"#888",marginBottom:2}}>{effectiveCost>0?varianceLabel:"Variance"}</div>
+            <div style={{fontSize:16,fontWeight:800,color:effectiveCost>0?(variance<0?"#c62828":"#2e7d32"):"#bbb"}}>{effectiveCost>0?(variance>0?"+":"")+variance.toLocaleString()+" "+cur:"—"}</div>
+            <div style={{fontSize:10,color:"#aaa"}}>{effectiveCost>0?(variance<0?"⚠️ Over budget":"✅ Under budget"):"No cost entered yet"}{effectiveCost>0&&treated===0?" (est.)":""}</div>
+          </div>}
+          {contractGrand>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#fff8f0"}}>
+            <div style={{fontSize:10,color:"#b45309",marginBottom:2}}>Contracts ({linkedContracts.length})</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#b45309"}}>{contractGrand.toLocaleString()} {cur}</div>
+            <div style={{fontSize:10,color:"#aaa"}}>Base {contractTotal.toLocaleString()} + Add. {addendumTotal.toLocaleString()}</div>
+          </div>}
+        </div>
+
+        {(function(){
+          var notes=Array.isArray(td.tenderNotes)?td.tenderNotes:(td.notes?[{id:uuid(),title:"Note",content:td.notes}]:[]);
+          return <div className="card" style={{marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:notes.length>0?10:0}}>
+              <div style={{fontWeight:700,fontSize:13}}>📝 Notes ({notes.length})</div>
+              <button className="btn btn-sm" onClick={function(){var ns=[...notes,{id:uuid(),title:"Note "+(notes.length+1),content:"",open:true}];updTd("tenderNotes",ns);}}>＋ Note</button>
+            </div>
+            {notes.map(function(note,ni){
+              function updNote(field,val){var ns=notes.map(function(n,j){return j!==ni?n:Object.assign({},n,{[field]:val});});updTd("tenderNotes",ns);}
+              return <div key={note.id||ni} style={{border:"1px solid #e8e6df",borderRadius:8,marginBottom:8,overflow:"hidden"}}>
+                <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
+                  <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
+                  <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+                </div>
+                {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
+                  <textarea value={note.content||""} onChange={function(e){updNote("content",e.target.value);}} placeholder="Write your note here..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                </div>}
+              </div>;
+            })}
+          </div>;
+        })()}
+
+        <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} saveT={saveTasks} tasks={tasks}/>
+
+        {(function(){
+          var hasSd=td.hasSD||false;
+          return <div className="card" style={{marginBottom:10}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:600,fontSize:13,marginBottom:hasSd?10:0}}>
+              <input type="checkbox" checked={hasSd} onChange={function(e){updTd("hasSD",e.target.checked);}} style={{width:14,height:14}}/>
+              📐 Shop Drawing (SD)
+            </label>
+            {hasSd&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
+              <div style={{flex:1,minWidth:220,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f8f7f4",borderRadius:7,border:"1px solid #e8e6df"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#555",minWidth:80}}>Submission</span>
+                <select value={td.sdStatus||""} onChange={function(e){updTd("sdStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+                  <option value="">— status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdTarget||""} onChange={function(e){updTd("sdTarget",e.target.value);}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdDone||""} onChange={function(e){var dv=e.target.value;updTd("sdDone",dv);if(dv&&td.sdStatus==="submitted"&&!td.sdApprovalTarget){var d=new Date(dv);d.setDate(d.getDate()+14);updTd("sdApprovalTarget",d.toISOString().slice(0,10));}}}/></div>
+                {(function(){var due14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";var ov=td.sdStatus!=="approved"&&due14&&due14<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due14,today())}d</span>:null;})()}
+              </div>
+              <div style={{flex:1,minWidth:220,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",padding:"7px 10px",background:"#f0fff4",borderRadius:7,border:"1px solid #c8e6c9"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#2e7d32",minWidth:80}}>Approval</span>
+                <select value={td.sdApprovalStatus||""} onChange={function(e){updTd("sdApprovalStatus",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5,fontFamily:"inherit"}}>
+                  <option value="">— status —</option>
+                  <option value="under preparation">Under preparation</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="pending approval">Pending approval</option>
+                  <option value="approved">✅ Approved</option>
+                </select>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Target</span><input type="date" value={td.sdApprovalTarget||""} onChange={function(e){updTd("sdApprovalTarget",e.target.value);}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:10,color:"#888"}}>Done</span><input type="date" value={td.sdApprovalDone||""} onChange={function(e){updTd("sdApprovalDone",e.target.value);}}/></div>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <span style={{fontSize:10,color:"#888"}}>Review</span>
+                  <select value={td.sdReview||""} onChange={function(e){updTd("sdReview",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5,fontFamily:"inherit",fontWeight:td.sdReview?"700":"400",color:td.sdReview==="A"?"#2e7d32":td.sdReview==="Rejected"?"#c62828":"#555"}}>
+                    <option value="">—</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+                {(function(){var due=td.sdApprovalTarget||"";var ov=td.sdApprovalStatus!=="approved"&&due&&due<today();return ov?<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(due,today())}d</span>:null;})()}
+              </div>
+            </div>}
+          </div>;
+        })()}
+
       <div className="card">
-        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Submission Steps</div>
-        <table className="tbl" style={{fontSize:12}}>
-          <thead><tr><th>Step</th><th>Status</th><th>Target</th><th>Done</th><th>Comment</th></tr></thead>
+
+        {(function(){
+          var proc=calcProcurement(td);
+          var todayStr=today();
+          return <div className="card" style={{marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:13}}>📊 Procurement Timeline</div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                {(function(){
+                  var matMax=(td.materials||[]).reduce(function(m,mat){var d=parseLeadDays(mat.leadTime||"");return d>m?d:m;},0);
+                  var useManual=td.leadTimeManual||false;
+                  var displayVal=useManual?(td.leadTimeDays||""):(matMax>0?matMax:30);
+                  return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span style={{fontSize:9,fontWeight:700,color:"#7b1fa2"}}>LEAD</span>
+
+                    <div style={{display:"flex",border:"1px solid #ce93d8",borderRadius:6,overflow:"hidden"}}>
+                      <button onClick={function(e){e.stopPropagation();var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{leadTimeManual:false,leadTimeDays:String(matMax>0?matMax:30)});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}}
+                        style={{padding:"2px 8px",fontSize:9,fontWeight:700,border:"none",cursor:"pointer",fontFamily:"inherit",
+                          background:!useManual?"#ce93d8":"#fff",color:!useManual?"#fff":"#7b1fa2"}}>
+                        📦 Material
+                      </button>
+                      <button onClick={function(e){e.stopPropagation();updTd("leadTimeManual",true);}}
+                        style={{padding:"2px 8px",fontSize:9,fontWeight:700,border:"none",cursor:"pointer",fontFamily:"inherit",
+                          background:useManual?"#ce93d8":"#fff",color:useManual?"#fff":"#7b1fa2"}}>
+                        ✏️ Manual
+                      </button>
+                    </div>
+
+                    {useManual
+                      ?<input type="number" value={td.leadTimeDays||""} onChange={function(e){e.stopPropagation();updTd("leadTimeDays",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="30" autoFocus style={{width:55,padding:"2px 6px",fontSize:12,fontWeight:700,border:"1.5px solid #ce93d8",borderRadius:5,color:"#7b1fa2"}}/>
+                      :<span style={{fontSize:12,fontWeight:800,color:"#7b1fa2",minWidth:30}}>{displayVal}</span>}
+                    <span style={{fontSize:9,color:"#aaa"}}>days</span>
+                    {!useManual&&matMax===0&&<span style={{fontSize:9,color:"#aaa"}}>(default)</span>}
+                    {!useManual&&matMax>0&&<span style={{fontSize:9,color:"#888"}}>max of {(td.materials||[]).length} material{(td.materials||[]).length>1?"s":""}</span>}
+                  </div>;
+                })()}
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:9,fontWeight:700,color:"#aaa"}}>SD RESUB</span>
+                  <select value={td.sdResubCount||0} onChange={function(e){updTd("sdResubCount",Number(e.target.value));}} style={{padding:"2px 5px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
+                    <option value={0}>0</option><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+              <div style={{flex:1,minWidth:110,padding:"7px 10px",borderRadius:8,background:"#f8f7f4",border:"1px solid #ede9e3"}}>
+                <div style={{fontSize:9,color:"#888",fontWeight:700,marginBottom:2}}>PROCUREMENT START</div>
+                <div style={{fontSize:13,fontWeight:800,color:proc.procStart&&proc.procStart<todayStr?"#c62828":"#1a1a1a"}}>{proc.procStart?fmtDate(proc.procStart):"—"}</div>
+                {proc.procStart&&proc.procStart<todayStr&&<div style={{fontSize:9,color:"#c62828"}}>⚠️ Already past</div>}
+              </div>
+              <div style={{flex:1,minWidth:110,padding:"7px 10px",borderRadius:8,background:"#f0f8ff",border:"1px solid #bbdefb"}}>
+                <div style={{fontSize:9,color:"#1a73e8",fontWeight:700,marginBottom:2}}>DELIVERY DATE</div>
+                <div style={{fontSize:13,fontWeight:800,color:"#1a73e8"}}>{proc.deliveryDate?fmtDate(proc.deliveryDate):"—"}</div>
+                <div style={{fontSize:9,color:"#aaa"}}>Total: {proc.totalDays}d incl. {proc.LEAD}d lead</div>
+              </div>
+              {proc.margin!==null&&proc.margin!==undefined&&<div style={{flex:1,minWidth:110,padding:"7px 10px",borderRadius:8,background:proc.margin<0?"#fff0f0":proc.margin<7?"#fff8e1":"#f0fff4",border:"1px solid "+(proc.margin<0?"#f5c6cb":proc.margin<7?"#ffe082":"#c8e6c9")}}>
+                <div style={{fontSize:9,color:proc.margin<0?"#c62828":proc.margin<7?"#f57f17":"#2e7d32",fontWeight:700,marginBottom:2}}>MARGIN VS SITE DATE</div>
+                <div style={{fontSize:13,fontWeight:800,color:proc.margin<0?"#c62828":proc.margin<7?"#f57f17":"#2e7d32"}}>{proc.margin>0?"+":""}{proc.margin}d</div>
+                <div style={{fontSize:9,color:"#aaa"}}>{proc.margin<0?"⚠️ Late":proc.margin<7?"⚡ Tight":"✅ On track"}</div>
+              </div>}
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead><tr style={{background:"#f8f7f4"}}>
+                <th style={{padding:"5px 8px",textAlign:"left",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Step</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Target date</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Date done</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Duration</th>
+                <th style={{padding:"5px 8px",textAlign:"left",fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",borderBottom:"1.5px solid #e8e6df"}}>Status</th>
+              </tr></thead>
+              <tbody>{proc.steps.map(function(s){
+                var isDone=!!s.done;
+                var isOverdue=!isDone&&s.date&&s.date<todayStr;
+                var daysLate=isOverdue?workingDaysDiff(s.date,todayStr):0;
+                var bg=s.highlight?"#f0fff4":"#fff";
+                return <tr key={s.key} style={{background:bg,borderBottom:"1px solid #f4f2ef"}}>
+                  <td style={{padding:"6px 8px",fontWeight:s.highlight?700:500,color:s.highlight?"#2e7d32":"#333",whiteSpace:"nowrap"}}>
+                    {s.sd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:4,background:"#e3f2fd",color:"#1565c0",marginRight:4}}>SD</span>}
+                    {s.manual&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:4,background:"#fff8e1",color:"#f57f17",marginRight:4}}>●</span>}
+                    {s.label}
+                  </td>
+                  <td style={{padding:"6px 8px",textAlign:"center",color:isOverdue?"#c62828":"#555",fontWeight:isOverdue?700:400}}>{s.date?fmtDate(s.date):"—"}</td>
+                  <td style={{padding:"6px 8px",textAlign:"center",color:isDone?"#2e7d32":"#aaa"}}>{s.done?fmtDate(s.done):"—"}</td>
+                  <td style={{padding:"6px 8px",textAlign:"center"}}>{s.duration?<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:"#e8f0fe",color:"#1a73e8",fontWeight:600}}>{s.duration}d</span>:s.note?<span style={{fontSize:10,color:"#7b1fa2",fontWeight:600}}>{s.note}</span>:"—"}</td>
+                  <td style={{padding:"6px 8px"}}>
+                    {isDone&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"#e8f5e9",color:"#2e7d32",fontWeight:600}}>✅ Done</span>}
+                    {isOverdue&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"#fce4ec",color:"#c62828",fontWeight:700}}>⚠️ +{daysLate}d</span>}
+                    {!isDone&&!isOverdue&&s.date&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"#f5f5f5",color:"#888"}}>Pending</span>}
+                    {s.review&&<span style={{fontSize:10,marginLeft:4,padding:"1px 6px",borderRadius:8,background:s.review==="A"?"#e8f5e9":s.review==="Rejected"?"#fce4ec":"#fff8e1",color:s.review==="A"?"#2e7d32":s.review==="Rejected"?"#c62828":"#f57f17",fontWeight:700}}>{s.review}</span>}
+                  </td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>;
+        })()}
+
+        {(function(){
+          var [stepsOpen,setStepsOpen]=useState(true);
+          return <div>
+            <div onClick={function(){setStepsOpen(!stepsOpen);}} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:stepsOpen?12:0}}>
+              <span style={{fontSize:13,color:"#aaa"}}>{stepsOpen?"▾":"▸"}</span>
+              <div style={{fontWeight:700,fontSize:14}}>Submission Steps</div>
+            </div>
+            {stepsOpen&&<table className="tbl" style={{fontSize:12}}>
+          <thead><tr>
+            <th>Step</th>
+            <th>Status</th>
+            <th style={{textAlign:"center",minWidth:110}}>Target date</th>
+            <th style={{textAlign:"center",minWidth:110}}>Date done</th>
+            <th style={{textAlign:"center",minWidth:110}}>Date of approval</th>
+            <th style={{minWidth:180}}>Comments</th>
+          </tr></thead>
           <tbody>{TENDER_STEPS.map(function(s){
             var val=(td.steps||{})[s.key]||"";
             var dates=(td.stepDates||{})[s.key]||{};
             var comment=(td.stepComments||{})[s.key]||"";
             var cls=tenderStepClass(s.key,val);
             return <tr key={s.key}>
-              <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{s.label}</td>
+              <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{s.label}</td>
+
               <td style={{minWidth:180}}>
                 {s.special==="bidders"
-                  ?<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                    <div style={{display:"flex",gap:8}}>
-                      <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"1px solid #e8e6df",background:"#fff",fontFamily:"inherit",fontSize:12,cursor:"pointer",outline:"none",borderRadius:5,padding:"3px 7px"}}>
-                        {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-                      </select>
-                    </div>
-                    <textarea value={(td.stepComments||{}).bidders||""} onChange={function(e){updateStep(td.id,"bidders","comment",e.target.value);}} placeholder="List bidder names here..." style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",resize:"vertical",minHeight:40,maxHeight:120,overflowY:"auto"}}/>
-                  </div>
-                  :s.special==="process"
-                  ?<div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{fontSize:11,color:"#888",fontWeight:600}}>Progress</span>
-                      <input type="number" min="0" max="100" value={(processPct[td.id]!==undefined?processPct[td.id]:((td.stepDates||{}).process||{}).pct)||""} onChange={function(e){var np=Object.assign({},processPct);np[td.id]=e.target.value;setProcessPct(np);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{pct:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:60,padding:"3px 7px",fontSize:13,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:5,textAlign:"center"}}/>
-                      <span style={{fontSize:11,color:"#888"}}>%</span>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{fontSize:11,color:"#888",fontWeight:600}}>Bids received</span>
-                      <input type="number" min="0" value={(processBids[td.id]!==undefined?processBids[td.id]:((td.stepDates||{}).process||{}).bids)||""} onChange={function(e){var nb=Object.assign({},processBids);nb[td.id]=e.target.value;setProcessBids(nb);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},(t.stepDates||{}));if(!sd.process)sd.process={};sd.process=Object.assign({},sd.process,{bids:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{width:50,padding:"3px 7px",fontSize:13,fontWeight:700,border:"1.5px solid #e8e6df",borderRadius:5,textAlign:"center"}}/>
-                    </div>
-                  </div>
-                  :<div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
-                      style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
+                  ?<div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"1px solid #e8e6df",background:"#fff",fontFamily:"inherit",fontSize:12,cursor:"pointer",outline:"none",borderRadius:5,padding:"3px 7px"}}>
                       {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
                     </select>
-                    {val&&val!=="—"&&<span className={"chip "+cls} style={{marginLeft:4,fontSize:10}}>{val}</span>}
+                    <textarea value={(td.stepComments||{}).bidders||""} onChange={function(e){updateStep(td.id,"bidders","comment",e.target.value);}} placeholder="List bidder names here..." style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",resize:"vertical",minHeight:36,maxHeight:100,overflowY:"auto"}}/>
+                  </div>
+                  :s.special==="process"
+                  ?<div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none"}}>
+                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                    </select>
+                    {(td.stepDates||{}).process&&((td.stepDates||{}).process).bids!==undefined&&<span style={{fontSize:11,color:"#888"}}>{((td.stepDates||{}).process).bids} bids</span>}
+                  </div>
+                  :<div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}} style={{border:"none",background:"transparent",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",color:val&&val!=="—"?"inherit":"#bbb"}}>
+                      {s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                    </select>
+                    {s.key==="acc"&&<div style={{display:"flex",gap:4}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:8,fontWeight:800,color:"#888",marginBottom:1}}>SUBCONT.</div>
+                        <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+                          <input type="number" value={td.accAmountSubcontract||""} onChange={function(e){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{accAmountSubcontract:e.target.value});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} placeholder="0" style={{width:"100%",padding:"2px 24px 2px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:4}}/>
+                          <span style={{position:"absolute",right:3,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
+                        </div>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:8,fontWeight:800,color:"#888",marginBottom:1}}>OTHER</div>
+                        <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+                          <input type="number" value={td.accAmountOther||""} onChange={function(e){var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{accAmountOther:e.target.value});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} placeholder="0" style={{width:"100%",padding:"2px 24px 2px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:4}}/>
+                          <span style={{position:"absolute",right:3,fontSize:8,color:"#aaa",pointerEvents:"none"}}>{td.currency||"EUR"}</span>
+                        </div>
+                      </div>
+                    </div>}
                   </div>}
               </td>
-              <td><input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
-              <td><input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/></td>
-              <td><textarea value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,minWidth:160,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto"}}/></td>
+
+              <td style={{textAlign:"center"}}>
+                <input type="date" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+              </td>
+
+              <td style={{textAlign:"center"}}>
+                <input type="date" value={dates.done||""} onChange={function(e){updateStep(td.id,s.key,"done",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+              </td>
+
+              <td style={{textAlign:"center"}}>
+                {["acc","mar","itp","wms"].indexOf(s.key)>=0
+                  ?<input type="date" value={dates.approval||""} onChange={function(e){updateStep(td.id,s.key,"approval",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+                  :<span style={{color:"#e0ddd8"}}>—</span>}
+              </td>
+
+              <td style={{minWidth:200}}>
+                <textarea value={comment} onChange={function(e){updateStep(td.id,s.key,"comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto",boxSizing:"border-box"}}/>
+                <div style={{marginTop:3}}>
+                  {((td.stepLinks||{})[s.key]||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:3,marginBottom:2,alignItems:"center"}}>
+                    <input type="text" value={lk.label||""} onChange={function(e){var ls=((td.stepLinks||{})[s.key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});updateStep(td.id,s.key,"links",ls);}} placeholder="Label" style={{width:70,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
+                    <input type="url" value={lk.url||""} onChange={function(e){var ls=((td.stepLinks||{})[s.key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});updateStep(td.id,s.key,"links",ls);}} placeholder="https://..." style={{flex:1,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
+                    <button onClick={function(){var ls=((td.stepLinks||{})[s.key]||[]).filter(function(_,j){return j!==li;});updateStep(td.id,s.key,"links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:10,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ccc";}}>✕</button>
+                  </div>;})}
+                  <button onClick={function(){var ls=[...((td.stepLinks||{})[s.key]||[]),{label:"",url:""}];updateStep(td.id,s.key,"links",ls);}} style={{fontSize:9,padding:"1px 5px",border:"1px solid #e0ddd8",borderRadius:4,background:"#fafaf8",fontFamily:"inherit",cursor:"pointer",color:"#888"}}>＋ link</button>
+                  {((td.stepLinks||{})[s.key]||[]).filter(function(lk){return lk.url;}).map(function(lk,li){return <a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,color:"#3949ab",textDecoration:"none",padding:"1px 5px",borderRadius:4,background:"#f0f0ff",border:"1px solid #d0d0f0",marginLeft:3}}>🔗 {lk.label||"link"}</a>;})}
+                </div>
+              </td>
             </tr>;
           })}</tbody>
-        </table>
-      </div>
+        </table>}
+          </div>;
+        })()}
 
       <div className="card" style={{marginTop:10}}>
         <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Linked Actions ({linkedTasks.length})</div>
@@ -959,8 +1637,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           :linkedTasks.map(function(t){
             return <ActionItem key={t.id} task={t}
               onStatusChange={function(val){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
-              onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=Object.assign({},x);u[field]=val;return u;}));}}
-              people={people} packages={packages} tags={[]} tenders={tenders} contractors={contractors}/>;
+              onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
+              onDelete={function(){saveTasks((tasks||[]).filter(function(x){return x.id!==t.id;}));}}
+              people={people} packages={packages} tags={window._ppTags||[]} tenders={tenders} contractors={contractors}/>;
           })}
         <QuickAddTask
           prefill={{tenderRef:td.id, package:td.package||"", owner:td.ownerTender||""}}
@@ -969,7 +1648,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         />
       </div>
       {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages} pkgOwners={pkgOwners||{}}/>}
-      </div>{/* end main detail */}
+      </div>
     </div>;
   }
 
@@ -984,16 +1663,55 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
       {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
+    {(function(){
+      var releasedTenders=filtered.filter(function(t){return t.released;});
+      var totBudget=releasedTenders.reduce(function(s,t){return s+Number(t.budget||0);},0);
+      var totAcc=releasedTenders.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0)+Number(t.accAmountOther||0);},0);
+      var totInstructed=releasedTenders.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
+      var totVariance=totBudget-totAcc;
+      if(!totBudget&&!totAcc&&!totInstructed&&releasedTenders.length===0)return null;
+      return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+        {totBudget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px"}}>
+          <div style={{fontSize:10,color:"#888",marginBottom:2}}>Total Budget (released)</div>
+          <div style={{fontSize:18,fontWeight:800}}>{totBudget.toLocaleString()}</div>
+          <div style={{fontSize:10,color:"#aaa"}}>{releasedTenders.length}/{filtered.length} released</div>
+        </div>}
+        {totAcc>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0f8ff"}}>
+          <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>Total Proposed (released)</div>
+          <div style={{fontSize:18,fontWeight:800,color:"#1a73e8"}}>{totAcc.toLocaleString()}</div>
+          <div style={{fontSize:10,color:"#aaa"}}>ACC/ACONEX</div>
+        </div>}
+        {totInstructed>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
+          <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Total Instructed (released)</div>
+          <div style={{fontSize:18,fontWeight:800,color:"#2e7d32"}}>{totInstructed.toLocaleString()}</div>
+        </div>}
+        {totBudget>0&&totAcc>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:totVariance<0?"#fff0f0":"#f0fff4"}}>
+          <div style={{fontSize:10,color:totVariance<0?"#c62828":"#2e7d32",marginBottom:2}}>Variance Budget − Cost</div>
+          <div style={{fontSize:18,fontWeight:800,color:totVariance<0?"#c62828":"#2e7d32"}}>{totVariance>0?"+":""}{totVariance.toLocaleString()}</div>
+          <div style={{fontSize:10,color:"#aaa"}}>{totVariance<0?"⚠️ Over budget":"✅ Under budget"}</div>
+        </div>}
+      </div>;
+    })()}
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
       :<table className="tbl">
         <thead><tr>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-          <th>Pkg</th><th>Process</th><th style={{cursor:"pointer"}} onClick={function(){toggleSort("acc");}}>ACC{sortIcon("acc")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("contract");}}>Contract{sortIcon("contract")}</th>
-          <th>MAR</th><th>ITP</th><th>WMS</th>
+          <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
+          <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+          <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+          <th style={{textAlign:"right"}}>Budget</th>
+          <th style={{textAlign:"right"}}>Proposed</th>
+          <th style={{textAlign:"right"}}>Instructed</th>
+          <th style={{textAlign:"right",color:"#888"}}>Variance</th>
+          <th style={{textAlign:"center",color:"#555",minWidth:90}}>Target start</th>
+          <th style={{textAlign:"center",color:"#1a73e8",minWidth:90}}>Proc. delivery</th>
+          <th style={{textAlign:"center",color:"#888",minWidth:60}}>Margin</th>
+          {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s){
+            var sortable=s.key==="acc"||s.key==="contract";
+            return sortable
+              ?<th key={s.key} className="sortable" onClick={function(){toggleSort(s.key);}}>{s.label}{sortIcon(s.key)}</th>
+              :<th key={s.key}>{s.label}</th>;
+          })}
         </tr></thead>
         <tbody>{filtered.map(function(td){
           var steps=td.steps||{};
@@ -1001,9 +1719,78 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             <td style={{fontWeight:600}}>{td.title}</td>
             <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
             <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
-            {TENDER_STEPS.map(function(s){var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);return <td key={s.key}>{v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}</td>;})}
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {td.budget?<span style={{fontSize:11,fontWeight:600}}>{Number(td.budget).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0))>0
+                ?<span style={{fontSize:11,fontWeight:600,color:"#1a73e8"}}>{(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0)).toLocaleString()}</span>
+                :<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {td.instructionAmount?<span style={{fontSize:11,fontWeight:600,color:"#2e7d32"}}>{Number(td.instructionAmount).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+              {(function(){
+                var budget=Number(td.budget||0);
+                var proposed=Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0);
+                if(!budget||!proposed)return <span style={{color:"#ddd"}}>—</span>;
+                var v=budget-proposed;
+                return <span style={{fontSize:11,fontWeight:700,color:v<0?"#c62828":"#2e7d32"}}>{v>0?"+":""}{v.toLocaleString()}</span>;
+              })()}
+            </td>
+            <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}>
+              {td.startOnSite?fmtDate(td.startOnSite):<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",fontWeight:600,color:"#1a73e8"}}>
+              {(function(){var proc=calcProcurement(td);return proc.deliveryDate?fmtDate(proc.deliveryDate):<span style={{color:"#ddd"}}>—</span>;})()}
+            </td>
+            <td style={{textAlign:"center",fontSize:11}}>
+              {(function(){
+                var proc=calcProcurement(td);
+                if(!proc.deliveryDate||!td.startOnSite)return <span style={{color:"#ddd"}}>—</span>;
+                var m=Math.round((new Date(td.startOnSite)-new Date(proc.deliveryDate))/(1000*60*60*24));
+                return <span style={{fontWeight:700,fontSize:11,color:m<0?"#c62828":m<7?"#f57f17":"#2e7d32"}}>{m>0?"+":""}{m}d</span>;
+              })()}
+            </td>
+            {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s){
+              var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);
+              var dates=(td.stepDates||{})[s.key]||{};
+              var done=dates.done||"";
+              var target=dates.target||"";
+              var isOverdue=target&&target<today()&&!done&&v!=="Approved"&&!v.toLowerCase().includes("approved");
+              return <td key={s.key} style={{verticalAlign:"top",minWidth:90}}>
+                {v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}
+                {!done&&target&&<div style={{fontSize:9,marginTop:2,color:isOverdue?"#c62828":"#888",fontWeight:isOverdue?700:400}}>
+                  {isOverdue?"⚠️ ":""}{fmtDate(target)}
+                </div>}
+                {done&&<div style={{fontSize:9,marginTop:1,color:"#2e7d32",fontWeight:600}}>✓ {fmtDate(done)}</div>}
+              </td>;
+            })}
           </tr>;
         })}</tbody>
+        <tfoot>
+          <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
+            <td colSpan={3+TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length+3} style={{padding:"8px 12px"}}>
+              {(function(){
+                var totBudget=filtered.reduce(function(s,t){return s+Number(t.budget||0);},0);
+                var totInstructed=filtered.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
+                var totAccSub=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0);},0);
+                var totAccOther=filtered.reduce(function(s,t){return s+Number(t.accAmountOther||0);},0);
+                var totAcc=totAccSub+totAccOther;
+                var variance=totBudget-totAcc;
+                if(totBudget===0&&totInstructed===0&&totAcc===0)return <span style={{fontSize:11,color:"#aaa"}}>No financial data yet — add Budget and Instruction amounts to tenders.</span>;
+                return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",marginRight:4}}>TOTALS ({filtered.length})</span>
+                  {totBudget>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#f0ede6",fontSize:11}}><span style={{color:"#888"}}>Budget: </span><strong>{totBudget.toLocaleString()}</strong></div>}
+                  {totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f0fe",fontSize:11}}><span style={{color:"#888"}}>ACC proposed: </span><strong style={{color:"#1a73e8"}}>{totAcc.toLocaleString()}</strong></div>}
+                  {totInstructed>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Instructed: </span><strong style={{color:"#2e7d32"}}>{totInstructed.toLocaleString()}</strong></div>}
+                  {totBudget>0&&totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:variance<0?"#fce4ec":"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Variance (B-C): </span><strong style={{color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()}</strong><span style={{fontSize:10,marginLeft:4}}>{variance<0?"⚠️ over budget":"✅ under budget"}</span></div>}
+                </div>;
+              })()}
+            </td>
+          </tr>
+        </tfoot>
       </table>}
     {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages} pkgOwners={pkgOwners||{}}/>}
   </div>;
@@ -1011,7 +1798,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
 function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners}){
   function set(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);}
-  return <div className="overlay"><div className="modal" style={{maxWidth:560}}>
+  return (
+    <div className="overlay"><div className="modal" style={{maxWidth:560}}>
     <div className="modal-hdr"><div className="modal-title">{data.title||"New Tender"}</div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
     <div className="modal-body">
@@ -1040,6 +1828,21 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners
         <div className="fg"><label>Instruction Amount</label>
           <input type="number" value={data.instructionAmount||""} onChange={function(e){set("instructionAmount",e.target.value);}} placeholder="0"/>
         </div>
+        <div className="fg"><label>Amount Treated (procured so far)</label>
+          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <input type="number" value={data.accAmountTreated||""} onChange={function(e){set("accAmountTreated",e.target.value);}} placeholder="0" style={{paddingRight:40}}/>
+            <span style={{position:"absolute",right:10,fontSize:11,color:"#aaa",pointerEvents:"none"}}>{data.currency||"EUR"}</span>
+          </div>
+        </div>
+        <div className="fg"><label>WBS Code</label>
+          <input type="text" value={data.wbs||""} onChange={function(e){set("wbs",e.target.value);}} placeholder="WBS-001"/>
+        </div>
+        <div className="fg"><label>Starting date on site</label>
+          <input type="date" value={data.startOnSite||""} onChange={function(e){set("startOnSite",e.target.value);}}/>
+        </div>
+        <div className="fg"><label>Procurement process starting date</label>
+          <input type="date" value={data.procurementStart||""} onChange={function(e){set("procurementStart",e.target.value);}}/>
+        </div>
         <div className="fg"><label>Currency</label>
           <select value={data.currency||"EUR"} onChange={function(e){set("currency",e.target.value);}}>
             {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
@@ -1052,10 +1855,9 @@ function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners
       <button className="btn" onClick={onClose}>Cancel</button>
       <button className="btn btn-pri" disabled={!(data.title||"").trim()} onClick={function(){onSave(data);}}>Save Tender</button>
     </div>
-  </div></div>;
+  </div></div>
+  );
 }
-
-// ── CONTRACTORS VIEW ───────────────────────────────────────────────
 function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
@@ -1142,7 +1944,52 @@ function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
   </div></div>;
 }
 
-// ── Correspondence Log ────────────────────────────────────────────
+function ReplyForm({letter,onSave,onCancel}){
+  const [rnum,setRnum]=useState(letter.replyNumber||"");
+  const [rdate,setRdate]=useState(letter.replyDate||today());
+  return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginTop:8,padding:"8px",background:"#e8f5e9",borderRadius:6,border:"1px solid #c8e6c9"}}>
+    <div style={{fontWeight:600,fontSize:11,color:"#2e7d32",width:"100%",marginBottom:4}}>Mark as replied</div>
+    <div>
+      <div style={{fontSize:9,fontWeight:700,color:"#888",marginBottom:2}}>Reply N°</div>
+      <input type="text" value={rnum} onChange={function(e){setRnum(e.target.value);}} placeholder="Reply letter N°" style={{width:110,padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5}}/>
+    </div>
+    <div>
+      <div style={{fontSize:9,fontWeight:700,color:"#888",marginBottom:2}}>Reply date</div>
+      <input type="date" value={rdate} onChange={function(e){setRdate(e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #c8e6c9",borderRadius:5}}/>
+    </div>
+    <div style={{display:"flex",gap:5}}>
+      <button className="btn btn-sm" onClick={function(){onSave(rnum,rdate);}} style={{background:"#2e7d32",border:"none",color:"#fff",padding:"4px 10px"}}>✅ Confirm</button>
+      <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
+    </div>
+  </div>;
+}
+
+function LetterRow({letter,tc,correspondences,saveCorrespondences,delLetter}){
+  const [editing,setEditing]=useState(false);
+  return <div style={{padding:"8px 10px",borderRadius:7,border:"1px solid #f0ede6",marginBottom:5,background:"#fafaf8"}}>
+    <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+      <span style={{padding:"2px 8px",borderRadius:12,background:tc.bg,color:tc.color,fontSize:10,fontWeight:700,flexShrink:0}}>{tc.label}</span>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:700,fontSize:12}}>#{letter.number} <span style={{color:"#888",fontWeight:400}}>· {fmtDate(letter.date)}</span></div>
+        {letter.description&&<div style={{fontSize:11,color:"#555",marginTop:1}}>{letter.description}</div>}
+        {letter.type==="received"&&<div style={{marginTop:4}}>
+          {!editing&&!letter.replied&&<button onClick={function(){setEditing(true);}} style={{fontSize:10,padding:"1px 8px",borderRadius:8,background:"#fce4ec",color:"#c62828",fontWeight:600,border:"none",cursor:"pointer"}}>⏳ Awaiting reply — click to mark</button>}
+          {!editing&&letter.replied&&<div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:10,padding:"1px 7px",borderRadius:8,background:"#e8f5e9",color:"#2e7d32",fontWeight:600}}>✅ Replied</span>
+            {letter.replyNumber&&<span style={{fontSize:10,color:"#2e7d32"}}>N° {letter.replyNumber} — {fmtDate(letter.replyDate)}</span>}
+            <button onClick={function(){setEditing(true);}} style={{fontSize:10,color:"#888",background:"none",border:"none",cursor:"pointer"}}>✏️</button>
+          </div>}
+          {editing&&<ReplyForm letter={letter} onSave={function(rnum,rdate){
+            var updated=(correspondences||[]).map(function(l){return l.id!==letter.id?l:Object.assign({},l,{replied:true,replyNumber:rnum,replyDate:rdate});});
+            saveCorrespondences(updated);setEditing(false);
+          }} onCancel={function(){setEditing(false);}}/>}
+        </div>}
+      </div>
+      <button onClick={function(){delLetter(letter.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+    </div>
+  </div>;
+}
+
 function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,saveT,tasks}){
   const [showAdd,setShowAdd]=useState(false);
   const [form,setForm]=useState({number:"",type:"received",date:today(),description:"",replied:false,replyNumber:"",replyDate:""});
@@ -1153,11 +2000,11 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
     var entry=Object.assign({id:uuid(),ctrId:ctrId,ctrName:ctrName},form);
     var newCorr=[entry,...(correspondences||[])];
     saveCorrespondences(newCorr);
-    // Auto-create action if received and not replied
+
     if(form.type==="received"&&!form.replied&&saveT&&tasks){
       var dueDate=new Date(form.date);dueDate.setDate(dueDate.getDate()+7);
       var duStr=dueDate.toISOString().slice(0,10);
-      // Find contract owner for this subcontractor
+
       var ctrOwner="";
       if(window._ppContractors){
         var ctrObj=(window._ppContractors||[]).find(function(c){return c.id===ctrId;});
@@ -1166,7 +2013,8 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
       var action=newTask({
         text:"Respond to letter "+form.number+" from "+ctrName+" received "+fmtDate(form.date),
         due:duStr,status:"pending",note:"Auto-created from correspondence log",
-        tags:["Contract"],owner:ctrOwner
+        tags:["Contract"],owner:ctrOwner,
+        contractorRef:ctrId
       });
       saveT([action,...(tasks||[])]);
     }
@@ -1174,7 +2022,7 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
     setForm({number:"",type:"received",date:today(),description:"",replied:false,replyNumber:"",replyDate:""});
   }
 
-  function delLetter(id){if(confirm("Delete this correspondence entry?"))saveCorrespondences((correspondences||[]).filter(function(l){return l.id!==id;}));}
+  function delLetter(id){if(safeConfirm("Delete this correspondence entry?"))saveCorrespondences((correspondences||[]).filter(function(l){return l.id!==id;}));}
 
   function set(f,v){setForm(function(prev){return Object.assign({},prev,{[f]:v});});}
 
@@ -1236,63 +2084,43 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
     {ctrCorr.length===0&&!showAdd&&<div style={{color:"#bbb",fontSize:12}}>No correspondence recorded yet.</div>}
     {ctrCorr.map(function(letter){
       var tc=TYPE_COLORS[letter.type]||TYPE_COLORS.received;
-      return <div key={letter.id} style={{padding:"8px 10px",borderRadius:7,border:"1px solid #f0ede6",marginBottom:5,background:"#fafaf8"}}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-          <span style={{padding:"2px 8px",borderRadius:12,background:tc.bg,color:tc.color,fontSize:10,fontWeight:700,flexShrink:0}}>{tc.label}</span>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:12}}>#{letter.number} <span style={{color:"#888",fontWeight:400}}>· {fmtDate(letter.date)}</span></div>
-            {letter.description&&<div style={{fontSize:11,color:"#555",marginTop:1}}>{letter.description}</div>}
-            {letter.replied
-              ?<div style={{fontSize:10,color:"#2e7d32",marginTop:3}}>✅ Replied: #{letter.replyNumber} on {fmtDate(letter.replyDate)}</div>
-              :letter.type==="received"&&<div style={{fontSize:10,color:"#c62828",fontWeight:600,marginTop:3}}>⚠️ Awaiting reply</div>}
-          </div>
-          <button onClick={function(){delLetter(letter.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
-        </div>
-      </div>;
+      return <LetterRow key={letter.id} letter={letter} tc={tc} correspondences={correspondences} saveCorrespondences={saveCorrespondences} delLetter={delLetter}/>;
     })}
-    {/* Linked Tasks */}
-    <div className="card" style={{marginBottom:10}}>
-      <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>
-        Linked Actions ({((tasks||[]).filter(function(t){return t.contractorRef===ctr.id||(ct.tenderRef&&t.tenderRef===ct.tenderRef);}).length)})
-      </div>
-      {(tasks||[]).filter(function(t){return t.contractorRef===ctr.id||(ct.tenderRef&&t.tenderRef===ct.tenderRef);}).map(function(t){
-        var sc=calcScore(t.importance||1,t.urgence||1);var ss=scoreStyle(sc);
-        return <div key={t.id} className="ac-item" style={{marginBottom:4}}>
-          <div className="ac-check" style={{background:t.status==="done"?"#2e7d32":"transparent",borderColor:t.status==="done"?"#2e7d32":"#ddd",cursor:"pointer",flexShrink:0,marginTop:2}} onClick={function(){saveT((tasks||[]).map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:t.status==="done"?"pending":"done"});}));}}>
-            {t.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
-          </div>
-          <div style={{flex:1}}>
-            <div className={"ac-text"+(t.status==="done"?" done":"")}>{t.text}</div>
-            <div className="ac-meta">
-              {t.due&&<span style={{fontSize:11,color:t.due<today()&&t.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(t.due)}</span>}
-              {t.owner&&<OwnerChip owner={t.owner}/>}
-              {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{t.package}</span>}
-              {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
-              {(t.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
-            </div>
-          </div>
-          <select value={t.status} onChange={function(e){saveT((tasks||[]).map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:e.target.value});}));}} style={{fontSize:10,border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit",padding:"2px 4px",cursor:"pointer",flexShrink:0}}>
-            {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
-          </select>
-        </div>;
-      })}
-      <QuickAddTask
-        prefill={{
-          contractorRef:ctr.id,
-          tenderRef:ct.tenderRef||"",
-          package:ct.package||"",
-          owner:ct.owner||""
-        }}
-        onAdd={function(t){if(saveT)saveT([t,...(tasks||[])]);}}
-        people={people||window._ppPeople||[]}
-        tags={tags||window._ppTags||[]}
-        label="Add Task to this contract"
-      />
-    </div>
   </div>;
 }
 
-function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey,correspondences,saveCorrespondences,saveT}){
+function CollapsibleContract({ct,fin,children}){
+  const [open,setOpen]=useState(false);
+  var currency=ct.currency||"EUR";
+  return <div style={{marginBottom:8,border:"1.5px solid #e8e6df",borderRadius:10,overflow:"hidden",background:"#fff"}}>
+    <div onClick={function(){setOpen(!open);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:open?"#f8f7f4":"#fff",userSelect:"none"}}>
+      <span style={{fontSize:13,color:"#aaa",flexShrink:0,transition:"transform .15s",transform:open?"rotate(0deg)":"rotate(-90deg)",display:"inline-block"}}>{open?"▾":"▾"}</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:13,color:"#1a1a1a"}}>{ct.number||"(no #)"} {ct.sapNumber&&<span style={{fontSize:11,color:"#1a73e8",fontWeight:600,marginLeft:4}}>SAP {ct.sapNumber}</span>}</div>
+        {ct.description&&<div style={{fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct.description}</div>}
+      </div>
+      <div style={{textAlign:"right",flexShrink:0}}>
+        {ct.closed
+          ?<span style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#e8f5e9",color:"#2e7d32",fontWeight:700}}>✅ Closed</span>
+          :<span style={{fontSize:12,fontWeight:700,color:"#1a1a1a"}}>{fin.total.toLocaleString()} {currency}</span>}
+        <div style={{fontSize:10,color:fin.pct>=80?"#2e7d32":"#f57f17"}}>{fin.pct}% certified</div>
+        {(function(){
+          var certs=ct.certifications||[];
+          if(ct.closed||certs.length===0)return null;
+          var lastDate=(certs.slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");})[0]||{}).date||"";
+          if(!lastDate)return null;
+          var d=new Date(lastDate);var now=new Date();
+          var months=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
+          if(months>=2)return <div style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ Last cert: {fmtMonthYear(lastDate)}</div>;
+          return null;
+        })()}
+      </div>
+    </div>
+    {open&&<div style={{borderTop:"1.5px solid #e8e6df",padding:"12px 14px"}} onClick={function(e){e.stopPropagation();}}>{children}</div>}
+  </div>;
+}
+
+function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,apiKey,correspondences,saveCorrespondences,saveT,onNavTender}){
   var ctrs=contractors||[];
   var tnds=tenders||[];
   var pkgs=packages||[];
@@ -1312,18 +2140,20 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
   function sortIcon(col){if(sortCol!==col)return " ↕";return sortDir==="asc"?" ↑":" ↓";}
 
   const allPkgs=[...new Set(ctrs.map(function(c){return c.package;}).filter(Boolean))].sort();
-  var filtered=ctrs.filter(function(c){
-    if(pkgFilter!=="all"&&c.package!==pkgFilter)return false;
-    if(searchQ){var q=searchQ.toLowerCase();if(!(c.name||"").toLowerCase().includes(q)&&!(c.package||"").toLowerCase().includes(q))return false;}
-    return true;
-  }).slice().sort(function(a,b){
-    var va="",vb="";
-    if(sortCol==="name"){va=a.name||"";vb=b.name||"";}
-    else if(sortCol==="package"){va=a.package||"";vb=b.package||"";}
-    else if(sortCol==="owner"){va=a.owner||"";vb=b.owner||"";}
-    var r=va<vb?-1:va>vb?1:0;
-    return sortDir==="asc"?r:-r;
-  });
+  var filtered=React.useMemo(function(){
+    var list=ctrs.filter(function(c){
+      if(pkgFilter!=="all"&&c.package!==pkgFilter)return false;
+      if(searchQ){var q=searchQ.toLowerCase();if(!(c.name||"").toLowerCase().includes(q)&&!(c.package||"").toLowerCase().includes(q))return false;}
+      return true;
+    });
+    return list.slice().sort(function(a,b){
+      var r=0;
+      if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.name||"").localeCompare(b.name||""));}
+      else if(sortCol==="owner"){r=(a.owner||"").localeCompare(b.owner||"");}
+      else{r=(a.name||"").localeCompare(b.name||"");}
+      return sortDir==="asc"?r:-r;
+    });
+  },[ctrs,pkgFilter,searchQ,sortCol,sortDir]);
 
   function openNew(){var d=newContractor();setFormData(d);setShowForm(true);}
   function openEdit(ctr){setFormData(JSON.parse(JSON.stringify(ctr)));setShowForm(true);}
@@ -1332,7 +2162,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     var d=ctrs.find(function(x){return x.id===cd.id;})?ctrs.map(function(x){return x.id===cd.id?cd:x;}):[cd,...ctrs];
     saveContractors(d);closeForm();if(selCtr&&selCtr.id===cd.id)setSelCtr(cd);
   }
-  function delCtr(id){if(confirm("Delete subcontractor?"))saveContractors(ctrs.filter(function(c){return c.id!==id;}));setSelCtr(null);}
+  function delCtr(id){if(safeConfirm("Delete subcontractor?"))saveContractors(ctrs.filter(function(c){return c.id!==id;}));setSelCtr(null);}
 
   function addContract(ctrId){
     var nc=newContract();
@@ -1370,11 +2200,10 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));
   }
 
-  // contractFinancials is defined globally
-
   var linkedTasks=selCtr?tsks.filter(function(t){return t.contractorRef===selCtr.id;}):[];
 
-  function updateContract2(ctrId,ctId,field,val){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=val;return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
+  const [sidebarPkg,setSidebarPkg]=useState("all");
+  function updateContract2(ctrId,ctId,field,val){if(field==="__delete__"){var d2=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ctId;})});});saveContractors(d2);if(selCtr&&selCtr.id===ctrId)setSelCtr(d2.find(function(c){return c.id===ctrId;}));return;}var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=val;return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
   function updateAdItem2(ctrId,ctId,field,i,key,val){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var items=(ct2[field]||[]).map(function(item,j){if(j!==i)return item;var u=Object.assign({},item);u[key]=val;return u;});var u2=Object.assign({},ct2);u2[field]=items;return u2;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
   function delAdItem2(ctrId,ctId,field,i){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=(ct2[field]||[]).filter(function(_,j){return j!==i;});return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
   function addAdItem2(ctrId,ctId,field,newItem){var d=ctrs.map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct2){if(ct2.id!==ctId)return ct2;var u=Object.assign({},ct2);u[field]=[...(ct2[field]||[]),newItem];return u;})});});saveContractors(d);if(selCtr&&selCtr.id===ctrId)setSelCtr(d.find(function(c){return c.id===ctrId;}));}
@@ -1383,11 +2212,17 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     var linkedTenders=(ctr.tenderRefs||[ctr.tenderRef].filter(Boolean)).map(function(id){return tnds.find(function(t){return t.id===id;});}).filter(Boolean);
     var sortedCtrs=(ctrs||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
     return <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
-      {/* Left sidebar: subcontractor list */}
+
       <div style={{width:180,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
-        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Subcontractors</div>
-        <div style={{maxHeight:"80vh",overflowY:"auto"}}>
-          {sortedCtrs.map(function(c2){var isActive=c2.id===ctr.id;return <div key={c2.id} onClick={function(){setSelCtr(c2);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>
+        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
+          <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Subcontractors</div>
+          <select value={sidebarPkg||"all"} onChange={function(e){setSidebarPkg(e.target.value);}} style={{width:"100%",padding:"3px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",background:"#fafaf8"}}>
+            <option value="all">All packages</option>
+            {(pkgs||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+          </select>
+        </div>
+        <div style={{maxHeight:"75vh",overflowY:"auto"}}>
+          {sortedCtrs.filter(function(c2){return sidebarPkg==="all"||c2.package===sidebarPkg;}).map(function(c2){var isActive=c2.id===selCtr.id;return <div key={c2.id} onClick={function(){setSelCtr(c2);}} style={{padding:"7px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent"),fontSize:11,fontWeight:isActive?700:400}}>
             <div style={{color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c2.name}</div>
             {c2.package&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{c2.package}</div>}
           </div>;})}
@@ -1406,19 +2241,21 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         </div>
         <button className="btn btn-sm" onClick={function(){openEdit(ctr);}}>✏️ Edit</button>
         <button className="btn btn-sm btn-danger" onClick={function(){delCtr(ctr.id);}}>🗑</button>
+        <button className="btn btn-gold" onClick={function(){addContract(ctr.id);}} style={{marginLeft:"auto"}}>＋ Add Contract</button>
       </div>
 
+      {(ctr.contracts||[]).length===0&&<div className="empty" style={{padding:"24px 0"}}><div className="empty-ico">📋</div><div className="empty-txt">No contracts yet. Click "＋ Add Contract" to create one.</div></div>}
       {(ctr.contracts||[]).map(function(ct){
         var fin=contractFinancials(ct);
         var linkedTender=ct.tenderRef?(tnds||[]).find(function(t){return t.id===ct.tenderRef;}):null;
         var navFake={ctrId:ctr.id,ctId:ct.id};
-        return <div key={ct.id} style={{marginBottom:12}}>
+        return <CollapsibleContract key={ct.id} ct={ct} fin={fin}>
           <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
             updateCtField={updateContract2} updateAdItem={updateAdItem2} delAdItem={delAdItem2} addAdItem={addAdItem2}
             tenders={tnds} nav={navFake} setNav={function(){}} saveT={saveT} tasks={tsks} people={ppl} tags={window._ppTags||[]}/>
-        </div>;
+        </CollapsibleContract>;
       })}
-      {/* Correspondence Log */}
+
       <CorrespondenceLog ctrId={selCtr.id} ctrName={selCtr.name} correspondences={correspondences||[]} saveCorrespondences={saveCorrespondences} saveT={saveT} tasks={tsks}/>
 
       <div className="card">
@@ -1427,8 +2264,9 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           ?<div style={{color:"#bbb",fontSize:13}}>No actions linked to this subcontractor.</div>
           :linkedTasks.map(function(t){return <ActionItem key={t.id} task={t}
             onStatusChange={function(val){saveT(tsks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
-            onUpdate={function(field,val){saveT(tsks.map(function(x){if(x.id!==t.id)return x;var u=Object.assign({},x);u[field]=val;return u;}));}}
-            people={ppl} packages={pkgs} tags={[]} tenders={tnds} contractors={ctrs}/>;} )}
+            onUpdate={function(field,val){saveT(tsks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));u[field]=val;return u;}));}}
+            onDelete={function(){saveT((tsks||[]).filter(function(x){return x.id!==t.id;}));}}
+            people={ppl} packages={pkgs} tags={window._ppTags||[]} tenders={tnds} contractors={ctrs}/>;} )}
         <QuickAddTask
           prefill={{contractorRef:ctr.id, package:ctr.package||"", owner:ctr.owner||""}}
           onAdd={function(t){saveT([t,...(tsks||[])]);}}
@@ -1446,7 +2284,6 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     </div>;
   }
 
-  var filtered2=filtered.slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts and certifications</div></div>
@@ -1462,12 +2299,12 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
       ?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors found.</div></div>
       :<table className="tbl">
         <thead><tr>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("name");}}>Name{sortIcon("name")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
-          <th style={{cursor:"pointer"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+          <th className="sortable" onClick={function(){toggleSort("name");}}>Name{sortIcon("name")}</th>
+          <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+          <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
           <th>Corresp.</th><th>Linked Tenders</th><th>Contracts</th><th>Total</th><th>Total Instructed</th><th>Certified</th><th>Remaining</th>
         </tr></thead>
-        <tbody>{(typeof filtered2!=="undefined"?filtered2:filtered).map(function(ctr){
+        <tbody>{filtered.map(function(ctr){
           var totVal=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).total;},0);
           var totCert=(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).certified;},0);
           var totRem=totVal-totCert;
@@ -1555,7 +2392,6 @@ function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tende
   </div></div>;
 }
 
-
 function EmailModal({em,onClose}){
   return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
     <div className="modal-hdr"><div className="modal-title">📧 Action email</div><button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
@@ -1570,19 +2406,18 @@ function EmailModal({em,onClose}){
   </div></div>;
 }
 
-// ── SETTINGS VIEW ─────────────────────────────────────────────────
-function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tagrules,saveTagrules,pkgrules,savePkgrules,apiKey,saveApiKey,improvements,saveImprovements,pkgOwners,savePkgOwners}){
+function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tagrules,saveTagrules,pkgrules,savePkgrules,apiKey,saveApiKey,improvements,saveImprovements,pkgOwners,savePkgOwners,userPrefs,saveUserPrefs,allData,onImport}){
   const [tab,setTab]=useState("tags");
   const [newTag,setNewTag]=useState("");
   const [newPerson,setNewPerson]=useState("");
   const [newPackage,setNewPackage]=useState("");
 
   const addTag=()=>{const t=newTag.trim();if(t&&!tags.includes(t)){saveTags([...tags,t].sort());setNewTag("");}};
-  const removeTag=t=>{if(confirm("Remove tag '"+t+"'? CC rules for this tag will also be removed.")){saveTags(tags.filter(x=>x!==t));const nr=Object.assign({},tagrules);delete nr[t];saveTagrules(nr);}};
+  const removeTag=t=>{if(safeConfirm("Remove tag '"+t+"'? CC rules for this tag will also be removed.")){saveTags(tags.filter(x=>x!==t));const nr=Object.assign({},tagrules);delete nr[t];saveTagrules(nr);}};
   const addPerson=()=>{const p=newPerson.trim();if(p&&!people.includes(p)){savePeople([...people,p].sort());setNewPerson("");}};
-  const removePerson=p=>{if(confirm("Remove "+p+"?"))savePeople(people.filter(x=>x!==p));};
+  const removePerson=p=>{if(safeConfirm("Remove "+p+"?"))savePeople(people.filter(x=>x!==p));};
   const addPackage=()=>{const p=newPackage.trim();if(p&&!packages.includes(p)){savePackages([...packages,p].sort());setNewPackage("");}};
-  const removePackage=p=>{if(confirm("Remove package '"+p+"'?"))savePackages(packages.filter(x=>x!==p));};
+  const removePackage=p=>{if(safeConfirm("Remove package '"+p+"'?"))savePackages(packages.filter(x=>x!==p));};
 
   const toggleTagRule=(tag,person)=>{
     const cur=tagrules[tag]||[];
@@ -1600,9 +2435,8 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
       <div><div className="page-title">Settings</div><div className="page-sub">Manage tags, people, packages and CC rules</div></div>
     </div>
 
-
     <div style={{display:"flex",gap:8,marginBottom:20}}>
-      {["tags","people","packages","pkg-owners","cc-rules","improvements"].map(function(t){return <button key={t} className={"fchip"+(tab===t?" on":"")} onClick={function(){setTab(t);}} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t==="improvements"?"💡 Improvements":t==="pkg-owners"?"📦 Pkg Owners":t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
+      {["tags","people","packages","pkg-owners","cc-rules","my-prefs","improvements","backup"].map(function(t){return <button key={t} className={"fchip"+(tab===t?" on":"")} onClick={function(){setTab(t);}} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t==="improvements"?"💡 Improvements":t==="pkg-owners"?"📦 Pkg Owners":t==="backup"?"💾 Backup":t==="my-prefs"?"👤 My Prefs":t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
     </div>
 
     {tab==="tags"&&<div className="card">
@@ -1694,6 +2528,74 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
         </select>
       </div>;})}
     </div>}
+    {tab==="backup"&&<div className="card">
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>💾 Backup & Restore</div>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>Export</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:8}}>Download all your data as a JSON file. Keep it safe as a backup.</div>
+        <button className="btn btn-gold" onClick={function(){
+          var NL=String.fromCharCode(10);
+          var now=new Date();
+          var stamp=now.toISOString().slice(0,10);
+          var json=JSON.stringify(Object.assign({},allData,{exportedAt:now.toISOString(),version:"1.0"}),null,2);
+          var blob=new Blob([json],{type:"application/json"});
+          var url=URL.createObjectURL(blob);
+          var a=document.createElement("a");
+          a.href=url;a.download="riviera-tower-backup-"+stamp+".json";
+          document.body.appendChild(a);a.click();document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }}>📥 Download Backup</button>
+      </div>
+      <div style={{borderTop:"1px solid #f0ede6",paddingTop:16}}>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>Restore</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:8}}>Upload a previously exported JSON file to restore your data. This will overwrite current data.</div>
+        <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:7,border:"1.5px solid #e8e6df",background:"#fafaf8",cursor:"pointer",fontSize:12,fontWeight:600,color:"#555",textTransform:"none",letterSpacing:"normal"}}>
+          📤 Upload Backup File
+          <input type="file" accept=".json" style={{display:"none"}} onChange={function(e){
+            var file=e.target.files&&e.target.files[0];
+            if(!file)return;
+            var reader=new FileReader();
+            reader.onload=function(ev){
+              try{
+                var d=JSON.parse(ev.target.result);
+                if(safeConfirm("This will replace all current data with the backup. Are you sure?")){
+                  onImport(d);
+                  alert("Data restored successfully!");
+                }
+              }catch(err){alert("Invalid backup file: "+err.message);}
+            };
+            reader.readAsText(file);
+            e.target.value="";
+          }}/>
+        </label>
+        <div style={{fontSize:11,color:"#c62828",marginTop:8}}>⚠️ Restore overwrites current data. Export first if needed.</div>
+      </div>
+    </div>}
+    {tab==="my-prefs"&&<div className="card">
+      <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>👤 My Preferences</div>
+      <div style={{fontSize:12,color:"#888",marginBottom:16}}>Logged in as: <strong>{window._currentUser?window._currentUser.name:"—"}</strong></div>
+      {window._currentUser&&<div>
+        <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",textTransform:"none",letterSpacing:"normal",padding:"12px 14px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
+          <input type="checkbox"
+            checked={!!((userPrefs||{})[window._currentUser.name]||{}).noPkgCC}
+            onChange={function(e){
+              var name=window._currentUser.name;
+              var cur=Object.assign({},(userPrefs||{})[name]||{});
+              cur.noPkgCC=e.target.checked;
+              var updated=Object.assign({},userPrefs||{});
+              updated[name]=cur;
+              saveUserPrefs(updated);
+              window._ppUserPrefs=updated;
+            }}
+            style={{width:16,height:16,marginTop:2,cursor:"pointer",flexShrink:0}}/>
+          <div>
+            <div style={{fontWeight:600,fontSize:13}}>Never receive CC notifications from package rules</div>
+            <div style={{fontSize:11,color:"#888",marginTop:3}}>When checked, you will never appear as CC on any action — even if you are assigned as package owner in CC rules. Useful if you manage a package and do not need to be notified of your own tasks.</div>
+          </div>
+        </label>
+        {((userPrefs||{})[window._currentUser.name]||{}).noPkgCC&&<div style={{marginTop:10,padding:"8px 12px",background:"#e8f5e9",borderRadius:8,fontSize:12,color:"#2e7d32",fontWeight:600}}>✅ You will never appear as CC from package rules.</div>}
+      </div>}
+    </div>}
     {tab==="improvements"&&<div className="card">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
         <div style={{fontWeight:700,fontSize:14}}>💡 Improvement Register ({(improvements||[]).length})</div>
@@ -1718,7 +2620,96 @@ function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,tag
     </div>}
   </div>;
 }
-// ── contractFinancials (global) ──────────────────────────────────
+function safeConfirm(msg){try{return window.confirm(msg);}catch(e){return true;}}
+function workingDaysDiff(dateStr1,dateStr2){
+
+  var d1=new Date(dateStr1);var d2=new Date(dateStr2);
+  if(d1>=d2)return 0;
+  var count=0;var cur=new Date(d1);cur.setDate(cur.getDate()+1);
+  while(cur<=d2){var day=cur.getDay();if(day!==0)count++;cur.setDate(cur.getDate()+1);}
+  return count;
+}
+function calcProcurement(td){
+
+  var matMaxLead = (td.materials||[]).reduce(function(max,mat){
+    var d=parseLeadDays(mat.leadTime||"");return d>max?d:max;
+  },0);
+
+  var manualLead = Number(td.leadTimeDays||0);
+  var LEAD = manualLead>0 ? manualLead : (matMaxLead>0 ? matMaxLead : 30);
+  var hasSd = td.hasSD||false;
+  var sdResubCount = Number(td.sdResubCount||0);
+
+  var accSubmittal = ((td.stepDates||{}).acc||{}).done || ((td.stepDates||{}).acc||{}).target || "";
+  var accApproval = ((td.stepDates||{}).acc||{}).approval||"";
+  var contractDone = ((td.stepDates||{}).contract||{}).done || ((td.stepDates||{}).contract||{}).target || "";
+
+  function addWorkDays(dateStr, days){
+    if(!dateStr) return "";
+    var d = new Date(dateStr);
+    var added = 0;
+    while(added < days){
+      d.setDate(d.getDate()+1);
+      if(d.getDay()!==0) added++;
+    }
+    return d.toISOString().slice(0,10);
+  }
+
+  var steps = [];
+
+  steps.push({key:"accSub", label:"ACC Submittal (Date done)", date:accSubmittal, done:accSubmittal, duration:null, manual:true, note:"From 'Date done' of ACC step"});
+
+  var accApprTarget = addWorkDays(accSubmittal, 14);
+  steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:14, manual:false});
+
+  var contractTarget = addWorkDays(accApproval||accApprTarget, 28);
+  steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:false});
+
+  var fabStart = contractDone||contractTarget;
+
+  if(hasSd){
+
+    var sdSubDate = td.sdDone||(addWorkDays(contractDone||contractTarget, 14));
+    var sdSubTarget = addWorkDays(contractDone||contractTarget, 14);
+    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:td.sdDone||"", duration:14, manual:false, sd:true});
+
+    var sdAppTarget = addWorkDays(td.sdDone||sdSubTarget, 14);
+    steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
+      review:td.sdReview||""});
+
+    var lastSdDate = td.sdApprovalDone||sdAppTarget;
+    for(var r=0; r<sdResubCount; r++){
+      var rSubTarget = addWorkDays(lastSdDate, 14);
+      var rAppTarget = addWorkDays(rSubTarget, 14);
+      steps.push({key:"sdResub"+(r+1), label:"SD Resubmission "+(r+1), date:rSubTarget, done:"", duration:14, manual:false, sd:true});
+      steps.push({key:"sdReapp"+(r+1), label:"SD Approval "+(r+1), date:rAppTarget, done:"", duration:14, manual:false, sd:true});
+      lastSdDate = rAppTarget;
+    }
+    fabStart = lastSdDate;
+  }
+
+  steps.push({key:"fab", label:"Fabrication Launch", date:fabStart, done:"", duration:null, manual:false,
+    note:"Lead: "+LEAD+"d"});
+
+  var deliveryDate = addWorkDays(fabStart, LEAD);
+  steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:"", duration:LEAD, manual:false, highlight:true});
+
+  var startOnSite = td.startOnSite||"";
+  var margin = "";
+  var procStart = "";
+  var totalDays = steps.filter(function(s){return s.duration;}).reduce(function(a,s){return a+(s.duration||0);},0) + LEAD;
+  if(startOnSite){
+    var sos = new Date(startOnSite);
+    var del = deliveryDate ? new Date(deliveryDate) : null;
+    margin = del ? Math.round((sos - del)/(1000*60*60*24)) : null;
+    var ps = new Date(startOnSite);
+    ps.setDate(ps.getDate() - totalDays);
+    procStart = ps.toISOString().slice(0,10);
+  }
+
+  return {steps:steps, deliveryDate:deliveryDate, procStart:procStart, margin:margin, totalDays:totalDays, LEAD:LEAD};
+}
+
 function contractFinancials(ct){
   var base=Number(ct.amount)||0;
   var addTotal=(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0);
@@ -1744,7 +2735,6 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
 
   return <div>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-      <button className="btn btn-sm" onClick={function(){setNav({ctrId:nav.ctrId});}}>← Back</button>
       <div style={{flex:1}}>
         <div style={{fontSize:11,color:"#888"}}>{ctr.name}</div>
         <div className="page-title" style={{fontSize:18}}>{ct.number||"Contract"} {ct.sapNumber&&<span style={{fontSize:13,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
@@ -1753,9 +2743,9 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           {linkedTender&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {linkedTender.title}</span>}
         </div>
       </div>
+      <button onClick={function(){if(safeConfirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField){updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav(null);}}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#c62828",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
     </div>
 
-    {/* KPI cards */}
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {[
         {label:"Contract Value excl. tax",val:fin.total.toLocaleString()+" EUR",sub:"Base "+fin.base.toLocaleString()+" + Add. "+fin.addTotal.toLocaleString(),color:"#1a1a1a"},
@@ -1770,14 +2760,17 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
     </div>
     <div className="pbar" style={{height:6,marginBottom:14}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
 
-    {/* Contract fields - compact layout */}
     <div className="card" style={{marginBottom:10}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Contract Details</div>
-      {/* Row 1: Contract#, SAP#, Amount, Currency */}
+
       <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         <div style={{flex:"0 0 130px"}}>
           <label>Contract #</label>
           <input type="text" value={ct.number||""} onChange={function(e){updateCtField(ctr.id,ct.id,"number",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
+        </div>
+        <div style={{flex:"0 0 120px"}}>
+          <label>WBS</label>
+          <input type="text" value={ct.wbs||""} onChange={function(e){updateCtField(ctr.id,ct.id,"wbs",e.target.value);}} style={{padding:"4px 8px",fontSize:12}} placeholder="WBS-001"/>
         </div>
         <div style={{flex:"0 0 120px"}}>
           <label>SAP #</label>
@@ -1802,7 +2795,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           </div>
         </div>
       </div>
-      {/* Row 2: Dates + Tender */}
+
       <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"flex-end"}}>
         <div style={{flex:"0 0 140px"}}>
           <label>Start date</label>
@@ -1848,7 +2841,47 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
       </div>
     </div>
 
-    {/* Addendums - collapsible */}
+    <div className="card" style={{marginBottom:10}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>ACC / ACONEX Status</div>
+      {[
+        {key:"acc",label:"ACC",color:"#1a73e8",bg:"#e8f0fe"},
+        {key:"aconex",label:"ACONEX",color:"#7b1fa2",bg:"#f3e5f5"}
+      ].map(function(doc){
+        var signed=ct[doc.key+"Signed"]||false;
+        var subDate=ct[doc.key+"Date"]||"";
+        var status=ct[doc.key+"Status"]||"";
+        var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var overdue=status!=="approved"&&due14&&due14<today();
+        return <div key={doc.key} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 10px",borderRadius:8,background:doc.bg+"44",border:"1px solid "+doc.color+"33",marginBottom:6}}>
+          <div style={{flex:"0 0 80px"}}>
+            <label style={{color:doc.color,fontSize:11,fontWeight:800,display:"block",marginBottom:4}}>{doc.label}</label>
+            <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:500}}>
+              <input type="checkbox" checked={signed} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Signed",e.target.checked);}} style={{width:13,height:13}}/>
+              Signed
+            </label>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:4}}>
+              <select value={status} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Status",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5,fontFamily:"inherit",color:status==="approved"?"#2e7d32":status==="rejected"?"#c62828":"#555",fontWeight:status?"600":"400"}}>
+                <option value="">— status —</option>
+                <option value="not submitted">Not submitted</option>
+                <option value="pending approval">Pending approval</option>
+                <option value="rejected">Rejected</option>
+                <option value="approved">Approved</option>
+              </select>
+              {status&&status!=="not submitted"&&<div style={{flex:"0 0 120px"}}>
+                <div style={{fontSize:9,fontWeight:700,color:"#888",marginBottom:2}}>SUBMISSION DATE</div>
+                <input type="date" value={subDate} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Date",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5}}/>
+              </div>}
+              {due14&&<div style={{fontSize:10,color:overdue?"#c62828":"#888",fontWeight:overdue?700:400}}>
+                {overdue?"⚠️ Overdue +"+workingDaysDiff(due14,today())+"d (due "+fmtDate(due14)+")":"Due: "+fmtDate(due14)}
+              </div>}
+            </div>
+          </div>
+        </div>;
+      })}
+    </div>
+
     <div className="card" style={{marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setShowAdd(!showAdd);}}>
         <div style={{fontWeight:700,fontSize:13}}>Addendums ({(ct.addendums||[]).length}){(ct.addendums||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#1a73e8"}}>Total: {(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0).toLocaleString()} EUR</span>}</div>
@@ -1869,15 +2902,34 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
 <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}><input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} placeholder="INS Amt" style={{width:110,padding:"3px 28px 3px 6px",fontSize:11}}/><span style={{position:"absolute",right:4,fontSize:9,fontWeight:700,color:"#aaa",pointerEvents:"none"}}>{ct.currency||"EUR"}</span></div>
               <span style={{fontSize:10,color:"#888"}}>Cumul: <strong>{addCumul.toLocaleString()} EUR</strong></span>
-              <button onClick={function(){if(confirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+              <button onClick={function(){if(safeConfirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
-            <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+            <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box",marginBottom:6}}/>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["acc","aconex"].map(function(dk){
+                var dLabel=dk==="acc"?"ACC":"ACONEX";var dColor=dk==="acc"?"#1a73e8":"#7b1fa2";
+                var adStatus=ad[dk+"Status"]||"";var adDate=ad[dk+"Date"]||"";
+                var due14=adDate?(function(){var d=new Date(adDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+                var overdue=adStatus!=="approved"&&due14&&due14<today();
+                return <div key={dk} style={{display:"flex",gap:5,alignItems:"center",padding:"4px 7px",borderRadius:6,background:dk==="acc"?"#e8f0fe55":"#f3e5f555",border:"1px solid "+dColor+"33",flex:1,minWidth:180}}>
+                  <span style={{fontSize:10,fontWeight:700,color:dColor,flexShrink:0}}>{dLabel}</span>
+                  <select value={adStatus} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Status",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,fontFamily:"inherit",flex:1}}>
+                    <option value="">— status —</option>
+                    <option value="not submitted">Not submitted</option>
+                    <option value="pending approval">Pending approval</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="approved">✅ Approved</option>
+                  </select>
+                  <input type="date" value={adDate} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Date",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,width:105}}/>
+                  {overdue&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due14,today())}d</span>}
+                </div>;
+              })}
+            </div>
           </div>;
         })}
       </div>}
     </div>
 
-    {/* Certifications - collapsible */}
     <div className="card" style={{marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setShowCert(!showCert);}}>
         <div style={{fontWeight:700,fontSize:13}}>Certifications ({(ct.certifications||[]).length}){(ct.certifications||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#2e7d32"}}>Certified: {(ct.certifications||[]).reduce(function(s,cf){return s+Number(cf.amount||0);},0).toLocaleString()} EUR</span>}</div>
@@ -1898,7 +2950,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:130,padding:"3px 6px",fontSize:11}}/>
               <span style={{fontSize:10,color:"#2e7d32"}}>Cumul: <strong>{certCumul.toLocaleString()} EUR</strong></span>
               <span style={{fontSize:10,color:rem<0?"#c62828":"#888"}}>Left: <strong>{rem.toLocaleString()} EUR</strong></span>
-              <button onClick={function(){if(confirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+              <button onClick={function(){if(safeConfirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
             <input type="text" value={cf.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
           </div>;
@@ -1909,15 +2961,12 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
 }
 
 function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,tasks}){
-  // nav: null=list, {ctrId}=subcontractor contracts, {ctrId,ctId}=contract detail
+
   const [nav,setNav]=useState(null);
   const [q,setQ]=useState("");
   const [fPkg,setFPkg]=useState("all");
   const [fCtr,setFCtr]=useState("all");
 
-  // contractFinancials is global
-
-  // Helper: save and keep nav in sync
   function save(d){
     saveContractors(d);
     if(nav&&nav.ctId){
@@ -1927,7 +2976,19 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     }
   }
 
+  function addContract(ctrId){
+    var nc=newContract();
+    nc.package=(contractors||[]).find(function(c){return c.id===ctrId;})?((contractors||[]).find(function(c){return c.id===ctrId;}).package||""):"";
+    var d=(contractors||[]).map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:[...(c.contracts||[]),nc]});});
+    save(d);
+    setNav({ctrId:ctrId,ctId:nc.id});
+  }
+
   function updateCtField(ctrId,ctId,field,val){
+    if(field==="__delete__"){
+      var d2=(contractors||[]).map(function(c){if(c.id!==ctrId)return c;return Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct){return ct.id!==ctId;})});});
+      save(d2);return;
+    }
     var d=(contractors||[]).map(function(c){
       if(c.id!==ctrId)return c;
       return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){
@@ -1977,11 +3038,17 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     var allCtrContracts=(contractors||[]).flatMap(function(c){return (c.contracts||[]).map(function(ct2){return {ct:ct2,ctr:c};});});
 
     return <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
-      {/* Left sidebar: all contracts */}
+
       <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
-        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Contracts</div>
-        <div style={{maxHeight:"80vh",overflowY:"auto"}}>
-          {(contractors||[]).filter(function(c){return (c.contracts||[]).length>0;}).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){
+        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
+          <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Contracts</div>
+          <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"100%",padding:"3px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",background:"#fafaf8"}}>
+            <option value="all">All packages</option>
+            {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+          </select>
+        </div>
+        <div style={{maxHeight:"75vh",overflowY:"auto"}}>
+          {(contractors||[]).filter(function(c){return (c.contracts||[]).length>0&&(fPkg==="all"||(c.contracts||[]).some(function(ct){return ct.package===fPkg;}));}).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){
             var hasSel=c.id===nav.ctrId;
             return <div key={c.id}>
               <div style={{padding:"6px 10px",fontSize:10,fontWeight:800,color:"#888",background:"#fafaf8",textTransform:"uppercase",letterSpacing:".3px"}}>{c.name}</div>
@@ -1997,7 +3064,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
           })}
         </div>
       </div>
-      {/* Main detail */}
+
       <div style={{flex:1,minWidth:0}}>
         <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
           updateCtField={updateCtField} updateAdItem={updateAdItem} delAdItem={delAdItem} addAdItem={addAdItem}
@@ -2059,7 +3126,6 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     </div>;
   }
 
-  // ── LIST VIEW ──────────────────────────────────────────────────
   var allContracts=[];
   (contractors||[]).forEach(function(ctr){(ctr.contracts||[]).forEach(function(ct){allContracts.push({ct:ct,ctr:ctr});});});
   var allPkgs=[...new Set(allContracts.map(function(x){return x.ct.package;}).filter(Boolean))].sort();
@@ -2075,6 +3141,18 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     <div className="page-hdr">
       <div><div className="page-title">Contracts</div>
         <div className="page-sub">{allContracts.length} contracts · {(contractors||[]).length} subcontractors</div>
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <select id="new-contract-ctr" style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+          <option value="">Select subcontractor…</option>
+          {(contractors||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
+        </select>
+        <button className="btn btn-gold" onClick={function(){
+          var sel=document.getElementById("new-contract-ctr");
+          if(!sel||!sel.value){alert("Please select a subcontractor first.");return;}
+          addContract(sel.value);
+          setNav({ctrId:sel.value});
+        }}>＋ New Contract</button>
       </div>
     </div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
@@ -2095,7 +3173,6 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
       {(q||fCtr!=="all"||fPkg!=="all")&&<button className="btn btn-sm" onClick={function(){setQ("");setFCtr("all");setFPkg("all");}}>✕ Reset</button>}
     </div>
 
-    {/* Grouped by subcontractor - sorted alphabetically */}
     {(contractors||[]).filter(function(ctr){
       if(fCtr!=="all"&&ctr.name!==fCtr)return false;
       if((ctr.contracts||[]).length===0)return false;
@@ -2183,7 +3260,7 @@ function AwnView({awns,saveAwns,people}){
     setShowForm(false);
     setForm({number:"",date:today(),subject:"",description:"",type:"sent",replied:false,replyNumber:"",replyDate:"",replyDescription:""});
   }
-  function del(id){if(confirm("Delete AWN?"))saveAwns((awns||[]).filter(function(a){return a.id!==id;}));}
+  function del(id){if(safeConfirm("Delete AWN?"))saveAwns((awns||[]).filter(function(a){return a.id!==id;}));}
   function toggleReply(id){saveAwns((awns||[]).map(function(a){return a.id!==id?a:Object.assign({},a,{replied:!a.replied});}));}
 
   var pending=(awns||[]).filter(function(a){return !a.replied;}).length;
@@ -2255,7 +3332,6 @@ function AwnView({awns,saveAwns,people}){
   </div>;
 }
 
-// ── WEEKLY REPORT VIEW ─────────────────────────────────────────────
 function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tenders,contractors}){
   const [selPeople,setSelPeople]=useState([]);
   const [selTags,setSelTags]=useState([]);
@@ -2264,7 +3340,6 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
   var allActions=(tasks||[]).map(function(t){return Object.assign({},t,{_src:"task"});});
   (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){allActions.push(Object.assign({},a,{_src:"tracker",_srcTitle:tr.title}));});});
 
-  // Filter: pending/in progress, matching selected people or their CCs
   var relevant=allActions.filter(function(a){
     if(a.isInfo)return false;
     if(a.status==="done"||a.status==="blocked")return false;
@@ -2285,7 +3360,6 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
     var weekStr="Week of "+now.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
     var lines=["PROJECT PILOT — WEEKLY ACTION REPORT","=".repeat(50),weekStr,""];
 
-    // Group by score
     var high=relevant.filter(function(a){return calcScore(a.importance||1,a.urgence||1)>=7;});
     var mid=relevant.filter(function(a){var s=calcScore(a.importance||1,a.urgence||1);return s>=4&&s<7;});
     var low=relevant.filter(function(a){return calcScore(a.importance||1,a.urgence||1)<4;});
@@ -2318,7 +3392,6 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
     setTimeout(function(){setCopied(false);},2000);
   }
 
-  // Check if today is Friday
   var isFriday=new Date().getDay()===5;
 
   return <div>
@@ -2355,9 +3428,10 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
   </div>;
 }
 
-function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules}){
+function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,saveTasks,saveTrackers,tagrules,pkgrules,jumpOwner,clearJump,onNavTender}){
   const [fStatus,setFStatus]=useState("all");
   const [fOwners,setFOwners]=useState([]);
+  useEffect(function(){if(jumpOwner){setFOwners([jumpOwner]);if(clearJump)clearJump();}else{setFOwners([]);}},[ jumpOwner]);
   const [fTags,setFTags]=useState([]);
   const [fPkg,setFPkg]=useState("all");
   const [fTender,setFTender]=useState("all");
@@ -2403,17 +3477,15 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     return true;
   });
 
-  // Sorting
   if(sortBy!=="none"){
     filtered=filtered.slice().sort(function(a,b){
-      var va="",vb="";
-      if(sortBy==="owner"){va=a.owner||"";vb=b.owner||"";}
-      else if(sortBy==="due"){va=a.due||"9999";vb=b.due||"9999";}
-      else if(sortBy==="score"){va=calcScore(a.importance||1,a.urgence||1);vb=calcScore(b.importance||1,b.urgence||1);return sortDir==="asc"?va-vb:vb-va;}
-      else if(sortBy==="tender"){var ta=(tenders||[]).find(function(t){return t.id===a.tenderRef;});var tb=(tenders||[]).find(function(t){return t.id===b.tenderRef;});va=ta?ta.title:"";vb=tb?tb.title:"";}
-      else if(sortBy==="status"){va=a.status||"";vb=b.status||"";}
-      else if(sortBy==="package"){va=a.package||"";vb=b.package||"";}
-      var r=va<vb?-1:va>vb?1:0;
+      var r=0;
+      if(sortBy==="owner"){r=(a.owner||"").localeCompare(b.owner||"");}
+      else if(sortBy==="due"){r=((a.due||"9999")<(b.due||"9999")?-1:(a.due||"9999")>(b.due||"9999")?1:0);}
+      else if(sortBy==="score"){var sa=calcScore(a.importance||1,a.urgence||1);var sb=calcScore(b.importance||1,b.urgence||1);r=sa-sb;}
+      else if(sortBy==="tender"){var ta=(tenders||[]).find(function(t){return t.id===a.tenderRef;});var tb=(tenders||[]).find(function(t){return t.id===b.tenderRef;});r=((ta?ta.title:"")).localeCompare((tb?tb.title:""));}
+      else if(sortBy==="status"){r=(a.status||"").localeCompare(b.status||"");}
+      else if(sortBy==="package"){r=(a.package||"").localeCompare(b.package||"");}
       return sortDir==="asc"?r:-r;
     });
   }
@@ -2488,7 +3560,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">Global View of Actions</div>
+        <div className="page-title">Actions</div>
         <div className="page-sub">{filtered.length} actions · {pending} pending · {inprog} in progress · {done} done</div>
       </div>
       {filtered.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>📧 Email</button>}
@@ -2552,13 +3624,13 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         <table className="tbl">
           <thead><tr>
             <th>Action</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("status");}}>Status{sortIcon("status")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("due");}}>Due{sortIcon("due")}</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("score");}}>Score{sortIcon("score")}</th>
+            <th className="sortable" onClick={function(){toggleSort("status");}}>Status{sortIcon("status")}</th>
+            <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
+            <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+            <th className="sortable" onClick={function(){toggleSort("due");}}>Due{sortIcon("due")}</th>
+            <th className="sortable" onClick={function(){toggleSort("score");}}>Score{sortIcon("score")}</th>
             <th>Source</th>
-            <th style={{cursor:"pointer",userSelect:"none"}} onClick={function(){toggleSort("tender");}}>Tender{sortIcon("tender")}</th>
+            <th className="sortable" onClick={function(){toggleSort("tender");}}>Tender{sortIcon("tender")}</th>
           </tr></thead>
           <tbody>{filtered.map(function(a,idx){
             var sc=calcScore(a.importance||1,a.urgence||1);
@@ -2573,6 +3645,14 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   ?<div style={{display:"flex",flexDirection:"column",gap:5,padding:"4px 0"}}>
                     <textarea value={a.text||""} autoFocus onChange={function(e){updateField(a,"text",e.target.value);}} style={{width:"100%",padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:50,boxSizing:"border-box"}}/>
                     <textarea value={a.note||a.details||""} onChange={function(e){updateField(a,a._source==="task"?"note":"details",e.target.value);}} placeholder="Notes..." style={{width:"100%",padding:"4px 8px",border:"1.5px solid #ddd",borderRadius:6,fontFamily:"inherit",fontSize:11,resize:"vertical",outline:"none",minHeight:30,boxSizing:"border-box"}}/>
+                    <div style={{marginTop:4}}>
+                      {(a.links||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
+                        <input type="text" value={lk.label||""} onChange={function(e){var ls=(a.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});updateField(a,"links",ls);}} placeholder="Label" style={{width:90,padding:"2px 5px",fontSize:10,border:"1px solid #ddd",borderRadius:4}}/>
+                        <input type="url" value={lk.url||""} onChange={function(e){var ls=(a.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});updateField(a,"links",ls);}} placeholder="https://..." style={{flex:1,padding:"2px 5px",fontSize:10,border:"1px solid #ddd",borderRadius:4}}/>
+                        <button onClick={function(){updateField(a,"links",(a.links||[]).filter(function(_,j){return j!==li;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:11}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
+                      </div>;})}
+                      <button onClick={function(){updateField(a,"links",[...(a.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"1px 7px",border:"1px solid #ddd",borderRadius:4,background:"#fafaf8",fontFamily:"inherit",cursor:"pointer"}}>＋ link</button>
+                    </div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(tags||[]).map(function(tg){var on=(a.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=a.tags||[];updateField(a,"tags",on?cur.filter(function(x){return x!==tg;}):[...cur,tg]);}} style={{padding:"2px 7px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
                     </div>
                     <button className="btn btn-sm btn-pri" style={{alignSelf:"flex-start"}} onClick={function(){setEditId(null);}}>✓ Done</button>
@@ -2581,6 +3661,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                     <div style={{fontWeight:500,fontSize:13,color:a.status==="done"?"#bbb":"#1a1a1a",textDecoration:a.status==="done"?"line-through":"none"}}>{a.text}</div>
                     {(a.note||a.details)&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{a.note||a.details}</div>}
                     {(a.tags||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{(a.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;})}</div>}
+                    {(a.links||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:4,flexWrap:"wrap"}}>{(a.links||[]).map(function(lk,li){return lk.url?<a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:10,color:"#3949ab",textDecoration:"none",padding:"1px 6px",borderRadius:5,background:"#f0f0ff",border:"1px solid #d0d0f0"}}>🔗 {lk.label||"link"}</a>:null;})}</div>}
                     {ccs.length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{ccs.map(function(p,i){return <span key={p} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC {p.split(",")[0]}</span>;})}</div>}
                     <div style={{fontSize:9,color:"#ddd",marginTop:2}}>✏️ click to edit</div>
                   </div>}
@@ -2622,12 +3703,21 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   :<span>{sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}</span>}
               </td>
               <td><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
+              <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
               <td>
                 {isEdit
                   ?<select value={a.tenderRef||""} onChange={function(e){updateField(a,"tenderRef",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
                     <option value="">—</option>{(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
                   </select>
-                  :<span>{tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>}</span>}
+                  :<span>{tdr&&(onNavTender?<button onClick={function(e){e.stopPropagation();onNavTender(tdr.id,"global");}} style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10,padding:"2px 8px",borderRadius:20,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📑 {tdr.title}</button>:<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>)}</span>}
+              </td>
+              <td style={{whiteSpace:"nowrap"}}>
+                <div style={{display:"flex",gap:4}}>
+                  <button className="btn btn-sm" onClick={function(){setEditId(isEdit?null:a.id);}} style={{padding:"3px 7px"}}>
+                    {isEdit?"✓":"✏️"}
+                  </button>
+                  {a._source==="task"&&<button className="btn btn-sm btn-danger" onClick={function(){saveTasks((tasks||[]).filter(function(x){return x.id!==a.id;}));}} style={{padding:"3px 7px"}}>🗑</button>}
+                </div>
               </td>
             </tr>;
           })}</tbody>
@@ -2636,8 +3726,634 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   </div>;
 }
 
+function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onClose}){
+
+  var now=new Date();
+  var dayOfWeek=now.getDay();// 0=Sun
+  var monday=new Date(now);monday.setDate(now.getDate()-(dayOfWeek===0?6:dayOfWeek-1));monday.setHours(0,0,0,0);
+  var saturday=new Date(monday);saturday.setDate(monday.getDate()+5);saturday.setHours(23,59,59,999);
+  var monStr=monday.toISOString().slice(0,10);
+  var satStr=saturday.toISOString().slice(0,10);
+  var todayStr=today();
+  var weekLabel=monday.toLocaleDateString("en-GB",{day:"2-digit",month:"long"})+" – "+saturday.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
+
+  var currentUserName=window._currentUser?window._currentUser.name:"";
+
+  var allActions=[];
+  (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
+  (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){if(!a.isInfo)allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
+
+  var myActions=allActions.filter(function(a){
+    if(a.status==="done"||a.status==="blocked")return false;
+    if(!a.due)return false;
+    if(currentUserName&&a.owner!==currentUserName)return false;
+    return true;
+  });
+
+  var overdue=myActions.filter(function(a){return a.due<monStr;})
+    .sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
+  var thisWeek=myActions.filter(function(a){return a.due>=monStr&&a.due<=satStr;})
+    .sort(function(a,b){return a.due.localeCompare(b.due)||calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
+  var upcoming=myActions.filter(function(a){return a.due>satStr;})
+    .sort(function(a,b){return a.due.localeCompare(b.due);});
+
+  function changeStatus(a,val){
+    if(a._src==="task"){saveT((tasks||[]).map(function(t){return t.id!==a.id?t:Object.assign({},t,{status:val});}));}
+    else{saveX((trackers||[]).map(function(tr){if(tr.id!==a._trId)return tr;return Object.assign({},tr,{actions:(tr.actions||[]).map(function(ac){return ac.id!==a.id?ac:Object.assign({},ac,{status:val});})});}));}
+  }
+
+  function ActionRow({a,showDate}){
+    var sc=calcScore(a.importance||1,a.urgence||1);var ss=scoreStyle(sc);
+    var ctr2=a.contractorRef?(contractors||[]).find(function(c){return c.id===a.contractorRef;}):null;
+    var tdr2=a.tenderRef?(tenders||[]).find(function(t){return t.id===a.tenderRef;}):null;
+    var isOverdue=a.due&&a.due<todayStr;
+    return <div style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 8px",borderRadius:7,background:isOverdue?"#fff9f9":"#fafaf8",border:"1px solid "+(isOverdue?"#fcc":"#f0ede6"),marginBottom:4}}>
+      <select value={a.status||"pending"} onChange={function(e){changeStatus(a,e.target.value);}} style={{fontSize:10,padding:"2px 3px",border:"1px solid #e0ddd8",borderRadius:5,fontFamily:"inherit",cursor:"pointer",flexShrink:0,width:90}}>
+        {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
+      </select>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12,fontWeight:500,color:"#1a1a1a",lineHeight:1.3,marginBottom:2}}>{a.text}</div>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+          {showDate&&<span style={{fontSize:10,fontWeight:700,color:isOverdue?"#c62828":"#f57f17"}}>📅 {fmtDate(a.due)}{isOverdue?" ⚠️":""}</span>}
+          {a.package&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#f0ede6",color:"#666"}}>{a.package}</span>}
+          {tdr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#fff8f0",color:"#b45309"}}>📑 {tdr2.title}</span>}
+          {ctr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#e8f0fe",color:"#1a73e8"}}>🤝 {ctr2.name}</span>}
+          {sc>1&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:ss.bg,color:ss.color,fontWeight:700}}>{sc}</span>}
+        </div>
+      </div>
+    </div>;
+  }
+
+  function Section({label,color,items,showDate}){
+    if(items.length===0)return null;
+    return <div style={{marginBottom:16}}>
+      <div style={{fontWeight:800,fontSize:11,color:color,textTransform:"uppercase",letterSpacing:".6px",marginBottom:6,paddingBottom:4,borderBottom:"2px solid "+color,display:"flex",justifyContent:"space-between"}}>
+        <span>{label}</span><span style={{fontWeight:400,color:"#aaa",fontSize:10}}>({items.length})</span>
+      </div>
+      {items.map(function(a){return <ActionRow key={a.id} a={a} showDate={showDate}/>;} )}
+    </div>;
+  }
+
+  return <div className="overlay" style={{zIndex:700}} onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:"#fff",borderRadius:16,width:"88vw",maxWidth:580,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 12px 48px rgba(0,0,0,.2)"}}>
+      <div style={{background:"#1c1c1e",borderRadius:"16px 16px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,fontWeight:700,color:"#f97316",letterSpacing:"1px"}}>📋 My Week</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>{weekLabel} · {currentUserName||"All users"}</div>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#888",lineHeight:1,padding:"0 4px"}}>×</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+        {myActions.length===0
+          ?<div style={{textAlign:"center",padding:"32px 0",color:"#bbb"}}>
+            <div style={{fontSize:40,marginBottom:8}}>✅</div>
+            <div style={{fontSize:14}}>No scheduled actions for this week!</div>
+            {!currentUserName&&<div style={{fontSize:12,color:"#aaa",marginTop:4}}>Log in to see your personal actions.</div>}
+          </div>
+          :<div>
+            <Section label="⚠️ Overdue" color="#c62828" items={overdue} showDate={true}/>
+            <Section label={"This week ("+monStr.slice(5).replace("-","/")+"-"+satStr.slice(5).replace("-","/")+")"}color="#f57f17" items={thisWeek} showDate={true}/>
+            <Section label="Upcoming" color="#aaa" items={upcoming} showDate={true}/>
+          </div>}
+      </div>
+      <div style={{padding:"10px 20px",borderTop:"1px solid #f0ede6",display:"flex",justifyContent:"flex-end",flexShrink:0}}>
+        <button className="btn btn-pri" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function simpleHash(str){
+  var hash=0;
+  for(var i=0;i<str.length;i++){hash=((hash<<5)-hash)+str.charCodeAt(i);hash|=0;}
+  return Math.abs(hash).toString(36);
+}
+
+function UserLogin({people,onLogin}){
+  const [step,setStep]=useState("pick");
+  const [selName,setSelName]=useState("");
+  const [pin,setPin]=useState("");
+  const [newPin,setNewPin]=useState("");
+  const [newPin2,setNewPin2]=useState("");
+  const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [pins,setPins]=useState({});
+
+  useEffect(function(){
+
+    if(window._db){
+      window._db.get(KEYS_PINS).then(function(data){
+        if(data)setPins(data);
+      }).catch(function(){});
+    }
+  },[]);
+
+  function savePinToDb(name,pinVal){
+    var updated=Object.assign({},pins);
+    updated[name]=simpleHash(name+pinVal);
+    setPins(updated);
+    if(window._db)window._db.set(KEYS_PINS,updated);
+  }
+
+  function pickPerson(name){
+    setSelName(name);setError("");setPin("");
+    if(pins[name]){setStep("pin");}
+    else{setStep("newpin");}
+  }
+
+  function checkPin(pinVal){
+    var hashed=simpleHash(selName+pinVal);
+    if(hashed===pins[selName]){
+      window._currentUser={name:selName};
+      try{localStorage.setItem("pp_current_user",selName);}catch(e){}
+      onLogin(selName);
+    } else {
+      setError("Wrong PIN. Try again.");
+      setPin("");
+    }
+  }
+
+  function handlePinDigit(k){
+    if(k==="⌫"){setPin(function(p){return p.slice(0,-1);});setError("");return;}
+    if(k===""||pin.length>=4)return;
+    var np=pin+k;
+    setPin(np);
+    if(np.length===4){setTimeout(function(){checkPin(np);},100);}
+  }
+
+  function setNewPinFn(){
+    if(newPin.length!==4||!/^[0-9]{4}$/.test(newPin)){setError("PIN must be 4 digits.");return;}
+    if(newPin!==newPin2){setError("PINs do not match.");return;}
+    setLoading(true);
+    savePinToDb(selName,newPin);
+    window._currentUser={name:selName};
+    try{localStorage.setItem("pp_current_user",selName);}catch(e){}
+    onLogin(selName);
+  }
+
+  return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#1c1c1e"}}>
+    <div style={{marginBottom:24,textAlign:"center"}}>
+      <div style={{color:"#f97316",fontSize:20,fontWeight:900,letterSpacing:"2px",fontFamily:"'DM Serif Display',serif",marginBottom:2}}>RIVIERA TOWER TRACKER</div>
+      <div style={{color:"#f97316",fontSize:13,fontWeight:700,letterSpacing:"1.5px",fontFamily:"'DM Serif Display',serif"}}>MAGIC TEAM</div>
+    </div>
+    <div style={{background:"#fff",borderRadius:16,padding:"28px 32px",width:340,boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
+      {step==="pick"&&<div>
+        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,fontWeight:700,marginBottom:4}}>Who are you?</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:18}}>Select your name to continue</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+          {(people||[]).slice().sort().map(function(p){var shortName=p.split(",")[0];return <button key={p} onClick={function(){pickPerson(p);}} style={{padding:"10px 14px",borderRadius:8,border:"1.5px solid #e8e6df",background:"#fafaf8",fontFamily:"inherit",fontSize:13,fontWeight:500,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:8}} onMouseEnter={function(e){e.currentTarget.style.borderColor="#c9a84c";e.currentTarget.style.background="#fffbf0";}} onMouseLeave={function(e){e.currentTarget.style.borderColor="#e8e6df";e.currentTarget.style.background="#fafaf8";}}>
+            <span style={{width:28,height:28,borderRadius:"50%",background:"#f0ede6",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,flexShrink:0}}>{shortName[0]}</span>
+            {shortName}
+            {pins[p]?<span style={{marginLeft:"auto",fontSize:10,color:"#aaa"}}>🔒 PIN set</span>:<span style={{marginLeft:"auto",fontSize:10,color:"#c9a84c",fontWeight:600}}>new</span>}
+          </button>;})}
+        </div>
+      </div>}
+
+      {step==="pin"&&<div>
+        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,fontWeight:700,marginBottom:2}}>Hello, {selName.split(",")[0]}</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:18}}>Enter your 4-digit PIN</div>
+        {error&&<div style={{padding:"6px 10px",background:"#fce4ec",borderRadius:7,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+        <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:20}}>
+          {[0,1,2,3].map(function(i){return <div key={i} style={{width:44,height:52,border:"2px solid "+(pin.length>i?"#c9a84c":"#e8e6df"),borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#1c1c1e"}}>{pin[i]?"●":""}</div>;} )}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+          {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(function(k,i){return <button key={i} onClick={function(){handlePinDigit(String(k));}} disabled={k===""} style={{padding:"13px",borderRadius:8,border:"1.5px solid "+(k===""?"transparent":"#e8e6df"),background:k===""?"transparent":"#fafaf8",fontFamily:"inherit",fontSize:17,fontWeight:600,cursor:k===""?"default":"pointer",color:"#1c1c1e",opacity:k===""?0:1}}>{k}</button>;})}
+        </div>
+        <button onClick={function(){setStep("pick");setPin("");setError("");}} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:12,fontFamily:"inherit",width:"100%",textAlign:"center"}}>← Back</button>
+      </div>}
+
+      {step==="newpin"&&<div>
+        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,fontWeight:700,marginBottom:2}}>Hi, {selName.split(",")[0]}!</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:16}}>First time? Choose your PIN</div>
+        <div style={{padding:"8px 12px",background:"#e8f5e9",borderRadius:7,fontSize:11,color:"#2e7d32",marginBottom:12}}>Your PIN will be stored securely and required next time.</div>
+        {error&&<div style={{padding:"6px 10px",background:"#fce4ec",borderRadius:7,color:"#c62828",fontSize:12,marginBottom:10}}>{error}</div>}
+        <div className="fg" style={{marginBottom:10}}>
+          <label>Choose PIN (4 digits)</label>
+          <input type="password" maxLength={4} value={newPin} onChange={function(e){setNewPin(e.target.value.replace(/[^0-9]/g,""));}} placeholder="••••" style={{fontSize:22,letterSpacing:10,textAlign:"center"}}/>
+        </div>
+        <div className="fg" style={{marginBottom:16}}>
+          <label>Confirm PIN</label>
+          <input type="password" maxLength={4} value={newPin2} onChange={function(e){setNewPin2(e.target.value.replace(/[^0-9]/g,""));}} placeholder="••••" style={{fontSize:22,letterSpacing:10,textAlign:"center"}} onKeyDown={function(e){if(e.key==="Enter")setNewPinFn();}}/>
+        </div>
+        <button className="btn btn-pri" onClick={setNewPinFn} disabled={loading} style={{width:"100%",justifyContent:"center",padding:"10px"}}>{loading?"Saving...":"Set PIN & Continue"}</button>
+        <button onClick={function(){setStep("pick");setNewPin("");setNewPin2("");setError("");}} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:12,fontFamily:"inherit",width:"100%",textAlign:"center",marginTop:8}}>← Back</button>
+      </div>}
+    </div>
+    <div style={{marginTop:12,fontSize:11,color:"#555",textAlign:"center"}}>PINs are stored securely in the shared database.<br/>Only you know your PIN.</div>
+  </div>;
+}
+
+function DashboardView({tasks,trackers,people,tenders,contractors,packages,onJumpOwner,onNavTender}){
+  var allActions=[];
+  (tasks||[]).forEach(function(t){if(!t.isInfo)allActions.push(Object.assign({},t,{_src:"task"}));});
+  (trackers||[]).forEach(function(tr){(tr.actions||[]).forEach(function(a){if(!a.isInfo)allActions.push(Object.assign({},a,{_src:"tracker",_trId:tr.id}));});});
+
+  var active=allActions.filter(function(a){return a.status!=="done"&&a.status!=="blocked";});
+  var overdue=active.filter(function(a){return a.due&&a.due<today();});
+  var done=allActions.filter(function(a){return a.status==="done";});
+
+  var personList=(people||[]).filter(function(p){return active.some(function(a){return a.owner===p;});});
+
+  var high=active.filter(function(a){return calcScore(a.importance||1,a.urgence||1)>=7;}).length;
+  var mid=active.filter(function(a){var s=calcScore(a.importance||1,a.urgence||1);return s>=4&&s<7;}).length;
+  var low=active.filter(function(a){return calcScore(a.importance||1,a.urgence||1)<4;}).length;
+
+  function PieChart({data,size}){
+    var sz=size||120;var total=data.reduce(function(s,d){return s+d.value;},0);
+    if(total===0)return <div style={{width:sz,height:sz,borderRadius:"50%",background:"#e8e6df",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#aaa"}}>No data</div>;
+    var paths=[];var angle=-Math.PI/2;
+    data.forEach(function(d,i){
+      if(d.value===0)return;
+      var slice=(d.value/total)*Math.PI*2;
+      var x1=Math.cos(angle)*sz/2;var y1=Math.sin(angle)*sz/2;
+      angle+=slice;
+      var x2=Math.cos(angle)*sz/2;var y2=Math.sin(angle)*sz/2;
+      var large=slice>Math.PI?1:0;
+      var cx=sz/2;var cy=sz/2;var r=sz/2-2;
+      var path="M "+cx+" "+cy+" L "+(cx+x1*r/(sz/2))+" "+(cy+y1*r/(sz/2))+" A "+r+" "+r+" 0 "+large+" 1 "+(cx+x2*r/(sz/2))+" "+(cy+y2*r/(sz/2))+" Z";
+      paths.push(<path key={i} d={path} fill={d.color} stroke="#fff" strokeWidth={1}/>);
+    });
+    return <svg width={sz} height={sz} viewBox={"0 0 "+sz+" "+sz}>{paths}</svg>;
+  }
+
+  function PersonCard({name}){
+    var myTasks=active.filter(function(a){return a.owner===name;}).sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);});
+    var myOverdue=myTasks.filter(function(a){return a.due&&a.due<today();});
+    var myHigh=myTasks.filter(function(a){return calcScore(a.importance||1,a.urgence||1)>=7;}).length;
+    var myMid=myTasks.filter(function(a){var s=calcScore(a.importance||1,a.urgence||1);return s>=4&&s<7;}).length;
+    var myLow=myTasks.length-myHigh-myMid;
+    var shortName=name.split(",")[0];
+    return <div className="card" style={{marginBottom:12}}>
+      <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+        <div style={{textAlign:"center",flexShrink:0}}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:"#f0ede6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,margin:"0 auto 4px"}}>{shortName[0]}</div>
+          <div onClick={function(){if(onJumpOwner)onJumpOwner(name);}} style={{fontSize:11,fontWeight:700,color:onJumpOwner?"#3949ab":"#1a1a1a",whiteSpace:"nowrap",cursor:onJumpOwner?"pointer":"default",textDecoration:onJumpOwner?"underline":"none"}}>{shortName}</div>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,fontWeight:700}}>{myTasks.length} actions</span>
+            {myOverdue.length>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#fce4ec",color:"#c62828",fontWeight:700}}>⚠️ {myOverdue.length} overdue</span>}
+            {myHigh>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#ffebee",color:"#c62828"}}>🔴 {myHigh}</span>}
+            {myMid>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#fff8e1",color:"#f57f17"}}>🟠 {myMid}</span>}
+            {myLow>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#f5f5f5",color:"#888"}}>⚪ {myLow}</span>}
+          </div>
+          {myOverdue.length>0&&<div style={{marginBottom:6}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#c62828",marginBottom:3}}>OVERDUE</div>
+            {myOverdue.slice(0,3).map(function(a){return <div key={a.id} style={{fontSize:11,color:"#c62828",padding:"2px 0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>• {a.text}</div>;})}
+            {myOverdue.length>3&&<div style={{fontSize:10,color:"#c62828"}}>+{myOverdue.length-3} more</div>}
+          </div>}
+          {myTasks.filter(function(a){return !a.due||a.due>=today();}).slice(0,3).map(function(a){var sc=calcScore(a.importance||1,a.urgence||1);var ss=scoreStyle(sc);return <div key={a.id} style={{fontSize:11,color:"#555",padding:"2px 0",display:"flex",gap:4,alignItems:"center"}}>
+            {sc>1&&<span style={{width:16,height:16,borderRadius:3,background:ss.bg,color:ss.color,fontSize:9,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{sc}</span>}
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.text}</span>
+          </div>;})}
+        </div>
+        <PieChart size={70} data={[{value:myHigh,color:"#c62828"},{value:myMid,color:"#f57f17"},{value:myLow,color:"#bbb"}]}/>
+      </div>
+    </div>;
+  }
+
+  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+    <div className="page-hdr" style={{marginBottom:16}}>
+      <div><div className="page-title">Dashboard</div><div className="page-sub">Team overview · {active.length} active · {overdue.length} overdue</div></div>
+    </div>
+
+    <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+      {[
+        {label:"Total active",val:active.length,color:"#1a1a1a"},
+        {label:"Overdue",val:overdue.length,color:"#c62828"},
+        {label:"High priority",val:high,color:"#c62828"},
+        {label:"Medium",val:mid,color:"#f57f17"},
+        {label:"Standard",val:low,color:"#888"},
+        {label:"Done",val:done.length,color:"#2e7d32"}
+      ].map(function(k){return <div key={k.label} className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 14px",textAlign:"center"}}>
+        <div style={{fontSize:24,fontWeight:900,color:k.color}}>{k.val}</div>
+        <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{k.label}</div>
+      </div>;})}
+    </div>
+
+    <div style={{display:"flex",gap:14,marginBottom:20,flexWrap:"wrap"}}>
+      <div className="card" style={{flex:1,minWidth:200}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Priority Distribution</div>
+        <div style={{display:"flex",gap:16,alignItems:"center"}}>
+          <PieChart size={100} data={[{value:high,color:"#c62828"},{value:mid,color:"#f57f17"},{value:low,color:"#bbb"}]}/>
+          <div>
+            {[{label:"High (7-9)",val:high,color:"#c62828"},{label:"Medium (4-6)",val:mid,color:"#f57f17"},{label:"Standard (1-3)",val:low,color:"#bbb"}].map(function(d){return <div key={d.label} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+              <div style={{width:10,height:10,borderRadius:2,background:d.color,flexShrink:0}}/>
+              <span style={{fontSize:11,color:"#555"}}>{d.label}</span>
+              <span style={{fontSize:11,fontWeight:700,marginLeft:"auto"}}>{d.val}</span>
+            </div>;})}
+          </div>
+        </div>
+      </div>
+      <div className="card" style={{flex:1,minWidth:200}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:"#c62828"}}>⚠️ Overdue Actions ({overdue.length})</div>
+        {overdue.length===0?<div style={{color:"#bbb",fontSize:12}}>No overdue actions 🎉</div>
+        :overdue.slice(0,6).sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);}).map(function(a){var sc=calcScore(a.importance||1,a.urgence||1);var ss=scoreStyle(sc);return <div key={a.id} style={{display:"flex",gap:6,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #f5f5f5"}}>
+          <span style={{fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:5,background:ss.bg,color:ss.color,flexShrink:0}}>{sc}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.text}</div>
+            <div style={{fontSize:10,color:"#c62828"}}>{a.due?fmtDate(a.due):""} {a.owner&&"· "+a.owner.split(",")[0]}</div>
+          </div>
+        </div>;})}
+      </div>
+    </div>
+
+    <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>By Team Member</div>
+    {personList.length===0?<div className="empty"><div className="empty-ico">👥</div><div className="empty-txt">No actions assigned to team members yet.</div></div>
+    :personList.map(function(name){return <PersonCard key={name} name={name}/>;} )}
+  </div>;
+}
+
+function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNavTender}){
+  const [fTender,setFTender]=useState("all");
+  const [fPkg,setFPkg]=useState("all");
+  const [fOwner,setFOwner]=useState("all");
+  const [fStage,setFStage]=useState("all");
+  const [fStatus,setFStatus]=useState("overdue");
+
+  var STAGES=[
+    {key:"rfi",label:"RFI",color:"#b45309",bg:"#fff8f0"},
+    {key:"contract_acc",label:"Contract ACC",color:"#1a73e8",bg:"#e8f0fe"},
+    {key:"contract_aconex",label:"Contract ACONEX",color:"#7b1fa2",bg:"#f3e5f5"},
+    {key:"acc",label:"Tender ACC",color:"#1a73e8",bg:"#dce8ff"},
+    {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"},
+    {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"}
+  ];
+
+  var docs=[];
+  var todayStr=today();
+
+  (tasks||[]).forEach(function(t){
+    if(!(t.tags||[]).includes("RFI"))return;
+    var tdr=(tenders||[]).find(function(x){return x.id===t.tenderRef;})||null;
+    var ctr=(contractors||[]).find(function(x){return x.id===t.contractorRef;})||null;
+    var submitted=t.rfiSubmission||"";
+    var due=t.rfiDue||(submitted?(function(){var d=new Date(submitted);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"");
+    var overdue=due&&due<todayStr&&t.status!=="done";
+    docs.push({
+      id:t.id,stage:"rfi",stageLabel:"RFI",
+      text:t.text,owner:t.owner||"",
+      package:t.package||"",
+      tenderRef:t.tenderRef||"",tenderTitle:tdr?tdr.title:"",
+      submissionDate:submitted,dueDate:due,
+      status:t.status,overdue:overdue,
+      daysOverdue:due?workingDaysDiff(due,todayStr):0,
+      _taskId:t.id,_type:"task"
+    });
+  });
+
+  (contractors||[]).forEach(function(ctr){
+    (ctr.contracts||[]).forEach(function(ct){
+      [{key:"contract_acc",label:"Contract ACC",dk:"acc"},{key:"contract_aconex",label:"Contract ACONEX",dk:"aconex"}].forEach(function(docType){
+        var status=ct[docType.dk+"Status"]||"";
+        var subDate=ct[docType.dk+"Date"]||"";
+        if(!subDate&&!status)return;
+        var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+        var overdue=status!=="approved"&&!!due14&&due14<todayStr;
+        var daysOverdue=overdue?workingDaysDiff(due14,todayStr):0;
+        docs.push({
+          id:ct.id+"_"+docType.dk,stage:docType.key,stageLabel:docType.label,
+          text:ctr.name+(ct.number?" — "+ct.number:"")+" ("+docType.label+")",
+          owner:ct.owner||ctr.owner||"",package:ct.package||ctr.package||"",
+          tenderRef:ct.tenderRef||"",tenderTitle:"",submissionDate:subDate,
+          dueDate:due14,targetDate:subDate,overdue:overdue,daysOverdue:daysOverdue,
+          stepStatus:status,_type:"contract"
+        });
+      });
+      (ct.addendums||[]).forEach(function(ad){
+        [{key:"contract_acc",label:"Add. ACC",dk:"acc"},{key:"contract_aconex",label:"Add. ACONEX",dk:"aconex"}].forEach(function(docType){
+          var status=ad[docType.dk+"Status"]||"";
+          var subDate=ad[docType.dk+"Date"]||"";
+          if(!subDate&&!status)return;
+          var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+          var overdue=status!=="approved"&&!!due14&&due14<todayStr;
+          docs.push({
+            id:ct.id+"_add_"+ad.id+"_"+docType.dk,stage:docType.key,stageLabel:"Addum. "+docType.label.split(" ")[1],
+            text:ctr.name+(ct.number?" C"+ct.number:"")+(ad.number?" Add."+ad.number:"")+" ("+docType.label.split(" ")[1]+")",
+            owner:ct.owner||ctr.owner||"",package:ct.package||ctr.package||"",
+            tenderRef:ct.tenderRef||"",tenderTitle:"",submissionDate:subDate,
+            dueDate:due14,targetDate:subDate,overdue:overdue,daysOverdue:overdue?workingDaysDiff(due14,todayStr):0,
+            stepStatus:status,_type:"contract"
+          });
+        });
+      });
+    });
+  });
+
+  (tenders||[]).forEach(function(td){
+    if(!td.hasSD)return;
+    var subDone=td.sdDone||"";
+    var appDone=td.sdApprovalDone||"";
+    var appStatus=td.sdApprovalStatus||"";
+    if(!subDone)return;
+    var due14=(function(){var d=new Date(subDone);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}());
+    var overdue=appStatus!=="approved"&&!appDone&&due14<todayStr;
+    var daysOverdue=overdue?workingDaysDiff(due14,todayStr):0;
+    docs.push({
+      id:td.id+"_sd",stage:"sd_approval",stageLabel:"SD Approval",
+      text:td.title+" — SD Approval",
+      owner:td.ownerTender||"",package:td.package||"",
+      tenderRef:td.id,tenderTitle:td.title,
+      submissionDate:subDone,dueDate:due14,targetDate:subDone,
+      overdue:overdue,daysOverdue:daysOverdue,
+      stepStatus:appStatus||"pending approval",_type:"tender"
+    });
+  });
+
+  var TENDER_DOC_STEPS=["acc","mar","itp","wms"];
+  var STEP_LABELS={acc:"ACC/ACONEX",mar:"MAR",itp:"ITP",wms:"WMS"};
+  (tenders||[]).forEach(function(td){
+    TENDER_DOC_STEPS.forEach(function(step){
+      var stepStatus=(td.steps||{})[step]||"";
+      var targetDate=((td.stepDates||{})[step]||{}).target||"";
+      var doneDate=((td.stepDates||{})[step]||{}).done||"";
+      var approvalDate=((td.stepDates||{})[step]||{}).approval||"";
+
+      var isApproved=stepStatus.toLowerCase().includes("approved");
+      var isDone=!!doneDate||isApproved;
+      var isApprovalDone=!!approvalDate||isApproved;
+
+      var dueDateFromDone=doneDate?(function(){var d=new Date(doneDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+
+      var dueDateFromTarget=targetDate?(function(){var d=new Date(targetDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+
+      var effectiveDue=doneDate?dueDateFromDone:dueDateFromTarget;
+      var effectiveSubmission=doneDate||"";
+      if(!effectiveDue)return;
+      var overdue=(doneDate?!isApprovalDone:!isDone)&&effectiveDue<todayStr;
+      var daysOverdue=overdue?workingDaysDiff(effectiveDue,todayStr):0;
+      docs.push({
+        id:td.id+"_"+step,stage:step,stageLabel:STEP_LABELS[step],
+        text:td.title+" — "+STEP_LABELS[step],
+        owner:td.ownerTender||"",
+        package:td.package||"",
+        tenderRef:td.id,tenderTitle:td.title,
+        submissionDate:effectiveSubmission||doneDate||"",dueDate:effectiveDue,targetDate:targetDate,
+        status:isDone?"done":"pending",overdue:overdue,
+        daysOverdue:daysOverdue,
+        stepStatus:stepStatus,
+        _tenderId:td.id,_step:step,_type:"tender"
+      });
+    });
+  });
+
+  var filtered=docs.filter(function(d){
+    if(fTender!=="all"&&d.tenderRef!==fTender)return false;
+    if(fPkg!=="all"&&d.package!==fPkg)return false;
+    if(fOwner!=="all"&&d.owner!==fOwner)return false;
+    if(fStage!=="all"&&d.stage!==fStage)return false;
+    if(fStatus==="overdue"&&!d.overdue)return false;
+    if(fStatus==="ok"&&d.overdue)return false;
+    return true;
+  }).sort(function(a,b){
+    if(a.overdue&&!b.overdue)return -1;
+    if(!a.overdue&&b.overdue)return 1;
+    return (b.daysOverdue-a.daysOverdue)||(a.dueDate||"").localeCompare(b.dueDate||"");
+  });
+
+  var overdueCount=docs.filter(function(d){return d.overdue;}).length;
+
+  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+    <div className="page-hdr">
+      <div>
+        <div className="page-title">⚠️ Overdue</div>
+        <div className="page-sub">Overdue submissions by client — RFI, ACC/ACONEX, MAR, ITP, WMS, SD</div>
+      </div>
+      {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fce4ec",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#c62828",fontWeight:700,fontSize:13}}>
+        ⚠️ {overdueCount} overdue
+      </div>}
+    </div>
+
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1.5px solid "+(fStatus==="overdue"?"#c62828":"#e8e6df"),borderRadius:8,fontFamily:"inherit",color:fStatus==="overdue"?"#c62828":"#555",fontWeight:fStatus==="overdue"?700:400,background:fStatus==="overdue"?"#fce4ec":"#fff"}}>
+        <option value="overdue">⚠️ Overdue only</option>
+        <option value="all">All documents</option>
+        <option value="ok">On track</option>
+      </select>
+      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All stages</option>
+        {STAGES.map(function(s){return <option key={s.key} value={s.key}>{s.label}</option>;})}
+      </select>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All packages</option>
+        {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+      </select>
+      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All tenders</option>
+        {(tenders||[]).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
+      </select>
+      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All owners</option>
+        {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+      </select>
+      {(fTender!=="all"||fPkg!=="all"||fOwner!=="all"||fStage!=="all"||fStatus!=="overdue")&&
+        <button className="btn btn-sm" onClick={function(){setFTender("all");setFPkg("all");setFOwner("all");setFStage("all");setFStatus("overdue");}}>✕ Reset</button>}
+    </div>
+
+    {filtered.length===0
+      ?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">{fStatus==="overdue"?"No overdue documents!":"No documents matching filters."}</div></div>
+      :<div>
+
+        <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+          {STAGES.map(function(s){
+            var cnt=docs.filter(function(d){return d.stage===s.key&&d.overdue;}).length;
+            if(cnt===0)return null;
+            return <div key={s.key} onClick={function(){setFStage(s.key);setFStatus("overdue");}} style={{padding:"6px 12px",borderRadius:8,background:s.bg,border:"1.5px solid "+s.color,cursor:"pointer",display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{fontWeight:700,fontSize:13,color:s.color}}>{cnt}</span>
+              <span style={{fontSize:11,color:s.color}}>{s.label}</span>
+            </div>;
+          })}
+        </div>
+
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
+          <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th>Document / Action</th>
+                <th>Tender</th>
+                <th>Package</th>
+                <th>Owner</th>
+                <th>Target → Due (+14d)</th>
+                <th>Days overdue</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(function(d){
+                var stage=STAGES.find(function(s){return s.key===d.stage;})||{color:"#888",bg:"#f5f5f5",label:d.stage};
+                return <tr key={d.id} style={{background:d.overdue?"#fffaf9":"#fff"}}>
+                  <td><span style={{padding:"2px 8px",borderRadius:8,background:stage.bg,color:stage.color,fontWeight:700,fontSize:11}}>{stage.label}</span></td>
+                  <td style={{maxWidth:300}}>
+                    <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:d.tenderRef?"pointer":"default",color:d.tenderRef?"#1a1a1a":"#555"}} onClick={function(){if(d.tenderRef&&onNavTender)onNavTender(d.tenderRef,"documents");}}>{d.text}</div>
+                    {d.submissionDate&&<div style={{fontSize:10,color:"#aaa"}}>Submitted: {fmtDate(d.submissionDate)}</div>}
+                  </td>
+                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.tenderTitle&&d.tenderRef?<button onClick={function(){if(onNavTender)onNavTender(d.tenderRef,"documents");}} style={{background:"none",border:"none",cursor:"pointer",color:"#3949ab",fontSize:11,fontWeight:500,textDecoration:"underline",padding:0,fontFamily:"inherit"}}>{d.tenderTitle}</button>:<span style={{color:"#888"}}>{d.tenderTitle||"—"}</span>}</td>
+                  <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.package||"—"}</td>
+                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
+                  <td style={{whiteSpace:"nowrap"}}>
+                    {d.submissionDate&&<div style={{fontSize:11,color:"#888"}}>Submittal: {fmtDate(d.submissionDate)}</div>}
+                    <div style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#2e7d32"}}>+14d: {d.dueDate?fmtDate(d.dueDate):"—"}</div>
+                  </td>
+                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>+{d.daysOverdue}d</span>:<span style={{color:"#2e7d32",fontSize:11}}>✓</span>}</td>
+                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:d.status==="done"?"#e8f5e9":"#f5f5f5",color:d.status==="done"?"#2e7d32":"#888",fontWeight:600}}>{d.stepStatus||d.status}</span></td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>}
+  </div>;
+}
+
+function NewTasksPopup({tasks,tenders,contractors,onClose}){
+  return <div className="overlay" style={{zIndex:800}} onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:"#fff",borderRadius:16,width:480,maxWidth:"92vw",maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 16px 48px rgba(0,0,0,.25)"}}>
+      <div style={{background:"#3949ab",borderRadius:"16px 16px 0 0",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,fontWeight:700,color:"#fff",letterSpacing:".5px"}}>🔔 New tasks assigned to you</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.6)",marginTop:2}}>Since your last visit · {tasks.length} action{tasks.length>1?"s":""}</div>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"rgba(255,255,255,.6)",lineHeight:1}}>×</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+        {tasks.slice().sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);}).map(function(t){
+          var sc=calcScore(t.importance||1,t.urgence||1);var ss=scoreStyle(sc);
+          var tdr=t.tenderRef?(tenders||[]).find(function(x){return x.id===t.tenderRef;}):null;
+          var ctr=t.contractorRef?(contractors||[]).find(function(x){return x.id===t.contractorRef;}):null;
+          return <div key={t.id} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #f0ede6",marginBottom:6,background:"#fafaf8"}}>
+            <div style={{fontSize:12,fontWeight:500,marginBottom:3}}>{t.text}</div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+              {t.due&&<span style={{fontSize:10,color:t.due<today()?"#c62828":"#888"}}>📅 {fmtDate(t.due)}</span>}
+              {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{t.package}</span>}
+              {tdr&&<span style={{fontSize:10,color:"#b45309"}}>📑 {tdr.title}</span>}
+              {ctr&&<span style={{fontSize:10,color:"#1a73e8"}}>🤝 {ctr.name}</span>}
+              {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
+              {t.addedBy&&<span style={{fontSize:9,color:"#aaa"}}>by {t.addedBy.split(",")[0]}</span>}
+            </div>
+          </div>;
+        })}
+      </div>
+      <div style={{padding:"12px 20px",borderTop:"1px solid #f0ede6",display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="btn btn-pri" onClick={onClose}>Got it 👍</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function App(){
-  const [view,setView]=useState("actions");
+  const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");return u||null;}catch(e){return null;}});
+  const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
+  function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
+  const [jumpOwner,setJumpOwner]=useState(null);
+  window._navToTender=navToTender;
+  const [newTasksPopup,setNewTasksPopup]=useState(null);
+
+  const [jumpTender,setJumpTender]=useState(null);
+  const [jumpFrom,setJumpFrom]=useState(null);
+  function navToTender(tenderId,fromView){setJumpTender(tenderId);setJumpFrom(fromView||view);setView("tenders");}
+  function navToContractor(ctrId,fromView){setJumpFrom(fromView||view);setView("contractors");}
+  const [showWeeklyPopup,setShowWeeklyPopup]=useState(function(){var now=new Date();var isMonday=now.getDay()===1;var key="pp_weekly_shown_"+now.toISOString().slice(0,10);var shown=false;try{shown=!!localStorage.getItem(key);}catch(e){}if(isMonday&&!shown){try{localStorage.setItem(key,"1");}catch(e){}return true;}return false;});
   const [loaded,setLoaded]=useState(false);
   const [syncStatus,setSyncStatus]=useState("ok");
 
@@ -2659,6 +4375,8 @@ function App(){
   const [awns,setAwns]=useState([]);
   function saveAwns(d){setAwns(d);sync(KEYS_AWN,d);}
   function saveCorrespondences(d){setCorrespondences(d);sync(KEYS_CORR,d);}
+  const [userPrefs,setUserPrefs]=useState({});
+  function saveUserPrefs(d){setUserPrefs(d);sync(KEYS_PREFS,d);}
   const [improvements,setImprovements]=useState([]);
   function saveImprovements(d){setImprovements(d);sync(KEYS_IMP,d);}
   const [apiKey,setApiKey]=useState(function(){try{return localStorage.getItem('pp_apikey')||'';}catch(e){return '';}});
@@ -2670,10 +4388,38 @@ function App(){
     catch(e){setSyncStatus("err");}
   },[]);
 
-  const saveT=d=>{setTasks(d);sync(KEYS.tasks,d);};
-  const saveX=d=>{setTrackers(d);sync(KEYS.trackers,d);};
-  const saveTenders=d=>{setTenders(d);sync(KEYS.tenders,d);};
-  const saveContractors=d=>{setContractors(d);sync(KEYS.contractors,d);};
+  const mergeSync=useCallback(async(key,localVal,idField)=>{
+    setSyncStatus("syncing");
+    try{
+      if(!idField){
+
+        await cloudStore.set(key,localVal);
+      } else {
+
+        var remote=await cloudStore.get(key)||[];
+        var localIds=new Set((localVal||[]).map(function(x){return x[idField];}));
+
+        var remoteOnly=remote.filter(function(x){return !localIds.has(x[idField]);});
+
+        var merged=[...(localVal||[]),...remoteOnly];
+        await cloudStore.set(key,merged);
+
+        if(remoteOnly.length>0){
+          if(key===KEYS.tasks)setTasks(merged);
+          else if(key===KEYS.trackers)setTrackers(merged);
+          else if(key===KEYS.tenders)setTenders(merged);
+          else if(key===KEYS.contractors)setContractors(merged);
+        }
+      }
+      setSyncStatus("ok");
+    }
+    catch(e){console.error("Merge sync error",e);setSyncStatus("err");}
+  },[]);
+
+  const saveT=d=>{setTasks(d);mergeSync(KEYS.tasks,d,"id");};
+  const saveX=d=>{setTrackers(d);mergeSync(KEYS.trackers,d,"id");};
+  const saveTenders=d=>{setTenders(d);mergeSync(KEYS.tenders,d,"id");};
+  const saveContractors=d=>{setContractors(d);mergeSync(KEYS.contractors,d,"id");};
   const savePeople=d=>{setPeople(d);sync(KEYS.people,d);};
   const savePackages=d=>{setPackages(d);sync(KEYS.packages,d);};
   const saveTags=d=>{setTags(d);sync(KEYS.tags,d);};
@@ -2683,14 +4429,14 @@ function App(){
   useEffect(()=>{
     const load=async()=>{
       try{
-        const [t,x,td,ct,p,pk,g,tr,pr,imp,corr,awn,pko]=await Promise.all([
+        const [t,x,td,ct,p,pk,g,tr,pr,imp,corr,awn,pko,prefs]=await Promise.all([
           cloudStore.get(KEYS.tasks),cloudStore.get(KEYS.trackers),cloudStore.get(KEYS.tenders),
           cloudStore.get(KEYS.contractors),cloudStore.get(KEYS.people),cloudStore.get(KEYS.packages),
-          cloudStore.get(KEYS.tags),cloudStore.get(KEYS.tagrules),cloudStore.get(KEYS.pkgrules),cloudStore.get(KEYS_IMP),cloudStore.get(KEYS_CORR),cloudStore.get(KEYS_AWN),cloudStore.get(KEYS.pkgowners)
+          cloudStore.get(KEYS.tags),cloudStore.get(KEYS.tagrules),cloudStore.get(KEYS.pkgrules),cloudStore.get(KEYS_IMP),cloudStore.get(KEYS_CORR),cloudStore.get(KEYS_AWN),cloudStore.get(KEYS.pkgowners),cloudStore.get(KEYS_PREFS)
         ]);
         if(t){setTasks(t);}
         else{
-          // Migrate old tasks from previous app
+
           const oldTasks=await cloudStore.get("tasks");
           if(oldTasks&&oldTasks.length){
             const migrated=oldTasks.map(t=>newTask({id:t.id,text:t.text||"",owner:t.owner||"",package:t.package||"",status:t.status||"pending",importance:t.importance||1,urgence:t.urgence||1,due:t.due||"",note:t.note||"",tags:t.tags||[],createdAt:t.createdAt||today()}));
@@ -2699,7 +4445,7 @@ function App(){
         }
         if(x){setTrackers(x);}
         else{
-          // Migrate old trackers (ex-MoMs = records) from previous app
+
           const oldRecords=await cloudStore.get("records");
           const oldTrackers=await cloudStore.get("trackers");
           const migratedTrackers=[];
@@ -2736,6 +4482,27 @@ function App(){
         if(corr)setCorrespondences(corr);
         if(awn)setAwns(awn);
         if(pko)setPkgOwners(pko);
+        if(prefs)setUserPrefs(prefs);
+
+        startListeners({setTasks,setTrackers,setTenders,setContractors,setCorrespondences});
+
+        setTimeout(function(){
+          var currentName=window._currentUser?window._currentUser.name:"";
+          if(!currentName)return;
+          var lastKey="pp_last_visit_"+currentName.replace(/[^a-z0-9]/gi,"_");
+          var lastVisit="";try{lastVisit=localStorage.getItem(lastKey)||"";}catch(e){}
+          var now=new Date().toISOString();
+          try{localStorage.setItem(lastKey,now);}catch(e){}
+          if(!lastVisit)return;
+          var myNew=(t||[]).filter(function(task){
+            if(!task.createdAt||!task.owner)return false;
+            if(task.owner!==currentName)return false;
+            if(task.addedBy===currentName)return false;
+            if(task.createdAt<=lastVisit.slice(0,10))return false;
+            return true;
+          });
+          if(myNew.length>0)setNewTasksPopup(myNew);
+        },500);
         if(tr){setTagrules(tr);}
         else{
           const otr=await cloudStore.get("tagrules");
@@ -2748,6 +4515,14 @@ function App(){
         }
       }catch(e){console.error("Load error",e);}
       setLoaded(true);
+
+      if(window._dbListen){
+        window._dbListen(KEYS.tasks,function(val){if(val)setTasks(val);});
+        window._dbListen(KEYS.trackers,function(val){if(val)setTrackers(val);});
+        window._dbListen(KEYS.tenders,function(val){if(val)setTenders(val);});
+        window._dbListen(KEYS.contractors,function(val){if(val)setContractors(val);});
+        window._dbListen(KEYS_CORR,function(val){if(val)setCorrespondences(val);});
+      }
     };
     if(window._dbReady)load();
     else window.addEventListener("db-ready",load,{once:true});
@@ -2763,27 +4538,34 @@ function App(){
   </div>;
 
   window._ppPeople=people;
+  window._ppUserPrefs=userPrefs;
   window._ppContractors=contractors;
   window._ppTags=tags;
   const NAV=[
-    {id:"actions",icon:"📋",label:"Actions"},
     {id:"trackers",icon:"📊",label:"Trackers"},
     {id:"tenders",icon:"📑",label:"Tenders"},
     {id:"contractors",icon:"🤝",label:"Subcontr."},
     {id:"contracts",icon:"📋",label:"Contracts"},
     {id:"awn",icon:"⚠️",label:"AWN"},
     {id:"weekly",icon:"📊",label:"Weekly"},
-    {id:"global",icon:"🌐",label:"Global"},
+    {id:"dashboard",icon:"📈",label:"Dashboard"},
+    {id:"documents",icon:"⚠️",label:"Overdue"},
+    {id:"global",icon:"🌐",label:"Actions"},
     {id:"settings",icon:"⚙️",label:"Settings"},
   ];
 
   const syncDot=<div className={"sync-dot sync-"+syncStatus} title={syncStatus==="ok"?"Synced":syncStatus==="syncing"?"Syncing…":"Sync error"}/>;
 
-  return <div className="layout">
-    {/* Left nav */}
+  if(!currentUser)return <UserLogin people={people} onLogin={function(name){setCurrentUser(name);window._currentUser={name:name};}}/>;  return <div className="layout">
+
     <nav className="leftnav">
       <div className="logo" style={{fontSize:11,lineHeight:1.2,textAlign:"center",letterSpacing:".5px"}}>Project<br/>Tracker</div>
-      <div style={{marginBottom:4}}>{syncDot}</div>
+      {currentUser&&<div style={{marginTop:4,padding:"4px 2px",textAlign:"center"}}>
+        <div style={{fontSize:9,color:"#c9a84c",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:52}}>{currentUser}</div>
+        <button onClick={function(){try{localStorage.removeItem("pp_current_user");}catch(e){}setCurrentUser(null);}} title="Change user" style={{background:"none",border:"1px solid #444",borderRadius:4,color:"#888",cursor:"pointer",fontSize:8,padding:"1px 3px",fontFamily:"inherit",marginTop:2}}>change</button>
+      </div>}
+
+      <div style={{marginBottom:4,display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>{syncDot}<span style={{fontSize:7,color:"#888",textAlign:"center"}}>{syncStatus==="syncing"?"saving...":syncStatus==="ok"?"saved":"err"}</span></div>
       {NAV.map(n=><button key={n.id} className={"navbtn"+(view===n.id?" on":"")} onClick={()=>setView(n.id)} title={n.label}>
         <span style={{fontSize:20}}>{n.icon}</span>
         <span className="lbl">{n.label}</span>
@@ -2791,21 +4573,21 @@ function App(){
       <div className="nav-sep"/>
     </nav>
 
-    {/* Main content */}
     <div className="main-area">
       <div className="content">
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules}/>}
-        {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} pkgOwners={pkgOwners}/>}
-        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT}/>}
+        {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} pkgOwners={pkgOwners} jumpTender={jumpTender} clearJumpTender={function(){setJumpTender(null);}} jumpFrom={jumpFrom} clearJumpFrom={function(){setJumpFrom(null);}} onBack={jumpFrom?function(){setView(jumpFrom);setJumpTender(null);setJumpFrom(null);}:null}/>}
+        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT} onNavTender={navToTender}/>}
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="awn"&&<AwnView awns={awns} saveAwns={saveAwns} people={people}/>}
         {view==="weekly"&&<WeeklyView tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} packages={packages} tenders={tenders} contractors={contractors}/>}
-        {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules}/>}
-        {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners}/>}
+        {view==="documents"&&<DocumentsView tasks={tasks} tenders={tenders} contractors={contractors} packages={packages} people={people} saveTasks={saveT}/> }
+    {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} onJumpOwner={function(name){setJumpOwner(name);setView("global");}} onNavTender={navToTender}/>}
+    {view==="global"&&<GlobalView tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}} onNavTender={navToTender}/>}
+        {view==="settings"&&<SettingsView tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);}}/>}
       </div>
 
-      {/* Right sidebar — Quick Add */}
       <aside className={"rsidebar "+(sidebarOpen?"open":"closed")}>
         <div style={{display:"flex",alignItems:"center",justifyContent:sidebarOpen?"flex-end":"center",padding:"8px 8px 0",flexShrink:0}}>
           <button onClick={function(){setSidebarOpen(!sidebarOpen);}} title={sidebarOpen?"Collapse sidebar":"Expand sidebar"}
@@ -2816,6 +4598,11 @@ function App(){
         {sidebarOpen&&<QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={addTask} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>}
       </aside>
     <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
+    <div style={{position:"fixed",bottom:16,right:360,zIndex:490}}>
+      <button onClick={function(){setShowWeeklyPopup(true);}} title="Weekly Actions" style={{width:36,height:36,borderRadius:"50%",background:"#3949ab",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>📋</button>
+    </div>
+    {newTasksPopup&&<NewTasksPopup tasks={newTasksPopup} tenders={tenders} contractors={contractors} onClose={function(){setNewTasksPopup(null);}}/> }
+    {showWeeklyPopup&&<WeeklyPopup tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} tenders={tenders} contractors={contractors} saveT={saveT} saveX={saveX} onClose={function(){setShowWeeklyPopup(false);}}/>}
     <div className="mobile-qa-btn" onClick={function(){setMobileQAOpen(true);}} title="Quick Add Task" style={{display:"none",position:"fixed",bottom:62,right:16,zIndex:490,width:44,height:44,borderRadius:"50%",background:"#c9a84c",boxShadow:"0 2px 8px rgba(0,0,0,.2)",alignItems:"center",justifyContent:"center",fontSize:22,cursor:"pointer",color:"#1c1c1e"}}>＋</div>
     {mobileQAOpen&&<div className="overlay" style={{zIndex:600}} onClick={function(e){if(e.target===e.currentTarget)setMobileQAOpen(false);}}><div style={{background:"#fff",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",position:"absolute",bottom:0}}><QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} onAdd={function(t){addTask(t);setMobileQAOpen(false);}} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/></div></div>}
     <div style={{position:"fixed",bottom:16,right:318,zIndex:500}}>
