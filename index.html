@@ -1991,7 +1991,68 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   </div>;
 }
 
-function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners}){ function set(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);} return ( <div className="overlay"><div className="modal" style={{maxWidth:560}}> <div className="modal-hdr"><div className="modal-title">{data.title||"New Tender"}</div> <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div> <div className="modal-body"> <div className="fg"><label>Tender name *</label><input type="text" value={data.title||""} onChange={function(e){set("title",e.target.value);}} placeholder="e.g. Facade Cladding — Lot A"/></div> <div className="frow"> <div className="fg"><label>Package</label> <select value={data.package||""} onChange={function(e){set("package",e.target.value);var po=(pkgOwners||{})[e.target.value];if(po){var u=Object.assign({},data);u.package=e.target.value;u.ownerPackage=po;onChange(u);}}}> <option value="">— none —</option>{(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})} </select> </div> <div className="fg" style={{display:"none"}}><label>Package Owner</label> <select value={data.ownerPackage||""} onChange={function(e){set("ownerPackage",e.target.value);}}> <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})} </select> </div> </div> <div className="fg"><label>Tender Owner</label> <select value={data.ownerTender||""} onChange={function(e){set("ownerTender",e.target.value);}}> <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})} </select> </div> <div className="frow"> <div className="fg"><label>Budget (estimate)</label> <input type="number" value={data.budget||""} onChange={function(e){set("budget",e.target.value);}} placeholder="0"/> </div> <div className="fg"><label>Instruction Amount</label> <input type="number" value={data.instructionAmount||""} onChange={function(e){set("instructionAmount",e.target.value);}} placeholder="0"/> </div> {(Number(data.budget||0)>0||Number(data.instructionAmount||0)>0)&&<div className="fg"> <label>Variance (Budget vs Instructed)</label> <div style={{padding:"6px 10px",borderRadius:7,fontSize:13,fontWeight:700, background:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#fce4ec":"#e8f5e9", color:(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"#c62828":"#2e7d32"}}> {(function(){var v=Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0));return (v>0?"+":"")+v.toLocaleString()+" "+(data.currency||"EUR");})()} <span style={{fontSize:10,fontWeight:400,marginLeft:8}}> {(Number(data.budget||0)-(Number(data.accAmountSubcontract||0)+Number(data.accAmountOther||0)))<0?"⚠️ Over budget":"✅ Under budget"} </span> </div> </div>} <div className="fg"><label>Amount Treated (procured so far)</label> <div style={{position:"relative",display:"flex",alignItems:"center"}}> <input type="number" value={data.accAmountTreated||""} onChange={function(e){set("accAmountTreated",e.target.value);}} placeholder="0" style={{paddingRight:40}}/> <span style={{position:"absolute",right:10,fontSize:11,color:"#aaa",pointerEvents:"none"}}>{data.currency||"EUR"}</span> </div> </div> <div className="fg"><label>WBS Code</label> <input type="text" value={data.wbs||""} onChange={function(e){set("wbs",e.target.value);}} placeholder="WBS-001"/> </div> <div className="fg"><label>Starting date on site</label> <input type="date" value={data.startOnSite||""} onChange={function(e){set("startOnSite",e.target.value);}}/> </div> <div className="fg"><label>Procurement process starting date</label> <input type="date" value={data.procurementStart||""} onChange={function(e){set("procurementStart",e.target.value);}}/> </div> <div className="fg"><label>Currency</label> <select value={data.currency||"EUR"} onChange={function(e){set("currency",e.target.value);}}> {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})} </select> </div> </div> <div className="fg"><label>Description</label><textarea value={data.description||""} onChange={function(e){set("description",e.target.value);}} placeholder="Context..."/></div> </div> <div className="modal-footer"> <button className="btn" onClick={onClose}>Cancel</button> <button className="btn btn-pri" disabled={!(data.title||"").trim()} onClick={function(){onSave(data);}}>Save Tender</button> </div> </div></div> ); }
+function TenderFormModal({data,onChange,onSave,onClose,people,packages,pkgOwners}){
+  function set(f,v){var u=Object.assign({},data);u[f]=v;onChange(u);}
+  return (
+    <div className="overlay"><div className="modal" style={{maxWidth:560}}>
+    <div className="modal-hdr"><div className="modal-title">{data.title||"New Tender"}</div>
+      <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
+    <div className="modal-body">
+      <div className="fg"><label>Tender name *</label><input type="text" value={data.title||""} onChange={function(e){set("title",e.target.value);}} placeholder="e.g. Facade Cladding — Lot A"/></div>
+      <div className="frow">
+        <div className="fg"><label>Package</label>
+          <select value={data.package||""} onChange={function(e){set("package",e.target.value);var po=(pkgOwners||{})[e.target.value];if(po){var u=Object.assign({},data);u.package=e.target.value;u.ownerPackage=po;onChange(u);}}}>
+            <option value="">— none —</option>{(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+          </select>
+        </div>
+        <div className="fg" style={{display:"none"}}><label>Package Owner</label>
+          <select value={data.ownerPackage||""} onChange={function(e){set("ownerPackage",e.target.value);}}>
+            <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+          </select>
+        </div>
+      </div>
+      <div className="fg"><label>Tender Owner</label>
+        <select value={data.ownerTender||""} onChange={function(e){set("ownerTender",e.target.value);}}>
+          <option value="">— none —</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+        </select>
+      </div>
+      <div className="frow">
+        <div className="fg"><label>Budget (estimate)</label>
+          <input type="number" value={data.budget||""} onChange={function(e){set("budget",e.target.value);}} placeholder="0"/>
+        </div>
+        <div className="fg"><label>Instruction Amount</label>
+          <input type="number" value={data.instructionAmount||""} onChange={function(e){set("instructionAmount",e.target.value);}} placeholder="0"/>
+        </div>
+        <div className="fg"><label>Amount Treated (procured so far)</label>
+          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <input type="number" value={data.accAmountTreated||""} onChange={function(e){set("accAmountTreated",e.target.value);}} placeholder="0" style={{paddingRight:40}}/>
+            <span style={{position:"absolute",right:10,fontSize:11,color:"#aaa",pointerEvents:"none"}}>{data.currency||"EUR"}</span>
+          </div>
+        </div>
+        <div className="fg"><label>WBS Code</label>
+          <input type="text" value={data.wbs||""} onChange={function(e){set("wbs",e.target.value);}} placeholder="WBS-001"/>
+        </div>
+        <div className="fg"><label>Starting date on site</label>
+          <input type="date" value={data.startOnSite||""} onChange={function(e){set("startOnSite",e.target.value);}}/>
+        </div>
+        <div className="fg"><label>Procurement process starting date</label>
+          <input type="date" value={data.procurementStart||""} onChange={function(e){set("procurementStart",e.target.value);}}/>
+        </div>
+        <div className="fg"><label>Currency</label>
+          <select value={data.currency||"EUR"} onChange={function(e){set("currency",e.target.value);}}>
+            {["EUR","USD","GBP","CHF"].map(function(cur){return <option key={cur} value={cur}>{cur}</option>;})}
+          </select>
+        </div>
+      </div>
+      <div className="fg"><label>Description</label><textarea value={data.description||""} onChange={function(e){set("description",e.target.value);}} placeholder="Context..."/></div>
+    </div>
+    <div className="modal-footer">
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn btn-pri" disabled={!(data.title||"").trim()} onClick={function(){onSave(data);}}>Save Tender</button>
+    </div>
+  </div></div>
+  );
+}
 function PdfCertModal({pdfData,onClose,onConfirm,apiKey}){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
