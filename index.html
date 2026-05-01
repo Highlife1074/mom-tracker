@@ -1974,8 +1974,20 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 return <span style={{fontWeight:700,fontSize:11,color:m<0?"#c62828":m<7?"#f57f17":"#2e7d32"}}>{m>0?"+":""}{m}d</span>;
               })()}
             </td>
-            {TENDER_STEPS.map(function(s){var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);return <td key={s.key}>{v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}</td>;})}
-          </tr>;
+            {TENDER_STEPS.map(function(s){
+              var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);
+              var dates=(td.stepDates||{})[s.key]||{};
+              var target=dates.target||"";
+              var done=dates.done||"";
+              var isOverdue=target&&target<today()&&!done&&v!=="Approved"&&!v.toLowerCase().includes("approved");
+              return <td key={s.key} style={{verticalAlign:"top",minWidth:100}}>
+                {v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}
+                {target&&<div style={{fontSize:9,marginTop:2,color:isOverdue?"#c62828":"#888",fontWeight:isOverdue?700:400}}>
+                  {isOverdue?"⚠️ ":""}{fmtDate(target)}
+                </div>}
+                {done&&<div style={{fontSize:9,marginTop:1,color:"#2e7d32",fontWeight:600}}>✓ {fmtDate(done)}</div>}
+              </td>;
+            })}
         })}</tbody>
         <tfoot>
           <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
@@ -2868,9 +2880,10 @@ function calcProcurement(td){
   var hasSd = td.hasSD||false;
   var sdResubCount = Number(td.sdResubCount||0);
 
-  var accSubmittal = ((td.stepDates||{}).acc||{}).done||"";
+  // accSubmittal = Date done of ACC step, fallback to target date if done not set
+  var accSubmittal = ((td.stepDates||{}).acc||{}).done || ((td.stepDates||{}).acc||{}).target || "";
   var accApproval = ((td.stepDates||{}).acc||{}).approval||"";
-  var contractDone = ((td.stepDates||{}).contract||{}).done||"";
+  var contractDone = ((td.stepDates||{}).contract||{}).done || ((td.stepDates||{}).contract||{}).target || "";
 
   // Add working days (Mon-Sat, skip Sundays)
   function addWorkDays(dateStr, days){
@@ -4434,14 +4447,22 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
       var stepStatus=(td.steps||{})[step]||"";
       var targetDate=((td.stepDates||{})[step]||{}).target||"";
       var doneDate=((td.stepDates||{})[step]||{}).done||"";
-      if(!targetDate)return; // no target = not tracked
-      var submissionDate=((td.stepDates||{})[step]||{}).submission||"";
-      var isDone=!!doneDate||stepStatus.toLowerCase().includes("approved")||stepStatus.toLowerCase().includes("done");
-      // Overdue = submission date exists and more than 14 days have passed since submission
-      var dueDateFromSubmission=submissionDate?(function(){var d=new Date(submissionDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+      var approvalDate=((td.stepDates||{})[step]||{}).approval||"";
+      // Track overdue in 2 ways:
+      // 1. Submission overdue: doneDate + 14 days passed without approval
+      // 2. Target overdue: target date passed without done date
+      var isApproved=stepStatus.toLowerCase().includes("approved");
+      var isDone=!!doneDate||isApproved;
+      var isApprovalDone=!!approvalDate||isApproved;
+      // Case 1: submission done, no approval yet, 14 days passed
+      var dueDateFromDone=doneDate?(function(){var d=new Date(doneDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
+      // Case 2: target date passed, nothing done
       var dueDateFromTarget=targetDate?(function(){var d=new Date(targetDate);d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);}()):"";
-      var effectiveDue=dueDateFromSubmission||dueDateFromTarget;
-      var overdue=!isDone&&effectiveDue&&effectiveDue<todayStr;
+      // Use done date overdue if done, else target overdue
+      var effectiveDue=doneDate?dueDateFromDone:dueDateFromTarget;
+      var effectiveSubmission=doneDate||"";
+      if(!effectiveDue)return; // nothing to track
+      var overdue=(doneDate?!isApprovalDone:!isDone)&&effectiveDue<todayStr;
       var daysOverdue=overdue?workingDaysDiff(effectiveDue,todayStr):0;
       docs.push({
         id:td.id+"_"+step,stage:step,stageLabel:STEP_LABELS[step],
@@ -4449,7 +4470,7 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
         owner:td.ownerTender||"",
         package:td.package||"",
         tenderRef:td.id,tenderTitle:td.title,
-        submissionDate:submissionDate||doneDate||"",dueDate:effectiveDue,targetDate:targetDate,
+        submissionDate:effectiveSubmission||doneDate||"",dueDate:effectiveDue,targetDate:targetDate,
         status:isDone?"done":"pending",overdue:overdue,
         daysOverdue:daysOverdue,
         stepStatus:stepStatus,
@@ -4478,8 +4499,8 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks}){
   return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
     <div className="page-hdr">
       <div>
-        <div className="page-title">Documents</div>
-        <div className="page-sub">Overdue submissions by client — RFI, ACC, MAR, ITP, WMS</div>
+        <div className="page-title">⚠️ Overdue</div>
+        <div className="page-sub">Overdue submissions by client — RFI, ACC/ACONEX, MAR, ITP, WMS, SD</div>
       </div>
       {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fce4ec",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#c62828",fontWeight:700,fontSize:13}}>
         ⚠️ {overdueCount} overdue
@@ -4811,7 +4832,7 @@ function App(){
     {id:"awn",icon:"⚠️",label:"AWN"},
     {id:"weekly",icon:"📊",label:"Weekly"},
     {id:"dashboard",icon:"📈",label:"Dashboard"},
-    {id:"documents",icon:"📁",label:"Documents"},
+    {id:"documents",icon:"⚠️",label:"Overdue"},
     {id:"global",icon:"🌐",label:"Actions"},
     {id:"settings",icon:"⚙️",label:"Settings"},
   ];
