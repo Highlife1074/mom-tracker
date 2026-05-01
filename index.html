@@ -1509,13 +1509,21 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   {["EUR","USD","GBP","CHF","AED","SAR"].map(function(x){return <option key={x} value={x}>{x}</option>;})}
                 </select>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>START ON SITE</span>
+
+              <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>TARGET START</span>
                 <input type="date" value={td.startOnSite||""} onChange={function(e){updTd("startOnSite",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px"}}/>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>NEW START</span>
-                <input type="date" value={td.newStartDate||""} onChange={function(e){updTd("newStartDate",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px"}}/>
+                {(function(){
+                  var proc=calcProcurement(td);
+                  var procDelivery=proc.deliveryDate||"";
+                  var startOnSite=td.startOnSite||"";
+                  if(!procDelivery)return null;
+                  var marginDays=startOnSite?(function(){var d1=new Date(procDelivery);var d2=new Date(startOnSite);return Math.round((d2-d1)/(1000*60*60*24));})():null;
+                  return <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                    <span style={{fontSize:10,color:"#555"}}>→ Procurement delivers: <strong style={{color:marginDays!==null&&marginDays<0?"#c62828":"#2e7d32"}}>{fmtDate(procDelivery)}</strong></span>
+                    {marginDays!==null&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:6,background:marginDays<0?"#fce4ec":marginDays<7?"#fff8e1":"#e8f5e9",color:marginDays<0?"#c62828":marginDays<7?"#f57f17":"#2e7d32"}}>{marginDays>0?"+":""}{marginDays}d</span>}
+                  </div>;
+                })()}
               </div>
               <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
                 <input type="checkbox" checked={isReleased} onChange={function(e){updTd("released",e.target.checked);}} style={{width:13,height:13}}/>
@@ -2790,18 +2798,19 @@ function calcProcurement(td){
   var hasSd = td.hasSD||false;
   var sdResubCount = Number(td.sdResubCount||0);
 
-  // Get dates from tender step data
-  // accSubmittal = Date done of ACC step (when ACC was sent to client)
-  // accApproval = Date of approval of ACC step
-  // contractDone = Date done of Contract step
   var accSubmittal = ((td.stepDates||{}).acc||{}).done||"";
   var accApproval = ((td.stepDates||{}).acc||{}).approval||"";
   var contractDone = ((td.stepDates||{}).contract||{}).done||"";
 
-  function addDays(dateStr, days){
+  // Add working days (Mon-Sat, skip Sundays)
+  function addWorkDays(dateStr, days){
     if(!dateStr) return "";
     var d = new Date(dateStr);
-    d.setDate(d.getDate()+days);
+    var added = 0;
+    while(added < days){
+      d.setDate(d.getDate()+1);
+      if(d.getDay()!==0) added++; // skip Sunday
+    }
     return d.toISOString().slice(0,10);
   }
 
@@ -2811,31 +2820,31 @@ function calcProcurement(td){
   steps.push({key:"accSub", label:"ACC Submittal (Date done)", date:accSubmittal, done:accSubmittal, duration:null, manual:true, note:"From 'Date done' of ACC step"});
 
   // 2. ACC Approval (+14d from submittal)
-  var accApprTarget = addDays(accSubmittal, 14);
+  var accApprTarget = addWorkDays(accSubmittal, 14);
   steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:14, manual:false});
 
   // 3. Contract Signing (+28d from acc approval)
-  var contractTarget = addDays(accApproval||accApprTarget, 28);
+  var contractTarget = addWorkDays(accApproval||accApprTarget, 28);
   steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:false});
 
   var fabStart = contractDone||contractTarget;
 
   if(hasSd){
     // 4. SD Submission (+14d from contract)
-    var sdSubDate = td.sdDone||(addDays(contractDone||contractTarget, 14));
-    var sdSubTarget = addDays(contractDone||contractTarget, 14);
+    var sdSubDate = td.sdDone||(addWorkDays(contractDone||contractTarget, 14));
+    var sdSubTarget = addWorkDays(contractDone||contractTarget, 14);
     steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:td.sdDone||"", duration:14, manual:false, sd:true});
 
     // 5. SD Approval (+14d from submission)
-    var sdAppTarget = addDays(td.sdDone||sdSubTarget, 14);
+    var sdAppTarget = addWorkDays(td.sdDone||sdSubTarget, 14);
     steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
       review:td.sdReview||""});
 
     // 6. SD Resubmissions if any
     var lastSdDate = td.sdApprovalDone||sdAppTarget;
     for(var r=0; r<sdResubCount; r++){
-      var rSubTarget = addDays(lastSdDate, 14);
-      var rAppTarget = addDays(rSubTarget, 14);
+      var rSubTarget = addWorkDays(lastSdDate, 14);
+      var rAppTarget = addWorkDays(rSubTarget, 14);
       steps.push({key:"sdResub"+(r+1), label:"SD Resubmission "+(r+1), date:rSubTarget, done:"", duration:14, manual:false, sd:true});
       steps.push({key:"sdReapp"+(r+1), label:"SD Approval "+(r+1), date:rAppTarget, done:"", duration:14, manual:false, sd:true});
       lastSdDate = rAppTarget;
@@ -2848,7 +2857,7 @@ function calcProcurement(td){
     note:"Lead: "+LEAD+"d"});
 
   // Delivery on site
-  var deliveryDate = addDays(fabStart, LEAD);
+  var deliveryDate = addWorkDays(fabStart, LEAD);
   steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:"", duration:LEAD, manual:false, highlight:true});
 
   // Procurement start = start on site - total duration
