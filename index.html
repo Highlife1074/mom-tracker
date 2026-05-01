@@ -1177,7 +1177,16 @@ function MaterialsPanel({td,updTd,saveT,tasks}){
             </div>
             <div style={{flex:1,minWidth:70}}>
               <div style={{fontSize:9,fontWeight:700,color:"#aaa",marginBottom:2,textTransform:"uppercase",letterSpacing:".4px"}}>Lead time</div>
-              <input type="text" value={mat.leadTime||""} onChange={function(e){updMat(mi,"leadTime",e.target.value);}} placeholder="e.g. 8 wks" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
+              <input type="text" value={mat.leadTime||""} onChange={function(e){
+                var newLead=e.target.value;
+                var updatedMats=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{leadTime:newLead});});
+                updTd("materials",updatedMats);
+                // Auto-update tender leadTimeDays with max of all materials (only if not manually locked)
+                if(!td.leadTimeLocked){
+                  var maxDays=updatedMats.reduce(function(mx,m){var d=parseLeadDays(m.leadTime||"");return d>mx?d:mx;},0);
+                  if(maxDays>0)updTd("leadTimeDays",String(maxDays));
+                }
+              }} placeholder="e.g. 8 wks" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
             </div>
             <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0,marginBottom:2}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
           </div>
@@ -1648,9 +1657,16 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{fontWeight:700,fontSize:13}}>📊 Procurement Timeline</div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <span style={{fontSize:9,fontWeight:700,color:"#aaa"}}>LEAD TIME (days)</span>
-                  <input type="number" value={td.leadTimeDays||""} onChange={function(e){updTd("leadTimeDays",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="30" style={{width:55,padding:"2px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5}}/>
+                <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                  <span style={{fontSize:9,fontWeight:700,color:"#7b1fa2"}}>LEAD (days)</span>
+                  <input type="number" value={td.leadTimeDays||""} onChange={function(e){updTd("leadTimeDays",e.target.value);updTd("leadTimeLocked",true);}} onClick={function(e){e.stopPropagation();}} placeholder={(function(){var mx=(td.materials||[]).reduce(function(m,mat){var d=parseLeadDays(mat.leadTime||"");return d>m?d:m;},0);return mx>0?String(mx):"30";})()} style={{width:60,padding:"2px 6px",fontSize:11,border:"1.5px solid #ce93d8",borderRadius:5}}/>
+                  {(function(){
+                    var mx=(td.materials||[]).reduce(function(m,mat){var d=parseLeadDays(mat.leadTime||"");return d>m?d:m;},0);
+                    if(mx===0)return null;
+                    return <span style={{fontSize:9,color:"#7b1fa2"}}>
+                      {td.leadTimeLocked?<button onClick={function(e){e.stopPropagation();updTd("leadTimeDays",String(mx));updTd("leadTimeLocked",false);}} style={{fontSize:9,padding:"1px 5px",border:"1px solid #ce93d8",borderRadius:4,background:"#f3e5f5",color:"#7b1fa2",cursor:"pointer",fontFamily:"inherit"}}>↺ Reset to {mx}d</button>:<span style={{color:"#888"}}>auto: {mx}d</span>}
+                    </span>;
+                  })()}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:9,fontWeight:700,color:"#aaa"}}>SD RESUB</span>
@@ -2810,8 +2826,21 @@ function workingDaysDiff(dateStr1,dateStr2){
   return count;
 }
 // ── Procurement Timeline Calculator ──────────────────────────────
+function parseLeadDays(str){
+  if(!str)return 0;
+  var s=String(str).toLowerCase().trim();
+  var n=parseFloat(s)||0;
+  if(!n)return 0;
+  if(s.includes("week")||s.includes("sem")||s.includes("wk")||s.includes("sem"))return Math.round(n*6);
+  if(s.includes("month")||s.includes("mois"))return Math.round(n*26);
+  return Math.round(n); // assume days
+}
 function calcProcurement(td){
-  var LEAD = Number(td.leadTimeDays||0)||30;
+  // Auto-compute max lead time from materials if leadTimeDays not manually set
+  var matMaxLead = (td.materials||[]).reduce(function(max,mat){
+    var d=parseLeadDays(mat.leadTime||"");return d>max?d:max;
+  },0);
+  var LEAD = Number(td.leadTimeDays||0)||(matMaxLead>0?matMaxLead:30);
   var hasSd = td.hasSD||false;
   var sdResubCount = Number(td.sdResubCount||0);
 
