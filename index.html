@@ -1102,6 +1102,15 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
 }
 
 // ── TENDERS VIEW ───────────────────────────────────────────────────
+function parseLeadDays(str){
+  if(!str)return 0;
+  var s=String(str).toLowerCase().trim();
+  var n=parseFloat(s)||0;
+  if(!n)return 0;
+  if(s.includes("week")||s.includes("sem")||s.includes("wk")||s.includes("sem"))return Math.round(n*6);
+  if(s.includes("month")||s.includes("mois"))return Math.round(n*26);
+  return Math.round(n); // assume days
+}
 function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender}){
   const [open,setOpen]=useState(true);
   var mats=td.materials||[];
@@ -1182,10 +1191,10 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
                 var updatedMats=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{leadTime:newLead});});
                 // Compute max lead time across all materials
                 var maxDays=updatedMats.reduce(function(mx,m){var d=parseLeadDays(m.leadTime||"");return d>mx?d:mx;},0);
-                // Build single combined update to avoid double-write conflict
-                var combined=Object.assign({},td,{materials:updatedMats});
-                if(!td.leadTimeLocked&&maxDays>0)combined.leadTimeDays=String(maxDays);
-                // Single write with both fields
+                // Single write: update materials AND leadTimeDays together
+                var updates={materials:updatedMats};
+                if(maxDays>0)updates.leadTimeDays=String(maxDays);
+                var combined=Object.assign({},td,updates);
                 var d=(tenders||[]).map(function(t){return t.id!==combined.id?t:combined;});
                 saveTenders(d);setSelTender(d.find(function(t){return t.id===combined.id;}));
               }} placeholder="e.g. 8 wks" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
@@ -2828,15 +2837,6 @@ function workingDaysDiff(dateStr1,dateStr2){
   return count;
 }
 // ── Procurement Timeline Calculator ──────────────────────────────
-function parseLeadDays(str){
-  if(!str)return 0;
-  var s=String(str).toLowerCase().trim();
-  var n=parseFloat(s)||0;
-  if(!n)return 0;
-  if(s.includes("week")||s.includes("sem")||s.includes("wk")||s.includes("sem"))return Math.round(n*6);
-  if(s.includes("month")||s.includes("mois"))return Math.round(n*26);
-  return Math.round(n); // assume days
-}
 function calcProcurement(td){
   // Auto-compute max lead time from materials if leadTimeDays not manually set
   var matMaxLead = (td.materials||[]).reduce(function(max,mat){
