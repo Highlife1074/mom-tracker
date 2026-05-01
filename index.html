@@ -1877,6 +1877,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <th style={{textAlign:"right"}}>Proposed</th>
           <th style={{textAlign:"right"}}>Instructed</th>
           <th style={{textAlign:"right",color:"#888"}}>Variance</th>
+          <th style={{textAlign:"center",color:"#555",minWidth:90}}>Target start</th>
+          <th style={{textAlign:"center",color:"#1a73e8",minWidth:90}}>Proc. delivery</th>
+          <th style={{textAlign:"center",color:"#888",minWidth:60}}>Margin</th>
           {TENDER_STEPS.map(function(s){
             var sortable=s.key==="acc"||s.key==="contract";
             return sortable
@@ -1908,6 +1911,20 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 if(!budget||!proposed)return <span style={{color:"#ddd"}}>—</span>;
                 var v=budget-proposed;
                 return <span style={{fontSize:11,fontWeight:700,color:v<0?"#c62828":"#2e7d32"}}>{v>0?"+":""}{v.toLocaleString()}</span>;
+              })()}
+            </td>
+            <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}>
+              {td.startOnSite?fmtDate(td.startOnSite):<span style={{color:"#ddd"}}>—</span>}
+            </td>
+            <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",fontWeight:600,color:"#1a73e8"}}>
+              {(function(){var proc=calcProcurement(td);return proc.deliveryDate?fmtDate(proc.deliveryDate):<span style={{color:"#ddd"}}>—</span>;})()}
+            </td>
+            <td style={{textAlign:"center",fontSize:11}}>
+              {(function(){
+                var proc=calcProcurement(td);
+                if(!proc.deliveryDate||!td.startOnSite)return <span style={{color:"#ddd"}}>—</span>;
+                var m=Math.round((new Date(td.startOnSite)-new Date(proc.deliveryDate))/(1000*60*60*24));
+                return <span style={{fontWeight:700,fontSize:11,color:m<0?"#c62828":m<7?"#f57f17":"#2e7d32"}}>{m>0?"+":""}{m}d</span>;
               })()}
             </td>
             {TENDER_STEPS.map(function(s){var v=steps[s.key]||"";var cls=tenderStepClass(s.key,v);return <td key={s.key}>{v&&v!=="—"?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>:<span style={{color:"#ddd"}}>—</span>}</td>;})}
