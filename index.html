@@ -1193,7 +1193,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender})
                 var maxDays=updatedMats.reduce(function(mx,m){var d=parseLeadDays(m.leadTime||"");return d>mx?d:mx;},0);
                 // Single write: update materials AND leadTimeDays together
                 var updates={materials:updatedMats};
-                if(maxDays>0)updates.leadTimeDays=String(maxDays);
+                updates.leadTimeDays=maxDays>0?String(maxDays):"30"; // fallback 30 if all blank
                 var combined=Object.assign({},td,updates);
                 var d=(tenders||[]).map(function(t){return t.id!==combined.id?t:combined;});
                 saveTenders(d);setSelTender(d.find(function(t){return t.id===combined.id;}));
@@ -2838,11 +2838,13 @@ function workingDaysDiff(dateStr1,dateStr2){
 }
 // ── Procurement Timeline Calculator ──────────────────────────────
 function calcProcurement(td){
-  // Auto-compute max lead time from materials if leadTimeDays not manually set
+  // Auto-compute max lead time from materials
   var matMaxLead = (td.materials||[]).reduce(function(max,mat){
     var d=parseLeadDays(mat.leadTime||"");return d>max?d:max;
   },0);
-  var LEAD = Number(td.leadTimeDays||0)||(matMaxLead>0?matMaxLead:30);
+  // leadTimeDays: manual value > material max > fallback 30
+  var manualLead = Number(td.leadTimeDays||0);
+  var LEAD = manualLead>0 ? manualLead : (matMaxLead>0 ? matMaxLead : 30);
   var hasSd = td.hasSD||false;
   var sdResubCount = Number(td.sdResubCount||0);
 
