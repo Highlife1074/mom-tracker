@@ -1102,7 +1102,7 @@ function TrackerFormModal({data,onChange,onSave,onClose,people,packages,tags}){
 }
 
 // ── TENDERS VIEW ───────────────────────────────────────────────────
-function MaterialsPanel({td,updTd,saveT,tasks}){
+function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender}){
   const [open,setOpen]=useState(true);
   var mats=td.materials||[];
 
@@ -1180,12 +1180,14 @@ function MaterialsPanel({td,updTd,saveT,tasks}){
               <input type="text" value={mat.leadTime||""} onChange={function(e){
                 var newLead=e.target.value;
                 var updatedMats=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{leadTime:newLead});});
-                updTd("materials",updatedMats);
-                // Auto-update tender leadTimeDays with max of all materials (only if not manually locked)
-                if(!td.leadTimeLocked){
-                  var maxDays=updatedMats.reduce(function(mx,m){var d=parseLeadDays(m.leadTime||"");return d>mx?d:mx;},0);
-                  if(maxDays>0)updTd("leadTimeDays",String(maxDays));
-                }
+                // Compute max lead time across all materials
+                var maxDays=updatedMats.reduce(function(mx,m){var d=parseLeadDays(m.leadTime||"");return d>mx?d:mx;},0);
+                // Build single combined update to avoid double-write conflict
+                var combined=Object.assign({},td,{materials:updatedMats});
+                if(!td.leadTimeLocked&&maxDays>0)combined.leadTimeDays=String(maxDays);
+                // Single write with both fields
+                var d=(tenders||[]).map(function(t){return t.id!==combined.id?t:combined;});
+                saveTenders(d);setSelTender(d.find(function(t){return t.id===combined.id;}));
               }} placeholder="e.g. 8 wks" style={{width:"100%",padding:"4px 7px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
             </div>
             <button onClick={function(){if(safeConfirm("Remove material?"))updTd("materials",mats.filter(function(_,j){return j!==mi;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0,marginBottom:2}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
