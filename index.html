@@ -1668,17 +1668,34 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{fontWeight:700,fontSize:13}}>📊 Procurement Timeline</div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
-                  <span style={{fontSize:9,fontWeight:700,color:"#7b1fa2"}}>LEAD (days)</span>
-                  <input type="number" value={td.leadTimeDays||""} onChange={function(e){updTd("leadTimeDays",e.target.value);updTd("leadTimeLocked",true);}} onClick={function(e){e.stopPropagation();}} placeholder={(function(){var mx=(td.materials||[]).reduce(function(m,mat){var d=parseLeadDays(mat.leadTime||"");return d>m?d:m;},0);return mx>0?String(mx):"30";})()} style={{width:60,padding:"2px 6px",fontSize:11,border:"1.5px solid #ce93d8",borderRadius:5}}/>
-                  {(function(){
-                    var mx=(td.materials||[]).reduce(function(m,mat){var d=parseLeadDays(mat.leadTime||"");return d>m?d:m;},0);
-                    if(mx===0)return null;
-                    return <span style={{fontSize:9,color:"#7b1fa2"}}>
-                      {td.leadTimeLocked?<button onClick={function(e){e.stopPropagation();updTd("leadTimeDays",String(mx));updTd("leadTimeLocked",false);}} style={{fontSize:9,padding:"1px 5px",border:"1px solid #ce93d8",borderRadius:4,background:"#f3e5f5",color:"#7b1fa2",cursor:"pointer",fontFamily:"inherit"}}>↺ Reset to {mx}d</button>:<span style={{color:"#888"}}>auto: {mx}d</span>}
-                    </span>;
-                  })()}
-                </div>
+                {(function(){
+                  var matMax=(td.materials||[]).reduce(function(m,mat){var d=parseLeadDays(mat.leadTime||"");return d>m?d:m;},0);
+                  var useManual=td.leadTimeManual||false;
+                  var displayVal=useManual?(td.leadTimeDays||""):(matMax>0?matMax:30);
+                  return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span style={{fontSize:9,fontWeight:700,color:"#7b1fa2"}}>LEAD</span>
+                    {/* Toggle buttons */}
+                    <div style={{display:"flex",border:"1px solid #ce93d8",borderRadius:6,overflow:"hidden"}}>
+                      <button onClick={function(e){e.stopPropagation();updTd("leadTimeManual",false);updTd("leadTimeDays",String(matMax>0?matMax:30));}}
+                        style={{padding:"2px 8px",fontSize:9,fontWeight:700,border:"none",cursor:"pointer",fontFamily:"inherit",
+                          background:!useManual?"#ce93d8":"#fff",color:!useManual?"#fff":"#7b1fa2"}}>
+                        📦 Material
+                      </button>
+                      <button onClick={function(e){e.stopPropagation();updTd("leadTimeManual",true);}}
+                        style={{padding:"2px 8px",fontSize:9,fontWeight:700,border:"none",cursor:"pointer",fontFamily:"inherit",
+                          background:useManual?"#ce93d8":"#fff",color:useManual?"#fff":"#7b1fa2"}}>
+                        ✏️ Manual
+                      </button>
+                    </div>
+                    {/* Value display / input */}
+                    {useManual
+                      ?<input type="number" value={td.leadTimeDays||""} onChange={function(e){e.stopPropagation();updTd("leadTimeDays",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="30" autoFocus style={{width:55,padding:"2px 6px",fontSize:12,fontWeight:700,border:"1.5px solid #ce93d8",borderRadius:5,color:"#7b1fa2"}}/>
+                      :<span style={{fontSize:12,fontWeight:800,color:"#7b1fa2",minWidth:30}}>{displayVal}</span>}
+                    <span style={{fontSize:9,color:"#aaa"}}>days</span>
+                    {!useManual&&matMax===0&&<span style={{fontSize:9,color:"#aaa"}}>(default)</span>}
+                    {!useManual&&matMax>0&&<span style={{fontSize:9,color:"#888"}}>max of {(td.materials||[]).length} material{(td.materials||[]).length>1?"s":""}</span>}
+                  </div>;
+                })()}
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span style={{fontSize:9,fontWeight:700,color:"#aaa"}}>SD RESUB</span>
                   <select value={td.sdResubCount||0} onChange={function(e){updTd("sdResubCount",Number(e.target.value));}} style={{padding:"2px 5px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit"}}>
