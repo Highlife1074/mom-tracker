@@ -1,7 +1,11 @@
 <!DOCTYPE html>
+<!-- v20260501-214343 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Project Pilot</title>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -182,6 +186,26 @@ label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-
   .frow{flex-direction:column;}
   .filter-bar{gap:4px;}
   .filter-bar select,.filter-bar input{font-size:11px;padding:4px 6px;}
+}
+
+@media print {
+  body { background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px; }
+  .layout { display: block !important; height: auto !important; overflow: visible !important; }
+  .leftnav, .rsidebar, .imp-btn-wrap, .mobile-qa-btn,
+  button.btn-gold, button.btn-sm, button.btn-danger,
+  .page-hdr button, #app-banner { display: none !important; }
+  .main-area { display: block !important; overflow: visible !important; }
+  .content { overflow: visible !important; padding: 8px !important; }
+  .tbl { font-size: 9px !important; }
+  .tbl th, .tbl td { padding: 4px 6px !important; }
+  .chip { font-size: 8px !important; padding: 1px 5px !important; }
+  .card { break-inside: avoid; margin-bottom: 6px !important; padding: 8px !important; }
+  #pp-print-only { display: block !important; }
+  #pp-noprint { display: none !important; }
+  .pp-hide-print { display: none !important; }
+}
+@media screen {
+  #pp-print-only { display: none !important; }
 }
 </style>
 </head>
@@ -1884,7 +1908,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Tenders</div><div className="page-sub">Track submission steps by package</div></div>
-      <button className="btn btn-gold" onClick={openNew}>＋ New Tender</button>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <button className="btn" onClick={function(){
+          // Build a printable version of the current filtered tenders
+          window._ppPrintTenders={tenders:filtered,packages:packages,people:people};
+          window.print();
+        }} title="Print tender list as PDF" style={{fontSize:12,padding:"6px 12px"}}>🖨️ Print PDF</button>
+        <button className="btn btn-gold" onClick={openNew}>＋ New Tender</button>
+      </div>
     </div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search tender, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
@@ -1923,7 +1954,15 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     })()}
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
-      :<table className="tbl">
+      :<div>
+        <div id="pp-print-only" style={{marginBottom:12,borderBottom:"2px solid #1a1a1a",paddingBottom:8}}>
+          <div style={{fontFamily:"serif",fontSize:18,fontWeight:800}}>RIVIERA TOWER TRACKER — TENDERS</div>
+          <div style={{fontSize:11,color:"#555",marginTop:3}}>Printed: {(function(){var d=new Date();return d.toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})+" à "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});})()}</div>
+          {pkgFilter!=="all"&&<div style={{fontSize:11,color:"#555"}}>Package: {pkgFilter}</div>}
+          {searchQ&&<div style={{fontSize:11,color:"#555"}}>Recherche: {searchQ}</div>}
+          <div style={{fontSize:11,color:"#555"}}>{filtered.length} tender{filtered.length>1?"s":""}</div>
+        </div>
+        <table className="tbl">
         <thead><tr>
           <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
           <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
@@ -2021,6 +2060,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </tr>
         </tfoot>
       </table>}
+    </div>
     {showForm&&formData&&<TenderFormModal data={formData} onChange={setFormData} onSave={saveTender} onClose={function(){setShowForm(false);}} people={people} packages={packages} pkgOwners={pkgOwners||{}}/>}
   </div>;
 }
