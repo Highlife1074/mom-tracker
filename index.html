@@ -9,8 +9,40 @@
 <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script type="module" id="firebase-init">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyCs-tnK2RfDn9I1gDTZNwMs3hkyNghDbRo",
+    authDomain: "rt-mom.firebaseapp.com",
+    projectId: "rt-mom",
+    storageBucket: "rt-mom.firebasestorage.app",
+    messagingSenderId: "210967214795",
+    appId: "1:210967214795:web:c4ccc7b00fb7039b57f94e"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  window._db = {
+    get: async (key) => {
+      try { const snap = await getDoc(doc(db,"mom_data",key)); return snap.exists()?snap.data().value:null; }
+      catch(e){ console.error("FB get",e); return null; }
+    },
+    set: async (key, value) => {
+      try { await setDoc(doc(db,"mom_data",key),{value}); }
+      catch(e){ console.error("FB set",e); }
+    }
+  };
+
+  // Real-time listener helper
+  window._dbListen = function(key, cb){
+    return onSnapshot(doc(db,"mom_data",key), function(snap){
+      if(snap.exists()) cb(snap.data().value);
+    });
+  };
+
+  window._dbReady = true;
+  window.dispatchEvent(new Event("db-ready"));
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Inter',sans-serif;background:#f8f7f3;color:#222;}
@@ -40,6 +72,42 @@ textarea{resize:vertical;min-height:60px;}
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-type="script" src="app.js"></script>
+<script>
+(function(){
+  function showErr(title,msg,stk){
+    var pre=document.createElement("pre");
+    pre.style.cssText="padding:24px;font-family:monospace;color:#c62828;white-space:pre-wrap;font-size:13px;background:#fff;margin:0";
+    pre.textContent=title+":\n"+msg+"\n\nStack:\n"+(stk||"");
+    document.body.innerHTML="";
+    document.body.appendChild(pre);
+  }
+  function run(){
+    fetch("app.js?v="+Date.now())
+      .then(function(r){return r.text();})
+      .then(function(src){
+        try{
+          var out=Babel.transform(src,{presets:["react"]}).code;
+          eval(out);
+        }catch(e){
+          showErr("BABEL ERROR",e.message,e.stack);
+        }
+      })
+      .catch(function(e){showErr("FETCH ERROR",e.message,"");});
+  }
+  function wait(){
+    if(typeof Babel!=="undefined"&&typeof React!=="undefined"&&typeof ReactDOM!=="undefined"){
+      if(window._dbReady)run();
+      else window.addEventListener("db-ready",run,{once:true});
+    }else setTimeout(wait,50);
+  }
+  window.addEventListener("error",function(e){
+    var root=document.getElementById("root");
+    if(!root||root.innerHTML===""){
+      showErr("RUNTIME ERROR",(e.message||"Unknown")+"\nFile: "+(e.filename||"")+" L"+(e.lineno||""),(e.error&&e.error.stack)||"");
+    }
+  });
+  document.readyState==="loading"?document.addEventListener("DOMContentLoaded",wait):wait();
+})();
+</script>
 </body>
 </html>
