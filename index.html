@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Riviera Tower — Project Pilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:#f8f7f3;color:#222;}
+.btn{background:#c9a84c;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;}
+.btn:hover{background:#b8973b;}
+.btn-sm{padding:5px 10px;font-size:11px;}
+.btn-danger{background:#d32f2f;}
+.btn-danger:hover{background:#b71c1c;}
+input,select,textarea{font-family:'Inter',sans-serif;padding:6px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#c9a84c;}
+textarea{resize:vertical;min-height:60px;}
+.tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.tbl th,.tbl td{text-align:left;padding:8px;border-bottom:1px solid #eee;}
+.tbl th{background:#f5f4f0;font-weight:600;}
+.tbl tr:hover{background:#fafaf8;}
+.modal{background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.15);max-width:90vw;max-height:90vh;overflow:auto;}
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;}
+.modal-hdr{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #eee;}
+.modal-title{font-size:16px;font-weight:700;}
+.modal-body{padding:20px;}
+.modal-footer{padding:12px 20px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;}
+.fg{margin-bottom:12px;}
+.fg label{display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;}
+.frow{display:flex;gap:12px;}
+.frow .fg{flex:1;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-type="script" src="app.js"></script>
+</body>
+</html>
