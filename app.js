@@ -3,7 +3,7 @@ const {useState,useEffect,useRef,useCallback}=React;
 class ErrorBoundary extends React.Component{
   constructor(props){super(props);this.state={err:null,info:null};}
   static getDerivedStateFromError(err){return{err,info:null};}
-  componentCatch(err,info){this.setState({err,info});}
+  componentDidCatch(err,info){this.setState({err,info});}
   render(){
     if(this.state.err){
       return React.createElement("div",{style:{padding:24,fontFamily:"monospace",color:"#c62828",whiteSpace:"pre-wrap",fontSize:13,background:"#fff",minHeight:"100vh"}},
@@ -38,7 +38,7 @@ function scoreStyle(s){
 
 const OWNER_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f3e5f5|#7b1fa2","#e8f5e9|#2e7d32","#fff8e1|#f57f17","#e3f2fd|#1565c0","#fbe9e7|#bf360c","#f9fbe7|#827717"];
 function ownerColor(n){let h=0;if(!n)return{bg:"#f5f4f0",accent:"#888"};for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%OWNER_COLORS.length;const p=OWNER_COLORS[h].split("|");return{bg:p[0],accent:p[1]};}
-const TAG_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f3e5f5|#7b1fa2","#e8f5e9|#2e7d32","#fff8e1|#f57f17","#fbe9e7|#bf360c","#e3f2fd|#1565c0","#f9fbe7|#827717"];
+const TAG_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f3e5f5|#7b1fa2","#e8f5e9|#2e7d32","#fff8e1|#f57f17","#fbe9e7|#bf360c","#e3f2fd|#1565c0","#f9fbe7|#bf360c","#e3f2fd|#1565c0","#f9fbe7|#827717"];
 function tagColor(t){let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%TAG_COLORS.length;const p=TAG_COLORS[h].split("|");return{bg:p[0],color:p[1]};}
 function getCCsForTags(tags,tagrules){return[...new Set((tags||[]).flatMap(t=>tagrules[t]||[]))];}
 function getCCsForPkg(pkg,pkgrules){return pkgrules[pkg]||[];}
@@ -110,7 +110,7 @@ function GlobalPdfModal({contractors,saveContractors,onClose}){
     }
   }
   function confirm(){
-    if(!matched){setError("No contract matched this SAP number.");return;}
+    if(!matched){setError("No contract matched this SAP number. Check the SAP # in the Subcontractors tab.");return;}
     var cf=newCertification();
     cf.number=cert.number;
     cf.date=cert.date?cert.date+"-01":"";
@@ -125,42 +125,74 @@ function GlobalPdfModal({contractors,saveContractors,onClose}){
     saveContractors(d);
     onClose();
   }
-  return <div className="overlay"><div className="modal" style={{maxWidth:460}}>
-    <div className="modal-hdr"><div className="modal-title">📄 Add Certification</div><button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
-    <div className="modal-body">
-      {error&&<div style={{padding:"8px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
-      <div className="fg">
-        <label>SAP Contract #</label>
-        <input type="text" value={cert.sap} onChange={function(e){set("sap",e.target.value);}} placeholder="e.g. 9001032541" autoFocus/>
-        {matched&&<div style={{marginTop:5,padding:"5px 8px",background:"#e8f5e9",borderRadius:6,fontSize:11,color:"#2e7d32",fontWeight:600}}>✅ {matched.ctr.name} · {matched.ct.number||""}</div>}
+  return (
+    <div className="overlay"><div className="modal" style={{maxWidth:460}}>
+      <div className="modal-hdr">
+        <div className="modal-title">📄 Add Certification</div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
       </div>
-      <div style={{display:"flex",gap:10}}>
-        <div className="fg" style={{flex:1}}><label>Valuation #</label><input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}}/></div>
-        <div className="fg" style={{flex:1}}><label>Period</label><input type="month" value={cert.date||""} onChange={function(e){set("date",e.target.value);}}/></div>
+      <div className="modal-body">
+        {error&&<div style={{padding:"8px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+        <div className="fg">
+          <label>SAP Contract # <span style={{color:"#888",fontWeight:400,textTransform:"none"}}>(auto-matches subcontractor)</span></label>
+          <input type="text" value={cert.sap} onChange={function(e){set("sap",e.target.value);}} placeholder="e.g. 9001032541" autoFocus/>
+          {matched&&<div style={{marginTop:5,padding:"5px 8px",background:"#e8f5e9",borderRadius:6,fontSize:11,color:"#2e7d32",fontWeight:600}}>
+            ✅ {matched.ctr.name} · {matched.ct.number||"(no contract number)"}
+          </div>}
+          {cert.sap&&!matched&&<div style={{marginTop:5,fontSize:11,color:"#f57f17"}}>⚠️ No contract found for this SAP number</div>}
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <div className="fg" style={{flex:1}}>
+            <label>Valuation #</label>
+            <input type="text" value={cert.number} onChange={function(e){set("number",e.target.value);}} placeholder="003"/>
+          </div>
+          <div className="fg" style={{flex:1}}>
+            <label>Period (MM/YY)</label>
+            <input type="month" value={cert.date||""} onChange={function(e){set("date",e.target.value);}}/>
+          </div>
+        </div>
+        <div className="fg">
+          <label>Amount incl. tax (this period)</label>
+          <input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}} placeholder="34249.84"/>
+        </div>
       </div>
-      <div className="fg"><label>Amount incl. tax</label><input type="number" value={cert.amount} onChange={function(e){set("amount",e.target.value);}}/></div>
-    </div>
-    <div className="modal-footer"><button className="btn" onClick={onClose}>Cancel</button><button className="btn btn-pri" disabled={!matched||!cert.amount} onClick={confirm}>✓ Add</button></div>
-  </div></div>;
+      <div className="modal-footer">
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-pri" disabled={!matched||!cert.amount} onClick={confirm}>✓ Add Certification</button>
+      </div>
+    </div></div>
+  );
 }
 
 function ImprovementBox({improvements,saveImprovements,currentPage}){
   const [open,setOpen]=useState(false);
   const [text,setText]=useState("");
+  const ref=useRef();
   function submit(){
     if(!text.trim())return;
     var entry={id:uuid(),text:text.trim(),page:currentPage,date:today(),ts:Date.now()};
     saveImprovements([entry,...improvements]);
     setText("");setOpen(false);
   }
-  return <div className="imp-btn-wrap" style={{position:"fixed",bottom:16,right:276,zIndex:500}}>
-    {open&&<div style={{position:"absolute",bottom:44,right:0,width:280,background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",padding:14,border:"1.5px solid #e8e6df"}}>
-      <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>💡 Improvement idea</div>
-      <textarea autoFocus value={text} onChange={function(e){setText(e.target.value);}} style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #ddd",borderRadius:7,outline:"none"}}/>
-      <div style={{display:"flex",gap:6,marginTop:8}}><button className="btn" style={{flex:1}} onClick={function(){setOpen(false);}}>Cancel</button><button className="btn btn-gold" style={{flex:1}} onClick={submit}>✓ Add</button></div>
-    </div>}
-    <button onClick={function(){setOpen(!open);}} style={{width:36,height:36,borderRadius:"50%",background:"#c9a84c",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#1c1c1e"}}>💡</button>
-  </div>;
+  return (
+    <div className="imp-btn-wrap" style={{position:"fixed",bottom:16,right:276,zIndex:500}}>
+      {open&&<div style={{position:"absolute",bottom:44,right:0,width:280,background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",border:"1.5px solid #e8e6df",padding:14}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>💡 Improvement idea</div>
+        <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Page: <strong>{currentPage}</strong></div>
+        <textarea ref={ref} autoFocus value={text} onChange={function(e){setText(e.target.value);}}
+          onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
+          placeholder="Describe the improvement..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1.5px solid #e8e6df",borderRadius:7,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box"}}/>
+        <div style={{display:"flex",gap:6,marginTop:8}}>
+          <button className="btn" style={{flex:1}} onClick={function(){setOpen(false);setText("");}}>Cancel</button>
+          <button className="btn btn-gold" style={{flex:1}} onClick={submit}>✓ Add</button>
+        </div>
+      </div>}
+      <button onClick={function(){setOpen(!open);}} title="Suggest an improvement"
+        style={{width:36,height:36,borderRadius:"50%",background:"#c9a84c",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#1c1c1e",transition:"all .15s"}}>
+        💡
+      </button>
+    </div>
+  );
 }
 
 function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,improvements,saveImprovements,currentPage}){
@@ -185,61 +217,80 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,onAdd,impro
     if(selTags.includes("RFI")){td.rfiSubmission=rfiSub;td.rfiDue=rfiDue;}
     onAdd(newTask(td));
     setText("");setDue(today());setOwner("");setPkg("");setTenderRef("");setContractorRef("");setImportance(1);setUrgence(1);setSelTags([]);setIsInfo(false);
+    if(inputRef.current)inputRef.current.focus();
   }
-  
+  function toggleTag(t){setSelTags(function(prev){return prev.includes(t)?prev.filter(function(x){return x!==t;}):[...prev,t];});}
+  function onTenderChange(tid){
+    setTenderRef(tid);
+    if(tid){var td2=(tenders||[]).find(function(t){return t.id===tid;});if(td2&&td2.package)setPkg(td2.package);}
+  }
   var sc=calcScore(importance,urgence);
   var ss=scoreStyle(sc);
-  var filteredTenders=(tenders||[]).filter(t=>!pkg||t.package===pkg).sort((a,b)=>(a.title||"").localeCompare(b.title||""));
-  var filteredContractors=(contractors||[]).filter(c=>!pkg||c.package===pkg||(c.contracts||[]).some(ct=>ct.package===pkg)).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  var filteredTenders=(tenders||[]).filter(function(t){return !pkg||t.package===pkg;}).sort(function(a,b){return (a.title||"").localeCompare(b.title||"");});
+  var filteredContractors=(contractors||[]).filter(function(ctr){return !pkg||ctr.package===pkg||(ctr.contracts||[]).some(function(ct){return ct.package===pkg;});}).sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
 
-  return <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-    <div style={{padding:14,borderBottom:"1.5px solid #e8e6df"}}><div style={{fontFamily:"'DM Serif Display',serif",fontSize:15}}>Quick Add</div></div>
-    <div style={{flex:1,overflowY:"auto",padding:12}} className="sform">
-      <div className="fg"><label>Date</label><input type="date" value={due} onChange={e=>setDue(e.target.value)}/></div>
-      <div className="fg"><label>Action *</label><textarea ref={inputRef} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}} style={{minHeight:60}}/></div>
-      <div className="fg"><label>Owner</label><select value={owner} onChange={e=>setOwner(e.target.value)}><option value="">— none —</option>{people.map(p=><option key={p} value={p}>{p.split(",")[0]}</option>)}</select></div>
-      <div className="fg"><label>Tender</label><select value={tenderRef} onChange={e=>setTenderRef(e.target.value)}><option value="">— none —</option>{filteredTenders.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select></div>
-      <div className="fg"><label>Package</label><select value={pkg} onChange={e=>setPkg(e.target.value)}><option value="">— none —</option>{packages.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
-      <div className="fg"><label>Score I×U {sc>1&&<span style={{padding:"1px 7px",borderRadius:10,background:ss.bg,color:ss.color,fontWeight:700,fontSize:10}}>{ss.label}</span>}</label>
-        <div style={{display:"flex",gap:12}}>
-          <div><div style={{fontSize:9,color:"#aaa"}}>IMPACT</div><div style={{display:"flex",gap:3}}>{[1,2,3].map(v=><button key={v} onClick={()=>setImportance(v)} style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(importance===v?"#1c1c1e":"#ddd"),background:importance===v?"#1c1c1e":"#fff",color:importance===v?"#fff":"#aaa",fontSize:11,fontWeight:800}}>{v}</button>)}</div></div>
-          <div><div style={{fontSize:9,color:"#aaa"}}>URGENCY</div><div style={{display:"flex",gap:3}}>{[1,2,3].map(v=><button key={v} onClick={()=>setUrgence(v)} style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(urgence===v?"#1c1c1e":"#ddd"),background:urgence===v?"#1c1c1e":"#fff",color:urgence===v?"#fff":"#aaa",fontSize:11,fontWeight:800}}>{v}</button>)}</div></div>
-        </div>
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"14px 14px 10px",borderBottom:"1.5px solid #e8e6df"}}>
+        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,marginBottom:2}}>Quick Add</div>
+        <div style={{fontSize:11,color:"#bbb"}}>Enter to add · {today().split("-").reverse().join("/")}</div>
       </div>
-      <button className="btn btn-gold" style={{width:"100%",marginTop:10}} onClick={submit}>＋ Add Task</button>
+      <div style={{flex:1,overflowY:"auto",padding:12}} className="sform">
+        <div className="fg"><label>Date</label><input type="date" value={due} onChange={function(e){setDue(e.target.value);}}/></div>
+        <div className="fg"><label>Action *</label><textarea ref={inputRef} value={text} onChange={function(e){setText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}} placeholder="What needs to be done?" style={{minHeight:60}}/></div>
+        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:8,color:isInfo?"#1565c0":"#888",background:isInfo?"#e3f2fd":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(isInfo?"#1565c0":"#ddd"),alignSelf:"flex-start"}}><input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:13,height:13}}/>ℹ️ Info only</label>
+        <div className="fg"><label>Owner</label><select value={owner} onChange={function(e){setOwner(e.target.value);}}>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}</select></div>
+        <div className="fg"><label>Tender</label><select value={tenderRef} onChange={function(e){onTenderChange(e.target.value);}}><option value="">— none —</option>{filteredTenders.map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}</select></div>
+        <div className="fg"><label>Package</label><select value={pkg} onChange={function(e){setPkg(e.target.value);}}><option value="">— none —</option>{(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}</select></div>
+        {!isInfo&&<div className="fg"><label>Score I×U {sc>1&&<span style={{padding:"1px 7px",borderRadius:10,background:ss.bg,color:ss.color,fontWeight:700,fontSize:10}}>{ss.label} [{sc}]</span>}</label>
+          <div style={{display:"flex",gap:12,alignItems:"center",marginTop:2}}>
+            <div><div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:3}}>IMPACT</div><div style={{display:"flex",gap:3}}>{[1,2,3].map(function(v){return <button key={v} onClick={function(){setImportance(v);}} style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(importance===v?"#1c1c1e":"#ddd"),background:importance===v?"#1c1c1e":"#fff",color:importance===v?"#fff":"#aaa",fontSize:11,fontWeight:800}}>{v}</button>;})}</div></div>
+            <span style={{color:"#ccc",fontSize:16}}>×</span>
+            <div><div style={{fontSize:9,fontWeight:800,color:"#aaa",marginBottom:3}}>URGENCY</div><div style={{display:"flex",gap:3}}>{[1,2,3].map(function(v){return <button key={v} onClick={function(){setUrgence(v);}} style={{width:26,height:26,borderRadius:5,border:"1.5px solid "+(urgence===v?"#1c1c1e":"#ddd"),background:urgence===v?"#1c1c1e":"#fff",color:urgence===v?"#fff":"#aaa",fontSize:11,fontWeight:800}}>{v}</button>;})}</div></div>
+          </div>
+        </div>}
+        <div style={{display:"flex",gap:6,marginTop:4}}><button className="btn" onClick={function(){setText("");setDue(today());setOwner("");setPkg("");setTenderRef("");setContractorRef("");setIsInfo(false);}}>✕ Cancel</button><button className="btn btn-gold" style={{flex:1}} onClick={submit}>＋ Add {isInfo?"Info":"Task"}</button></div>
+      </div>
     </div>
-  </div>;
+  );
 }
 
 function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,tenders,contractors,showCreated,onNavTender}){
   const [editMode,setEditMode]=useState(false);
+  const [localTags,setLocalTags]=useState(task.tags||[]);
   const sc=calcScore(task.importance||1,task.urgence||1);
+  useEffect(function(){setLocalTags(task.tags||[]);},[task.tags]);
   const ss=scoreStyle(sc);
+  const tdr=task.tenderRef?(tenders||[]).find(function(t){return t.id===task.tenderRef;}):null;
+  const ctr=task.contractorRef?(contractors||[]).find(function(c){return c.id===task.contractorRef;}):null;
   function upd(field,val){if(onUpdate)onUpdate(field,val,true);}
-
-  return <div className="ac-item" style={{background:editMode?"#f8f9ff":task.status==="done"?"#fafaf8":"#fff",flexDirection:"column",gap:0}}>
-    <div style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%"}}>
-      <div className={"ac-check"+(task.status==="done"?" done":"")} style={{flexShrink:0,marginTop:3,cursor:"pointer"}} onClick={()=>onStatusChange(task.status==="done"?"pending":"done")}>{task.status==="done"&&<span style={{fontSize:11,color:"#fff"}}>✓</span>}</div>
-      <div style={{flex:1}}>
-        {editMode ? (
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            <textarea value={task.text||""} onChange={e=>upd("text",e.target.value)} style={{width:"100%",minHeight:44}}/>
-            <button className="btn btn-sm btn-pri" onClick={()=>setEditMode(false)}>Done</button>
-          </div>
-        ) : (
-          <div>
-            <div style={{fontWeight:500}}>{task.text}</div>
-            <div className="ac-meta">
-              {task.due&&<span style={{fontSize:11}}>📅 {fmtDate(task.due)}</span>}
-              {task.owner&&<OwnerChip owner={task.owner}/>}
-              {task.package&&<span className="badge">{task.package}</span>}
+  return (
+    <div className="ac-item" style={{background:editMode?"#f8f9ff":task.status==="done"?"#fafaf8":"#fff",borderColor:editMode?"#3949ab":"#e8e6df",flexDirection:"column",gap:0}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%"}}>
+        <div className={"ac-check"+(task.status==="done"?" done":"")} style={{flexShrink:0,marginTop:3,cursor:"pointer"}} onClick={function(){if(onStatusChange)onStatusChange(task.status==="done"?"pending":"done");}}>{task.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}</div>
+        <div style={{flex:1,minWidth:0}}>
+          {editMode ? (
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <textarea value={task.text||""} autoFocus onChange={function(e){upd("text",e.target.value);}} style={{width:"100%",padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontSize:13,minHeight:44}}/>
+              <button className="btn btn-sm btn-pri" onClick={function(){setEditMode(false);}}>✓ Done</button>
             </div>
-          </div>
-        )}
+          ) : (
+            <div>
+              <div className={"ac-text"+(task.status==="done"?" done":"")} style={{fontWeight:500}}>{task.isInfo&&<span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"1px 6px",borderRadius:8,background:"#e3f2fd",color:"#1565c0",fontSize:10,fontWeight:700,marginRight:5}}>ℹ️ INFO</span>}{task.text}</div>
+              <div className="ac-meta" style={{marginTop:4,display:"flex",flexWrap:"wrap",alignItems:"center",gap:4}}>
+                {task.due&&<span style={{fontSize:11,color:task.due<today()&&task.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(task.due)}</span>}
+                {task.owner&&<OwnerChip owner={task.owner}/>}
+                {task.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{task.package}</span>}
+                {tdr&&<span className="badge" style={{background:"#fff8f0",color:"#b45309"}}>📑 {tdr.title}</span>}
+                {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8"}}>🤝 {ctr.name}</span>}
+              </div>
+            </div>
+          )}
+        </div>
+        {!editMode&&<div style={{display:"flex",gap:4}}><button className="btn btn-sm" onClick={function(){setEditMode(true);}}>✏️</button><button className="btn btn-sm btn-danger" onClick={onDelete}>🗑</button></div>}
       </div>
-      {!editMode&&<button className="btn btn-sm" onClick={()=>setEditMode(true)}>✏️</button>}
     </div>
-  </div>;
+  );
 }
 
 function StatusChip({status}){
@@ -253,264 +304,208 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
   const [open,setOpen]=useState(false);
   const [text,setText]=useState("");
   function submit(){if(!text.trim())return;onAdd(newTask(Object.assign({},prefill,{text:text.trim()})));setText("");setOpen(false);}
-  if(!open)return <button className="btn btn-sm" onClick={()=>setOpen(true)} style={{marginTop:8}}>＋ {label||"Add Task"}</button>;
-  return <div style={{marginTop:8,padding:12,background:"#f8f9ff",borderRadius:10,border:"1.5px solid #3949ab"}}>
-    <textarea value={text} onChange={e=>setText(e.target.value)} style={{width:"100%",minHeight:44}} placeholder="What needs to be done?"/>
-    <div style={{display:"flex",gap:6,marginTop:8}}><button className="btn btn-sm" onClick={()=>setOpen(false)}>Cancel</button><button className="btn btn-sm btn-pri" onClick={submit}>Add</button></div>
-  </div>;
+  if(!open)return <button className="btn btn-sm" onClick={function(){setOpen(true);}} style={{marginTop:8}}>＋ {label||"Add Task"}</button>;
+  return (
+    <div style={{marginTop:8,padding:"12px",background:"#f8f9ff",borderRadius:10,border:"1.5px solid #3949ab"}}>
+      <textarea value={text} onChange={function(e){setText(e.target.value);}} placeholder="What needs to be done?" style={{width:"100%",fontSize:12}}/>
+      <div style={{display:"flex",gap:6,marginTop:10}}><button className="btn btn-sm" onClick={function(){setOpen(false);}}>Cancel</button><button className="btn btn-sm btn-pri" onClick={submit}>Add</button></div>
+    </div>
+  );
 }
 
 function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,trackers,saveT,tagrules,pkgrules}){
   const [q,setQ]=useState("");
-  const filtered=tasks.filter(t=>!q||(t.text||"").toLowerCase().includes(q.toLowerCase()));
-  return <div style={{padding:20}}>
-    <div className="page-hdr"><div className="page-title">Actions</div></div>
-    <input type="text" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..." style={{marginBottom:15}}/>
-    {filtered.map(t=><ActionItem key={t.id} task={t} onStatusChange={val=>saveT(tasks.map(x=>x.id===t.id?Object.assign({},x,{status:val}):x))} people={people} packages={packages}/>)}
-  </div>;
+  const filtered=tasks.filter(function(t){return !q||(t.text||"").toLowerCase().includes(q.toLowerCase());});
+  return (
+    <div style={{height:"100%",overflowY:"auto",padding:24}}>
+      <div className="page-hdr"><div className="page-title">Actions</div></div>
+      <div className="filter-bar"><input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search…" style={{width:180}}/></div>
+      {filtered.map(function(t){return <ActionItem key={t.id} task={t} onStatusChange={function(val){saveT(tasks.map(function(x){return x.id===t.id?Object.assign({},x,{status:val}):x;}));}} onUpdate={function(f,v){saveT(tasks.map(function(x){return x.id===t.id?Object.assign({},x,{[f]:v}):x;}));}} onDelete={function(){saveT(tasks.filter(function(x){return x.id!==t.id;}));}} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors}/>;})}
+    </div>
+  );
 }
 
 function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,contractors}){
   const [sel,setSel]=useState(null);
-  return <div style={{padding:20}}>
-    <div className="page-hdr"><div className="page-title">Trackers</div></div>
-    {trackers.map(tr=><div key={tr.id} className="ctr-card" onClick={()=>setSel(tr)}>{tr.title}</div>)}
-  </div>;
+  const openNew=function(){saveX([newTracker({title:"New Tracker"}),...trackers]);};
+  return (
+    <div style={{height:"100%",overflowY:"auto",padding:24}}>
+      <div className="page-hdr"><div className="page-title">Trackers</div><button className="btn btn-gold" onClick={openNew}>＋ New Tracker</button></div>
+      {trackers.map(function(tr){return <div key={tr.id} className="ctr-card" onClick={function(){setSel(tr);}}><strong>{tr.title}</strong><div style={{fontSize:11,color:"#888"}}>{tr.actions.length} actions</div></div>;})}
+    </div>
+  );
 }
 
 function TrackerFormModal({data,onChange,onSave,onClose}){
-  return <div className="overlay"><div className="modal"><div className="modal-hdr"><div className="modal-title">Edit Tracker</div></div><div className="modal-footer"><button onClick={onClose}>Close</button></div></div></div>;
+  return <div className="overlay"><div className="modal"><div className="modal-hdr"><div className="modal-title">Edit Tracker</div></div><div className="modal-footer"><button className="btn" onClick={onClose}>Close</button></div></div></div>;
+}
+
+function parseLeadDays(str){
+  if(!str)return 0;
+  var s=String(str).toLowerCase().trim();
+  var n=parseFloat(s)||0;
+  if(s.includes("week")||s.includes("wk"))return Math.round(n*6);
+  if(s.includes("month"))return Math.round(n*26);
+  return Math.round(n);
 }
 
 function MaterialsPanel({td,updTd,saveT,tasks}){
   const [open,setOpen]=useState(true);
   var mats=td.materials||[];
-  function updMat(mi,field,val){var ms=mats.map((m,j)=>j!==mi?m:Object.assign({},m,{[field]:val}));updTd("materials",ms);}
-  return <div className="card" style={{marginBottom:10}}>
-    <div onClick={()=>setOpen(!open)} style={{cursor:"pointer",fontWeight:700}}>🏗️ Materials ({mats.length})</div>
-    {open&&<div style={{marginTop:10}}>
-      <button className="btn btn-sm" onClick={()=>updTd("materials",[...mats,{id:uuid(),name:""}])}>＋ Material</button>
-      {mats.map((m,i)=><div key={m.id} style={{marginTop:5}}><input value={m.name} onChange={e=>updMat(i,"name",e.target.value)} placeholder="Material name"/></div>)}
-    </div>}
-  </div>;
+  function updMat(mi,field,val){var ms=mats.map(function(m,j){return j!==mi?m:Object.assign({},m,{[field]:val});});updTd("materials",ms);}
+  return (
+    <div className="card" style={{marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
+        <div style={{fontWeight:700,fontSize:13}}>🏗️ Materials ({mats.length})</div>
+        <button className="btn btn-sm" onClick={function(e){e.stopPropagation();updTd("materials",[...mats,{id:uuid(),name:""}]);}}>＋ Material</button>
+      </div>
+      {open&&<div style={{marginTop:10}}>{mats.map(function(m,i){return <div key={m.id} style={{marginBottom:5}}><input type="text" value={m.name} onChange={function(e){updMat(i,"name",e.target.value);}} placeholder="Material name" style={{fontSize:12}}/></div>;})}</div>}
+    </div>
+  );
 }
 
 function SubmissionSteps({td,TENDER_STEPS,updateStep}){
-  return <div className="card"><div style={{fontWeight:700,marginBottom:10}}>Submission Steps</div>
-    <table className="tbl"><tbody>{TENDER_STEPS.map(s=><tr key={s.key}><td>{s.label}</td><td><select value={(td.steps||{})[s.key]||"—"} onChange={e=>updateStep(td.id,s.key,"status",e.target.value)}>{s.opts.map(o=><option key={o} value={o}>{o}</option>)}</select></td></tr>)}</tbody></table>
-  </div>;
+  return (
+    <div className="card">
+      <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>Submission Steps</div>
+      <table className="tbl" style={{fontSize:12}}>
+        <tbody>{TENDER_STEPS.map(function(s){return <tr key={s.key}><td style={{fontWeight:700}}>{s.label}</td><td><select value={(td.steps||{})[s.key]||"—"} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}>{s.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}</select></td></tr>;})}</tbody>
+      </table>
+    </div>
+  );
 }
 
-function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,onBack}){
-  const [selTender,setSelTender]=useState(null);
+function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners,jumpTender,clearJumpTender,jumpFrom,onBack}){
+  const [pkgFilter,setPkgFilter]=useState("all");
   const [searchQ,setSearchQ]=useState("");
-  const filtered=(tenders||[]).filter(t=>(t.title||"").toLowerCase().includes(searchQ.toLowerCase()));
+  const [selTender,setSelTender]=useState(null);
+  const allPkgs=[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))].sort();
 
   function updateStep(tdId,step,field,val){
-    var d=tenders.map(t=>{
+    var d=tenders.map(function(t){
       if(t.id!==tdId)return t;
       var steps=Object.assign({},t.steps||{});
-      if(field==="status")steps[step]=val;
-      return Object.assign({},t,{steps});
+      steps[step]=val;
+      return Object.assign({},t,{steps:steps});
     });
     saveTenders(d);
-    if(selTender&&selTender.id===tdId)setSelTender(d.find(x=>x.id===tdId));
+    if(selTender&&selTender.id===tdId)setSelTender(d.find(function(x){return x.id===tdId;}));
   }
 
   if(selTender){
-    const td=selTender;
-    return <div style={{padding:20}}>
-      <button className="btn btn-sm" onClick={()=>setSelTender(null)}>← Back</button>
-      <div className="page-title">{td.title}</div>
-      <MaterialsPanel td={td} updTd={(f,v)=>saveTenders(tenders.map(x=>x.id===td.id?Object.assign({},x,{[f]:v}):x))} tasks={tasks} saveT={saveTasks}/>
-      <SubmissionSteps td={td} TENDER_STEPS={TENDER_STEPS} updateStep={updateStep}/>
-    </div>;
+    var td=selTender;
+    return (
+      <div style={{padding:24,overflowY:"auto",height:"100%"}}>
+        <button className="btn btn-sm" onClick={function(){setSelTender(null);}} style={{marginBottom:15}}>← Back to list</button>
+        <div className="page-title" style={{marginBottom:15}}>{td.title}</div>
+        <MaterialsPanel td={td} updTd={function(f,v){saveTenders(tenders.map(function(x){return x.id===td.id?Object.assign({},x,{[f]:v}):x;}));}} tasks={tasks} saveT={saveTasks}/>
+        <SubmissionSteps td={td} TENDER_STEPS={TENDER_STEPS} updateStep={updateStep}/>
+      </div>
+    );
   }
 
-  return <div style={{padding:20}}>
-    <div className="page-hdr"><div className="page-title">Tenders</div><button className="btn btn-gold" onClick={()=>saveTenders([newTender(),...tenders])}>＋ New</button></div>
-    <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search..."/>
-    <table className="tbl">
-      <thead><tr><th>Title</th><th>Package</th><th>ACC</th></tr></thead>
-      <tbody>{filtered.map(t=><tr key={t.id} onClick={()=>setSelTender(t)}><td>{t.title}</td><td>{t.package}</td><td>{(t.steps||{}).acc}</td></tr>)}</tbody>
-      <tfoot>
-        <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
-          <td colSpan={3} style={{padding:"8px 12px"}}>
-            {(function(){
-              var totBudget=filtered.reduce(function(s,t){return s+Number(t.budget||0);},0);
-              var totAcc=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0)+Number(t.accAmountOther||0);},0);
-              var variance=totBudget-totAcc;
-              return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase"}}>TOTALS</span>
-                {totBudget>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#f0ede6",fontSize:11}}>Budget: <strong>{totBudget.toLocaleString()}</strong></div>}
-                {totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:variance<0?"#fce4ec":"#e8f5e9",fontSize:11}}>Variance (B-C): <strong style={{color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()}</strong></div>}
-              </div>;
-            })()}
-          </td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>;
+  var filtered=(tenders||[]).filter(function(t){return !searchQ||(t.title||"").toLowerCase().includes(searchQ.toLowerCase());});
+
+  return (
+    <div style={{height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+      <div className="page-hdr" style={{padding:24,paddingBottom:8}}>
+        <div><div className="page-title">Tenders</div><div className="page-sub">Track submission steps</div></div>
+        <button className="btn btn-gold" onClick={function(){saveTenders([newTender({title:"New Tender"}),...tenders]);}}>＋ New Tender</button>
+      </div>
+      <div style={{padding:"0 24px 12px"}}><input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search tender..." style={{width:240}}/></div>
+      <div style={{flex:1,overflowX:"auto",padding:"0 24px"}}>
+        <table className="tbl">
+          <thead><tr><th>Tender</th><th>Package</th><th>ACC/Aconex</th><th>Target Start</th></tr></thead>
+          <tbody>{filtered.map(function(td){return (
+            <tr key={td.id} style={{cursor:"pointer"}} onClick={function(){setSelTender(td);}}>
+              <td style={{fontWeight:600}}>{td.title}</td>
+              <td><span className="badge">{td.package}</span></td>
+              <td><span className="chip">{(td.steps||{}).acc||"—"}</span></td>
+              <td>{fmtDate(td.startOnSite)}</td>
+            </tr>
+          );})}</tbody>
+          <tfoot>
+            <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
+              <td colSpan={4} style={{padding:"8px 12px"}}>
+                {(function(){
+                  var totBudget=filtered.reduce(function(s,t){return s+Number(t.budget||0);},0);
+                  var totAcc=filtered.reduce(function(s,t){return s+Number(t.accAmountSubcontract||0)+Number(t.accAmountOther||0);},0);
+                  var variance=totBudget-totAcc;
+                  if(totBudget===0&&totAcc===0) return <span style={{fontSize:11,color:"#aaa"}}>No financial data yet.</span>;
+                  return (
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                      <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase"}}>TOTALS</span>
+                      <div style={{padding:"3px 10px",borderRadius:7,background:"#f0ede6",fontSize:11}}>Budget: <strong>{totBudget.toLocaleString()}</strong></div>
+                      <div style={{padding:"3px 10px",borderRadius:7,background:variance<0?"#fce4ec":"#e8f5e9",fontSize:11}}>
+                         Variance: <strong style={{color:variance<0?"#c62828":"#2e7d32"}}>{variance.toLocaleString()}</strong>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function LetterRow({letter,tc,correspondences,saveCorrespondences,delLetter}){
   const [editing,setEditing]=useState(false);
-  return <div style={{padding:"8px 10px",borderRadius:7,border:"1px solid #f0ede6",marginBottom:5,background:"#fafaf8"}}>
-    <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-      <span style={{padding:"2px 8px",borderRadius:12,background:tc.bg,color:tc.color,fontSize:10,fontWeight:700,flexShrink:0}}>{tc.label}</span>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:700,fontSize:12}}>#{letter.number} <span style={{color:"#888",fontWeight:400}}>· {fmtDate(letter.date)}</span></div>
-        {letter.description&&<div style={{fontSize:11,color:"#555",marginTop:1}}>{letter.description}</div>}
+  return (
+    <div style={{padding:"8px 10px",borderRadius:7,border:"1px solid #f0ede6",marginBottom:5,background:"#fafaf8"}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+        <span style={{padding:"2px 8px",borderRadius:12,background:tc.bg,color:tc.color,fontSize:10,fontWeight:700,flexShrink:0}}>{tc.label}</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:12}}>#{letter.number} <span style={{color:"#888",fontWeight:400}}>· {fmtDate(letter.date)}</span></div>
+          {letter.description&&<div style={{fontSize:11,color:"#555",marginTop:1}}>{letter.description}</div>}
+        </div>
+        <button onClick={function(){delLetter(letter.id);}} className="btn btn-sm">🗑</button>
       </div>
-      <button onClick={()=>delLetter(letter.id)} className="btn btn-sm">🗑</button>
     </div>
-  </div>;
+  );
 }
 
 function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,saveT,tasks}){
   const [showAdd,setShowAdd]=useState(false);
   const [form,setForm]=useState({number:"",type:"received",date:today()});
-  var ctrCorr=(correspondences||[]).filter(l=>l.ctrId===ctrId);
-  return <div className="card">
-    <div style={{display:"flex",justifyContent:"space-between"}}><strong>Correspondence</strong><button onClick={()=>setShowAdd(!showAdd)}>＋ Add</button></div>
-    {ctrCorr.map(l=><LetterRow key={l.id} letter={l} tc={{bg:"#eee",color:"#333",label:l.type}} delLetter={id=>saveCorrespondences(correspondences.filter(x=>x.id!==id))}/>)}
-  </div>;
+  var ctrCorr=(correspondences||[]).filter(function(l){return l.ctrId===ctrId;});
+  return (
+    <div className="card" style={{marginTop:15}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><strong>Correspondence</strong><button className="btn btn-sm btn-gold" onClick={function(){setShowAdd(!showAdd);}}>＋ Add</button></div>
+      {ctrCorr.map(function(l){return <LetterRow key={l.id} letter={l} tc={{bg:"#eee",color:"#333",label:l.type}} delLetter={function(id){saveCorrespondences(correspondences.filter(function(x){return x.id!==id;}));}}/>;})}
+    </div>
+  );
 }
 
 function CollapsibleContract({ct,fin,children}){
   const [open,setOpen]=useState(false);
-  return <div style={{border:"1px solid #ddd",marginBottom:10}}><div onClick={()=>setOpen(!open)} style={{padding:10,cursor:"pointer",background:"#f9f9f9"}}><strong>{ct.number||"Contract"}</strong> - {fin.total} EUR</div>{open&&<div style={{padding:10}}>{children}</div>}</div>;
+  return (
+    <div style={{border:"1.5px solid #e8e6df",borderRadius:10,marginBottom:8,overflow:"hidden"}}>
+      <div onClick={function(){setOpen(!open);}} style={{padding:"10px 14px",cursor:"pointer",background:open?"#f8f7f4":"#fff",display:"flex",justifyContent:"space-between"}}>
+        <strong>{ct.number||"Contract"}</strong><span>{fin.total.toLocaleString()} EUR</span>
+      </div>
+      {open&&<div style={{padding:14,borderTop:"1.5px solid #e8e6df"}}>{children}</div>}
+    </div>
+  );
 }
 
-function CollapseContractDetail({ctr,ct,fin,updateCtField,tenders,saveT,tasks}){
-  return <div><label>Contract #</label><input value={ct.number} onChange={e=>updateCtField(ctr.id,ct.id,"number",e.target.value)}/></div>;
+function CollapseContractDetail({ctr,ct,fin,updateCtField}){
+  return (
+    <div className="sform">
+      <div className="fg"><label>Contract #</label><input type="text" value={ct.number||""} onChange={function(e){updateCtField(ctr.id,ct.id,"number",e.target.value);}}/></div>
+      <div className="fg"><label>Amount excl. tax</label><input type="number" value={ct.amount||""} onChange={function(e){updateCtField(ctr.id,ct.id,"amount",e.target.value);}}/></div>
+    </div>
+  );
 }
 
 function ContractorsView({contractors,saveContractors,packages,people,tasks,tenders,correspondences,saveCorrespondences,saveT}){
   const [selCtr,setSelCtr]=useState(null);
   if(selCtr){
     var ctr=selCtr;
-    return <div style={{padding:20}}><button onClick={()=>setSelCtr(null)}>← Back</button><div className="page-title">{ctr.name}</div>
-      {(ctr.contracts||[]).map(ct=><CollapsibleContract key={ct.id} ct={ct} fin={contractFinancials(ct)}><CollapseContractDetail ctr={ctr} ct={ct} fin={contractFinancials(ct)} updateCtField={(ctrId,ctId,f,v)=>saveContractors(contractors.map(c=>c.id===ctrId?Object.assign({},c,{contracts:c.contracts.map(x=>x.id===ctId?Object.assign({},x,{[f]:v}):x)}):c))} tenders={tenders}/></CollapsibleContract>)}
-      <CorrespondenceLog ctrId={ctr.id} ctrName={ctr.name} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT} tasks={tasks}/>
-    </div>;
-  }
-  return <div style={{padding:20}}><div className="page-hdr"><div className="page-title">Subcontractors</div><button className="btn btn-gold" onClick={()=>saveContractors([newContractor(),...contractors])}>＋ New</button></div>
-    <table className="tbl"><tbody>{contractors.map(c=><tr key={c.id} onClick={()=>setSelCtr(c)}><td>{c.name}</td><td>{c.package}</td></tr>)}</tbody></table>
-  </div>;
-}
-
-function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,tasks}){
-  return <div style={{padding:20}}><div className="page-title">Contracts List</div><div className="empty">Select a subcontractor to view their contracts.</div></div>;
-}
-
-function AwnView({awns,saveAwns,people}){
-  return <div style={{padding:20}}><div className="page-title">AWN</div></div>;
-}
-
-function WeeklyView({tasks}){
-  return <div style={{padding:20}}><div className="page-title">Weekly Report</div><pre>{JSON.stringify(tasks.slice(0,5),null,2)}</pre></div>;
-}
-
-function GlobalView({tasks,trackers,tenders,contractors,saveTasks,saveTrackers}){
-  return <div style={{padding:20}}><div className="page-title">Global Actions</div></div>;
-}
-
-function SettingsView({tags,saveTags,people,savePeople,packages,savePackages,allData,onImport}){
-  return <div style={{padding:20}}><div className="page-hdr"><div className="page-title">Settings</div></div>
-    <button className="btn btn-gold" onClick={()=>console.log(allData)}>Export to Console</button>
-  </div>;
-}
-
-function safeConfirm(msg){return window.confirm(msg);}
-function workingDaysDiff(d1,d2){var s=new Date(d1),e=new Date(d2);return Math.round((e-s)/(1000*3600*24));}
-
-function calcProcurement(td){
-  var LEAD = Number(td.leadTimeDays)||30;
-  var deliveryDate = today();
-  return {steps:[], deliveryDate, procStart:today(), margin:0, totalDays:30, LEAD};
-}
-
-function contractFinancials(ct){
-  var base=Number(ct.amount||0);
-  var total=base;
-  var certified=(ct.certifications||[]).reduce((s,f)=>s+Number(f.amount||0),0);
-  return {total, certified, remaining:total-certified, pct:total>0?Math.round(certified/total*100):0, totalInstructed:total};
-}
-
-function DashboardView({tasks}){
-  return <div style={{padding:20}}><div className="page-title">Dashboard</div><div>Total tasks: {tasks.length}</div></div>;
-}
-
-function DocumentsView(){
-  return <div style={{padding:20}}><div className="page-title">Overdue Docs</div></div>;
-}
-
-function UserLogin({people,onLogin}){
-  return <div className="overlay" style={{background:"#1c1c1e",display:"flex",alignItems:"center",justifyContent:"center"}}>
-    <div style={{background:"#fff",padding:40,borderRadius:12}}>
-      <h2 style={{fontFamily:"'DM Serif Display'"}}>Project Tracker</h2>
-      <select onChange={e=>onLogin(e.target.value)}><option value="">Who are you?</option>{people.map(p=><option key={p} value={p}>{p}</option>)}</select>
-    </div>
-  </div>;
-}
-
-function App(){
-  const [currentUser,setCurrentUser]=useState(()=>localStorage.getItem("pp_current_user"));
-  const [view,setViewState]=useState(()=>localStorage.getItem("pp_view")||"global");
-  function setView(v){setViewState(v);localStorage.setItem("pp_view",v);}
-  
-  const [tasks,setTasks]=useState([]);
-  const [trackers,setTrackers]=useState([]);
-  const [tenders,setTenders]=useState([]);
-  const [contractors,setContractors]=useState([]);
-  const [people,setPeople]=useState(SEED_PEOPLE);
-  const [packages,setPackages]=useState(SEED_PACKAGES);
-  const [tags,setTags]=useState(SEED_TAGS);
-  const [correspondences,setCorrespondences]=useState([]);
-  const [improvements,setImprovements]=useState([]);
-  const [syncStatus,setSyncStatus]=useState("ok");
-
-  const saveT=d=>{setTasks(d);cloudStore.set(KEYS.tasks,d);};
-  const saveX=d=>{setTrackers(d);cloudStore.set(KEYS.trackers,d);};
-  const saveTenders=d=>{setTenders(d);cloudStore.set(KEYS.tenders,d);};
-  const saveContractors=d=>{setContractors(d);cloudStore.set(KEYS.contractors,d);};
-
-  useEffect(()=>{
-    const load=async()=>{
-      const [t,x,td,ct,corr]=await Promise.all([
-        cloudStore.get(KEYS.tasks),cloudStore.get(KEYS.trackers),
-        cloudStore.get(KEYS.tenders),cloudStore.get(KEYS.contractors),
-        cloudStore.get(KEYS_CORR)
-      ]);
-      if(t)setTasks(t);if(x)setTrackers(x);if(td)setTenders(td);if(ct)setContractors(ct);if(corr)setCorrespondences(corr);
-    };
-    if(window._dbReady)load();
-    else window.addEventListener("db-ready",load,{once:true});
-  },[]);
-
-  if(!currentUser)return <UserLogin people={people} onLogin={u=>{setCurrentUser(u);localStorage.setItem("pp_current_user",u);}}/>;
-
-  return <div className="layout">
-    <nav className="leftnav">
-      <div className="logo">PROJECT</div>
-      <button className={view==="global"?"on":""} onClick={()=>setView("global")}>🌐 Actions</button>
-      <button className={view==="tenders"?"on":""} onClick={()=>setView("tenders")}>📑 Tenders</button>
-      <button className={view==="contractors"?"on":""} onClick={()=>setView("contractors")}>🤝 Subcontr.</button>
-      <button className={view==="dashboard"?"on":""} onClick={()=>setView("dashboard")}>📈 Dash</button>
-    </nav>
-    <div className="main-area">
-      <div className="content">
-        {view==="global"&&<GlobalView tasks={tasks} saveTasks={saveT}/>}
-        {view==="tenders"&&<TendersView tenders={tenders} saveTenders={saveTenders} people={people} packages={packages} tasks={tasks} saveTasks={saveT}/>}
-        {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} people={people} packages={packages} tenders={tenders} correspondences={correspondences} saveCorrespondences={d=>{setCorrespondences(d);cloudStore.set(KEYS_CORR,d);}} saveT={saveT}/>}
-        {view==="dashboard"&&<DashboardView tasks={tasks}/>}
-      </div>
-      <aside className="rsidebar">
-        <QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} onAdd={t=>saveT([t,...tasks])}/>
-      </aside>
-    </div>
-  </div>;
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ErrorBoundary,null,React.createElement(App)));
+    return (
+      <div style={{padding:24,overflowY:"auto",height:"100%"}}>
+        <button className="btn btn-sm" onClick={function(){setSelCtr(null);}}>← Back</button>
+        <div className="page-hdr"><div className="page-title">{ctr.name}</div></div>
+        {(ctr.contracts||[]).map(function(ct){return <CollapsibleContract key={ct.id} ct={ct} fin={contractFinancial
