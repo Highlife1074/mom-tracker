@@ -1449,9 +1449,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         </div>
       </div>
 
-      <div style={{flex:1,minWidth:0}}>
+      <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
 
-        <div className="page-hdr" style={{marginBottom:12,position:"sticky",top:0,zIndex:20,background:"#f4f3f0",paddingBottom:8,flexShrink:0}}>
+        <div className="page-hdr" style={{marginBottom:12,zIndex:20,background:"#f4f3f0",paddingBottom:8,flexShrink:0,borderBottom:"1px solid #e8e6df"}}>
           {onBack&&<button className="btn btn-sm" onClick={onBack} style={{marginRight:4,flexShrink:0,alignSelf:"flex-start",marginTop:4,color:"#3949ab",border:"1px solid #3949ab"}}>← Back to {jumpFrom}</button>}
           <button className="btn btn-sm" onClick={function(){setSelTender(null);onBack?null:null;}} style={{marginRight:8,flexShrink:0,alignSelf:"flex-start",marginTop:4}}>← Tenders</button>
           <div style={{flex:1}}>
@@ -1506,6 +1506,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <button className="btn btn-sm btn-danger" onClick={function(){if(safeConfirm("Delete?"))delTender(td.id);}}>🗑</button>
         </div>
 
+        <div style={{flex:1,overflowY:"auto",paddingRight:4}}>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
           <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f8f7f4"}}>
             <div style={{fontSize:10,color:"#888",marginBottom:2}}>Budget</div>
@@ -1732,7 +1733,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         />
       </div>
       
-      </div>
+        </div>
       </div>
     </div>;
   }
