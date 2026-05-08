@@ -408,11 +408,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
                 <input type="url" value={lk.url||""} onChange={function(e){var ls=(task.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});upd("links",ls);}} placeholder="https://..." style={{flex:1,padding:"3px 6px",fontSize:11,border:"1px solid #e0ddd8",borderRadius:5}}/>
                 <button onClick={function(){var ls=(task.links||[]).filter(function(_,j){return j!==li;});upd("links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
               </div>;})}
-              <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#666",marginLeft:8}}>
-        <span style={{width:7,height:7,borderRadius:"50%",background:"#2e7d32",display:"inline-block"}}/>
-        Released (in totals)
-      </div>
-      <button className="btn btn-sm" onClick={function(){upd("links",[...(task.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"2px 8px"}}>＋ Add link</button>
+              <button className="btn btn-sm" onClick={function(){upd("links",[...(task.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"2px 8px"}}>＋ Add link</button>
             </div>
             {localTags.includes("RFI")&&<div style={{display:"flex",gap:8,padding:"8px",background:"#fff8f0",borderRadius:7,border:"1px solid #fed7aa"}}>
               <div style={{flex:1}}>
@@ -612,8 +608,8 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
   const pending=tasks.filter(t=>t.status==="pending"||t.status==="in progress").length;
   const done=tasks.filter(t=>t.status==="done").length;
 
-  return <div style={{height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
-    <div className="page-hdr" style={{position:"sticky",top:0,zIndex:20,background:"#f4f3f0",paddingBottom:8,flexShrink:0}}>
+  return <div>
+    <div className="page-hdr" style={{position:"sticky",top:0,zIndex:20,background:"#f4f3f0",paddingBottom:8}}>
       <div><div className="page-title">Actions</div>
         <div className="page-sub">{pending} pending · {done} done · {tasks.length} total</div>
       </div>
@@ -1755,12 +1751,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         <tbody>{filtered.map(function(td){
           var steps=td.steps||{};
           return <tr key={td.id} style={{cursor:"pointer"}} onClick={function(){setSelTender(td);}}>
-            <td style={{fontWeight:600}}>
-              <div style={{display:"flex",alignItems:"center",gap:5}}>
-                {td.released&&<span title="Released — included in totals" style={{width:7,height:7,borderRadius:"50%",background:"#2e7d32",flexShrink:0,display:"inline-block"}}/>}
-                {td.title}
-              </div>
-            </td>
+            <td style={{fontWeight:600}}>{td.title}</td>
             <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
             <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
             <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
