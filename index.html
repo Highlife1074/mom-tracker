@@ -3462,12 +3462,18 @@ function openWorkerPickerMulti(wbsId,months){
     h+='<div class="subtitle">'+months.length+' months selected: <strong>'+monthLabels+'</strong></div>';
     h+='</div>';
 
+    var availOnly=!!window._wkPickAvailOnly;
     h+='<div class="wk-pick-filters">';
     h+='<input type="text" id="wkPickFilter" placeholder="&#128269; Search..." value="'+ft+'" oninput="wkPickFilter(this.value)">';
+    /* Available only checkbox */
+    h+='<label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer;padding:4px 10px;background:'+(availOnly?'var(--gl)':'var(--bg2)')+';border:1.5px solid '+(availOnly?'var(--gm)':'var(--border2)')+';border-radius:8px;user-select:none">';
+    h+='<input type="checkbox" id="wkAvailOnly" '+(availOnly?'checked':'')+' onchange="wkSetAvailOnly(this.checked)" style="width:15px;height:15px;accent-color:var(--green)">';
+    h+='<span style="color:'+(availOnly?'var(--green)':'var(--tx2)')+'">&#9989; Available only</span>';
+    h+='</label>';
     h+='<div class="wk-pick-legend">';
-    h+='<span><span class="ldot" style="background:var(--green);border:2px solid var(--gm)"></span>Available all months</span>';
-    h+='<span><span class="ldot" style="background:#fff7e0;border:2px solid var(--amber)"></span>Partial availability</span>';
-    h+='<span><span class="ldot" style="background:var(--rl);border:2px solid var(--red)"></span>Busy all months</span>';
+    h+='<span><span class="ldot" style="background:var(--green);border:2px solid var(--gm)"></span>Available</span>';
+    h+='<span><span class="ldot" style="background:#fff7e0;border:2px solid var(--amber)"></span>Partial</span>';
+    h+='<span><span class="ldot" style="background:var(--rl);border:2px solid var(--red)"></span>Busy / Assigned elsewhere</span>';
     h+='</div>';
     h+='<div class="wk-pick-fm-wrap"><input type="checkbox" id="wpFm" style="width:15px;height:15px;accent-color:var(--amber)"><label for="wpFm" style="cursor:pointer">&#9733; Foreman</label></div>';
     h+='</div>';
@@ -3502,7 +3508,7 @@ function openWorkerPickerMulti(wbsId,months){
 
     for(var i=0;i<workers.length;i++){
       var wk=workers[i];
-      if(ft){var ss=(wk.name+' '+specLabel(wk.spec)+' '+(getCompany(wk.companyId)?getCompany(wk.companyId).name:'')).toLowerCase();if(ss.indexOf(ft)<0)continue;}
+      if(ft){var ss=(wk.name+' '+specLabel(wk.spec)+' '+(getCompany(wk.companyId)?getCompany(wk.companyId).name:'')+' '+(wk.workerId||'')).toLowerCase();if(ss.indexOf(ft)<0)continue;}
 
       /* Check availability across months */
       var freeMonths=[],busyMonths=[],assignedHereMonths=[];
@@ -3624,9 +3630,9 @@ function wkMultiToggle(el){
 
 function wkMultiClose(){
   window._multiStaged={};
+  window._wkPickAvailOnly=false;
   if(window._asSel&&window._multiWbsId) window._asSel[window._multiWbsId]={};
   closeModal();
-  /* scroll preserved by renderAssignmentsPage itself */
   renderAssignmentsPage();
 }
 
@@ -3748,6 +3754,12 @@ function openAssignmentPicker(pairs){
       var sl2=specLabel(wk.spec);
       var cardCls='wk-card'; var statusHtml=''; var clickable=true;
 
+      /* Available-only filter: skip workers who are not free or not assigned here */
+      if(availOnly&&!stg){
+        var isAvailOrHere=freeMonths.length>0||assignedHereMonths.length>0;
+        if(!isAvailOrHere) continue;
+      }
+
       if(stg==='remove'){
         cardCls+=' wc-remove';
         statusHtml='<span class="wc-status" style="background:var(--rl);color:var(--red)">✕ Will be removed</span>';
@@ -3801,6 +3813,13 @@ function wkPickFilter(val){
   else if(window._multiRebuild) window._multiRebuild(val);
 }
 
+function wkSetAvailOnly(checked){
+  window._wkPickAvailOnly=!!checked;
+  var ft=document.getElementById('wkPickFilter')?document.getElementById('wkPickFilter').value:'';
+  if(window._pickerBuild) window._pickerBuild(ft);
+  else if(window._multiRebuild) window._multiRebuild(ft);
+}
+
 function pickerToggle(el){
   var wid=el.dataset.wid;
   var staged=window._pickerStaged;
@@ -3826,6 +3845,7 @@ function pickerToggle(el){
 
 function pickerClose(){
   window._pickerStaged={}; window._pickerPairs=[];
+  window._wkPickAvailOnly=false;
   closeModal();
   renderAssignmentsPage();
 }
