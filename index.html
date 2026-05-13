@@ -3458,24 +3458,25 @@ function openWorkerPickerMulti(wbsId,months){
 
     var h='<div class="wk-pick-modal">';
     h+='<div class="wk-pick-header">';
-    h+='<h3>&#128101; Assign Workers — '+wbsName+'</h3>';
-    h+='<div class="subtitle">'+months.length+' months selected: <strong>'+monthLabels+'</strong></div>';
+    var monthRange=months.length===1?monthLabels[0]:(monthLabels[0]+' → '+monthLabels[monthLabels.length-1]);
+    h+='<h3>&#128101; Assign Workers</h3>';
+    h+='<div class="subtitle"><strong>'+wbsName+'</strong> &nbsp;·&nbsp; '+monthRange+(months.length>1?' ('+months.length+' months)':'')+'</div>';
     h+='</div>';
 
-    var availOnly=!!window._wkPickAvailOnly;
+    if(!window._wkF) window._wkF={avail:false,assigned:true,elsewhere:true};
+    var F=window._wkF;
+    function fBtn(key,label,col,bg){
+      var on=F[key];
+      return '<label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;cursor:pointer;padding:3px 10px;background:'+(on?bg:'var(--bg2)')+';border:1.5px solid '+(on?col:'var(--border2)')+';border-radius:20px;user-select:none">'+
+        '<input type="checkbox" '+(on?'checked':'')+' onchange="wkToggleF(\''+key+'\',this.checked)" style="width:13px;height:13px;accent-color:'+col+'">'+
+        '<span style="color:'+(on?col:'var(--tx3)')+'">'+label+'</span></label>';
+    }
     h+='<div class="wk-pick-filters">';
     h+='<input type="text" id="wkPickFilter" placeholder="&#128269; Search..." value="'+ft+'" oninput="wkPickFilter(this.value)">';
-    /* Available only checkbox */
-    h+='<label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer;padding:4px 10px;background:'+(availOnly?'var(--gl)':'var(--bg2)')+';border:1.5px solid '+(availOnly?'var(--gm)':'var(--border2)')+';border-radius:8px;user-select:none">';
-    h+='<input type="checkbox" id="wkAvailOnly" '+(availOnly?'checked':'')+' onchange="wkSetAvailOnly(this.checked)" style="width:15px;height:15px;accent-color:var(--green)">';
-    h+='<span style="color:'+(availOnly?'var(--green)':'var(--tx2)')+'">&#9989; Available only</span>';
-    h+='</label>';
-    h+='<div class="wk-pick-legend">';
-    h+='<span><span class="ldot" style="background:var(--green);border:2px solid var(--gm)"></span>Available</span>';
-    h+='<span><span class="ldot" style="background:#fff7e0;border:2px solid var(--amber)"></span>Partial</span>';
-    h+='<span><span class="ldot" style="background:var(--rl);border:2px solid var(--red)"></span>Busy / Assigned elsewhere</span>';
-    h+='</div>';
-    h+='<div class="wk-pick-fm-wrap"><input type="checkbox" id="wpFm" style="width:15px;height:15px;accent-color:var(--amber)"><label for="wpFm" style="cursor:pointer">&#9733; Foreman</label></div>';
+    h+=fBtn('avail','Available only','var(--green)','var(--gl)');
+    h+=fBtn('assigned','Show assigned','var(--blue)','var(--bl)');
+    h+=fBtn('elsewhere','Show busy elsewhere','var(--red)','var(--rl)');
+    h+='<div class="wk-pick-fm-wrap" style="margin-left:auto"><input type="checkbox" id="wpFm" style="width:15px;height:15px;accent-color:var(--amber)"><label for="wpFm" style="cursor:pointer">&#9733; Foreman</label></div>';
     h+='</div>';
 
     /* Count assigned vs available for section hint */
@@ -3754,10 +3755,15 @@ function openAssignmentPicker(pairs){
       var sl2=specLabel(wk.spec);
       var cardCls='wk-card'; var statusHtml=''; var clickable=true;
 
-      /* Available-only filter: skip workers who are not free or not assigned here */
-      if(availOnly&&!stg){
-        var isAvailOrHere=freeMonths.length>0||assignedHereMonths.length>0;
-        if(!isAvailOrHere) continue;
+      /* Apply filters */
+      var F2=window._wkF||{avail:false,assigned:true,elsewhere:true};
+      if(!stg){
+        var isAssignedHere=assignedHereMonths.length>0;
+        var isFreeAny=freeMonths.length>0;
+        var isBusy=busyMonths.length===months.length&&!isAssignedHere&&!outOfContract;
+        if(F2.avail&&!isFreeAny&&!isAssignedHere) continue; /* available only: hide busy */
+        if(!F2.assigned&&isAssignedHere&&!isFreeAny) continue; /* hide assigned */
+        if(!F2.elsewhere&&isBusy) continue; /* hide elsewhere */
       }
 
       if(stg==='remove'){
@@ -3780,7 +3786,11 @@ function openAssignmentPicker(pairs){
       }
 
       h+='<div class="'+cardCls+'" data-wid="'+wk.id+'" onclick="pickerToggle(this)">';
-      h+='<div class="wc-name">'+wk.name+(wk.workerId?' <span style="font-size:9px;color:var(--tx3)">#'+wk.workerId+'</span>':'')+'</div>';
+      /* Find last month assigned (any WBS) */
+      var lastAssignSlot=-1;
+      for(var lm=NM-1;lm>=0;lm--){var la=getAssignmentSlot(wk.id,lm);if(la){lastAssignSlot=lm;break;}}
+      var lastLabel=lastAssignSlot>=0?(ML[lastAssignSlot]?ML[lastAssignSlot].short:''):'';
+      h+='<div class="wc-name">'+wk.name+(wk.workerId?' <span style="font-size:9px;color:var(--tx3)">#'+wk.workerId+'</span>':'')+(lastLabel?' <span style="font-size:8px;background:var(--bl);color:var(--blue);padding:1px 5px;border-radius:8px;margin-left:3px">until '+lastLabel+'</span>':'')+'</div>';
       h+='<div class="wc-meta">'+(coName||'—')+(sl2?' · <span class="spsel sk-'+wk.spec+'" style="cursor:default;font-size:9px;padding:1px 5px">'+sl2+'</span>':'')+'</div>';
       h+=statusHtml;
       h+='</div>';
@@ -3815,9 +3825,14 @@ function wkPickFilter(val){
 
 function wkSetAvailOnly(checked){
   window._wkPickAvailOnly=!!checked;
-  var ft=document.getElementById('wkPickFilter')?document.getElementById('wkPickFilter').value:'';
-  if(window._pickerBuild) window._pickerBuild(ft);
-  else if(window._multiRebuild) window._multiRebuild(ft);
+  wkPickFilter(document.getElementById('wkPickFilter')?document.getElementById('wkPickFilter').value:'');
+}
+
+function wkToggleF(key,checked){
+  if(!window._wkF) window._wkF={avail:false,assigned:true,elsewhere:true};
+  window._wkF[key]=!!checked;
+  /* avail=true overrides the others */
+  wkPickFilter(document.getElementById('wkPickFilter')?document.getElementById('wkPickFilter').value:'');
 }
 
 function pickerToggle(el){
@@ -3846,6 +3861,7 @@ function pickerToggle(el){
 function pickerClose(){
   window._pickerStaged={}; window._pickerPairs=[];
   window._wkPickAvailOnly=false;
+  window._wkF={avail:false,assigned:true,elsewhere:true};
   closeModal();
   renderAssignmentsPage();
 }
@@ -4428,14 +4444,20 @@ function renderWorkersPage(){
     html+='<td style="font-size:10px;color:var(--tx2);cursor:pointer;white-space:nowrap" onclick="wkEditField(event,\''+wk.id+'\',\'responsible\')">'+( wk.responsible||'<span style="color:var(--border2)">—</span>')+'</td>';
     /* Comment — click to edit inline */
     html+='<td style="font-size:10px;color:var(--tx3);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" title="'+(wk.comment||'Click to add comment')+'" onclick="wkEditField(event,\''+wk.id+'\',\'comment\')">'+( wk.comment||'<span style="color:var(--border2)">add comment</span>')+'</td>';
-    /* Month dots */
+    /* Month: WBS task name if assigned */
     for(var m=0;m<NM;m++){
       var sl2=ML[m]; if(!sl2) continue;
       var active2=workerActiveInMonth(wk,sl2.month,sl2.year);
       var asgn2=getAssignmentSlot(wk.id,m);
-      var dot=asgn2?'&#9679;':active2?'·':'';
-      var col2=asgn2?'color:var(--green)':active2?'color:var(--border2)':'color:var(--rl)';
-      html+='<td style="text-align:center;font-size:10px;'+col2+'">'+dot+'</td>';
+      var cellContent='';
+      if(asgn2){
+        var wbsName2='';
+        for(var wi2=0;wi2<S.wbs.length;wi2++) if(S.wbs[wi2].id===asgn2.wbsId){wbsName2=S.wbs[wi2].name;break;}
+        cellContent='<span style="font-size:9px;background:var(--gl);color:var(--green);padding:1px 5px;border-radius:8px;white-space:nowrap;max-width:90px;display:inline-block;overflow:hidden;text-overflow:ellipsis" title="'+wbsName2+'">'+wbsName2+'</span>';
+      } else if(!active2){
+        cellContent='<span style="font-size:9px;color:var(--rl)">—</span>';
+      }
+      html+='<td style="text-align:center;padding:2px 3px">'+cellContent+'</td>';
     }
     html+='<td style="white-space:nowrap"><button class="bic" onclick="openWorkerModal(\''+wk.id+'\')">e</button> <button class="bic del" onclick="deleteWorker(\''+wk.id+'\')">x</button></td>';
     html+='</tr>';
