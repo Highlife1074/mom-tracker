@@ -4379,7 +4379,7 @@ function renderWorkersPage(){
   html+='<th style="min-width:120px">Category</th>';
   html+='<th style="min-width:120px">Responsible</th>';
   html+='<th style="min-width:140px">Comment</th>';
-  for(var m=0;m<NM;m++) html+='<th style="min-width:24px;text-align:center;font-size:9px">'+(ML[m]?ML[m].short:MS[m])+'</th>';
+  for(var m=0;m<NM;m++) html+='<th style="min-width:80px;max-width:100px;text-align:center;font-size:9px">'+(ML[m]?ML[m].short:MS[m])+'</th>';
   html+='<th></th>';
   html+='</tr></thead><tbody>';
 
@@ -4457,7 +4457,7 @@ function renderWorkersPage(){
       } else if(!active2){
         cellContent='<span style="font-size:9px;color:var(--rl)">—</span>';
       }
-      html+='<td style="text-align:center;padding:2px 3px">'+cellContent+'</td>';
+      html+='<td style="text-align:center;padding:2px 3px;max-width:100px;overflow:hidden">'+cellContent+'</td>';
     }
     html+='<td style="white-space:nowrap"><button class="bic" onclick="openWorkerModal(\''+wk.id+'\')">e</button> <button class="bic del" onclick="deleteWorker(\''+wk.id+'\')">x</button></td>';
     html+='</tr>';
@@ -4483,28 +4483,63 @@ function wkFieldSave(wkId,field,val){
 function wkEditField(e,wkId,field){
   e.stopPropagation();
   var td=e.currentTarget;
+  /* If already editing this field, do nothing */
+  if(td.querySelector('input,textarea')) return;
   var wk=null; for(var i=0;i<S.workers.length;i++) if(S.workers[i].id===wkId){wk=S.workers[i];break;}
   if(!wk) return;
-  /* Determine input type */
   var isDate=(field==='dateDebut'||field==='dateFinContrat'||field==='dateFinRevisee');
   var isNum=(field==='tarif');
   var curRaw=wk[field]||'';
-  /* For dates: show as yyyy-mm-dd for the input */
   var cur=isDate?(curRaw?new Date(curRaw).toISOString().slice(0,10):''):isNum?(curRaw||0)+'':curRaw;
   var inp=document.createElement(field==='comment'?'textarea':'input');
   if(isDate) inp.type='date';
   else if(isNum){inp.type='number';inp.step='1';inp.min='0';}
   inp.value=cur;
-  inp.style.cssText='width:100%;font-family:var(--font);font-size:11px;border:1.5px solid var(--blue);border-radius:4px;padding:2px 6px;outline:none;'+(field==='comment'?'resize:none;height:40px':'');
-  td.innerHTML=''; td.appendChild(inp); inp.focus(); inp.select&&inp.select();
+  inp.style.cssText='width:100%;font-family:var(--font);font-size:11px;border:1.5px solid var(--blue);border-radius:4px;padding:2px 6px;outline:none;box-sizing:border-box;'+(field==='comment'?'resize:none;height:40px':'');
+  td.innerHTML=''; td.appendChild(inp);
+  inp.focus(); if(inp.select&&!isDate) inp.select();
+  var saved=false;
   function save(){
+    if(saved) return; saved=true;
     var v=inp.value.trim();
-    if(isDate) v=v?new Date(v).toISOString():null;
+    if(isDate) v=v?new Date(v+'T00:00:00').toISOString():null;
     else if(isNum) v=parseFloat(v)||0;
-    wkFieldSave(wkId,field,v);
+    /* Update data without re-rendering */
+    for(var i=0;i<S.workers.length;i++){
+      if(S.workers[i].id===wkId){S.workers[i][field]=v;break;}
+    }
+    saveS();
+    /* Update just this cell's display, not the whole page */
+    wkUpdateCell(td,wkId,field,v);
+  }
+  function cancel(){
+    if(saved) return; saved=true;
+    wkUpdateCell(td,wkId,field,wk[field]);
   }
   inp.addEventListener('blur',save);
-  inp.addEventListener('keydown',function(e2){if(e2.key==='Enter'&&field!=='comment'){e2.preventDefault();save();}if(e2.key==='Escape'){renderWorkersPage();}});
+  inp.addEventListener('keydown',function(e2){
+    if(e2.key==='Enter'&&field!=='comment'){e2.preventDefault();save();}
+    if(e2.key==='Escape'){e2.preventDefault();cancel();}
+  });
+}
+
+function wkUpdateCell(td,wkId,field,val){
+  /* Re-render just the cell content without rebuilding the whole table */
+  var wk=null; for(var i=0;i<S.workers.length;i++) if(S.workers[i].id===wkId){wk=S.workers[i];break;}
+  if(!wk) return;
+  if(field==='name'){
+    td.textContent=val||'—';
+  } else if(field==='comment'||field==='responsible'){
+    td.textContent=val||'';
+    td.title=val||'';
+  } else if(field==='tarif'){
+    td.textContent=val?parseFloat(val).toFixed(0):'—';
+  } else if(field==='dateDebut'||field==='dateFinContrat'||field==='dateFinRevisee'){
+    td.textContent=val?new Date(val).toLocaleDateString('fr-FR'):'—';
+  } else {
+    renderWorkersPage(); /* fallback for complex fields */
+    return;
+  }
 }
 
 
@@ -4587,7 +4622,18 @@ function wkSetFilter(type,val){
 function wkToggleSort(){window._wkSort=!window._wkSort;renderWorkersPage();}
 function wkDoSearch(val){
   window._wkSearch=val;
-  renderWorkersPage();
+  /* Debounce to avoid interrupting typing */
+  clearTimeout(window._wkSearchTimer);
+  window._wkSearchTimer=setTimeout(function(){
+    var scrollState=saveScrollState();
+    renderWorkersPage();
+    setTimeout(function(){
+      restoreScrollState(scrollState);
+      /* Re-focus the search box */
+      var s=document.getElementById('wkSearch');
+      if(s){s.focus();s.setSelectionRange(val.length,val.length);}
+    },0);
+  },150);
 }
 function wkCbChange(cb){
   var wid=cb.dataset.wid;
