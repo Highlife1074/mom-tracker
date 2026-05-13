@@ -4809,9 +4809,9 @@ function asWBSRow(wbs,ind,startCol,page){
     var colBg=isCurCol?'rgba(61,90,128,.06)':isPastCol?'var(--bg2)':'';
     var borderL=isCurCol?'border-left:2px solid var(--blue);':'';
     var canClick=isPastCol?(!!(!S.asLocked)):true;
-    h+='<td oncontextmenu="asCellContext(event,\''+wbs.id+'\','+m+')" style="padding:2px;'+(colBg?'background:'+colBg+';':'')+borderL+'">';
-    /* Use inline onclick with encoded wbsId to avoid dataset issues */
-    var onclickAttr=canClick?' onclick="asDirectPick(event,\''+wbs.id+'\','+m+')"':'';
+    if(!window._cellMap) window._cellMap={};
+    var cellKey='c_'+wbs.id+'_'+m; window._cellMap[cellKey]={wbsId:wbs.id,m:m};
+    var onclickAttr=canClick?' onclick="handleCellClick(event,\''+cellKey+'\')"':'';
     h+='<div class="'+cellCls+'" data-cell-wbs="'+wbs.id+'" data-cell-m="'+m+'"'+(tip?' data-tip="'+tip+'"':'')+' style="cursor:'+(canClick?'pointer':'default')+'"'+onclickAttr+'>';
     h+=countHtml;
     h+='<div class="as-names">';
@@ -4839,16 +4839,20 @@ function asClearAll(){
 }
 function asClearSel(wbsId){if(window._asSel)window._asSel[wbsId]={};renderAssignmentsPage();}
 
-function asDirectPick(e,wbsId,m){
+function handleCellClick(e,cellKey){
   e.stopPropagation();
-  /* Single click = toggle cell selection */
+  var info=window._cellMap&&window._cellMap[cellKey];
+  if(!info) return;
+  asDirectPick(e,info.wbsId,info.m);
+}
+
+function asDirectPick(e,wbsId,m){
   if(!window._asSel) window._asSel={};
   if(!window._asSel[wbsId]) window._asSel[wbsId]={};
   window._asSel[wbsId][m]=!window._asSel[wbsId][m];
   /* Visual feedback in-place */
   var divs=document.querySelectorAll('[data-cell-wbs="'+wbsId+'"][data-cell-m="'+m+'"]');
   divs.forEach(function(d){d.classList.toggle('as-cell-sel',!!window._asSel[wbsId][m]);});
-  /* Update assign button without full re-render */
   asUpdateTopBar();
 }
 
