@@ -34,9 +34,22 @@
   };
 
   // Real-time listener helper
-  window._dbListen = function(key, cb){
+window._dbListen = function(key, cb){
     return onSnapshot(doc(db,"mom_data",key), function(snap){
-      if(snap.exists()) cb(snap.data().value);
+      if(snap.exists()){
+        var val = snap.data().value;
+        if(typeof val === "string"){
+          try { val = JSON.parse(val); } catch(e) {}
+        }
+        cb(val);
+      }
+    });
+  };
+
+window.startListeners = function(listeners){
+    if(!window._dbListen) return;
+    Object.keys(listeners).forEach(function(key){
+      window._dbListen(key, listeners[key]);
     });
   };
 
