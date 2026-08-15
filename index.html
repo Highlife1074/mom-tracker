@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Riviera Tower — Project Pilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" id="firebase-init">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyCs-tnK2RfDn9I1gDTZNwMs3hkyNghDbRo",
+    authDomain: "rt-mom.firebaseapp.com",
+    projectId: "rt-mom",
+    storageBucket: "rt-mom.firebasestorage.app",
+    messagingSenderId: "210967214795",
+    appId: "1:210967214795:web:c4ccc7b00fb7039b57f94e"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  function parseVal(val) {
+    if (typeof val === "string") {
+      try { return JSON.parse(val); } catch(e) { return val; }
+    }
+    return val;
+  }
+
+  window._db = {
+    get: async (key) => {
+      try {
+        const snap = await getDoc(doc(db,"mom_data",key));
+        return snap.exists() ? parseVal(snap.data().value) : null;
+      }
+      catch(e){ console.error("FB get",e); return null; }
+    },
+    set: async (key, value) => {
+      try {
+        const val = typeof value === "string" ? value : JSON.stringify(value);
+        await setDoc(doc(db,"mom_data",key),{value: val});
+      }
+      catch(e){ console.error("FB set",e); }
+    }
+  };
+
+  window._dbListen = function(key, cb){
+    return onSnapshot(doc(db,"mom_data",key), function(snap){
+      if(snap.exists()){
+        var val = snap.data().value;
+        if(typeof val === "string"){
+          try { val = JSON.parse(val); } catch(e) {}
+        }
+        cb(val);
+      }
+    });
+  };
+
+  window.startListeners = function(listeners){
+    if(!window._dbListen) return;
+    Object.keys(listeners).forEach(function(key){
+      window._dbListen(key, listeners[key]);
+    });
+  };
+
+  window._dbReady = true;
+  window.dispatchEvent(new Event("db-ready"));
+</script>
+<style>
+/* ============================================================================
+   Design tokens. One place for type, colour and spacing.
+   Gold is a FILL colour: dark text on gold reads at 7.45:1, which is excellent.
+   It is never used as small text on white (2.29:1) — --gold-ink exists for that.
+   ============================================================================ */
+:root{
+  --font-display:'IBM Plex Sans Condensed','IBM Plex Sans',system-ui,sans-serif;
+  --font-body:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+
+  --fs-micro:11px; --fs-small:12px; --fs-base:13px;
+  --fs-large:15px; --fs-title:18px; --fs-page:24px;
+
+  --ink:#16181d;        /* body text            */
+  --ink-2:#4a4740;      /* secondary text       */
+  --ink-3:#6f6b62;      /* meta, 4.6:1 on paper */
+  --ink-4:#9b968b;      /* disabled only        */
+  --paper:#f4f3f0;
+  --surface:#ffffff;
+  --rule:#ddd9cf;
+  --rule-2:#efece5;
+
+  --gold:#c9a84c;       /* brand fill, unchanged */
+  --gold-dark:#b3913a;  /* fill, hover           */
+  --gold-soft:#faf3e0;  /* tinted background     */
+  --gold-ink:#8a6a1e;   /* gold AS TEXT, 5.05:1  */
+
+  --blue:#0f5299; --blue-soft:#e8f0fe;
+  --red:#b3302a;  --red-soft:#fbe6e8;
+  --amber:#b35c00;--amber-soft:#fdf1e0;
+  --green:#1e6b3a;--green-soft:#e6f2e9;
+
+  --r-sm:6px; --r-md:8px; --r-lg:12px;
+  --shadow:0 2px 10px rgba(22,24,29,.07);
+  --shadow-lg:0 18px 50px rgba(22,24,29,.22);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-body);background:var(--paper);color:var(--ink);height:100vh;overflow:hidden;
+  font-size:var(--fs-base);-webkit-font-smoothing:antialiased;font-feature-settings:"cv05","ss01";}
+/* Figures line up in columns: essential in a schedule and in date tables. */
+input[type=date],input[type=number],.num,.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+table td,table th{font-variant-numeric:tabular-nums}
+#app-banner{background:var(--surface);color:#c2410c;text-align:center;padding:11px 16px;font-size:var(--fs-small);font-weight:700;letter-spacing:.22em;text-transform:uppercase;font-family:var(--font-display);border-bottom:1.5px solid var(--rule-2);width:100%;box-sizing:border-box;}
+.layout{display:flex;height:calc(100vh - 44px);overflow:hidden}
+.leftnav{width:68px;background:#fff;border-right:1.5px solid #f0ede6;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:2px;flex-shrink:0;z-index:50}
+.leftnav .logo{font-family:var(--font-display);font-weight:700;color:var(--gold-ink);font-size:var(--fs-small);margin-bottom:10px;text-align:center;line-height:1.15;letter-spacing:.02em}
+.navbtn{width:44px;height:44px;border-radius:10px;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#888;transition:all .15s;font-size:18px;padding:0}
+.navbtn span.lbl{font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.02em;line-height:1.1}
+.navbtn:hover{background:#2a2a2a;color:#fff}
+.navbtn.on{background:var(--gold);color:var(--ink)}
+.navbtn.on span.lbl{color:var(--ink)}
+.navbtn:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.nav-sep{width:30px;height:1px;background:#333;margin:4px 0}
+/* Sub-entries of a grouped nav item: indented, smaller, with a hairline spine */
+.navbtn.navsub{width:38px;height:34px;border-radius:8px;position:relative;margin-left:6px}
+.navbtn.navsub::before{content:"";position:absolute;left:-6px;top:4px;bottom:4px;width:1.5px;background:var(--rule);border-radius:1px}
+.navbtn.navsub.on::before{background:var(--gold)}
+.main-area{flex:1;display:flex;overflow:hidden}
+.content{flex:1;overflow-y:auto;padding:24px;min-width:0;max-width:100%}
+.main-area{min-width:0}
+.rsidebar{flex-shrink:0!important}
+.rsidebar{background:#fff;border-left:1.5px solid #e8e6df;display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:width .2s;}
+.rsidebar.open{width:260px;}
+.rsidebar.closed{width:36px;}
+.rsidebar-hdr{padding:14px 16px 10px;border-bottom:1.5px solid var(--rule);font-family:var(--font-display);font-weight:700;font-size:var(--fs-large);color:var(--ink)}
+.rsidebar-body{flex:1;overflow-y:auto;padding:12px}
+.card{background:#fff;border-radius:12px;border:1.5px solid #e8e6df;padding:16px;margin-bottom:10px}
+.card-title{font-family:var(--font-display);font-weight:700;font-size:var(--fs-large);letter-spacing:-.005em;margin-bottom:4px}
+.card-sub{font-size:var(--fs-small);color:var(--ink-3);margin-bottom:14px}
+.page-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:12px}
+.page-title{font-family:var(--font-display);font-weight:700;font-size:var(--fs-page);letter-spacing:-.01em;line-height:1.1}
+.page-sub{font-size:var(--fs-small);color:var(--ink-3);margin-top:3px}
+/* Buttons: three heights, four intents. Height is fixed so a row of controls
+   lines up whatever the label, and no target falls below 28px. */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;padding:0 15px;
+  border-radius:var(--r-sm);border:1.5px solid var(--rule);background:var(--surface);
+  font-family:var(--font-body);font-size:var(--fs-base);font-weight:600;line-height:1;
+  cursor:pointer;transition:background .12s,border-color .12s,color .12s;color:var(--ink-2);white-space:nowrap}
+.btn:hover{border-color:var(--ink-3);color:var(--ink)}
+.btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:disabled:hover{border-color:var(--rule);color:var(--ink-2)}
+.btn-pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn-pri:hover{background:#2b2e36;color:#fff;border-color:#2b2e36}
+.btn-gold{background:var(--gold);color:var(--ink);border-color:var(--gold);font-weight:700}
+.btn-gold:hover{background:var(--gold-dark);border-color:var(--gold-dark);color:var(--ink)}
+.btn-danger{background:var(--surface);color:var(--red);border-color:#f0cdc9}
+.btn-danger:hover{background:var(--red-soft);color:var(--red);border-color:var(--red)}
+.btn-lg{height:40px;padding:0 19px;font-size:var(--fs-large)}
+.btn-sm{height:28px;padding:0 11px;font-size:var(--fs-small)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:var(--fs-micro);font-weight:600;border:1px solid transparent}
+.tbl{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1.5px solid #e8e6df}
+.tbl th{padding:9px 12px;font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;text-align:left;background:#faf9f7;border-bottom:1.5px solid var(--rule);white-space:nowrap;user-select:none}
+.tbl th.sortable{cursor:pointer;user-select:none}.tbl th.sortable:hover{color:#f97316;background:#fff9f5}
+.tbl td{padding:9px 12px;font-size:var(--fs-small);border-bottom:1px solid var(--rule-2);vertical-align:middle;color:var(--ink)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:#fafaf8}
+.ac-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border-radius:8px;border:1px solid #e8e6df;margin-bottom:6px;transition:all .12s}
+.ac-item:hover{border-color:#bbb;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.ac-check{width:18px;height:18px;border-radius:5px;border:2px solid #ddd;flex-shrink:0;cursor:pointer;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.ac-check.done{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.ac-text{flex:1;font-size:13px;line-height:1.4}
+.ac-text.done{text-decoration:line-through;color:#bbb}
+.ac-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center}
+input[type=text],input[type=date],input[type=number],textarea,select{font-family:var(--font-body);font-size:var(--fs-base);border:1.5px solid var(--rule);border-radius:var(--r-sm);padding:7px 10px;outline:none;background:var(--surface);color:var(--ink);width:100%;transition:border-color .12s,box-shadow .12s}
+input[type=text]:focus,input[type=date]:focus,input[type=number]:focus,textarea:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(15,82,153,.12)}
+textarea{resize:vertical;min-height:60px}
+select{cursor:pointer}
+label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px}
+.fg{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.frow{display:flex;gap:10px}
+.frow .fg{flex:1}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#fff;border-radius:16px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-hdr{padding:18px 22px 14px;border-bottom:1.5px solid #e8e6df;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-title{font-family:var(--font-display);font-weight:700;font-size:var(--fs-title)}
+.modal-body{flex:1;overflow-y:auto;padding:18px 22px}
+.modal-footer{padding:12px 22px 16px;border-top:1.5px solid #e8e6df;display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
+.tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700}
+.pbar{height:5px;background:#f0ede6;border-radius:3px;overflow:hidden;margin:6px 0}
+.pfill{height:100%;border-radius:3px;transition:width .3s}
+.s-approved-a{background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9}
+.s-approved-b{background:#fff8e1;color:#f57f17;border-color:#ffe082}
+.s-approved-c{background:#fce4ec;color:#c62828;border-color:#f48fb1}
+.s-pending{background:#f3e5f5;color:#7b1fa2;border-color:#ce93d8}
+.s-signed{background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9}
+.s-notdone{background:#fce4ec;color:#c62828;border-color:#f48fb1}
+.s-default{background:#f5f4f0;color:#888;border-color:#e0ddd6}
+.sform input,.sform select,.sform textarea{font-size:12px;padding:6px 8px}
+.sform label{font-size:10px}
+.sform .fg{margin-bottom:8px}
+.empty{text-align:center;padding:48px 20px;color:#bbb}
+.empty-ico{font-size:36px;margin-bottom:10px}
+.empty-txt{font-size:var(--fs-base);color:var(--ink-3)}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:var(--fs-micro);font-weight:600;border:1px solid transparent}
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}
+/* The schedule needs a scrollbar you can actually grab */
+.sched-wrap{scrollbar-width:auto;scrollbar-color:#c9a84c #f0ede6;}
+.sched-wrap::-webkit-scrollbar{width:14px;height:14px}
+.sched-wrap::-webkit-scrollbar-track{background:#f0ede6;border-radius:7px}
+.sched-wrap::-webkit-scrollbar-thumb{background:#c9a84c;border-radius:7px;border:3px solid #f0ede6}
+.sched-wrap::-webkit-scrollbar-thumb:hover{background:#b45309}
+.sched-wrap::-webkit-scrollbar-corner{background:#f0ede6}
+/* Pinned mirror of the schedule scrollbar: same look, always within reach */
+/* Only the pinned bar shows a horizontal scrollbar — the one inside the box is hidden
+   so there is never a second, unreachable bar. Vertical scrolling is untouched. */
+.sched-wrap::-webkit-scrollbar:horizontal{height:0}
+.sched-mirror{scrollbar-width:auto;scrollbar-color:#c9a84c #f0ede6;}
+.sched-mirror::-webkit-scrollbar{height:14px}
+.sched-mirror::-webkit-scrollbar-track{background:#f0ede6;border-radius:7px}
+.sched-mirror::-webkit-scrollbar-thumb{background:#c9a84c;border-radius:7px;border:3px solid #f0ede6}
+.sched-mirror::-webkit-scrollbar-thumb:hover{background:#b45309}
+.ctr-card{background:#fff;border-radius:12px;border:1.5px solid #e8e6df;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:all .15s}
+.ctr-card:hover{border-color:#aaa;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.sync-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sync-ok{background:#4caf50}.sync-syncing{background:#f57f17;animation:pulse 1s infinite}.sync-err{background:#c62828}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.fchip{height:26px;padding:0 12px;border-radius:20px;border:1.5px solid var(--rule);background:var(--surface);font-family:var(--font-body);font-size:var(--fs-small);font-weight:600;cursor:pointer;color:var(--ink-3);transition:background .12s,border-color .12s,color .12s;display:inline-flex;align-items:center}
+.fchip:hover{border-color:var(--ink-3);color:var(--ink)}
+.fchip.on{border-color:var(--ink);background:var(--ink);color:#fff}
+.fchip.gold.on{border-color:var(--gold);background:var(--gold);color:var(--ink)}
+.fchip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+@media(max-width:768px){
+  .mobile-qa-btn{display:flex!important;}
+  .rsidebar{display:none!important;}
+  .imp-btn-wrap{right:70px!important;}
+  .layout{flex-direction:column;}
+  .leftnav{width:100%;flex-direction:row;height:48px;padding:0 8px;overflow-x:auto;justify-content:flex-start;}
+  .leftnav .logo{display:none;}
+  .navbtn{width:auto;height:44px;flex-direction:row;gap:4px;padding:0 10px;border-radius:6px;}
+  .navbtn span.lbl{font-size:10px;}
+  .main-area{flex-direction:column-reverse;}
+  .rsidebar.closed{height:36px;max-height:36px;}
+  .content{padding:12px;}
+  .tbl{font-size:11px;}
+  .tbl th,.tbl td{padding:6px 8px;}
+  .page-title{font-size:18px;}
+  .modal{max-width:100%!important;margin:0;border-radius:0;max-height:100vh;}
+  .overlay{padding:0;align-items:flex-end;}
+}
+@media(max-width:480px){
+  .frow{flex-direction:column;}
+  .filter-bar{gap:4px;}
+  .filter-bar select,.filter-bar input{font-size:11px;padding:4px 6px;}
+}
+@page{size:A4 landscape;margin:8mm;}
+.sched-print-only{display:none;}
+@media print{
+  body.printing-schedule .leftnav,body.printing-schedule .rsidebar,body.printing-schedule .page-hdr,
+  body.printing-schedule .fchip,body.printing-schedule .btn{display:none!important;}
+  body.printing-schedule .sched-wrap{overflow:visible!important;max-height:none!important;height:auto!important;width:auto!important;}
+  body.printing-schedule .content{overflow:visible!important;height:auto!important;}
+  /* width:max-content lets every week column print; the JS zoom shrinks it to the sheet */
+  body.printing-schedule table{width:max-content!important;max-width:none!important;table-layout:auto!important;}
+  body.printing-schedule th,body.printing-schedule td{white-space:nowrap!important;}
+  /* sticky columns/headers must not float over the printed page */
+  body.printing-schedule th,body.printing-schedule td{position:static!important;}
+  body.printing-schedule .layout,body.printing-schedule .main-area{display:block!important;overflow:visible!important;}
+  body.printing-schedule .sched-print-only{display:block!important;margin-bottom:10px;}
+  body.printing-schedule .sched-noprint{display:none!important;}
+  /* the live scrolling table is replaced by the paginated print blocks */
+  body.printing-schedule .sched-wrap{display:none!important;}
+  body.printing-schedule table{font-size:7px!important;}
+  body.printing-schedule th,body.printing-schedule td{padding:2px 3px!important;}
+}
+@media print{
+  /* The schedule lives in a 62vh scroll box. Without this it prints only what was on
+     screen, cropped left and right. */
+  .sched-wrap{overflow:visible!important;max-height:none!important;height:auto!important;border:none!important;}
+  .sched-wrap table{width:max-content!important;max-width:none!important;table-layout:auto!important;}
+  .sched-mirror{display:none!important;}
+  body .leftnav,body nav.leftnav,.layout .leftnav{display:none!important;width:0!important;min-width:0!important;}
+  body .rsidebar,.layout .rsidebar,.rsidebar.open,.rsidebar.closed{display:none!important;width:0!important;min-width:0!important;}
+  .mobile-qa-btn{display:none!important;}
+  .layout{display:flex!important;height:auto!important;overflow:visible!important;}
+  .main-area{width:100%!important;max-width:100%!important;height:auto!important;overflow:visible!important;flex:1 1 auto!important;}
+  .main-area>*{height:auto!important;overflow:visible!important;}
+  body,html,#root{overflow:visible!important;height:auto!important;background:white!important;font-size:9px!important;}
+  *{box-shadow:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .page-hdr button,.btn-sm{display:none!important;}
+  table,.tbl{font-size:8px!important;width:100%!important;}
+  table th,table td,.tbl th,.tbl td{padding:3px 4px!important;font-size:8px!important;white-space:nowrap!important;}
+  /* the schedule keeps its own sizing: it is scaled as a whole, not squeezed per cell */
+  .sched-wrap table th,.sched-wrap table td{font-size:inherit!important;}
+}
+/* Full-screen schedule: only the plan, its filter and its toolbar stay on screen */
+.sched-fs .sched-fs-hide{display:none!important;}
+body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .mobile-qa-btn{display:none!important;}
+/* ---------------------------------------------------------------------------
+   Title block — the signature device.
+   Borrowed from a drawing sheet: the same strip heads a tender on screen and a
+   report on paper, so the two halves of this tool read as one document set.
+   --------------------------------------------------------------------------- */
+.titleblock{display:flex;align-items:stretch;border:1.5px solid var(--ink);border-radius:var(--r-md);
+  background:var(--surface);overflow:hidden;margin-bottom:16px}
+.titleblock .tb-main{flex:1;min-width:0;padding:12px 16px}
+.titleblock .tb-eyebrow{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+.titleblock h2{font-family:var(--font-display);font-weight:700;font-size:var(--fs-page);
+  line-height:1.08;letter-spacing:-.01em;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.titleblock .tb-sub{font-size:var(--fs-small);color:var(--ink-3);margin-top:3px}
+.titleblock .tb-cells{display:flex;border-left:1.5px solid var(--ink)}
+.titleblock .tb-cell{padding:10px 15px;border-right:1px solid var(--rule);min-width:96px}
+.titleblock .tb-cell:last-child{border-right:none}
+.titleblock .tb-cell .k{font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:2px}
+.titleblock .tb-cell .v{font-family:var(--font-mono);font-size:var(--fs-base);font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.titleblock .tb-cell .v.gold{color:var(--gold-ink)}
+.titleblock .tb-cell .v.red{color:var(--red)}
+.titleblock .tb-cell .v.green{color:var(--green)}
+.titleblock.accent{border-color:var(--gold);border-left-width:5px}
+.titleblock.accent .tb-cells{border-left-color:var(--gold)}
+@media(max-width:820px){
+  .titleblock{flex-direction:column}
+  .titleblock .tb-cells{border-left:none;border-top:1.5px solid var(--ink);overflow-x:auto}
+}
+/* Section heading used inside a sheet */
+.sheet-h{display:flex;align-items:baseline;gap:9px;margin:22px 0 9px;padding-bottom:6px;
+  border-bottom:1.5px solid var(--rule)}
+.sheet-h h3{font-family:var(--font-display);font-weight:700;font-size:var(--fs-title);letter-spacing:-.005em}
+.sheet-h .hint{font-size:var(--fs-small);color:var(--ink-3);font-weight:400}
+.s-na{background:#f5f5f5!important;color:#aaa!important;border:1px solid #ddd!important;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+  function showErr(title,msg,stk){
+    var pre=document.createElement("pre");
+    pre.style.cssText="padding:24px;font-family:monospace;color:#c62828;white-space:pre-wrap;font-size:13px;background:#fff;margin:0";
+    pre.textContent=title+":\n"+msg+"\n\nStack:\n"+(stk||"");
+    document.body.innerHTML="";
+    document.body.appendChild(pre);
+  }
+  function run(){
+    fetch("app.js?v="+Date.now())
+      .then(function(r){return r.text();})
+      .then(function(src){
+        try{
+          var out=Babel.transform(src,{presets:["react"]}).code;
+          eval(out);
+        }catch(e){
+          showErr("BABEL ERROR",e.message,e.stack);
+        }
+      })
+      .catch(function(e){showErr("FETCH ERROR",e.message,"");});
+  }
+  function wait(){
+    if(typeof Babel!=="undefined"&&typeof React!=="undefined"&&typeof ReactDOM!=="undefined"){
+      if(window._dbReady)run();
+      else window.addEventListener("db-ready",run,{once:true});
+    }else setTimeout(wait,50);
+  }
+  window.addEventListener("error",function(e){
+    var root=document.getElementById("root");
+    if(!root||root.innerHTML===""){
+      showErr("RUNTIME ERROR",(e.message||"Unknown")+"\nFile: "+(e.filename||"")+" L"+(e.lineno||""),(e.error&&e.error.stack)||"");
+    }
+  });
+  document.readyState==="loading"?document.addEventListener("DOMContentLoaded",wait):wait();
+})();
+</script>
+</body>
+</html>
