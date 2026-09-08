@@ -2203,6 +2203,17 @@ function calcProcurement(td){
     return toISO(d);
   }
 
+  // Resolves one gating step to a date: done > future theoretical target > today+7 (grace)
+  // when the theoretical target has already passed and nothing is done yet.
+  // Used for contract signing, SD approval, and the lead-driving MAR — so the delivery
+  // date keeps drifting forward day by day instead of freezing on a missed target.
+  function dateOrGrace(done, target){
+    if(done) return done;
+    var t0 = today();
+    if(target && target>=t0) return target;
+    return addWorkDays(t0, 7);
+  }
+
   var steps = [];
   var ov=td.procOverrides||{};
 
@@ -2216,7 +2227,12 @@ function calcProcurement(td){
   var contractTarget = ov.contract||contractTargetAuto;
   steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:false, autoDate:contractTargetAuto, overridden:!!(ov.contract&&ov.contract!==contractTargetAuto)});
 
-  var fabStart = contractDone||contractTarget;
+  // --- fabStart now driven by max(contract, SD approval, lead MAR) instead of contract alone ---
+  var contractBase = dateOrGrace(contractDone, contractTarget);
+  var fabStart = contractBase;
+  var fabStartSource = "contract";
+
+  var sdBase = "";
 
   if(hasSd){
 
@@ -2242,11 +2258,25 @@ function calcProcurement(td){
       steps.push({key:"sdReapp"+(r+1), label:"SD Approval "+(r+1), date:rAppTarget, done:"", duration:14, manual:false, sd:true});
       lastSdDate = rAppTarget;
     }
-    fabStart = lastSdDate;
+
+    // Grace applies to the normal SD approval step; an open resubmission cascade already
+    // pushes lastSdDate forward on its own and is not re-graced here.
+    sdBase = dateOrGrace(td.sdApprovalDone, sdAppTarget);
+    if(lastSdDate>sdBase) sdBase=lastSdDate;
   }
 
+  var marBase = "";
+  if(leadMaterial){
+    marBase = dateOrGrace(leadMaterial.marApprovalDone||"", leadMaterial.marTarget||"");
+  }
+
+  if(contractBase && contractBase>fabStart){ fabStart=contractBase; fabStartSource="contract"; }
+  if(hasSd && sdBase && sdBase>fabStart){ fabStart=sdBase; fabStartSource="sd"; }
+  if(marBase && marBase>fabStart){ fabStart=marBase; fabStartSource="material"; }
+  // --- end fabStart change ---
+
   steps.push({key:"fab", label:"Fabrication Launch", date:fabStart, done:"", duration:null, manual:false,
-    note:"Lead: "+LEAD+"d"});
+    note:"Lead: "+LEAD+"d — driven by "+fabStartSource});
 
   var deliveryDate = addWorkDays(fabStart, LEAD);
   steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:"", duration:LEAD, manual:false, highlight:true});
@@ -2265,7 +2295,7 @@ function calcProcurement(td){
   }
 
   return {steps:steps, deliveryDate:deliveryDate, procStart:procStart, margin:margin, totalDays:totalDays, LEAD:LEAD,
-    leadSource:leadSource, leadMaterial:leadMaterial?(leadMaterial.name||""):"", fabStart:fabStart};
+    leadSource:leadSource, leadMaterial:leadMaterial?(leadMaterial.name||""):"", fabStart:fabStart, fabStartSource:fabStartSource};
 }
 
 function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdItem,delAdItem,addAdItem,tenders,nav,setNav,saveT,tasks,people,tags}){
