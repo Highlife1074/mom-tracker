@@ -1247,14 +1247,18 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <span style={{fontWeight:700,color:"var(--ink-3,#6f6b62)",textTransform:"uppercase",letterSpacing:".06em",fontSize:10}}>Delivery</span>
                 {(function(){
                   // Name the milestone the chain actually started from, so the date can be argued with.
-                  var sd=td.stepDates||{};
-                  var acc=sd.acc||{}, ct=sd.contract||{};
                   var origin;
-                  if(ct.signedAllDone||ct.signedDone)origin={l:"contract signed",d:ct.signedAllDone||ct.signedDone,firm:true};
-                  else if(acc.approval)origin={l:"ACC approved",d:acc.approval,firm:true};
-                  else if(acc.done)origin={l:"ACC submitted",d:acc.done,firm:true};
-                  else if(acc.target)origin={l:"ACC target",d:acc.target,firm:false};
-                  else origin=null;
+                  if(proc.fabStart){
+                    var src=proc.fabStartSource;
+                    var label=src==="sd"?"SD approved / grace":src==="material"?"MAR approved / grace":"contract signed / grace";
+                    // "firm" only when the driving date is a real recorded done-date, not a grace/target fallback
+                    var sd0=td.stepDates||{}, ct0=sd0.contract||{};
+                    var isFirm = src==="contract" ? !!(ct0.signedAllDone||ct0.signedDone)
+                               : src==="sd" ? !!td.sdApprovalDone
+                               : src==="material" ? !!(proc.leadMaterial&&(td.materials||[]).some(function(m){return m.name===proc.leadMaterial&&m.marApprovalDone;}))
+                               : false;
+                    origin={l:label,d:proc.fabStart,firm:isFirm};
+                  }else origin=null;
                   if(!origin)return null;
                   return <span style={{display:"flex",gap:5,alignItems:"center"}}
                     title={origin.firm?"This is a real recorded date, so everything after it is firm."
