@@ -243,12 +243,17 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
   var CYCLE_OPTS=["","under preparation","submitted","pending approval","approved","rejected"];
   var CYCLE_LABELS={"":"— Status —","under preparation":"Under preparation","submitted":"Submitted","pending approval":"Pending approval","approved":"✅ Approved","rejected":"❌ Rejected"};
 
-  // Merge legacy data: if old approvalStatus exists it wins over old submission status
+  // Merge legacy data: if old approvalStatus exists it wins over old submission status.
+  // Also recognizes the legacy "Approved A/B" / "Rejected D" wording that the compact
+  // table's dropdown used to write before it was unified onto this same cycle — so a
+  // material saved under the old wording still reads as "approved"/"rejected" here
+  // instead of silently falling back to "pending approval".
   function effStatus(mat,kind){
     var k=kind.toLowerCase();
     var app=mat[k+"ApprovalStatus"]||"";
     var sub=mat[k+"Status"]||"";
-    if(app==="approved")return"approved";
+    if(app==="approved"||isApprovedStatus(app))return"approved";
+    if(/reject|not approved/i.test(app))return"rejected";
     if(app&&app!=="")return"pending approval";
     return sub;
   }
@@ -479,7 +484,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
           return <React.Fragment key={mat.id||mi}>
             {docs.map(function(kind,di){
               var p=kind.toLowerCase();
-              var st=mat[p+"ApprovalStatus"]||mat[p+"Status"]||"";
+              var st=effStatus(mat,kind);
               var due=mat[p+"Target"]||"";
               var late=due&&due<today()&&!mat[p+"Done"];
               return <tr key={kind} style={{background:di>0?"#fafaf8":"#fff"}}>
@@ -525,15 +530,13 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
                     style={{fontFamily:"var(--font-mono)",fontSize:11,padding:"4px 6px"}}/>
                 </td>
                 <td>
-                  <select value={mat[p+"ApprovalStatus"]||""} onChange={function(e){
-                      var v=e.target.value;
-                      var patch={};patch[p+"ApprovalStatus"]=v;
-                      if(isApprovedStatus(v))patch[p+"Status"]=v;      // A or B approves the document
-                      updMatMany(mi,patch);
-                    }}
-                    style={{width:"100%",fontSize:10,padding:"3px 5px",fontWeight:700,
-                      color:isApprovedStatus(st)?"var(--green,#1e6b3a)":/reject|not approved/i.test(st)?"var(--red,#b3302a)":"var(--ink-3,#6f6b62)"}}>
-                    {APPROVAL_OPTS.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                  {/* Unified onto the same cycle as the panel below and the Materials tab
+                      (effStatus / setStatus / statusColor / CYCLE_OPTS), instead of the old
+                      APPROVAL_OPTS wording ("Approved A", "Rejected D", …) which desynced
+                      this cell from every other place showing the same status. */}
+                  <select value={effStatus(mat,kind)} onChange={function(e){setStatus(mi,mat,kind,e.target.value);}}
+                    style={{width:"100%",fontSize:10,padding:"3px 5px",fontWeight:700,color:statusColor(effStatus(mat,kind))}}>
+                    {CYCLE_OPTS.map(function(o){return <option key={o} value={o}>{CYCLE_LABELS[o]}</option>;})}
                   </select>
                 </td>
                 {di===0&&<td rowSpan={docs.length} style={{verticalAlign:"top"}}>
@@ -3495,11 +3498,14 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
   useEffect(function(){if(setMemory)setMemory({fPkg:fPkg,fTender:fTender,fStatus:fStatus,q:q});},[fPkg,fTender,fStatus,q]);
 
   var CYCLE_LABELS={"":"—","under preparation":"Under prep.","submitted":"Submitted","pending approval":"Pending appr.","approved":"✅ Approved","rejected":"❌ Rejected"};
+  // Same unification as MaterialsPanel: recognize the legacy "Approved A/B" / "Rejected D"
+  // wording so this tab's status column always agrees with the tender's own panels.
   function effStatus(mat,kind){
     var k=kind.toLowerCase();
     var app=mat[k+"ApprovalStatus"]||"";
     var sub=mat[k+"Status"]||"";
-    if(app==="approved")return"approved";
+    if(app==="approved"||isApprovedStatus(app))return"approved";
+    if(/reject|not approved/i.test(app))return"rejected";
     if(app&&app!=="")return"pending approval";
     return sub;
   }
@@ -3671,4 +3677,3 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
       </div>}
   </div>;
 }
-
