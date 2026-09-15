@@ -1316,10 +1316,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                     </div>
                     <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:10.5,color:"var(--ink-3,#6f6b62)"}}>
                       {c.chain.map(function(step,i){
-                        return <span key={i} style={{display:"flex",gap:3,alignItems:"center"}}>
+                        return <span key={i} title={step.note||""} style={{display:"flex",gap:3,alignItems:"center",
+                            fontWeight:step.used?700:400, color:step.used?"var(--ink,#16181d)":"inherit",cursor:step.note?"help":"default"}}>
                           {i>0&&<span style={{color:"var(--ink-4,#9b968b)"}}>→</span>}
                           <span>{step.label}:</span>
-                          <strong style={{color:step.firm?"var(--green,#1e6b3a)":"inherit"}}>{step.date?fmtDate(step.date):"—"}</strong>
+                          <strong style={{color:step.firm?"var(--green,#1e6b3a)":step.used?"var(--amber,#b35c00)":"inherit"}}>{step.date?fmtDate(step.date):"—"}</strong>
                         </span>;
                       })}
                     </div>
@@ -2316,30 +2317,50 @@ function calcProcurement(td){
   // --- end fabStart change ---
 
   // Full trace of the three candidate chains, so the tender sheet can show exactly
-  // which dates fed into each candidate and which one won (the latest).
+  // which dates fed into each candidate and which one won (the latest). Each chain
+  // separates "target" from "actual/done" and ends on an explicit "→ Retenu" step
+  // equal to the candidate's date, with a reason — otherwise a passed target (shown
+  // as a plain sub-step) silently differs from the graced date actually used, which
+  // read as a bug.
+  function graceReason(done,target,doneWord){
+    if(done) return doneWord+" — date réelle.";
+    var t0=today();
+    if(target && target>=t0) return "Cible pas encore échue — utilisée telle quelle.";
+    return "Cible dépassée sans date réelle — grâce appliquée à partir d'aujourd'hui.";
+  }
+
   var candidates=[{
     key:"contract", label:"Contract signed / grace", date:contractBase, firm:!!contractDone,
     chain:[
       {label:"ACC submitted", date:accSubmittal, firm:!!accDoneActual},
       {label:"ACC approval", date:accApproval||accApprTarget, firm:!!accApproval},
-      {label:"Contract signed", date:contractDone||contractTarget, firm:!!contractDone}
+      {label:"Contract target", date:contractTarget, firm:false},
+      {label:"Contract signed (réel)", date:contractDone||"", firm:!!contractDone},
+      {label:"→ Retenu", date:contractBase, firm:!!contractDone, used:true,
+        note:graceReason(contractDone,contractTarget,"Signé")}
     ]
   }];
   if(hasSd){
     var sdChain=[
       {label:"SD submitted", date:td.sdDone||sdSubTarget, firm:!!td.sdDone},
-      {label:"SD approved", date:td.sdApprovalDone||sdAppTarget, firm:!!td.sdApprovalDone}
+      {label:"SD approval target", date:sdAppTarget, firm:false},
+      {label:"SD approved (réel)", date:td.sdApprovalDone||"", firm:!!td.sdApprovalDone}
     ];
     if(sdResubCount>0)sdChain.push({label:"After "+sdResubCount+" resubmission"+(sdResubCount>1?"s":""), date:lastSdDate, firm:false});
+    sdChain.push({label:"→ Retenu", date:sdBase, firm:!!td.sdApprovalDone, used:true,
+      note:graceReason(td.sdApprovalDone,sdAppTarget,"Approuvé")+(td.sdApprovalDone?"":" Grâce SD = aujourd'hui +7j (soumission) +14j (validation).")});
     candidates.push({key:"sd", label:"SD approved / grace", date:sdBase, firm:!!td.sdApprovalDone, chain:sdChain});
   }
   if(leadMaterial){
     candidates.push({key:"material", label:"MAR approved / grace ("+(leadMaterial.name||"material")+")", date:marBase, firm:!!leadMaterial.marApprovalDone,
       chain:[
         {label:"MAR target", date:leadMaterial.marTarget||"", firm:false},
-        {label:"MAR approved", date:leadMaterial.marApprovalDone||"", firm:!!leadMaterial.marApprovalDone}
+        {label:"MAR approved (réel)", date:leadMaterial.marApprovalDone||"", firm:!!leadMaterial.marApprovalDone},
+        {label:"→ Retenu", date:marBase, firm:!!leadMaterial.marApprovalDone, used:true,
+          note:graceReason(leadMaterial.marApprovalDone,leadMaterial.marTarget,"Approuvé")}
       ]});
   }
+
 
   steps.push({key:"fab", label:"Fabrication Launch", date:fabStart, done:"", duration:null, manual:false,
     note:"Lead: "+LEAD+"d — driven by "+fabStartSource});
