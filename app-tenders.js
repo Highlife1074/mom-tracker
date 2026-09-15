@@ -981,6 +981,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [processBids,setProcessBids]=useState({});
   const [procOpen,setProcOpen]=useState(false);
   const [roomPickTask,setRoomPickTask]=useState(null);
+  const [showProcDetail,setShowProcDetail]=useState(false);
 
   // setSelTender wrapper: pushes a browser history entry ONLY when actually navigating to a different tender
   // (not on every field edit refresh, which also calls setSelTender with the same tender's updated data)
@@ -1245,34 +1246,21 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
               if(!proc.deliveryDate)return null;
               var src=proc.leadSource;
-              return <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8,
+              var candidates=proc.candidates||[];
+              var winner=candidates.find(function(c){return c.key===proc.fabStartSource;})||null;
+              return <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:8,
                 padding:"7px 11px",borderRadius:8,background:"#faf9f7",border:"1.5px solid var(--rule,#ddd9cf)",fontSize:11}}>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontWeight:700,color:"var(--ink-3,#6f6b62)",textTransform:"uppercase",letterSpacing:".06em",fontSize:10}}>Delivery</span>
-                {(function(){
-                  // Name the milestone the chain actually started from, so the date can be argued with.
-                  var origin;
-                  if(proc.fabStart){
-                    var src=proc.fabStartSource;
-                    var label=src==="sd"?"SD approved / grace":src==="material"?"MAR approved / grace":"contract signed / grace";
-                    // "firm" only when the driving date is a real recorded done-date, not a grace/target fallback
-                    var sd0=td.stepDates||{}, ct0=sd0.contract||{};
-                    var isFirm = src==="contract" ? !!(ct0.signedAllDone||ct0.signedDone)
-                               : src==="sd" ? !!td.sdApprovalDone
-                               : src==="material" ? !!(proc.leadMaterial&&(td.materials||[]).some(function(m){return m.name===proc.leadMaterial&&m.marApprovalDone;}))
-                               : false;
-                    origin={l:label,d:proc.fabStart,firm:isFirm};
-                  }else origin=null;
-                  if(!origin)return null;
-                  return <span style={{display:"flex",gap:5,alignItems:"center"}}
-                    title={origin.firm?"This is a real recorded date, so everything after it is firm."
-                      :"No actual date yet — the chain starts from the ACC target, so the delivery is provisional."}>
+                {winner&&<span style={{display:"flex",gap:5,alignItems:"center"}}
+                    title={winner.firm?"This is a real recorded date, so everything after it is firm."
+                      :"No actual date yet — the chain starts from a target/grace date, so the delivery is provisional."}>
                     <span style={{fontFamily:"var(--font-mono)",fontWeight:700,
-                      color:origin.firm?"var(--green,#1e6b3a)":"var(--amber,#b35c00)"}}>{fmtDate(origin.d)}</span>
+                      color:winner.firm?"var(--green,#1e6b3a)":"var(--amber,#b35c00)"}}>{fmtDate(winner.date)}</span>
                     <span className="badge" style={{
-                      background:origin.firm?"var(--green-soft,#e6f2e9)":"var(--amber-soft,#fdf1e0)",
-                      color:origin.firm?"var(--green,#1e6b3a)":"var(--amber,#b35c00)"}}>{origin.l}</span>
-                  </span>;
-                })()}
+                      background:winner.firm?"var(--green-soft,#e6f2e9)":"var(--amber-soft,#fdf1e0)",
+                      color:winner.firm?"var(--green,#1e6b3a)":"var(--amber,#b35c00)"}}>{winner.label}</span>
+                  </span>}
                 <span style={{color:"var(--ink-4,#9b968b)"}}>→</span>
                 <span style={{fontFamily:"var(--font-mono)"}}>{fmtDate(proc.fabStart||"")}</span>
                 <span style={{color:"var(--ink-4,#9b968b)"}}>fabrication</span>
@@ -1303,6 +1291,41 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 </span>
                 <span style={{color:"var(--ink-4,#9b968b)"}}>＝</span>
                 <span style={{fontFamily:"var(--font-mono)",fontWeight:700}}>{fmtDate(proc.deliveryDate)}</span>
+                <button className="btn btn-sm" style={{marginLeft:"auto",padding:"2px 9px",fontSize:10}}
+                  onClick={function(){setShowProcDetail(!showProcDetail);}}>
+                  {showProcDetail?"▾ masquer le détail":"▸ voir le détail du calcul"}</button>
+              </div>
+
+              {showProcDetail&&<div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:6,borderTop:"1px dashed var(--rule,#ddd9cf)"}}>
+                <div style={{fontSize:10,color:"var(--ink-3,#6f6b62)"}}>
+                  La date de fabrication retenue est la <strong>plus tardive</strong> des critères ci-dessous (🏆 = celui retenu) :
+                </div>
+                {candidates.map(function(c){
+                  var isWinner=c===winner;
+                  return <div key={c.key} style={{padding:"7px 9px",borderRadius:7,
+                      background:isWinner?"var(--gold-soft,#faf3e0)":"#fff",
+                      border:"1.5px solid "+(isWinner?"var(--gold,#c9a84c)":"var(--rule,#ddd9cf)")}}>
+                    <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3,flexWrap:"wrap"}}>
+                      {isWinner&&<span title="Critère retenu pour la fabrication">🏆</span>}
+                      <span style={{fontWeight:700,fontSize:11.5}}>{c.label}</span>
+                      <span style={{marginLeft:"auto",fontFamily:"var(--font-mono)",fontWeight:700,fontSize:11.5,
+                        color:c.firm?"var(--green,#1e6b3a)":"var(--amber,#b35c00)"}}>{c.date?fmtDate(c.date):"—"}</span>
+                      <span className="badge" style={{fontSize:9,
+                        background:c.firm?"var(--green-soft,#e6f2e9)":"var(--amber-soft,#fdf1e0)",
+                        color:c.firm?"var(--green,#1e6b3a)":"var(--amber,#b35c00)"}}>{c.firm?"date réelle":"cible/grâce"}</span>
+                    </div>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:10.5,color:"var(--ink-3,#6f6b62)"}}>
+                      {c.chain.map(function(step,i){
+                        return <span key={i} style={{display:"flex",gap:3,alignItems:"center"}}>
+                          {i>0&&<span style={{color:"var(--ink-4,#9b968b)"}}>→</span>}
+                          <span>{step.label}:</span>
+                          <strong style={{color:step.firm?"var(--green,#1e6b3a)":"inherit"}}>{step.date?fmtDate(step.date):"—"}</strong>
+                        </span>;
+                      })}
+                    </div>
+                  </div>;
+                })}
+              </div>}
               </div>;
             })()}
             {/* Inline fallbacks mirror the .titleblock rules: if index.html has not been
@@ -2292,6 +2315,32 @@ function calcProcurement(td){
   if(marBase && marBase>fabStart){ fabStart=marBase; fabStartSource="material"; }
   // --- end fabStart change ---
 
+  // Full trace of the three candidate chains, so the tender sheet can show exactly
+  // which dates fed into each candidate and which one won (the latest).
+  var candidates=[{
+    key:"contract", label:"Contract signed / grace", date:contractBase, firm:!!contractDone,
+    chain:[
+      {label:"ACC submitted", date:accSubmittal, firm:!!accDoneActual},
+      {label:"ACC approval", date:accApproval||accApprTarget, firm:!!accApproval},
+      {label:"Contract signed", date:contractDone||contractTarget, firm:!!contractDone}
+    ]
+  }];
+  if(hasSd){
+    var sdChain=[
+      {label:"SD submitted", date:td.sdDone||sdSubTarget, firm:!!td.sdDone},
+      {label:"SD approved", date:td.sdApprovalDone||sdAppTarget, firm:!!td.sdApprovalDone}
+    ];
+    if(sdResubCount>0)sdChain.push({label:"After "+sdResubCount+" resubmission"+(sdResubCount>1?"s":""), date:lastSdDate, firm:false});
+    candidates.push({key:"sd", label:"SD approved / grace", date:sdBase, firm:!!td.sdApprovalDone, chain:sdChain});
+  }
+  if(leadMaterial){
+    candidates.push({key:"material", label:"MAR approved / grace ("+(leadMaterial.name||"material")+")", date:marBase, firm:!!leadMaterial.marApprovalDone,
+      chain:[
+        {label:"MAR target", date:leadMaterial.marTarget||"", firm:false},
+        {label:"MAR approved", date:leadMaterial.marApprovalDone||"", firm:!!leadMaterial.marApprovalDone}
+      ]});
+  }
+
   steps.push({key:"fab", label:"Fabrication Launch", date:fabStart, done:"", duration:null, manual:false,
     note:"Lead: "+LEAD+"d — driven by "+fabStartSource});
 
@@ -2312,7 +2361,8 @@ function calcProcurement(td){
   }
 
   return {steps:steps, deliveryDate:deliveryDate, procStart:procStart, margin:margin, totalDays:totalDays, LEAD:LEAD,
-    leadSource:leadSource, leadMaterial:leadMaterial?(leadMaterial.name||""):"", fabStart:fabStart, fabStartSource:fabStartSource};
+    leadSource:leadSource, leadMaterial:leadMaterial?(leadMaterial.name||""):"", fabStart:fabStart, fabStartSource:fabStartSource,
+    candidates:candidates};
 }
 
 function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdItem,delAdItem,addAdItem,tenders,nav,setNav,saveT,tasks,people,tags}){
