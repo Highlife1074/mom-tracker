@@ -2212,13 +2212,23 @@ function calcProcurement(td){
 
   // Resolves one gating step to a date: done > future theoretical target > today+7 (grace)
   // when the theoretical target has already passed and nothing is done yet.
-  // Used for contract signing, SD approval, and the lead-driving MAR — so the delivery
-  // date keeps drifting forward day by day instead of freezing on a missed target.
+  // Used for contract signing and the lead-driving MAR — so the delivery date keeps
+  // drifting forward day by day instead of freezing on a missed target.
   function dateOrGrace(done, target){
     if(done) return done;
     var t0 = today();
     if(target && target>=t0) return target;
     return addWorkDays(t0, 7);
+  }
+
+  // SD needs its own grace: unlike contract signing or material approval, a missed SD
+  // target still has to go through both a submission (1 week) and an approval (2 weeks)
+  // before the tender can rely on it, so the grace fallback is 3 weeks, not 1.
+  function sdDateOrGrace(done, target){
+    if(done) return done;
+    var t0 = today();
+    if(target && target>=t0) return target;
+    return addWorkDays(addWorkDays(t0, 7), 14);
   }
 
   var steps = [];
@@ -2268,7 +2278,7 @@ function calcProcurement(td){
 
     // Grace applies to the normal SD approval step; an open resubmission cascade already
     // pushes lastSdDate forward on its own and is not re-graced here.
-    sdBase = dateOrGrace(td.sdApprovalDone, sdAppTarget);
+    sdBase = sdDateOrGrace(td.sdApprovalDone, sdAppTarget);
     if(lastSdDate>sdBase) sdBase=lastSdDate;
   }
 
