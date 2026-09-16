@@ -2264,10 +2264,11 @@ function calcProcurement(td){
   var accApprTarget = ov.accApp||accApprTargetAuto;
   steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:14, manual:false, autoDate:accApprTargetAuto, overridden:!!(ov.accApp&&ov.accApp!==accApprTargetAuto)});
 
-  var contractTargetAuto = addWorkDays(accApproval||accApprTarget, getDur("contractSigning"));
-  var contractTarget = ov.contract||contractTargetAuto;
-  steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:false, autoDate:contractTargetAuto, overridden:!!(ov.contract&&ov.contract!==contractTargetAuto)});
-
+    var contractTargetAuto = addWorkDays(accApproval||accApprTarget, getDur("contractSigning"));
+  // La cible saisie à la main dans le tableau Contract (stepDates.contract.signedTarget)
+  // est la vraie source de vérité : elle doit primer sur le calcul automatique.
+  var contractTarget = _ct.signedTarget||ov.contract||contractTargetAuto;
+  steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:!!_ct.signedTarget, autoDate:contractTargetAuto, overridden:!!(_ct.signedTarget&&_ct.signedTarget!==contractTargetAuto)||!!(ov.contract&&ov.contract!==contractTargetAuto)});
   // --- fabStart now driven by max(contract, SD approval, lead MAR) instead of contract alone ---
   var contractBase = dateOrGrace(contractDone, contractTarget);
   var fabStart = contractBase;
