@@ -210,6 +210,17 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     saveSchedules((schedules||[]).filter(function(s){return s.id!==id;}));
     setSelId(null);
   }
+  // Nearest task strictly before index `idx` in the same category/section block.
+  // Returns "" as soon as it hits a category or section header first — that
+  // means there is no earlier task in this block to chain from.
+  function taskBeforeIndex(rows,idx){
+    for(var k=idx-1;k>=0;k--){
+      var r=rows[k];
+      if(r.kind==="category"||r.kind==="section")return "";
+      if(r.kind==="task")return r.id;
+    }
+    return "";
+  }
   // Insert a task immediately under a given row. Faster than the "add at the end +
   // pick an anchor in a dropdown" flow when you are already looking at the right line.
   function insertTaskAfter(rowId){
@@ -219,12 +230,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var i=rows.findIndex(function(r){return r.id===rowId;});
     if(i<0)return;
     var nr=newScheduleRow("task","");
-    if(rows[i].kind==="category"){
-      // under a category header, the new task goes first in that block
-      rows.splice(i+1,0,nr);
-    }else{
-      rows.splice(i+1,0,nr);
-    }
+    var insertAt=i+1;
+    // Auto FIN→DÉBUT with whatever task immediately precedes the insertion point.
+    nr.afterId=taskBeforeIndex(rows,insertAt);
+    rows.splice(insertAt,0,nr);
     upd(sc.id,{rows:rows});
     setEditRowId(nr.id);            // straight into the label field
   }
@@ -233,10 +242,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var rows=(sc.rows||[]).slice();
     var nr=newScheduleRow(newRowKind,newRowLabel.trim());
     if(!newRowAfter){
+      if(newRowKind==="task")nr.afterId=taskBeforeIndex(rows,rows.length);
       rows.push(nr);   // end of schedule
     }else{
       var anchor=rows.findIndex(function(r){return r.id===newRowAfter;});
-      if(anchor<0){rows.push(nr);}
+      if(anchor<0){
+        if(newRowKind==="task")nr.afterId=taskBeforeIndex(rows,rows.length);
+        rows.push(nr);
+      }
       else if(newRowKind==="section"){
         // a section opens a new block: drop it after everything the anchor owns
         var e2=anchor+1;
@@ -247,8 +260,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         // Adding a task under a category: place it at the end of that category's block
         var end=anchor+1;
         while(end<rows.length&&rows[end].kind!=="category")end++;
+        nr.afterId=taskBeforeIndex(rows,end);
         rows.splice(end,0,nr);
       }else{
+        if(newRowKind==="task")nr.afterId=taskBeforeIndex(rows,anchor+1);
         rows.splice(anchor+1,0,nr);   // right after the chosen row
       }
     }
@@ -2264,4 +2279,3 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     })()}
   </div>;
 }
-
