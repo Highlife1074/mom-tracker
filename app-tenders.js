@@ -2307,9 +2307,23 @@ function calcProcurement(td){
     if(lastSdDate>sdBase) sdBase=lastSdDate;
   }
 
+    // Un MAR marqué "Approved" compte comme validé même si aucune date n'a été saisie :
+  // le résultat est acquis, seule la date exacte manque. On ancre alors le calcul sur
+  // aujourd'hui plutôt que de laisser dateOrGrace() traiter le MAR comme incertain.
   var marBase = "";
+  var marFirmByStatus = false;
   if(leadMaterial){
-    marBase = dateOrGrace(leadMaterial.marApprovalDone||"", leadMaterial.marTarget||"");
+    var _marApp = leadMaterial.marApprovalStatus||"";
+    var _marSub = leadMaterial.marStatus||"";
+    var _marApproved = _marApp==="approved"||isApprovedStatus(_marApp)||_marSub==="approved";
+    if(leadMaterial.marApprovalDone){
+      marBase = leadMaterial.marApprovalDone;
+    }else if(_marApproved){
+      marBase = today();
+      marFirmByStatus = true;
+    }else{
+      marBase = dateOrGrace("", leadMaterial.marTarget||"");
+    }
   }
 
   if(contractBase && contractBase>fabStart){ fabStart=contractBase; fabStartSource="contract"; }
@@ -2352,13 +2366,18 @@ function calcProcurement(td){
       note:graceReason(td.sdApprovalDone,sdAppTarget,"Approuvé")+(td.sdApprovalDone?"":" Grâce SD = aujourd'hui +7j (soumission) +14j (validation).")});
     candidates.push({key:"sd", label:"SD approved / grace", date:sdBase, firm:!!td.sdApprovalDone, chain:sdChain});
   }
-  if(leadMaterial){
-    candidates.push({key:"material", label:"MAR approved / grace ("+(leadMaterial.name||"material")+")", date:marBase, firm:!!leadMaterial.marApprovalDone,
+   if(leadMaterial){
+    var _marFirm = !!leadMaterial.marApprovalDone||marFirmByStatus;
+    var _marNote = leadMaterial.marApprovalDone
+      ? graceReason(leadMaterial.marApprovalDone,leadMaterial.marTarget,"Approuvé")
+      : marFirmByStatus
+        ? "Marqué Approuvé dans Materials, sans date renseignée — date du jour utilisée comme ancre ferme (le résultat est acquis, la date exacte n'a plus d'incidence)."
+        : graceReason(leadMaterial.marApprovalDone,leadMaterial.marTarget,"Approuvé");
+    candidates.push({key:"material", label:"MAR approved / grace ("+(leadMaterial.name||"material")+")", date:marBase, firm:_marFirm,
       chain:[
         {label:"MAR target", date:leadMaterial.marTarget||"", firm:false},
         {label:"MAR approved (réel)", date:leadMaterial.marApprovalDone||"", firm:!!leadMaterial.marApprovalDone},
-        {label:"→ Retenu", date:marBase, firm:!!leadMaterial.marApprovalDone, used:true,
-          note:graceReason(leadMaterial.marApprovalDone,leadMaterial.marTarget,"Approuvé")}
+        {label:"→ Retenu", date:marBase, firm:_marFirm, used:true, note:_marNote}
       ]});
   }
 
