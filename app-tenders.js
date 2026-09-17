@@ -3551,6 +3551,140 @@ function ClientEmailModal({docs,initialStage,onClose}){
 }
 
 function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTasks,onNavTender,memory,setMemory}){
+  var mem=memory||{};
+  const [fTender,setFTender]=useState(mem.fTender||"all");
+  const [fPkg,setFPkg]=useState(mem.fPkg||"all");
+  const [fOwner,setFOwner]=useState(mem.fOwner||"all");
+  const [fStage,setFStage]=useState(mem.fStage||"all");
+  const [fScope,setFScope]=useState(mem.fScope||"overdue");
+  useEffect(function(){if(setMemory)setMemory({fTender:fTender,fPkg:fPkg,fOwner:fOwner,fStage:fStage,fScope:fScope});},[fTender,fPkg,fOwner,fStage,fScope]);
+  const [showEmail,setShowEmail]=useState(false);
+  // The email follows the package / tender / owner filters. Types are ticked inside the
+  // email window, and the email always shows both sections, so scope is not applied.
+  var emailDocs=React.useMemo(function(){
+    return collectClientEmailDocs(tasks,tenders,contractors,{pkg:fPkg,tender:fTender,owner:fOwner});
+  },[tasks,tenders,contractors,fPkg,fTender,fOwner]);
+
+  var STAGES=[
+    {key:"acc",label:"Tender",color:"#1a73e8",bg:"#dce8ff"},
+    {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f3e5f5"},
+    {key:"mss",label:"MSS",color:"#1565c0",bg:"#e3f2fd"},
+    {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"},
+    {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"}
+  ];
+
+  // This view answers one question: what is sitting on the client's desk right now.
+  // Only the five document types that go for approval, and only while they are submitted
+  // and still unanswered.
+  var PENDING_STAGES=["mar","mss","wms","itp","acc"];
+  var allDocs=buildTrackedDocs(tasks,tenders,contractors).filter(function(d){
+    return PENDING_STAGES.indexOf(d.stage)>=0&&d.withClient;
+  });
+  var withClient=allDocs;
+
+  var filtered=allDocs.filter(function(d){
+    if(fScope==="overdue"&&!d.overdue)return false;
+    if(fScope==="withclient"&&!d.withClient)return false;
+    if(fTender!=="all"&&d.tenderRef!==fTender)return false;
+    if(fPkg!=="all"&&d.package!==fPkg)return false;
+    if(fOwner!=="all"&&d.owner!==fOwner)return false;
+    if(fStage!=="all"&&d.stage!==fStage)return false;
+    return true;
+  }).sort(function(a,b){
+    if(a.overdue&&!b.overdue)return -1;
+    if(!a.overdue&&b.overdue)return 1;
+    return (a.dueDate||"9999").localeCompare(b.dueDate||"9999");
+  });
+
+  var overdueCount=allDocs.filter(function(d){return d.overdue;}).length;
+  var allOwners=[...new Set(allDocs.map(function(d){return d.owner;}).filter(Boolean))].sort();
+  var allTenders=[...new Set(allDocs.map(function(d){return d.tenderRef;}).filter(Boolean))].map(function(id){return(tenders||[]).find(function(t){return t.id===id;});}).filter(Boolean);
+
+  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+    <div className="page-hdr">
+      <div>
+        <div className="page-title">📬 Client Follow-up</div>
+        <div className="page-sub">Everything currently with the client — RFI, FCR, ACC/ACONEX, MAR, MSS, ITP, WMS, SD, Contract docs</div>
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fce4ec",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#c62828",fontWeight:700,fontSize:13}}>⚠️ {overdueCount} overdue</div>}
+        <div style={{padding:"8px 16px",background:"#e3f2fd",border:"1.5px solid #90caf9",borderRadius:10,color:"#1565c0",fontWeight:700,fontSize:13}}>📬 {withClient.length} with client</div>
+        <button className="btn btn-gold" disabled={emailDocs.length===0}
+          title={emailDocs.length===0?"Nothing pending with the client for these filters":"Draft an email to the client listing every document pending approval"}
+          onClick={function(){setShowEmail(true);}}>✉ Client email</button>
+      </div>
+    </div>
+
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+      <button className={"fchip"+(fScope==="overdue"?" on":"")} onClick={function(){setFScope("overdue");}} style={fScope==="overdue"?{borderColor:"#c62828",background:"#c62828",color:"#fff"}:{}}>⚠️ Overdue</button>
+      <button className={"fchip"+(fScope==="withclient"?" on":"")} onClick={function(){setFScope("withclient");}} style={fScope==="withclient"?{borderColor:"#1565c0",background:"#1565c0",color:"#fff"}:{}}>📬 With client</button>
+      <button className={"fchip"+(fScope==="all"?" on":"")} onClick={function(){setFScope("all");}}>All</button>
+      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All stages</option>
+        {STAGES.map(function(s){return <option key={s.key} value={s.key}>{s.label}</option>;})}
+      </select>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All packages</option>
+        {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
+      </select>
+      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All tenders</option>
+        {allTenders.sort(function(a,b){return(a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
+      </select>
+      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All owners</option>
+        {allOwners.map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+      </select>
+      {(fTender!=="all"||fPkg!=="all"||fOwner!=="all"||fStage!=="all"||fScope!=="overdue")&&
+        <button className="btn btn-sm" onClick={function(){setFTender("all");setFPkg("all");setFOwner("all");setFStage("all");setFScope("overdue");}}>✕ Reset</button>}
+    </div>
+
+    {filtered.length===0
+      ?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">Nothing currently pending with the client.</div></div>
+      :<div>
+        <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+          {STAGES.map(function(s){
+            var cnt=withClient.filter(function(d){return d.stage===s.key;}).length;
+            if(cnt===0)return null;
+            return <div key={s.key} onClick={function(){setFStage(s.key);}} style={{padding:"6px 12px",borderRadius:8,background:s.bg,border:"1.5px solid "+s.color,cursor:"pointer",display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{fontWeight:700,fontSize:13,color:s.color}}>{cnt}</span>
+              <span style={{fontSize:11,color:s.color}}>{s.label}</span>
+            </div>;
+          })}
+        </div>
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
+          <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr>
+                <th>Stage</th><th>Item</th><th>Tender</th><th>Package</th><th>Owner</th>
+                <th>Submitted</th><th>Response due (+14d)</th><th>Days pending</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(function(d){
+                var stage=STAGES.find(function(s){return s.key===d.stage;})||{color:"#888",bg:"#f5f5f5",label:d.stage};
+                var daysPending=d.submissionDate?workingDaysDiff(d.submissionDate,today()):0;
+                return <tr key={d.id} style={{background:d.overdue?"#fffaf9":"#fff"}}>
+                  <td><span style={{padding:"2px 8px",borderRadius:8,background:stage.bg,color:stage.color,fontWeight:700,fontSize:11}}>{stage.label}</span></td>
+                  <td style={{maxWidth:280}}>
+                    <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:d.tenderRef?"pointer":"default",color:d.tenderRef?"#1a1a1a":"#555"}} onClick={function(){if(d.tenderRef&&onNavTender)onNavTender(d.tenderRef,"submissions");}}>{d.text}</div>
+                  </td>
+                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.tenderTitle&&d.tenderRef?<button onClick={function(){if(onNavTender)onNavTender(d.tenderRef,"submissions");}} style={{background:"none",border:"none",cursor:"pointer",color:"#3949ab",fontSize:11,fontWeight:500,textDecoration:"underline",padding:0,fontFamily:"inherit"}}>{d.tenderTitle}</button>:<span style={{color:"#888"}}>{d.tenderTitle||"—"}</span>}</td>
+                  <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.package||"—"}</td>
+                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
+                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.submissionDate?fmtDate(d.submissionDate):"—"}</td>
+                  <td style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#555",whiteSpace:"nowrap"}}>{d.dueDate?fmtDate(d.dueDate):"—"}</td>
+                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>⚠️ +{d.daysOverdue}d</span>:<span style={{fontSize:11,color:"#888"}}>{daysPending}d</span>}</td>
+                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:"#fff8e1",color:"#f57f17",fontWeight:600}}>{d.stepStatus||d.status||"Pending"}</span></td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>}
+    {showEmail&&<ClientEmailModal docs={emailDocs} initialStage={fStage} onClose={function(){setShowEmail(false);}}/>}
+  </div>;
+}
 
 // Cross-tender view of the two quality documents. Same shape as Materials: one row per
 // document per tender, so the whole project can be swept in one screen.
