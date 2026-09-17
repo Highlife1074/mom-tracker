@@ -408,13 +408,23 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
               }
             }} style={{fontSize:10,padding:"2px 5px",border:"1px solid "+color+"44",borderRadius:4}}/>
           </div>
-          <div style={{display:"flex",gap:3,alignItems:"center"}}>
-            <span style={{fontSize:9,color:"#555",fontWeight:600}}>Submitted</span>
-            <input type="date" min="1990-01-01" max="2200-12-31" value={subDone} onChange={function(e){updMat(mi,k+"Done",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid "+color+"44",borderRadius:4}}/>
+          <div style={{display:"flex",gap:3,alignItems:"center",flexDirection:"column"}}>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}>
+              <span style={{fontSize:9,color:"#555",fontWeight:600}}>Submitted</span>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={subDone} onChange={function(e){updMat(mi,k+"Done",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid "+color+"44",borderRadius:4}}/>
+            </div>
+            {assumedSubmissionDate&&<span style={{fontSize:8,color:"#c62828",fontWeight:700}}
+              title="Non renseignée — approbation moins 14 jours, sans incidence puisque le résultat est acquis.">
+              ≈ {fmtDate(assumedSubmissionDate)} (supposée)</span>}
           </div>
-          <div style={{display:"flex",gap:3,alignItems:"center"}}>
-            <span style={{fontSize:9,color:"#555",fontWeight:600}}>Approved</span>
-            <input type="date" min="1990-01-01" max="2200-12-31" value={mat[k+"ApprovalDone"]||""} onChange={function(e){updMat(mi,k+"ApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid "+color+"44",borderRadius:4}}/>
+          <div style={{display:"flex",gap:3,alignItems:"center",flexDirection:"column"}}>
+            <div style={{display:"flex",gap:3,alignItems:"center"}}>
+              <span style={{fontSize:9,color:"#555",fontWeight:600}}>Approved</span>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={mat[k+"ApprovalDone"]||""} onChange={function(e){updMat(mi,k+"ApprovalDone",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid "+color+"44",borderRadius:4}}/>
+            </div>
+            {assumedApprovalDate&&<span style={{fontSize:8,color:"#c62828",fontWeight:700}}
+              title="Approuvé sans date renseignée — la date du jour est utilisée pour le calcul, sans incidence puisque le résultat est acquis.">
+              ≈ {fmtDate(assumedApprovalDate)} (supposée)</span>}
           </div>
           <div style={{display:"flex",gap:3,alignItems:"center"}}>
             <span style={{fontSize:9,color:"#555",fontWeight:600}}>Review</span>
