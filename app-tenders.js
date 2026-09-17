@@ -363,13 +363,18 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
   }
 
   // One compact block per doc type (MSS / MAR)
-  function DocBlock({mat,mi,kind,color,bg}){
+   function DocBlock({mat,mi,kind,color,bg}){
     var k=kind.toLowerCase();
     var st=effStatus(mat,kind);
     var isOpen=isSectOpen(mi,k);
     var subDone=mat[k+"Done"]||"";
     var due14=subDone?(function(){var d=new Date(subDone);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
     var overdue=st!=="approved"&&due14&&due14<today();
+    // Dates supposées, affichées seulement — jamais écrites dans mat[...].
+    var explicitApprovalDate=mat[k+"ApprovalDone"]||"";
+    var assumedApprovalDate=(!explicitApprovalDate&&st==="approved")?today():"";
+    var effectiveApprovalDate=explicitApprovalDate||assumedApprovalDate;
+    var assumedSubmissionDate=(!subDone&&effectiveApprovalDate)?addCalDays(effectiveApprovalDate,-14):"";
     var docActs=docActions(mat,kind);
     var docLate=docActs.filter(function(t){return t.due&&t.due<today();}).length;
     return <div style={{marginBottom:4}}>
