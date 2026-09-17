@@ -3324,131 +3324,233 @@ function buildTrackedDocs(tasks,tenders,contractors){
   return docs;
 }
 
-function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTasks,onNavTender,memory,setMemory}){
-  var mem=memory||{};
-  const [fTender,setFTender]=useState(mem.fTender||"all");
-  const [fPkg,setFPkg]=useState(mem.fPkg||"all");
-  const [fOwner,setFOwner]=useState(mem.fOwner||"all");
-  const [fStage,setFStage]=useState(mem.fStage||"all");
-  const [fScope,setFScope]=useState(mem.fScope||"overdue");
-  useEffect(function(){if(setMemory)setMemory({fTender:fTender,fPkg:fPkg,fOwner:fOwner,fStage:fStage,fScope:fScope});},[fTender,fPkg,fOwner,fStage,fScope]);
-
-  var STAGES=[
-    {key:"acc",label:"Tender",color:"#1a73e8",bg:"#dce8ff"},
-    {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f3e5f5"},
-    {key:"mss",label:"MSS",color:"#1565c0",bg:"#e3f2fd"},
-    {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"},
-    {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"}
-  ];
-
-  // This view answers one question: what is sitting on the client's desk right now.
-  // Only the five document types that go for approval, and only while they are submitted
-  // and still unanswered.
-  var PENDING_STAGES=["mar","mss","wms","itp","acc"];
-  var allDocs=buildTrackedDocs(tasks,tenders,contractors).filter(function(d){
-    return PENDING_STAGES.indexOf(d.stage)>=0&&d.withClient;
+// ---------------------------------------------------------------------------
+// Client email — everything waiting on the client, as a ready-to-send email.
+// Read only, no Firebase write. The overdue logic comes from buildTrackedDocs(), so the
+// email and the Follow-up table always agree. SD transmissions are added here because
+// buildTrackedDocs only knows the older single-SD fields.
+// ---------------------------------------------------------------------------
+const CLIENT_EMAIL_TYPES=[
+  {key:"ACC",label:"ACC/Aconex"},
+  {key:"MAR",label:"MAR"},
+  {key:"MSS",label:"MSS"},
+  {key:"SD",label:"SD"},
+  {key:"WMS",label:"WMS"},
+  {key:"ITP",label:"ITP"},
+  {key:"RFI",label:"RFI"},
+  {key:"FCR",label:"FCR"},
+  {key:"CONTRACT",label:"Contract docs"}
+];
+function clientEmailTypeOf(stage){
+  return ({acc:"ACC",mar:"MAR",mss:"MSS",sd_approval:"SD",wms:"WMS",itp:"ITP",
+    rfi:"RFI",fcr:"FCR",contract_acc:"CONTRACT",contract_aconex:"CONTRACT"})[stage]||"";
+}
+// JJ/MM/AA read straight from the ISO string — no Date object, so no timezone shift.
+function clientEmailDate(iso){
+  var s=String(iso||"");
+  if(!/^\d{4}-\d{2}-\d{2}/.test(s))return "";
+  return s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(2,4);
+}
+function collectClientEmailDocs(tasks,tenders,contractors,filters){
+  var f=filters||{};
+  var todayStr=today();
+  var tdById={};
+  var matInfo={};
+  var withTransmissions={};
+  (tenders||[]).forEach(function(td){
+    tdById[td.id]=td;
+    if(td.hasSD&&(td.sdTransmissions||[]).length>0)withTransmissions[td.id]=true;
+    (td.materials||[]).forEach(function(mat){
+      ["mss","mar"].forEach(function(k){
+        // "Reference" column of the materials table first, older "N°" field as fallback
+        matInfo[td.id+"_"+mat.id+"_"+k]={ref:String(mat[k+"Ref"]||mat[k+"Number"]||"").trim(),name:mat.name||""};
+      });
+    });
   });
-  var withClient=allDocs;
 
-  var filtered=allDocs.filter(function(d){
-    if(fScope==="overdue"&&!d.overdue)return false;
-    if(fScope==="withclient"&&!d.withClient)return false;
-    if(fTender!=="all"&&d.tenderRef!==fTender)return false;
-    if(fPkg!=="all"&&d.package!==fPkg)return false;
-    if(fOwner!=="all"&&d.owner!==fOwner)return false;
-    if(fStage!=="all"&&d.stage!==fStage)return false;
+  var out=[];
+  buildTrackedDocs(tasks,tenders,contractors).forEach(function(d){
+    if(!d.withClient)return;
+    var type=clientEmailTypeOf(d.stage);
+    if(!type)return;
+    var td=d.tenderRef?tdById[d.tenderRef]:null;
+    if(td&&td.cancelled)return;
+    // a tender with transmissions is listed transmission by transmission below
+    if(type==="SD"&&td&&withTransmissions[td.id])return;
+    var ref="";
+    var title=d.tenderTitle||d.text||"";
+    var label=type;
+    if(d._type==="material"){
+      var mi=matInfo[d.id]||{};
+      ref=mi.ref||"";
+      title=(d.tenderTitle||"")+(mi.name?" – "+mi.name:"");
+    }else if(d._type==="tender"&&d._step&&td){
+      ref=String(((td.stepDates||{})[d._step]||{}).reference||"").trim();
+    }else if(d._type==="task"||d._type==="contract"){
+      title=d.text||"";
+      if(d._type==="contract")label=String(d.stageLabel||"Contract").replace("Addum.","Addendum");
+    }
+    out.push({id:d.id,type:type,label:label,ref:ref,title:title,
+      package:d.package||"",tenderRef:d.tenderRef||"",owner:d.owner||"",
+      submitted:d.submissionDate||"",due:d.dueDate||"",
+      overdue:!!d.overdue,daysOverdue:d.daysOverdue||0});
+  });
+
+  (tenders||[]).forEach(function(td){
+    if(!withTransmissions[td.id]||td.cancelled)return;
+    (td.sdTransmissions||[]).forEach(function(t){
+      if(!t.done)return;
+      // same rule as SDPanel: a verdict or an answer date stops the clock
+      if(t.status==="approved"||t.status==="rejected"||t.approvalDone)return;
+      var due=addCalDays(t.done,getDur("clientResponse"));
+      var overdue=!!due&&due<todayStr;
+      out.push({id:td.id+"_sdtr_"+t.id,type:"SD",label:"SD",ref:String(t.ref||"").trim(),
+        title:(td.title||"")+(t.description?" – "+t.description:""),
+        package:td.package||"",tenderRef:td.id,owner:td.ownerTender||"",
+        submitted:t.done,due:due,overdue:overdue,daysOverdue:overdue?workingDaysDiff(due,todayStr):0});
+    });
+  });
+
+  return out.filter(function(x){
+    if(f.pkg&&f.pkg!=="all"&&x.package!==f.pkg)return false;
+    if(f.tender&&f.tender!=="all"&&x.tenderRef!==f.tender)return false;
+    if(f.owner&&f.owner!=="all"&&x.owner!==f.owner)return false;
     return true;
-  }).sort(function(a,b){
-    if(a.overdue&&!b.overdue)return -1;
-    if(!a.overdue&&b.overdue)return 1;
-    return (a.dueDate||"9999").localeCompare(b.dueDate||"9999");
   });
+}
+function clientEmailLine(x){
+  var parts=[x.label+(x.ref?" "+x.ref:"")];
+  if(x.title)parts.push('"'+x.title+'"');
+  if(x.submitted)parts.push("submitted "+clientEmailDate(x.submitted));
+  if(x.overdue){
+    parts.push(x.daysOverdue>0
+      ?"overdue by "+x.daysOverdue+" working day"+(x.daysOverdue===1?"":"s")
+      :"overdue since "+clientEmailDate(x.due));
+  }else if(x.due)parts.push("due "+clientEmailDate(x.due));
+  return parts.join(" – ");
+}
+function buildClientEmail(items){
+  var overdue=items.filter(function(x){return x.overdue;}).sort(function(a,b){
+    return (b.daysOverdue-a.daysOverdue)||String(a.due||"").localeCompare(String(b.due||""));
+  });
+  var pending=items.filter(function(x){return !x.overdue;}).sort(function(a,b){
+    return String(a.due||"9999").localeCompare(String(b.due||"9999"));
+  });
+  var sections=[];
+  if(overdue.length)sections.push({title:"Overdue",items:overdue});
+  if(pending.length)sections.push({title:"Pending approval, not yet overdue",items:pending});
+  var INTRO="We notice that the following documents are with you pending approval:";
+  var CLOSE="We would appreciate your review at your earliest convenience.";
+  var t=["Dear Client team,","",INTRO,""];
+  sections.forEach(function(s){
+    t.push("• "+s.title);
+    s.items.forEach(function(x){t.push("    ◦ "+clientEmailLine(x));});
+    t.push("");
+  });
+  t.push(CLOSE,"","Kind regards,");
+  var h='<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">'+
+    '<p>Dear Client team,</p><p>'+INTRO+'</p><ul>'+
+    sections.map(function(s){
+      return '<li><b>'+s.title+'</b><ul>'+
+        s.items.map(function(x){return '<li>'+esc(clientEmailLine(x))+'</li>';}).join("")+
+        '</ul></li>';
+    }).join("")+
+    '</ul><p>'+CLOSE+'</p><p>Kind regards,</p></div>';
+  return {text:t.join("\n"),html:h,overdueCount:overdue.length,pendingCount:pending.length};
+}
+// Resolves to "html", "text" or "" — HTML first so Outlook pastes real nested bullets.
+function copyClientEmail(mail){
+  try{
+    if(window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write){
+      return navigator.clipboard.write([new ClipboardItem({
+        "text/html":new Blob([mail.html],{type:"text/html"}),
+        "text/plain":new Blob([mail.text],{type:"text/plain"})
+      })]).then(function(){return "html";}).catch(function(){return clientEmailCopyPlain(mail.text);});
+    }
+  }catch(e){}
+  return clientEmailCopyPlain(mail.text);
+}
+function clientEmailCopyPlain(text){
+  function legacy(){
+    try{
+      var ta=document.createElement("textarea");
+      ta.value=text;ta.style.position="fixed";ta.style.opacity="0";
+      document.body.appendChild(ta);ta.select();
+      var ok=document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok?"text":"";
+    }catch(e){return "";}
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text).then(function(){return "text";}).catch(function(){return legacy();});
+  }
+  return Promise.resolve(legacy());
+}
+function ClientEmailModal({docs,initialStage,onClose}){
+  const [types,setTypes]=useState(function(){
+    var only=(initialStage&&initialStage!=="all")?clientEmailTypeOf(initialStage):"";
+    var t={};
+    CLIENT_EMAIL_TYPES.forEach(function(x){t[x.key]=only?x.key===only:true;});
+    return t;
+  });
+  const [subject,setSubject]=useState("Riviera Tower – Documents pending your approval – "+clientEmailDate(today()));
+  const [copied,setCopied]=useState("");
+  var list=docs||[];
+  var items=list.filter(function(d){return types[d.type];});
+  var mail=buildClientEmail(items);
+  var mailto="mailto:?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(mail.text.replace(/\n/g,"\r\n"));
+  var tooLong=mailto.length>1800;
+  var empty=items.length===0;
 
-  var overdueCount=allDocs.filter(function(d){return d.overdue;}).length;
-  var allOwners=[...new Set(allDocs.map(function(d){return d.owner;}).filter(Boolean))].sort();
-  var allTenders=[...new Set(allDocs.map(function(d){return d.tenderRef;}).filter(Boolean))].map(function(id){return(tenders||[]).find(function(t){return t.id===id;});}).filter(Boolean);
-
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
-    <div className="page-hdr">
-      <div>
-        <div className="page-title">📬 Client Follow-up</div>
-        <div className="page-sub">Everything currently with the client — RFI, FCR, ACC/ACONEX, MAR, MSS, ITP, WMS, SD, Contract docs</div>
+  return <div className="overlay" onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:760,width:"94vw"}}>
+      <div className="modal-hdr">
+        <div className="modal-title">✉ Email to the client</div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
       </div>
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fce4ec",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#c62828",fontWeight:700,fontSize:13}}>⚠️ {overdueCount} overdue</div>}
-        <div style={{padding:"8px 16px",background:"#e3f2fd",border:"1.5px solid #90caf9",borderRadius:10,color:"#1565c0",fontWeight:700,fontSize:13}}>📬 {withClient.length} with client</div>
-      </div>
-    </div>
-
-    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
-      <button className={"fchip"+(fScope==="overdue"?" on":"")} onClick={function(){setFScope("overdue");}} style={fScope==="overdue"?{borderColor:"#c62828",background:"#c62828",color:"#fff"}:{}}>⚠️ Overdue</button>
-      <button className={"fchip"+(fScope==="withclient"?" on":"")} onClick={function(){setFScope("withclient");}} style={fScope==="withclient"?{borderColor:"#1565c0",background:"#1565c0",color:"#fff"}:{}}>📬 With client</button>
-      <button className={"fchip"+(fScope==="all"?" on":"")} onClick={function(){setFScope("all");}}>All</button>
-      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All stages</option>
-        {STAGES.map(function(s){return <option key={s.key} value={s.key}>{s.label}</option>;})}
-      </select>
-      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All packages</option>
-        {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
-      </select>
-      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All tenders</option>
-        {allTenders.sort(function(a,b){return(a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
-      </select>
-      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All owners</option>
-        {allOwners.map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
-      </select>
-      {(fTender!=="all"||fPkg!=="all"||fOwner!=="all"||fStage!=="all"||fScope!=="overdue")&&
-        <button className="btn btn-sm" onClick={function(){setFTender("all");setFPkg("all");setFOwner("all");setFStage("all");setFScope("overdue");}}>✕ Reset</button>}
-    </div>
-
-    {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">Nothing currently pending with the client.</div></div>
-      :<div>
-        <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-          {STAGES.map(function(s){
-            var cnt=withClient.filter(function(d){return d.stage===s.key;}).length;
-            if(cnt===0)return null;
-            return <div key={s.key} onClick={function(){setFStage(s.key);}} style={{padding:"6px 12px",borderRadius:8,background:s.bg,border:"1.5px solid "+s.color,cursor:"pointer",display:"flex",gap:6,alignItems:"center"}}>
-              <span style={{fontWeight:700,fontSize:13,color:s.color}}>{cnt}</span>
-              <span style={{fontSize:11,color:s.color}}>{s.label}</span>
-            </div>;
+      <div className="modal-body">
+        <div style={{fontSize:10,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".06em",marginBottom:5}}>Include</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+          {CLIENT_EMAIL_TYPES.map(function(ty){
+            var n=list.filter(function(d){return d.type===ty.key;}).length;
+            return <label key={ty.key} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 9px",border:"1px solid #e8e6df",borderRadius:6,
+                fontSize:11,textTransform:"none",letterSpacing:"normal",fontWeight:600,margin:0,
+                cursor:n?"pointer":"default",opacity:n?1:.45,background:types[ty.key]&&n?"#faf3e0":"#fff"}}>
+              <input type="checkbox" checked={!!types[ty.key]} disabled={!n}
+                onChange={function(e){var nt=Object.assign({},types);nt[ty.key]=e.target.checked;setTypes(nt);setCopied("");}}
+                style={{width:12,height:12}}/>
+              {ty.label} <span style={{color:"#888",fontWeight:400}}>{n}</span>
+            </label>;
           })}
         </div>
-        <div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
-          <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead>
-              <tr>
-                <th>Stage</th><th>Item</th><th>Tender</th><th>Package</th><th>Owner</th>
-                <th>Submitted</th><th>Response due (+14d)</th><th>Days pending</th><th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(function(d){
-                var stage=STAGES.find(function(s){return s.key===d.stage;})||{color:"#888",bg:"#f5f5f5",label:d.stage};
-                var daysPending=d.submissionDate?workingDaysDiff(d.submissionDate,today()):0;
-                return <tr key={d.id} style={{background:d.overdue?"#fffaf9":"#fff"}}>
-                  <td><span style={{padding:"2px 8px",borderRadius:8,background:stage.bg,color:stage.color,fontWeight:700,fontSize:11}}>{stage.label}</span></td>
-                  <td style={{maxWidth:280}}>
-                    <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:d.tenderRef?"pointer":"default",color:d.tenderRef?"#1a1a1a":"#555"}} onClick={function(){if(d.tenderRef&&onNavTender)onNavTender(d.tenderRef,"submissions");}}>{d.text}</div>
-                  </td>
-                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.tenderTitle&&d.tenderRef?<button onClick={function(){if(onNavTender)onNavTender(d.tenderRef,"submissions");}} style={{background:"none",border:"none",cursor:"pointer",color:"#3949ab",fontSize:11,fontWeight:500,textDecoration:"underline",padding:0,fontFamily:"inherit"}}>{d.tenderTitle}</button>:<span style={{color:"#888"}}>{d.tenderTitle||"—"}</span>}</td>
-                  <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.package||"—"}</td>
-                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
-                  <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.submissionDate?fmtDate(d.submissionDate):"—"}</td>
-                  <td style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#555",whiteSpace:"nowrap"}}>{d.dueDate?fmtDate(d.dueDate):"—"}</td>
-                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>⚠️ +{d.daysOverdue}d</span>:<span style={{fontSize:11,color:"#888"}}>{daysPending}d</span>}</td>
-                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:"#fff8e1",color:"#f57f17",fontWeight:600}}>{d.stepStatus||d.status||"Pending"}</span></td>
-                </tr>;
-              })}
-            </tbody>
-          </table>
+        <div className="fg">
+          <label>Subject</label>
+          <div style={{display:"flex",gap:6}}>
+            <input type="text" value={subject} onChange={function(e){setSubject(e.target.value);}} style={{flex:1}}/>
+            <button className="btn btn-sm" title="Copy the subject" onClick={function(){clientEmailCopyPlain(subject);}}>📋</button>
+          </div>
         </div>
-      </div>}
+        <div style={{fontSize:11,color:"#888",margin:"4px 0 6px"}}>{mail.overdueCount} overdue · {mail.pendingCount} not yet overdue</div>
+        {empty
+          ?<div className="empty" style={{padding:"18px 0"}}><div className="empty-txt">No document selected.</div></div>
+          :<pre style={{whiteSpace:"pre-wrap",fontFamily:"Calibri,Arial,sans-serif",fontSize:12.5,lineHeight:1.55,margin:0,
+              padding:"12px 14px",border:"1px solid #e8e6df",borderRadius:8,background:"#fff",maxHeight:"45vh",overflowY:"auto"}}>{mail.text}</pre>}
+      </div>
+      <div className="modal-footer">
+        {copied&&<span style={{fontSize:11,fontWeight:700,marginRight:"auto",color:copied==="fail"?"#c62828":"#2e7d32"}}>
+          {copied==="html"?"✓ Copied — paste into Outlook":copied==="text"?"✓ Copied as plain text":"Copy failed — select the preview and copy it by hand"}</span>}
+        <button className="btn" onClick={onClose}>Close</button>
+        <span title={tooLong?"Too long for a mail link: Outlook would cut the text. Use Copy instead.":""}>
+          <button className="btn" disabled={empty||tooLong} onClick={function(){window.location.href=mailto;}}>✉ Open in mail</button>
+        </span>
+        <button className="btn btn-gold" disabled={empty}
+          onClick={function(){copyClientEmail(mail).then(function(r){setCopied(r||"fail");});}}>📋 Copy for Outlook</button>
+      </div>
+    </div>
   </div>;
 }
+
+function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTasks,onNavTender,memory,setMemory}){
 
 // Cross-tender view of the two quality documents. Same shape as Materials: one row per
 // document per tender, so the whole project can be swept in one screen.
