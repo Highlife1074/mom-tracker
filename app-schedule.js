@@ -99,6 +99,9 @@ function BlockedRoomsModal({zone,rooms,selected,onSave,onClose}){
 }
 
 function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,tags,zones,rooms,saveRooms,canEdit,roomBlockersOf,tenders,saveTenders,pkgOwners,onNavTender}){
+  // Fixed at 16 weeks/sheet so a print always covers the schedule's full duration —
+  // the number of sheets is a consequence of that, never a cap chosen by the user.
+  var SCHED_PRINT_WEEKS_PER_SHEET=16;
   // Destructive or wide-reaching operations (deleting a schedule, editing tasks by batch)
   // are reserved for the app admin, whatever the zone rights are.
   var isAdmin=isAppAdmin(window._currentUser?window._currentUser.name:"");
@@ -1111,8 +1114,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // Task and Subcont. columns, otherwise the later pages are meaningless.
   const [printOpts,setPrintOpts]=useState(null);
   function openPrint(){
-    var n=wks.length;
-    setPrintOpts({pages:n<=16?1:n<=32?2:3,risks:true,progress:false});
+    setPrintOpts({risks:true,progress:false});
   }
   function runPrint(opts){
     setPrintOpts(null);
@@ -1927,7 +1929,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         </div>}
 
         {printPlan&&(function(){
-          var per=Math.ceil(wks.length/printPlan.pages);
+          var per=SCHED_PRINT_WEEKS_PER_SHEET;
           var chunks=[];
           for(var i=0;i<wks.length;i+=per)chunks.push(wks.slice(i,i+per));
           return <div className="sched-print-only">
@@ -2062,18 +2064,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <div style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:18,marginBottom:3}}>Print the schedule</div>
             <div style={{fontSize:11,color:"#aaa",marginBottom:14}}>{wks.length} weeks · {visibleRows.filter(function(r){return r.kind!=="category";}).length} tasks{fGroup?" · filtered on "+fGroup:""}</div>
 
-            <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:6}}>Spread the weeks over</div>
-            <div style={{display:"flex",gap:6,marginBottom:16}}>
-              {[1,2,3].map(function(n){
-                var per=Math.ceil(wks.length/n);
-                var on=printOpts.pages===n;
-                return <button key={n} onClick={function(){setPrintOpts(Object.assign({},printOpts,{pages:n}));}}
-                  style={{flex:1,padding:"9px 6px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",textAlign:"center",
-                    border:"1.5px solid "+(on?"#1c1c1e":"#e8e6df"),background:on?"#1c1c1e":"#fff",color:on?"#fff":"#888"}}>
-                  <div style={{fontSize:15,fontWeight:800}}>{n}</div>
-                  <div style={{fontSize:9}}>{n===1?"one sheet":per+" wks / sheet"}</div>
-                </button>;
-              })}
+            <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:6}}>Sheets</div>
+            <div style={{fontSize:12,color:"#555",marginBottom:16,padding:"8px 10px",background:"#f8f7f4",borderRadius:8}}>
+              {(function(){var n=Math.max(1,Math.ceil(wks.length/SCHED_PRINT_WEEKS_PER_SHEET));return n+" sheet"+(n!==1?"s":"")+" of up to "+SCHED_PRINT_WEEKS_PER_SHEET+" weeks each";})()}
+              — every week of the schedule prints, however long it runs.
             </div>
 
             <label style={{display:"flex",gap:8,alignItems:"flex-start",cursor:"pointer",textTransform:"none",letterSpacing:"normal",marginBottom:10,color:"#333"}}>
