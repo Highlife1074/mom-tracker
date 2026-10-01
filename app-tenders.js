@@ -1634,6 +1634,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                     border:"none",background:"transparent",outline:"none",width:"100%",padding:0,color:"var(--ink)",lineHeight:1.08}}/>
                 <div className="tb-sub" style={{fontSize:12,color:"#6f6b62",marginTop:3,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                   <span>{td.ownerTender||"no owner"}{td.contractor?" · "+td.contractor:""}</span>
+                  {(td.awards||[]).some(function(a){return a.subcontractor;})
+                    ?<span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#6f6b62"}}>Awarded to</span>
+                    :<span className="badge" style={{background:"#f0ede6",color:"#888",fontWeight:700}}>Not awarded</span>}
                   {(td.awards||[]).filter(function(a){return a.subcontractor;}).map(function(a){
                     var st=awardStatus(a.status);
                     return <span key={a.id} className="badge" title={st.label+(a.scope?" · "+a.scope:"")}
@@ -2081,7 +2084,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       :<table className="tbl">
         <thead><tr>
           <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
-          <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+           <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+          <th style={{minWidth:130}} title="Subcontractor(s) recorded in the tender's Awards panel">Awarded to</th>
           <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
           <th style={{textAlign:"right",borderLeft:"2px solid #e0d9cc"}}>Budget</th>
           <th style={{textAlign:"right"}}>Proposed</th>
@@ -2115,6 +2119,19 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               </div>
             </td>
             <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
+            <td style={{whiteSpace:"nowrap"}}>
+              {(function(){
+                var aw=(td.awards||[]).filter(function(a){return a.subcontractor;});
+                if(!aw.length)return td.contractor
+                  ?<span style={{fontSize:11,color:"#888"}} title="From the tender's contractor field, no award recorded yet">{td.contractor}</span>
+                  :<span style={{color:"#ddd"}}>—</span>;
+                return <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{aw.map(function(a){
+                  var st=awardStatus(a.status);
+                  return <span key={a.id} className="badge" title={st.label+(a.scope?" · "+a.scope:"")}
+                    style={{background:st.bg,color:st.fg,fontWeight:700}}>{a.status==="signed"?"✓ ":""}{a.subcontractor}</span>;
+                })}</div>;
+              })()}
+            </td>
             <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
             <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
               {td.budget?<span style={{fontSize:11,fontWeight:600}}>{Number(td.budget).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
@@ -2216,7 +2233,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         })}</tbody>
         <tfoot>
           <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
-            <td colSpan={3+TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length+4} style={{padding:"8px 12px"}}>
+            <td colSpan={4+TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length+4} style={{padding:"8px 12px"}}>
               {(function(){
                 var totBudget=filtered.filter(function(t){return !t.cancelled;}).reduce(function(s,t){return s+Number(t.budget||0);},0);
                 var totInstructed=filtered.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
