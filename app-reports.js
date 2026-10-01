@@ -37,10 +37,10 @@ tr{page-break-inside:avoid}
 .chk{font-family:monospace;font-size:11px;letter-spacing:1px}
 .q td{padding:6px 7px}
 .foot{margin-top:22px;border-top:1px solid #ddd8cc;padding-top:7px;font-size:9px;color:#b9b3a6}
-@page{size:A4 portrait;margin:20mm 16mm 16mm}
+@page{size:A4 portrait;margin:24mm 18mm 20mm}
 @media print{
   body{padding:0;max-width:none}
-  .noprint{display:none}
+  .noprint{display:none!important}
   /* the first block used to print hard against the top trim */
   body>*:first-child{margin-top:0!important}
   .mom-head{padding-top:2mm}
