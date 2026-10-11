@@ -4065,7 +4065,9 @@ function NewTasksPopup({tasks,tenders,contractors,onClose}){
 }
 
 function App(){
-  const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");return u||null;}catch(e){return null;}});
+  // A login restored from this browser must also set window._currentUser: the schedule's edit
+  // rights and the "updated by" stamps read it, and they saw nobody until a fresh login.
+  const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");if(u)window._currentUser={name:u};return u||null;}catch(e){return null;}});
   const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
   function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
   const [jumpOwner,setJumpOwner]=useState(null);
