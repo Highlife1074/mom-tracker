@@ -647,6 +647,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   function setAdvanced(v){setAdvancedRaw(v);try{localStorage.setItem("pp_sched_advanced",v?"1":"0");}catch(e){}}
   const [showLinks,setShowLinksRaw]=useState(function(){try{return localStorage.getItem("pp_sched_links")!=="0";}catch(e){return true;}});
   function setShowLinks(v){setShowLinksRaw(v);try{localStorage.setItem("pp_sched_links",v?"1":"0");}catch(e){}}
+  // Simplified toolbar: the rarely used controls sit behind ⚙ Settings, ⋯ More and 🔍 Analyse & view.
+  const [showSettings,setShowSettings]=useState(false);
+  const [moreMenu,setMoreMenu]=useState(false);
+  const [showTools,setShowToolsRaw]=useState(function(){try{return localStorage.getItem("pp_sched_tools")==="1";}catch(e){return false;}});
+  function setShowTools(v){setShowToolsRaw(v);try{localStorage.setItem("pp_sched_tools",v?"1":"0");}catch(e){}}
   const tableBoxRef=useRef(null);
   const [arrowGeo,setArrowGeo]=useState([]);
   const arrowKeyRef=useRef("[]");
@@ -2159,12 +2164,55 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     setCollapsedCats(o);
   }
 
+  // The two actions of the toolbar with the most code, kept out of the JSX.
+  function applyTenderRules(){
+    var rules=window._ppTenderRules||[];
+    if(rules.length===0){safeAlert("No rule yet.\n\nCreate them in Settings › 🔗 Tender rules: “every task of <subcontractor> in <zone> belongs to <tender>”.");return;}
+    var hits=[],conflicts=0;
+    (sc.rows||[]).forEach(function(r){
+      if(r.kind!=="task"&&r.kind!==undefined)return;
+      if(!r.group)return;
+      var rule=tenderRuleFor(rules,r.group,curZone);
+      if(!rule)return;
+      if(r.tenderRef===rule.tenderId)return;
+      if(r.tenderRef){conflicts++;return;}     // never overwrite a manual link
+      hits.push({row:r,tenderId:rule.tenderId});
+    });
+    if(hits.length===0){
+      safeAlert(conflicts>0
+        ?"Nothing to do: "+conflicts+" task(s) already point at a different tender and are left untouched."
+        :"Nothing to do: every task with a subcontractor already matches its rule.");
+      return;
+    }
+    var names=hits.slice(0,6).map(function(h){return "· "+(h.row.label||"(untitled)");}).join("\n");
+    if(!safeConfirm("Link "+hits.length+" task(s) to their tender?\n\n"+names+(hits.length>6?"\n… and "+(hits.length-6)+" more":"")+
+      (conflicts>0?"\n\n"+conflicts+" task(s) already have a different tender and will NOT be touched.":"")))return;
+    var map={};hits.forEach(function(h){map[h.row.id]=h.tenderId;});
+    upd(sc.id,{rows:(sc.rows||[]).map(function(r){return map[r.id]?Object.assign({},r,{tenderRef:map[r.id]}):r;})});
+  }
+  function cleanAutoActions(){
+    var seen={},dropped=0;
+    var kept=(tasks||[]).filter(function(t){
+      if(t.addedBy!=="System")return true;
+      if((t.text||"").indexOf("Procurement late for: ")!==0)return true;
+      if(t.status==="done"){dropped++;return false;}
+      var k=t.autoKey||("proclate:"+t.scheduleRowRef+":"+t.tenderRef);
+      if(seen[k]){dropped++;return false;}
+      seen[k]=1;return true;
+    });
+    if(dropped===0){safeAlert("Nothing to clean — no duplicate auto-action found.");return;}
+    if(!safeConfirm("Delete "+dropped+" duplicate or closed auto-action(s)?\n\nOne open action per task is kept. Actions you wrote yourself are never touched."))return;
+    saveTasks(kept);
+  }
+
   return <div className={fullScreen?"sched-fs":""} style={fullScreen?{position:"fixed",inset:0,zIndex:1200,background:"#f4f3f0",padding:"10px 14px",overflowY:"auto"}:null}>
     {fullScreen&&<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
       <button className="btn btn-pri" onClick={function(){setFullScreen(false);}} title="Back to the zone (Esc)"
         style={{fontSize:13,padding:"7px 16px"}}>← Back</button>
       <span style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:17}}>{curZone} — {sc?sc.title:""}</span>
       <span style={{fontSize:11,color:"#aaa"}}>press Esc to leave full screen</span>
+      {sc&&<button className="btn btn-pri" onClick={openPrint} style={{marginLeft:"auto"}}
+        title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">🖨 Print / PDF</button>}
     </div>}
     {backTo&&<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,
       padding:"8px 12px",borderRadius:8,background:"var(--blue-soft,#e8f0fe)",border:"1.5px solid #c6d9f5"}}>
@@ -2173,17 +2221,49 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         onClick={function(){var id=backTo.id;setBackTo(null);if(onNavTender)onNavTender(id);}}>↩ Back to the tender</button>
       <button className="btn btn-sm" onClick={function(){setBackTo(null);}} title="Stay in the schedule">✕</button>
     </div>}
+    {/* Header: which schedule, and the actions on the whole schedule. Print is the main one,
+        styled like the zone's Weekly pack; the rarely used ones sit in Settings and More. */}
     <div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
       {zoneScheds.map(function(s){
         return <button key={s.id} className={"fchip"+(sc&&sc.id===s.id?" on":"")} onClick={function(){setSelId(s.id);}}>{s.title}</button>;
       })}
       <button className="btn btn-sm btn-gold" onClick={addSchedule}>＋ New schedule</button>
+      {sc&&<span style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        {sc.updatedAt&&<span style={{fontSize:10,color:"#aaa"}}>Last update {fmtDate(sc.updatedAt)}{sc.updatedBy?" by "+sc.updatedBy.split(",")[0]:""}</span>}
+        <button className={"btn btn-sm"+(showSettings?" btn-pri":"")} onClick={function(){setShowSettings(!showSettings);}}
+          title="Title, start week, number of weeks, subcontractors, copy to another zone">⚙ Settings</button>
+        <span style={{position:"relative",display:"inline-block"}}>
+          <button className={"btn btn-sm"+(moreMenu?" btn-pri":"")} onClick={function(){setMoreMenu(!moreMenu);}}
+            title="Documents, Primavera export and the other actions on this schedule">⋯ More ▾</button>
+          {moreMenu&&<React.Fragment>
+            <div onClick={function(){setMoreMenu(false);}} style={{position:"fixed",inset:0,zIndex:1290}}></div>
+            <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:1300,minWidth:250,background:"#fff",border:"1px solid var(--rule,#ddd9cf)",borderRadius:9,
+              boxShadow:"0 10px 32px rgba(0,0,0,.2)",padding:6}}>
+              {[
+                {k:"docs",label:"📄 Documents"+(scDocs.length>0?" ("+scDocs.length+")":""),title:"Reference documents: setting-out plans, sections, details. Attach one to a room and its name becomes clickable in the schedule.",run:function(){setShowDocs(true);}},
+                {k:"xer",label:"⬇ Export to Primavera P6 (.xer)",title:"WBS section › room, activities, links, calendar with neutralised weeks, subcontractor and tender codes, progress",run:exportXer},
+                canEdit&&{k:"sort",label:"🔤 Sort rooms A→Z",title:"Sort categories A→Z. Each one keeps its own tasks.",run:sortCategories},
+                canEdit&&{k:"rules",label:"🔗 Apply tender rules",title:"Apply the subcontractor → tender rules (Settings › Tender rules) to every task of this schedule",run:applyTenderRules},
+                isAdmin&&{k:"clean",label:"🧹 Clean auto-actions",title:"Remove the duplicate 'Procurement late for…' actions created by the old auto-rule, keeping one per task",run:cleanAutoActions,danger:true},
+                isAdmin&&{k:"del",label:"🗑 Delete this schedule",title:"Delete this schedule (admin only)",run:function(){delSchedule(sc.id);},danger:true}
+              ].filter(Boolean).map(function(it){
+                return <button key={it.k} title={it.title} onClick={function(){setMoreMenu(false);it.run();}}
+                  onMouseEnter={function(e){e.currentTarget.style.background="var(--rule-2,#efece5)";}} onMouseLeave={function(e){e.currentTarget.style.background="none";}}
+                  style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",background:"none",borderRadius:6,cursor:"pointer",
+                    fontFamily:"inherit",fontSize:12,color:it.danger?"var(--red,#b3302a)":"var(--ink,#16181d)"}}>{it.label}</button>;
+              })}
+            </div>
+          </React.Fragment>}
+        </span>
+        <button className="btn btn-pri" onClick={openPrint}
+          title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">🖨 Print / PDF</button>
+      </span>}
     </div>
 
     {!sc
       ?<div className="empty"><div className="empty-ico">📅</div><div className="empty-txt">No schedule for {curZone} yet. Create one to plan work week by week.</div></div>
       :<div>
-        <div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginBottom:10,padding:"10px 12px",background:"#fafaf8",borderRadius:8,border:"1px solid #e8e6df"}}>
+        {showSettings&&<div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginBottom:10,padding:"10px 12px",background:"#fafaf8",borderRadius:8,border:"1px solid #e8e6df"}}>
           <div style={{flex:2,minWidth:170}}>
             <label style={{fontSize:9,fontWeight:700,color:"#888",textTransform:"uppercase"}}>Title</label>
             <SchedBufInput type="text" value={sc.title||""} onCommit={function(v){upd(sc.id,{title:v});}} style={{padding:"4px 8px",fontSize:12,fontWeight:600}}/>
@@ -2200,10 +2280,17 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <option value="">⧉ Copy to zone…</option>
             {(zones||[]).filter(function(z){return z!==curZone;}).map(function(z){return <option key={z} value={z}>{z}</option>;})}
           </select>
-          <button className="btn btn-sm" onClick={openPrint}>🖨 Print / PDF</button>
-          <button className="btn btn-sm" onClick={exportXer} title="Export this schedule to Primavera P6 (.xer): WBS section › room, activities, links, calendar with neutralised weeks, subcontractor and tender codes, progress">⬇ P6 (.xer)</button>
-          {isAdmin&&<button className="btn btn-sm btn-danger" onClick={function(){delSchedule(sc.id);}} title="Delete this schedule (admin only)">🗑</button>}
-        </div>
+          {/* Adding a subcontractor used to be an 80px box that only reacted to Enter, with
+              no button and no feedback — people could not find it. */}
+        {canEdit&&<span style={{display:"flex",gap:4,alignItems:"center"}}>
+          <input type="text" value={newGroup} onChange={function(e){setNewGroup(e.target.value);}}
+            onKeyDown={function(e){if(e.key==="Enter")addGroupNow();}}
+            title="Adds the company to this schedule. For a name you will reuse in other zones, add it in Settings › 👷 Subcontractors instead."
+            placeholder="+ add subcontractor…" style={{width:150,padding:"3px 6px",fontSize:10}}/>
+          <button className="btn btn-sm" disabled={!newGroup.trim()} onClick={addGroupNow}
+            style={{padding:"2px 8px",fontSize:10}}>＋ Add</button>
+        </span>}
+        </div>}
 
         {canEdit&&selRows.length>0&&<div className="sched-noprint" style={{padding:"8px 12px",background:"#e8f0fe",border:"1.5px solid #1a73e8",borderRadius:8,marginBottom:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <span style={{fontSize:12,fontWeight:800,color:"#1a73e8"}}>{selRows.length} task{selRows.length!==1?"s":""} selected</span>
@@ -2311,7 +2398,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           <div style={{fontSize:11,color:"#555"}}>{curZone} · {fmtDate(wks[0]||sc.startDate)} → {fmtDate(wks[wks.length-1]||sc.startDate)} · printed {fmtDate(todayStr)}{fGroup?" · subcontractor: "+fGroup:""}</div>
         </div>
 
-        <div className="sched-noprint" style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#fffdf0",border:"1px solid #f0e2b8",borderRadius:8}}>
+        {canEdit!==false&&<div className="sched-noprint" style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#fffdf0",border:"1px solid #f0e2b8",borderRadius:8}}>
           <select value={newRowKind} onChange={function(e){setNewRowKind(e.target.value);}} style={{width:"auto",padding:"5px 8px",fontSize:12}}>
             <option value="task">Task</option>
             <option value="category">Category / Room</option>
@@ -2325,8 +2412,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             })}
           </select>
           <button className="btn btn-sm btn-gold" onClick={addRow} disabled={!newRowLabel.trim()}>＋ Add row</button>
-        </div>
+        </div>}
 
+        {/* Everyday tools on one line; the analysis and display options fold away. */}
         <div className="sched-noprint" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
           {canEdit!==false&&<span style={{display:"flex",gap:3,alignItems:"center",paddingRight:6,borderRight:"1px solid #e0ddd6"}}>
             <button className="btn btn-sm" disabled={undoRef.current.past.length===0} onClick={function(){undoRedo(-1);}}
@@ -2335,16 +2423,18 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <button className="btn btn-sm" disabled={undoRef.current.future.length===0} onClick={function(){undoRedo(1);}}
               title="Redo (Ctrl+Y)" style={{padding:"2px 8px",fontSize:12}}>↷</button>
           </span>}
-          <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase"}}>Click or drag to fill as:</span>
-          <button onClick={function(){setPaintMode("plan");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="plan"?"#c9a84c":"#ddd"),background:paintMode==="plan"?"#fffdf0":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="plan"?"#b45309":"#aaa"}}>
-            <span style={{width:14,height:10,background:"#c9a84c",borderRadius:2}}></span> Planned
-          </button>
-          <button onClick={function(){setPaintMode("actual");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="actual"?"#1a73e8":"#ddd"),background:paintMode==="actual"?"#f0f8ff":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="actual"?"#1a73e8":"#aaa"}}>
-            <span style={{width:14,height:10,background:"#1a73e8",borderRadius:2}}></span> Actual
-          </button>
-          <button onClick={function(){setPaintMode("progress");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="progress"?"#7b1fa2":"#ddd"),background:paintMode==="progress"?"#f3e5f5":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="progress"?"#7b1fa2":"#aaa"}}>
-            % Progress
-          </button>
+          {canEdit!==false&&<React.Fragment>
+            <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase"}} title="Click or drag along a row to fill the weeks as">Fill:</span>
+            <button onClick={function(){setPaintMode("plan");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="plan"?"#c9a84c":"#ddd"),background:paintMode==="plan"?"#fffdf0":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="plan"?"#b45309":"#aaa"}}>
+              <span style={{width:14,height:10,background:"#c9a84c",borderRadius:2}}></span> Planned
+            </button>
+            <button onClick={function(){setPaintMode("actual");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="actual"?"#1a73e8":"#ddd"),background:paintMode==="actual"?"#f0f8ff":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="actual"?"#1a73e8":"#aaa"}}>
+              <span style={{width:14,height:10,background:"#1a73e8",borderRadius:2}}></span> Actual
+            </button>
+            <button onClick={function(){setPaintMode("progress");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="progress"?"#7b1fa2":"#ddd"),background:paintMode==="progress"?"#f3e5f5":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="progress"?"#7b1fa2":"#aaa"}}>
+              % Progress
+            </button>
+          </React.Fragment>}
           <span style={{display:"flex",gap:3,alignItems:"center",paddingRight:6,borderRight:"1px solid #e0ddd6"}}>
             <button className="btn btn-sm" onClick={function(){var el=document.querySelector(".sched-wrap");if(el)el.scrollLeft-=400;}} title="Scroll back in time" style={{padding:"2px 8px",fontSize:11}}>◀◀</button>
             <button className="btn btn-sm" onClick={function(){
@@ -2355,25 +2445,32 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             }} title="Jump to the current week" style={{padding:"2px 8px",fontSize:11}}>Today</button>
             <button className="btn btn-sm" onClick={function(){var el=document.querySelector(".sched-wrap");if(el)el.scrollLeft+=400;}} title="Scroll forward in time" style={{padding:"2px 8px",fontSize:11}}>▶▶</button>
           </span>
-          <span style={{display:"flex",gap:6,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
-            <label title="Advanced view: adds the Quantity and Rate columns. Your choice only — each person picks their own view."
-              style={{display:"flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:advanced?"#b45309":"#888",cursor:"pointer",whiteSpace:"nowrap"}}>
-              <input type="checkbox" checked={advanced} onChange={function(e){setAdvanced(e.target.checked);}} style={{width:12,height:12,margin:0}}/>
-              Advanced</label>
-            <button className={"btn btn-sm"+(showLinks?" btn-pri":"")} onClick={function(){setShowLinks(!showLinks);}}
-              title={showLinks?"Hide the link arrows":"Show the “starts after” links as arrows. Drag the ● at the end of a bar onto another task to link them."}
-              style={{padding:"2px 8px",fontSize:10}}>↗ Links</button>
+          <span style={{display:"flex",alignItems:"center",gap:4,paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
+            <span style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase"}}>Subcont.</span>
+            <select value={fGroup} onChange={function(e){setFGroup(e.target.value);}} title="Show only the tasks of one subcontractor — room headers stay visible"
+              style={{width:"auto",padding:"2px 6px",fontSize:10,fontWeight:fGroup?700:400,color:fGroup?"#00695c":"inherit",border:"1px solid "+(fGroup?"#00695c":"#e8e6df"),borderRadius:6}}>
+              <option value="">All subcontractors</option>
+              {allGroups.map(function(g){return <option key={g} value={g}>{g}</option>;})}
+            </select>
+            {fGroup&&<span style={{fontSize:10,color:"#00695c",fontWeight:700}}>{groupRows.filter(function(r){return r.kind!=="category";}).length} task(s)</span>}
           </span>
-          <span style={{display:"flex",gap:4,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
           <button className={"btn btn-sm"+(monthView?" btn-pri":"")} onClick={function(){setMonthView(!monthView);}}
             title={monthView?"Back to the full week grid":"Phone view: the next four weeks, task by task, grouped by room"}
             style={{padding:"2px 8px",fontSize:10}}>{monthView?"▦ Grid":"📱 Next 4 weeks"}</button>
           <button className="btn btn-sm btn-pri" onClick={function(){setFullScreen(!fullScreen);}}
             title={fullScreen?"Back to the zone view (Esc)":"Show the schedule full screen"}
             style={{padding:"2px 10px",fontSize:10}}>{fullScreen?"⤡ Exit":"⤢ Expand"}</button>
-          <button className="btn btn-sm" onClick={function(){setAllCats(true);}} style={{padding:"2px 8px",fontSize:10}}>▸ Collapse all</button>
-          <button className="btn btn-sm" onClick={function(){setAllCats(false);}} style={{padding:"2px 8px",fontSize:10}}>▾ Expand all</button>
+          <span style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:10,color:"#888",cursor:"help"}}
+              title={"Click a task name: details panel · Double-click: rename · Right-click: quick menu\nDrag along a row: paint · Shift+drag a bar: move it (linked tasks follow)\nDrag the ● at the end of a bar onto another task: link · Click an arrow: remove the link\nClick a week header to neutralise it (holiday)\nCtrl+Z / Ctrl+Y: undo / redo"}>
+              ⓘ Tips</span>
+            <button className={"btn btn-sm"+(showTools?" btn-pri":"")} onClick={function(){setShowTools(!showTools);}}
+              title="Baseline, critical path, link arrows, advanced columns, collapse / expand the rooms"
+              style={{padding:"2px 10px",fontSize:10}}>🔍 Analyse & view {showTools?"▴":"▾"}{!showTools&&(activeBl||critPath)?" ●":""}</button>
           </span>
+        </div>
+
+        {showTools&&<div className="sched-noprint" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,flexWrap:"wrap",padding:"6px 10px",background:"#fafaf8",borderRadius:8,border:"1px solid #e8e6df"}}>
           <span style={{display:"flex",gap:4,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
           <span style={{fontSize:9,fontWeight:700,color:"var(--ink-4,#9b968b)",textTransform:"uppercase",letterSpacing:".06em",marginRight:2}}>Analyse</span>
           <span style={{position:"relative",display:"inline-block"}}>
@@ -2427,83 +2524,24 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               if(!cp){safeAlert("No critical path to show.\n\nTasks need a duration (painted bars or a start/end week) and at least one “starts after” link.");return;}
               setCritPath(cp);
             }} style={{padding:"2px 8px",fontSize:10,borderColor:critPath?"":"var(--amber,#b35c00)",color:critPath?"":"var(--amber,#b35c00)",fontWeight:700}}>🎯 Critical path</button>
-          <span style={{display:"flex",alignItems:"center",gap:4,paddingLeft:6,borderLeft:"1px solid var(--rule,#ddd9cf)"}}>
-            <span style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase"}}>Subcont.</span>
-            <select value={fGroup} onChange={function(e){setFGroup(e.target.value);}} title="Show only the tasks of one subcontractor — room headers stay visible"
-              style={{width:"auto",padding:"2px 6px",fontSize:10,fontWeight:fGroup?700:400,color:fGroup?"#00695c":"inherit",border:"1px solid "+(fGroup?"#00695c":"#e8e6df"),borderRadius:6}}>
-              <option value="">All subcontractors</option>
-              {allGroups.map(function(g){return <option key={g} value={g}>{g}</option>;})}
-            </select>
-            {fGroup&&<span style={{fontSize:10,color:"#00695c",fontWeight:700}}>{groupRows.filter(function(r){return r.kind!=="category";}).length} task(s)</span>}
-            {/* Adding a subcontractor used to be an 80px box that only reacted to Enter, with
-                no button and no feedback — people could not find it. */}
-            {canEdit&&<span style={{display:"flex",gap:4,alignItems:"center"}}>
-              <input type="text" value={newGroup} onChange={function(e){setNewGroup(e.target.value);}}
-                onKeyDown={function(e){if(e.key==="Enter")addGroupNow();}}
-                title="Adds the company to this schedule. For a name you will reuse in other zones, add it in Settings › 👷 Subcontractors instead."
-                placeholder="+ add subcontractor…" style={{width:150,padding:"3px 6px",fontSize:10}}/>
-              <button className="btn btn-sm" disabled={!newGroup.trim()} onClick={addGroupNow}
-                style={{padding:"2px 8px",fontSize:10}}>＋ Add</button>
-            </span>}
           </span>
-          {canEdit&&<button className="btn btn-sm" title="Apply the subcontractor → tender rules (Settings › Tender rules) to every task of this schedule"
-            onClick={function(){
-              var rules=window._ppTenderRules||[];
-              if(rules.length===0){safeAlert("No rule yet.\n\nCreate them in Settings › 🔗 Tender rules: “every task of <subcontractor> in <zone> belongs to <tender>”.");return;}
-              var hits=[],conflicts=0;
-              (sc.rows||[]).forEach(function(r){
-                if(r.kind!=="task"&&r.kind!==undefined)return;
-                if(!r.group)return;
-                var rule=tenderRuleFor(rules,r.group,curZone);
-                if(!rule)return;
-                if(r.tenderRef===rule.tenderId)return;
-                if(r.tenderRef){conflicts++;return;}     // never overwrite a manual link
-                hits.push({row:r,tenderId:rule.tenderId});
-              });
-              if(hits.length===0){
-                safeAlert(conflicts>0
-                  ?"Nothing to do: "+conflicts+" task(s) already point at a different tender and are left untouched."
-                  :"Nothing to do: every task with a subcontractor already matches its rule.");
-                return;
-              }
-              var names=hits.slice(0,6).map(function(h){return "· "+(h.row.label||"(untitled)");}).join("\n");
-              if(!safeConfirm("Link "+hits.length+" task(s) to their tender?\n\n"+names+(hits.length>6?"\n… and "+(hits.length-6)+" more":"")+
-                (conflicts>0?"\n\n"+conflicts+" task(s) already have a different tender and will NOT be touched.":"")))return;
-              var map={};hits.forEach(function(h){map[h.row.id]=h.tenderId;});
-              upd(sc.id,{rows:(sc.rows||[]).map(function(r){return map[r.id]?Object.assign({},r,{tenderRef:map[r.id]}):r;})});
-            }} style={{padding:"2px 8px",fontSize:10}}>🔗 Apply rules</button>}
+          <span style={{display:"flex",gap:6,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
+            <span style={{fontSize:9,fontWeight:700,color:"var(--ink-4,#9b968b)",textTransform:"uppercase",letterSpacing:".06em",marginRight:2}}>View</span>
+            <label title="Advanced view: adds the Quantity and Rate columns. Your choice only — each person picks their own view."
+              style={{display:"flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:advanced?"#b45309":"#888",cursor:"pointer",whiteSpace:"nowrap"}}>
+              <input type="checkbox" checked={advanced} onChange={function(e){setAdvanced(e.target.checked);}} style={{width:12,height:12,margin:0}}/>
+              Advanced</label>
+            <button className={"btn btn-sm"+(showLinks?" btn-pri":"")} onClick={function(){setShowLinks(!showLinks);}}
+              title={showLinks?"Hide the link arrows":"Show the “starts after” links as arrows. Drag the ● at the end of a bar onto another task to link them."}
+              style={{padding:"2px 8px",fontSize:10}}>↗ Links</button>
+            <button className="btn btn-sm" onClick={function(){setAllCats(true);}} style={{padding:"2px 8px",fontSize:10}}>▸ Collapse all</button>
+            <button className="btn btn-sm" onClick={function(){setAllCats(false);}} style={{padding:"2px 8px",fontSize:10}}>▾ Expand all</button>
           </span>
-          <span style={{display:"flex",gap:4,alignItems:"center"}}>
-          <button className="btn btn-sm" onClick={function(){setShowDocs(true);}}
-            title="Reference documents: setting-out plans, sections, details. Attach one to a room and its name becomes clickable in the schedule."
-            style={{padding:"2px 8px",fontSize:10}}>📄 Documents{scDocs.length>0?" ("+scDocs.length+")":""}</button>
-          {isAdmin&&<button className="btn btn-sm btn-danger" title="Remove the duplicate 'Procurement late for…' actions created by the old auto-rule, keeping one per task"
-            onClick={function(){
-              var seen={},dropped=0;
-              var kept=(tasks||[]).filter(function(t){
-                if(t.addedBy!=="System")return true;
-                if((t.text||"").indexOf("Procurement late for: ")!==0)return true;
-                if(t.status==="done"){dropped++;return false;}
-                var k=t.autoKey||("proclate:"+t.scheduleRowRef+":"+t.tenderRef);
-                if(seen[k]){dropped++;return false;}
-                seen[k]=1;return true;
-              });
-              if(dropped===0){safeAlert("Nothing to clean — no duplicate auto-action found.");return;}
-              if(!safeConfirm("Delete "+dropped+" duplicate or closed auto-action(s)?\n\nOne open action per task is kept. Actions you wrote yourself are never touched."))return;
-              saveTasks(kept);
-            }} style={{padding:"2px 8px",fontSize:10}}>🧹 Clean auto-actions</button>}
-          {canEdit&&<button className="btn btn-sm" onClick={sortCategories} title="Sort categories A→Z. Each one keeps its own tasks." style={{padding:"2px 8px",fontSize:10}}>🔤 Sort A→Z</button>}
-
-          <span style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#888",paddingLeft:6,borderLeft:"1px solid #e0ddd6"}}>
+          <span style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#888"}}>
             <span style={{width:14,height:10,borderRadius:2,background:"repeating-linear-gradient(45deg,#e8e4da,#e8e4da 3px,#dcd8ce 3px,#dcd8ce 6px)"}}></span>
             Click a week header to neutralise it (holiday)
           </span>
-          </span>
-          <span style={{fontSize:10,color:"#888",paddingLeft:6,borderLeft:"1px solid #e0ddd6"}}
-            title={"Click a task name: details panel · Double-click: rename · Right-click: quick menu\nDrag along a row: paint · Shift+drag a bar: move it (linked tasks follow)\nDrag the ● at the end of a bar onto another task: link · Click an arrow: remove the link\nCtrl+Z / Ctrl+Y: undo / redo"}>
-            ⓘ Click a name for details · Shift+drag a bar to move it · drag its ● to link</span>
-          {sc.updatedAt&&<span style={{fontSize:10,color:"#aaa",marginLeft:"auto"}}>Last update {fmtDate(sc.updatedAt)}{sc.updatedBy?" by "+sc.updatedBy.split(",")[0]:""}</span>}
-        </div>
+        </div>}
 
         {monthView&&<div className="sched-noprint">
           {monthWindows().length===0&&<div className="empty"><div className="empty-ico">📅</div>
