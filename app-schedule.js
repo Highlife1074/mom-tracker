@@ -499,7 +499,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [mirrorBox,setMirrorBox]=useState({show:false,left:0,width:0});
   const [colorRowId,setColorRowId]=useState(null);
   const [editRowId,setEditRowId]=useState(null);
-  const [critPath,setCritPath]=useState(null);   // null = off; computed on demand only
+  const [critOn,setCritOn]=useState(false);       // critical path shown; recomputed from the live schedule
+  const critCache=useRef({sc:null,cp:null});
   const [showFloat,setShowFloat]=useState(false);  // float is opt-in: one number per row is a lot of ink
   // A 40-column grid cannot be squeezed into 380px. On a phone the schedule becomes what it
   // is actually used for there: what happens in the next four weeks, week by week.
@@ -1155,9 +1156,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   }
 
   // ---- Critical path ----------------------------------------------------
-  // Each task has at most one predecessor (afterId), so the dependency graph is a forest
-  // and the longest chain is a single memoised walk: O(number of rows), no matrix, no
-  // library. Computed only when the user asks for it, never during a normal render.
+  // The chain of linked tasks that sets the finish of the schedule, worked out from the
+  // planned bars: each task starts at its planned week, or later when its predecessor (plus
+  // lag) finishes after that. Counting is in working weeks, so neutralised weeks are skipped.
+  // Each task has at most one predecessor (afterId), so both passes are memoised walks:
+  // O(number of rows), no matrix, no library.
+  // It used to add up the durations along a chain and ignore the dates: overlapping tasks
+  // gave a total longer than the schedule, and the task that really finishes last could be
+  // missed.
   function computeCriticalPath(){
     if(!sc)return null;
     var rows=(sc.rows||[]).filter(function(r){return r.kind!=="category"&&r.kind!=="section";});
@@ -1165,51 +1171,67 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var byId={};rows.forEach(function(r){byId[r.id]=r;});
     var wl=scheduleWeeks(sc);
     var hol=sc.holidayWeeks||[];
+    var work=wl.filter(function(w){return hol.indexOf(w)<0;});   // working weeks, in order
+    if(work.length===0)return null;
 
-    // Duration in working weeks, from the explicit span or from the painted bars.
-    function dur(r){
+    // Planned bar as working-week numbers: {start, dur}, or null when the task has no bar.
+    function span(r){
       var i1=wl.indexOf(r.startWeek),i2=wl.indexOf(r.endWeek);
       if(i1<0||i2<0){
         var painted=wl.filter(function(w){var v=(r.cells||{})[w];return v==="plan"||v==="both";});
-        if(painted.length===0)return 0;
+        if(painted.length===0)return null;
         i1=wl.indexOf(painted[0]);i2=wl.indexOf(painted[painted.length-1]);
       }
-      if(i1<0||i2<0)return 0;
       if(i2<i1){var t=i1;i1=i2;i2=t;}
-      var n=0;
-      for(var k=i1;k<=i2;k++)if(hol.indexOf(wl[k])<0)n++;
-      return n;
+      var start=-1,n=0;
+      for(var k=i1;k<=i2;k++)if(hol.indexOf(wl[k])<0){if(start<0)start=work.indexOf(wl[k]);n++;}
+      return n>0?{start:start,dur:n}:null;
     }
+    var sp={};rows.forEach(function(r){sp[r.id]=span(r);});
+    function dur(id){return sp[id]?sp[id].dur:0;}
+    function lagOf(r){return Number(r.lagWeeks)||0;}
 
-    var memo={},state={};                 // state: 1 = being visited, 2 = done
-    function chain(id){
-      if(memo[id])return memo[id];
-      if(state[id]===1){memo[id]={len:0,path:[]};return memo[id];}   // cycle guard
-      var r=byId[id];
-      if(!r){return{len:0,path:[]};}
+    // Forward pass. es/ef: early start/finish (ef exclusive). driven: the predecessor, not
+    // the planned week, decides when this task can start.
+    var es={},ef={},driven={},state={};
+    function fwd(id){
+      if(ef[id]!==undefined)return ef[id];
+      var r=byId[id],p=sp[id];
+      if(state[id]===1)return p?p.start+p.dur:0;            // cycle guard
       state[id]=1;
-      var lag=Number(r.lagWeeks)||0;
-      var prev=(r.afterId&&byId[r.afterId])?chain(r.afterId):{len:0,path:[]};
-      var res={len:prev.len+lag+dur(r),path:prev.path.concat([r.id])};
-      state[id]=2;memo[id]=res;
-      return res;
+      var start=p?p.start:0;driven[id]=false;
+      if(r.afterId&&byId[r.afterId]){
+        var after=fwd(r.afterId)+lagOf(r);
+        if(!p||after>=start){start=after;driven[id]=true;}
+      }
+      es[id]=start;ef[id]=start+dur(id);state[id]=2;
+      return ef[id];
     }
+    rows.forEach(function(r){fwd(r.id);});
 
-    var best={len:0,path:[]};
+    // The task that finishes last (ties: the longest chain behind it), then back along the
+    // predecessors that drive it.
+    function chainOf(id){
+      var path=[id],cur=byId[id],guard=0;
+      while(cur&&driven[cur.id]&&cur.afterId&&byId[cur.afterId]&&guard++<5000){
+        if(path.indexOf(cur.afterId)>=0)break;
+        path.unshift(cur.afterId);cur=byId[cur.afterId];
+      }
+      return path;
+    }
+    var finish=-1,best=[];
     rows.forEach(function(r){
-      var c=chain(r.id);
-      if(c.len>best.len)best=c;
+      if(dur(r.id)===0)return;
+      if(ef[r.id]<finish)return;
+      var c=chainOf(r.id);
+      if(ef[r.id]>finish||c.length>best.length){finish=ef[r.id];best=c;}
     });
-    if(best.path.length===0)return null;
-
-    var ids={};best.path.forEach(function(id){ids[id]=1;});
-    var head=byId[best.path[0]],tail=byId[best.path[best.path.length-1]];
+    if(best.length===0)return null;
 
     // ---- Float per task --------------------------------------------------
-    // Early finish = the chain length ending at this task (already memoised above).
-    // Late finish  = the earliest constraint imposed by whoever depends on it; a task with
-    // no successor is bounded by the end of the schedule. Float = late − early, in working
-    // weeks. Zero float means the task IS critical, even outside the single longest chain.
+    // Late finish = the earliest constraint imposed by whoever depends on it; a task with no
+    // successor is bounded by the finish of the schedule. Float = late − early finish, in
+    // working weeks. Zero float means the task IS critical, even outside the chain shown.
     var successors={};
     rows.forEach(function(r){
       if(r.afterId&&byId[r.afterId])(successors[r.afterId]=successors[r.afterId]||[]).push(r);
@@ -1217,39 +1239,45 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var lateMemo={},lateState={};
     function lateFinish(id){
       if(lateMemo[id]!==undefined)return lateMemo[id];
-      if(lateState[id]===1)return best.len;                 // cycle guard
+      if(lateState[id]===1)return finish;                   // cycle guard
       lateState[id]=1;
-      var succ=successors[id]||[];
-      var v;
-      if(succ.length===0)v=best.len;                        // nothing waits: the horizon
-      else{
-        v=Infinity;
-        succ.forEach(function(sr){
-          var lagS=Number(sr.lagWeeks)||0;
-          var lf=lateFinish(sr.id);
-          var start=lf-dur(sr)-lagS;                        // latest this one may finish
-          if(start<v)v=start;
-        });
-      }
+      var v=finish;
+      (successors[id]||[]).forEach(function(sr){
+        var ls=lateFinish(sr.id)-dur(sr.id)-lagOf(sr);      // latest this one may finish
+        if(ls<v)v=ls;
+      });
       lateState[id]=2;lateMemo[id]=v;
       return v;
     }
-    var float={};
+    var float={},zeroFloat={};
     rows.forEach(function(r){
-      var early=chain(r.id).len;
-      var f=lateFinish(r.id)-early;
-      float[r.id]=(isFinite(f)?Math.round(f):0);
+      var f=lateFinish(r.id)-ef[r.id];
+      float[r.id]=isFinite(f)?Math.round(f):0;
+      if(float[r.id]<=0&&dur(r.id)>0)zeroFloat[r.id]=1;
     });
-    // Anything at zero float is critical, not just the single longest chain.
-    var zeroFloat={};
-    rows.forEach(function(r){if(float[r.id]<=0&&dur(r)>0)zeroFloat[r.id]=1;});
 
+    // Working-week number -> Monday. Past the last week of the schedule, count on in weeks.
+    function weekOf(o){return o<work.length?work[Math.max(0,o)]:addCalDays(work[work.length-1],7*(o-work.length+1));}
+    var plannedEnd=0;
+    rows.forEach(function(r){var p=sp[r.id];if(p&&p.start+p.dur>plannedEnd)plannedEnd=p.start+p.dur;});
+    var ids={};best.forEach(function(id){ids[id]=1;});
+    var head=best[0],tail=best[best.length-1];
     return{
-      ids:ids,order:best.path,weeks:best.len,
+      ids:ids,order:best,weeks:ef[tail]-es[head],
       float:float,zeroFloat:zeroFloat,
-      startWeek:head?head.startWeek:"",endWeek:tail?tail.endWeek:"",
-      labels:best.path.map(function(id){return (byId[id]||{}).label||"untitled";})
+      startWeek:weekOf(es[head]),endWeek:weekOf(ef[tail]-1),
+      pushed:Math.max(0,finish-plannedEnd),                // weeks the links add to the bars
+      beyond:finish>work.length,                           // finishes after the last week shown
+      labels:best.map(function(id){return (byId[id]||{}).label||"untitled";})
     };
+  }
+  // Recomputed whenever the schedule changes (sc is a new object after every save), so the
+  // highlight follows the bars instead of freezing the plan as it was when the button was
+  // clicked, and switching to another schedule shows that schedule's path.
+  var critPath=null;
+  if(critOn&&sc){
+    if(critCache.current.sc!==sc)critCache.current={sc:sc,cp:computeCriticalPath()};
+    critPath=critCache.current.cp;
   }
 
   // New start week for a row, keeping the same number of calendar weeks between
@@ -2335,14 +2363,16 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         {critPath&&<div className="sched-noprint" style={{padding:"9px 12px",background:"#fdf1e0",border:"1.5px solid #e6c48c",borderRadius:8,marginBottom:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontWeight:800,fontSize:12,color:"var(--amber,#b35c00)"}}>🎯 CRITICAL PATH</span>
           <span style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:700}}>{critPath.weeks} working week{critPath.weeks!==1?"s":""}</span>
-          <span style={{fontSize:11,color:"var(--ink-3,#6f6b62)"}}>{critPath.order.length} linked task{critPath.order.length!==1?"s":""}
-            {critPath.startWeek?" · "+fmtDate(critPath.startWeek):""}{critPath.endWeek?" → "+fmtDate(critPath.endWeek):""}</span>
+          <span style={{fontSize:11,color:"var(--ink-3,#6f6b62)"}}>{critPath.order.length} task{critPath.order.length!==1?"s":""}
+            {critPath.startWeek?" · "+fmtDate(critPath.startWeek):""}{critPath.endWeek?" → "+fmtDate(addCalDays(critPath.endWeek,4)):""}</span>
+          {critPath.pushed>0&&<span title="The “starts after” links push the finish later than the planned bars: a task is drawn before its predecessor ends"
+            style={{fontSize:11,fontWeight:700,color:"var(--red,#b3302a)"}}>links push the finish +{critPath.pushed} wk{critPath.beyond?" — past the last week of the schedule":""}</span>}
           <span style={{fontSize:11,color:"var(--ink-3,#6f6b62)",flex:1,minWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
             title={critPath.labels.join("  →  ")}>{critPath.labels.join(" → ")}</span>
           <button className={"btn btn-sm"+(showFloat?" btn-pri":"")} onClick={function(){setShowFloat(!showFloat);}}
             title="Float = how many working weeks a task can slip before it delays the end of the schedule. Zero means it is critical.">
             {showFloat?"◧ Hide float":"◫ Show float"}</button>
-          <button className="btn btn-sm" onClick={function(){setCritPath(null);setShowFloat(false);}}>✕ Hide</button>
+          <button className="btn btn-sm" onClick={function(){setCritOn(false);setShowFloat(false);}}>✕ Hide</button>
         </div>}
         {activeBl&&blStats&&<div className="sched-noprint" style={{padding:"8px 12px",background:"#eceff1",border:"1.5px solid #b0bec5",borderRadius:8,marginBottom:10,display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",fontSize:12}}>
           <span style={{fontWeight:800,color:"#37474f"}}>📌 {activeBl.name}</span>
@@ -2519,10 +2549,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           <button className={"btn btn-sm"+(critPath?" btn-pri":"")}
             title="Longest chain of dependent tasks — the sequence that sets the end date of this schedule"
             onClick={function(){
-              if(critPath){setCritPath(null);return;}
+              if(critOn){setCritOn(false);setShowFloat(false);return;}
               var cp=computeCriticalPath();
               if(!cp){safeAlert("No critical path to show.\n\nTasks need a duration (painted bars or a start/end week) and at least one “starts after” link.");return;}
-              setCritPath(cp);
+              critCache.current={sc:sc,cp:cp};setCritOn(true);
             }} style={{padding:"2px 8px",fontSize:10,borderColor:critPath?"":"var(--amber,#b35c00)",color:critPath?"":"var(--amber,#b35c00)",fontWeight:700}}>🎯 Critical path</button>
           </span>
           <span style={{display:"flex",gap:6,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
