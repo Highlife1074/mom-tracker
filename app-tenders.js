@@ -2013,7 +2013,7 @@ function TenderTodayRail({range,dep}){
     var el=ref.current;if(!el)return;
     var wrap=el.parentNode;
     function measure(){
-      var sc=wrap.querySelector("[data-tl-scale]"),tb=wrap.querySelector("tbody");
+      var sc=wrap.querySelector("[data-tl-scale]"),tbs=wrap.querySelectorAll("tbody"),tb=tbs[tbs.length-1];
       if(!sc||!tb){setPos(null);return;}
       var w=wrap.getBoundingClientRect(),r=sc.getBoundingClientRect(),b=tb.getBoundingClientRect();
       var span=Math.max(1,tlDayGap(range.to,range.from));
@@ -3453,49 +3453,59 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     {filtered.length>0&&listRange&&<TenderTimelineLegend/>}
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
-      :<div style={{position:"relative"}}><table className="tbl">
-        <thead><tr>
+      :<div style={{position:"relative"}}><table className="tbl tbl-tenders">
+        <thead><tr className="tgroup-hdr">
+          {/* One label over each family of columns, so the eye knows where it is in the row. */}
+          <th colSpan={5}>Tender</th>
+          <th colSpan={5} className="tcol-sep">Finance</th>
+          <th colSpan={2} className="tcol-sep">Dates</th>
+          <th colSpan={TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length} className="tcol-sep">Submission steps</th>
+          <th className="tcol-sep">Follow-up</th>
+        </tr><tr>
           <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
           <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
           <th style={{minWidth:130}} title="Subcontractor(s) recorded in the tender's Awards panel">Awarded to</th>
           <th style={{minWidth:170}} title="Every document sent to the client: green approved, blue with the client, orange returned to resubmit, dashed not submitted. Hover for details.">Submissions</th>
           <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-          <th style={{textAlign:"right",borderLeft:"2px solid #e0d9cc"}}>Budget</th>
+          <th className="tcol-sep" style={{textAlign:"right"}}>Budget</th>
           <th style={{textAlign:"right"}}>Proposed</th>
           <th style={{textAlign:"right"}}>Instructed</th>
           <th style={{textAlign:"center",minWidth:104}} title="Instruction number. Filled in = the instruction has been received.">Instruction</th>
           <th style={{textAlign:"right",color:"#888"}}>Variance</th>
-          <th style={{textAlign:"center",color:"#555",minWidth:90,borderLeft:"2px solid #e0d9cc"}}>Target start</th>
+          <th className="tcol-sep" style={{textAlign:"center",color:"#555",minWidth:90}}>Target start</th>
           <th style={{textAlign:"center",color:"#555",minWidth:110}} title="Delivery forecast. Green on or before the target start, red after it; the gap in days is next to it.">New Starting Date</th>
-          {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s){
+          {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s,i){
             var sortable=s.key==="acc"||s.key==="contract";
             return sortable
-              ?<th key={s.key} className="sortable" onClick={function(){toggleSort(s.key);}}>{s.label}{sortIcon(s.key)}</th>
-              :<th key={s.key}>{s.label}</th>;
+              ?<th key={s.key} className={"sortable"+(i===0?" tcol-sep":"")} onClick={function(){toggleSort(s.key);}}>{s.label}{sortIcon(s.key)}</th>
+              :<th key={s.key} className={i===0?"tcol-sep":""}>{s.label}</th>;
           })}
-          <th style={{minWidth:160,color:"#7b1fa2"}}>Next Step</th>
+          <th className="tcol-sep" style={{minWidth:160,color:"#7b1fa2"}}>Next Step</th>
         </tr></thead>
-        <tbody>{listRange&&<tr style={{background:"#fafaf8"}}><td colSpan={99} style={{padding:"3px 10px"}}>
+        {listRange&&<tbody><tr style={{background:"#fafaf8"}}><td colSpan={99} style={{padding:"3px 10px"}}>
             <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:12,alignItems:"center"}}>
-              <span style={{fontSize:10,color:"#9b968b"}}>▸ now · who holds it · since</span><TenderMiniScale range={listRange}/></div></td></tr>}
-          {filtered.map(function(td){
+              <span style={{fontSize:10,color:"#9b968b"}}>▸ now · who holds it · since</span><TenderMiniScale range={listRange}/></div></td></tr></tbody>}
+          {filtered.map(function(td,rowIdx){
           var steps=td.steps||{};
           // Row colour tells the commercial state at a glance:
           // orange = cancelled, green = contract signed AND instruction received.
           var _ct=(td.stepDates||{}).contract||{};
           var _signed=!!(_ct.signedAllDone||_ct.signedDone||/signed/i.test((td.steps||{}).contract||""));
           var _instr=String(td.instructionNumber||"").trim();
-          var rowBg=td.cancelled?"#fdf1e0":(_signed&&_instr)?"#e6f2e9":"";
+          // Otherwise one tender in two gets a light band, so the status line under a tender
+          // clearly belongs to it and not to the next one.
+          var rowBg=td.cancelled?"#fdf1e0":(_signed&&_instr)?"#e6f2e9":(rowIdx%2?"#f7f5f0":"#fff");
           var _ph=TENDER_PHASES.find(function(p){return p.k===tenderPhase(td);});
           var _now=listRange&&!td.cancelled?tenderNow(td):null;
           var _whoCol={us:"#6f6b62",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30"};
-          return <React.Fragment key={td.id}>
+          return <tbody key={td.id} className="tgroup">
           <tr style={{cursor:"pointer",background:rowBg,opacity:td.cancelled?.7:1}} onClick={function(){setSelTender(td);}}>
             <td style={{fontWeight:600}}>
-              <div style={{display:"flex",alignItems:"center",gap:5}}>
-                <span title={_ph.label} style={{background:_ph.bg,color:_ph.fg,fontSize:9.5,fontWeight:700,borderRadius:8,padding:"0 6px",whiteSpace:"nowrap",flexShrink:0}}>{_ph.short}</span>
-                {td.released&&<span title="Released — included in totals" style={{width:7,height:7,borderRadius:"50%",background:"#2e7d32",flexShrink:0,display:"inline-block"}}/>}
-                {td.title}
+              {/* Fixed-width badge and dot slot: every tender name starts at the same x. */}
+              <div style={{display:"flex",alignItems:"center",gap:6,textAlign:"left"}}>
+                <span title={_ph.label} style={{background:_ph.bg,color:_ph.fg,fontSize:9.5,fontWeight:700,borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap",flexShrink:0,width:92,boxSizing:"border-box",textAlign:"center"}}>{_ph.short}</span>
+                <span title={td.released?"Released — included in totals":""} style={{width:7,height:7,borderRadius:"50%",background:td.released?"#2e7d32":"transparent",flexShrink:0,display:"inline-block"}}/>
+                <span style={{flex:1,minWidth:0}}>{td.title}</span>
               </div>
             </td>
             <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
@@ -3514,7 +3524,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             </td>
             <td><FlowDocDots td={td}/></td>
             <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
-            <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+            <td className="tcol-sep" style={{textAlign:"right",whiteSpace:"nowrap"}}>
               {td.budget?<span style={{fontSize:11,fontWeight:600}}>{Number(td.budget).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
             </td>
             <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
@@ -3547,7 +3557,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 return <span style={{fontSize:11,fontWeight:700,color:v<0?"#c62828":"#2e7d32"}}>{v>0?"+":""}{v.toLocaleString()}</span>;
               })()}
             </td>
-            <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}>
+            <td className="tcol-sep" style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}>
               {td.startOnSite?fmtDate(td.startOnSite):<span style={{color:"#ddd"}}>—</span>}
             </td>
             <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap"}}>
@@ -3585,9 +3595,12 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               var isNA=v==="N/A";
               var isOverdue=target&&target<today()&&!done&&!v.toLowerCase().includes("approved")&&!isNA;
               var isEmpty=!v||v==="—";
-              var needsBorderLeft=s.key==="pkg";
-              return <td key={s.key} style={{verticalAlign:"top",minWidth:90,borderLeft:needsBorderLeft?"2px solid #e0d9cc":""}}>
-                {isNA
+              // A WMS or ITP with no status at all has simply not been done: say it, in red.
+              var qualityMissing=(s.key==="wms"||s.key==="itp")&&isEmpty&&!td.cancelled;
+              return <td key={s.key} className={s.key==="pkg"?"tcol-sep":""} style={{verticalAlign:"top",minWidth:90}}>
+                {qualityMissing
+                  ?<span className="chip s-notdone" style={{fontSize:10,whiteSpace:"nowrap",fontWeight:700}}>Not done</span>
+                  :isNA
                   ?<span style={{fontSize:10,color:"#aaa",fontWeight:700,background:"#f5f5f5",padding:"1px 6px",borderRadius:4}}>N/A</span>
                   :!isEmpty
                   ?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>
@@ -3601,7 +3614,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 {!isNA&&done&&<div style={{fontSize:9,marginTop:1,color:"#2e7d32",fontWeight:600}}>✓ {fmtDate(done)}</div>}
               </td>;
             })}
-            <td style={{minWidth:160,verticalAlign:"top"}} onClick={function(e){e.stopPropagation();}}>
+            <td className="tcol-sep" style={{minWidth:160,verticalAlign:"top"}} onClick={function(e){e.stopPropagation();}}>
               <textarea value={td.nextStep||""} onChange={function(e){var el=e.target;el.style.height="auto";el.style.height=el.scrollHeight+"px";var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{nextStep:e.target.value});});saveTenders(d);}} ref={function(el){if(el){el.style.height="auto";el.style.height=el.scrollHeight+"px";}}} placeholder="Next step…" rows={1} style={{width:"100%",fontSize:11,padding:"3px 7px",border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",boxSizing:"border-box",resize:"none",overflow:"hidden",lineHeight:1.4,minWidth:160,whiteSpace:"pre-wrap"}}/>
             </td>
           </tr>
@@ -3614,11 +3627,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               </div>
             </td>
           </tr>}
-          </React.Fragment>;
-        })}</tbody>
+          </tbody>;
+        })}
         <tfoot>
           <tr style={{background:"#fafaf8",borderTop:"2px solid #e8e6df"}}>
-            <td colSpan={5+TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length+4} style={{padding:"8px 12px"}}>
+            <td colSpan={99} style={{padding:"8px 12px"}}>
               {(function(){
                 var totBudget=filtered.filter(function(t){return !t.cancelled;}).reduce(function(s,t){return s+Number(t.budget||0);},0);
                 var totInstructed=filtered.reduce(function(s,t){return s+Number(t.instructionAmount||0);},0);
