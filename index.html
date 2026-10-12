@@ -196,7 +196,9 @@ table td,table th{font-variant-numeric:tabular-nums}
 .tbl-tenders tbody.tgroup>tr:first-child:not(:last-child)>td{border-bottom:none}
 .tbl-tenders tbody.tgroup>tr+tr>td{border-bottom:none}
 .tbl-tenders tbody.tgroup tr:last-child td{border-bottom:none}
-.tbl-tenders tbody.tgroup:hover>tr>td{background:#f1ede2}
+.tbl-tenders tbody.tgroup:hover>tr:not(.tphase-hdr)>td{background:#e6e1d3}
+.tbl-tenders .tsort{cursor:pointer}.tbl-tenders .tsort:hover{color:#f97316}
+.tbl-tenders tr.tphase-hdr>td{background:#faf9f7;padding:8px 12px;font-size:12px;border-bottom:1px solid var(--rule)}
 .ac-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border-radius:8px;border:1px solid #e8e6df;margin-bottom:6px;transition:all .12s}
 .ac-item:hover{border-color:#bbb;box-shadow:0 2px 8px rgba(0,0,0,.05)}
 .ac-check{width:18px;height:18px;border-radius:5px;border:2px solid #ddd;flex-shrink:0;cursor:pointer;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:all .12s}

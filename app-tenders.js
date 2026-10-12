@@ -1874,6 +1874,18 @@ function tenderPhase(td){
   if(last&&(last.code==="A"||last.code==="B"))return"ctr";
   return"pre";
 }
+var TENDER_PHASE_ORDER={pre:0,ctr:1,sig:2,can:3};
+function tenderContractStage(t){var c=(t.stepDates||{}).contract||{};if(c.signedDone||c.signedAllDone)return 4;if(c.circulateDone)return 3;if(c.requestDone)return 2;if(((t.stepDates||{}).acc||{}).approval)return 1;return 0;}
+// Progress of a step value, for sorting: nothing / not done < not started < under way < approved; N/A last.
+function tenderStepRank(step,val){
+  var c=tenderStepClass(step,val||"");
+  if(val==="N/A")return 5;
+  if(c==="s-notdone"||!val||val==="—")return 0;
+  if(c==="s-approved-a")return 4;
+  if(/approved b/i.test(val))return 3;
+  if(c==="s-pending")return 2;
+  return 1;
+}
 // One line: the step in progress, who holds it, for how long.
 // who: us | client | sub | internal
 function tenderNow(td,now){
@@ -2649,10 +2661,19 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       var r=0;
       if(sortCol==="package"){r=(a.package||"").localeCompare(b.package||"")||((a.title||"").localeCompare(b.title||""));}
       else if(sortCol==="owner"){r=(a.ownerTender||"").localeCompare(b.ownerTender||"");}
-      else if(sortCol==="acc"){r=((a.steps||{}).acc||"").localeCompare(((b.steps||{}).acc)||"");}
-      else if(sortCol==="contract"){
-        function ctStage(t){var c=(t.stepDates||{}).contract||{};if(c.signedDone||c.signedAllDone)return 4;if(c.circulateDone)return 3;if(c.requestDone)return 2;if(((t.stepDates||{}).acc||{}).approval)return 1;return 0;}
-        r=ctStage(a)-ctStage(b);
+      else if(sortCol==="status"){
+        // Phase first (before approval → contract phase → signed → cancelled), then how far
+        // the contract went, then the name — the name always reads A→Z inside a phase.
+        r=(TENDER_PHASE_ORDER[tenderPhase(a)]-TENDER_PHASE_ORDER[tenderPhase(b)])||(tenderContractStage(a)-tenderContractStage(b));
+        if(sortDir!=="asc")r=-r;
+        return r||(a.title||"").localeCompare(b.title||"");
+      }
+      else if(sortCol==="contract"){r=tenderContractStage(a)-tenderContractStage(b);}
+      else if(TENDER_STEPS.some(function(st){return st.key===sortCol;})){
+        // A step column sorts by how far the step went, not alphabetically.
+        r=tenderStepRank(sortCol,(a.steps||{})[sortCol])-tenderStepRank(sortCol,(b.steps||{})[sortCol]);
+        if(sortDir!=="asc")r=-r;
+        return r||(a.title||"").localeCompare(b.title||"");
       }
       else{r=(a.title||"").localeCompare(b.title||"");}
       return sortDir==="asc"?r:-r;
@@ -3462,7 +3483,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <th colSpan={TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length} className="tcol-sep">Submission steps</th>
           <th className="tcol-sep">Follow-up</th>
         </tr><tr>
-          <th className="sortable" onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</th>
+          <th><span className="tsort" style={{color:sortCol==="status"?"#f97316":undefined}} onClick={function(){toggleSort("status");}} title="Sort by status: before approval → contract phase → signed → cancelled">Status{sortIcon("status")}</span>
+            <span style={{color:"#ccc",margin:"0 6px"}}>·</span>
+            <span className="tsort" style={{color:sortCol==="title"?"#f97316":undefined}} onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</span></th>
           <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
           <th style={{minWidth:130}} title="Subcontractor(s) recorded in the tender's Awards panel">Awarded to</th>
           <th style={{minWidth:170}} title="Every document sent to the client: green approved, blue with the client, orange returned to resubmit, dashed not submitted. Hover for details.">Submissions</th>
@@ -3475,10 +3498,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <th className="tcol-sep" style={{textAlign:"center",color:"#555",minWidth:90}}>Target start</th>
           <th style={{textAlign:"center",color:"#555",minWidth:110}} title="Delivery forecast. Green on or before the target start, red after it; the gap in days is next to it.">New Starting Date</th>
           {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s,i){
-            var sortable=s.key==="acc"||s.key==="contract";
-            return sortable
-              ?<th key={s.key} className={"sortable"+(i===0?" tcol-sep":"")} onClick={function(){toggleSort(s.key);}}>{s.label}{sortIcon(s.key)}</th>
-              :<th key={s.key} className={i===0?"tcol-sep":""}>{s.label}</th>;
+            return <th key={s.key} className={"sortable"+(i===0?" tcol-sep":"")} onClick={function(){toggleSort(s.key);}} title="Sort by how far this step went">{s.label}{sortIcon(s.key)}</th>;
           })}
           <th className="tcol-sep" style={{minWidth:160,color:"#7b1fa2"}}>Next Step</th>
         </tr></thead>
@@ -3487,19 +3507,21 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <span style={{fontSize:10,color:"#9b968b"}}>▸ now · who holds it · since</span><TenderMiniScale range={listRange}/></div></td></tr></tbody>}
           {filtered.map(function(td,rowIdx){
           var steps=td.steps||{};
-          // Row colour tells the commercial state at a glance:
-          // orange = cancelled, green = contract signed AND instruction received.
-          var _ct=(td.stepDates||{}).contract||{};
-          var _signed=!!(_ct.signedAllDone||_ct.signedDone||/signed/i.test((td.steps||{}).contract||""));
           var _instr=String(td.instructionNumber||"").trim();
-          // Otherwise one tender in two gets a light band, so the status line under a tender
-          // clearly belongs to it and not to the next one.
-          var rowBg=td.cancelled?"#fdf1e0":(_signed&&_instr)?"#e6f2e9":(rowIdx%2?"#f7f5f0":"#fff");
+          // Two colours only, one tender in two, so the status line under a tender clearly
+          // belongs to it and not to the next one. The state is read from the badges.
+          var rowBg=rowIdx%2?"#efebe0":"#fff";
           var _ph=TENDER_PHASES.find(function(p){return p.k===tenderPhase(td);});
           var _now=listRange&&!td.cancelled?tenderNow(td):null;
           var _whoCol={us:"#6f6b62",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30"};
+          var _prev=rowIdx>0?filtered[rowIdx-1]:null;
+          var _phaseHead=sortCol==="status"&&(!_prev||tenderPhase(_prev)!==tenderPhase(td));
+          var _phaseN=_phaseHead?filtered.filter(function(t){return tenderPhase(t)===_ph.k;}).length:0;
           return <tbody key={td.id} className="tgroup">
-          <tr style={{cursor:"pointer",background:rowBg,opacity:td.cancelled?.7:1}} onClick={function(){setSelTender(td);}}>
+          {_phaseHead&&<tr className="tphase-hdr"><td colSpan={99}>
+            <span style={{background:_ph.bg,color:_ph.fg,fontWeight:700,borderRadius:8,padding:"2px 10px"}}>{_ph.label}</span>
+            <span style={{marginLeft:8,color:"#888"}}>{_phaseN} tender{_phaseN===1?"":"s"}</span></td></tr>}
+          <tr style={{cursor:"pointer",background:rowBg}} onClick={function(){setSelTender(td);}}>
             <td style={{fontWeight:600}}>
               {/* Fixed-width badge and dot slot: every tender name starts at the same x. */}
               <div style={{display:"flex",alignItems:"center",gap:6,textAlign:"left"}}>
