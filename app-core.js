@@ -39,6 +39,12 @@ const KEYS_READINESS="pp_readiness";
 const KEYS_STEEL_DOCKETS="pp_steel_dockets";
 const KEYS_STEEL_WBS="pp_steel_wbs";
 const KEYS_STEEL_PERIODS="pp_steel_periods";   // Friday readiness answers, one entry per schedule task
+// Inventory module (app-inventory.js). One document per register.
+const KEYS_INV_ITEMS="pp_inv_items";
+const KEYS_INV_POS="pp_inv_pos";
+const KEYS_INV_DOCKETS="pp_inv_dockets";
+const KEYS_INV_ISSUES="pp_inv_issues";
+const KEYS_INV_COUNTS="pp_inv_counts";
 // A schedule is a weekly bar-chart plan for one zone.
 // rows = [{id, kind:"category"|"task", label, cells:{ "<mondayISO>": "plan"|"actual"|"both" }}]
 function newSchedule(overrides){return Object.assign({id:uuid(),zone:"",title:"New schedule",startDate:today(),weeks:12,rows:[],holidayWeeks:[],groups:[],createdAt:today(),updatedAt:today(),updatedBy:window._currentUser?window._currentUser.name:""},overrides||{});}
@@ -187,7 +193,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-11-b";
+var APP_BUILD="2026-10-12-a";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -2091,6 +2097,11 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
                 title="May enter steel dockets, WBS lines, site stock and progress. Validating a financial point stays reserved for the app admin. A restricted person also gets the Steel tab.">
                 <input type="checkbox" checked={!!acc.steelEditor} onChange={function(){toggle("steelEditor");}} style={{width:14,height:14}}/>
                 🔩 Steel editor
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.inventoryEditor?"#455a64":"#888"}}
+                title="May enter inventory items, purchase orders, delivery dockets, issues from the store and monthly stock counts. A restricted person also gets the Inventory tab.">
+                <input type="checkbox" checked={!!acc.inventoryEditor} onChange={function(){toggle("inventoryEditor");}} style={{width:14,height:14}}/>
+                🗃️ Inventory editor
               </label>
               {isRestricted&&<label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.zonePilot?"#7b1fa2":"#888"}}>
                 <input type="checkbox" checked={!!acc.zonePilot} onChange={function(){toggle("zonePilot");}} style={{width:14,height:14}}/>
@@ -4108,6 +4119,11 @@ function App(){
   const steelDocketsRef=useRef([]),steelDocketsQueue=useRef(Promise.resolve());
   const steelWbsRef=useRef([]),steelWbsQueue=useRef(Promise.resolve());
   const steelPeriodsRef=useRef([]),steelPeriodsQueue=useRef(Promise.resolve());
+  const invItemsRef=useRef([]),invItemsQueue=useRef(Promise.resolve());
+  const invPosRef=useRef([]),invPosQueue=useRef(Promise.resolve());
+  const invDocketsRef=useRef([]),invDocketsQueue=useRef(Promise.resolve());
+  const invIssuesRef=useRef([]),invIssuesQueue=useRef(Promise.resolve());
+  const invCountsRef=useRef([]),invCountsQueue=useRef(Promise.resolve());
   const [contractors,setContractors]=useState([]);
   const [people,setPeople]=useState(SEED_PEOPLE);
   const [packages,setPackages]=useState(SEED_PACKAGES);
@@ -4191,6 +4207,21 @@ function App(){
   const saveSteelDockets=d=>{setSteelDockets(d);queuedListSave(KEYS_STEEL_DOCKETS,steelDocketsRef,steelDocketsQueue,d);};
   const saveSteelWbs=d=>{setSteelWbs(d);queuedListSave(KEYS_STEEL_WBS,steelWbsRef,steelWbsQueue,d);};
   const saveSteelPeriods=d=>{setSteelPeriods(d);queuedListSave(KEYS_STEEL_PERIODS,steelPeriodsRef,steelPeriodsQueue,d);};
+  const [invItems,setInvItems]=useState([]);
+  const [invPos,setInvPos]=useState([]);
+  const [invDockets,setInvDockets]=useState([]);
+  const [invIssues,setInvIssues]=useState([]);
+  const [invCounts,setInvCounts]=useState([]);
+  useEffect(function(){invItemsRef.current=invItems;},[invItems]);
+  useEffect(function(){invPosRef.current=invPos;},[invPos]);
+  useEffect(function(){invDocketsRef.current=invDockets;},[invDockets]);
+  useEffect(function(){invIssuesRef.current=invIssues;},[invIssues]);
+  useEffect(function(){invCountsRef.current=invCounts;},[invCounts]);
+  const saveInvItems=d=>{setInvItems(d);queuedListSave(KEYS_INV_ITEMS,invItemsRef,invItemsQueue,d);};
+  const saveInvPos=d=>{setInvPos(d);queuedListSave(KEYS_INV_POS,invPosRef,invPosQueue,d);};
+  const saveInvDockets=d=>{setInvDockets(d);queuedListSave(KEYS_INV_DOCKETS,invDocketsRef,invDocketsQueue,d);};
+  const saveInvIssues=d=>{setInvIssues(d);queuedListSave(KEYS_INV_ISSUES,invIssuesRef,invIssuesQueue,d);};
+  const saveInvCounts=d=>{setInvCounts(d);queuedListSave(KEYS_INV_COUNTS,invCountsRef,invCountsQueue,d);};
   const [apiKey,setApiKey]=useState(function(){try{return localStorage.getItem('pp_apikey')||'';}catch(e){return '';}});
   function saveApiKey(k){setApiKey(k);try{localStorage.setItem('pp_apikey',k);}catch(e){}}
 
@@ -4382,6 +4413,11 @@ function App(){
         try{var sd=await cloudStore.get(KEYS_STEEL_DOCKETS);if(Array.isArray(sd))setSteelDockets(sd);}catch(e){}
         try{var sw=await cloudStore.get(KEYS_STEEL_WBS);if(Array.isArray(sw))setSteelWbs(sw);}catch(e){}
         try{var sp=await cloudStore.get(KEYS_STEEL_PERIODS);if(Array.isArray(sp))setSteelPeriods(sp);}catch(e){}
+        try{var ivi=await cloudStore.get(KEYS_INV_ITEMS);if(Array.isArray(ivi))setInvItems(ivi);}catch(e){}
+        try{var ivp=await cloudStore.get(KEYS_INV_POS);if(Array.isArray(ivp))setInvPos(ivp);}catch(e){}
+        try{var ivd=await cloudStore.get(KEYS_INV_DOCKETS);if(Array.isArray(ivd))setInvDockets(ivd);}catch(e){}
+        try{var ivs=await cloudStore.get(KEYS_INV_ISSUES);if(Array.isArray(ivs))setInvIssues(ivs);}catch(e){}
+        try{var ivc=await cloudStore.get(KEYS_INV_COUNTS);if(Array.isArray(ivc))setInvCounts(ivc);}catch(e){}
         try{var nts=await cloudStore.get(KEYS_NOTES);if(Array.isArray(nts))setNotes(nts);}catch(e){}
         if(rm)setRooms(rm);
         if(prefs)setUserPrefs(prefs);
@@ -4538,6 +4574,11 @@ function App(){
         window._dbListen(KEYS_STEEL_DOCKETS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSteelDockets(v);});
         window._dbListen(KEYS_STEEL_WBS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSteelWbs(v);});
         window._dbListen(KEYS_STEEL_PERIODS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSteelPeriods(v);});
+        window._dbListen(KEYS_INV_ITEMS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvItems(v);});
+        window._dbListen(KEYS_INV_POS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvPos(v);});
+        window._dbListen(KEYS_INV_DOCKETS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvDockets(v);});
+        window._dbListen(KEYS_INV_ISSUES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvIssues(v);});
+        window._dbListen(KEYS_INV_COUNTS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvCounts(v);});
         window._dbListen(KEYS_SCHEDULES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSchedules(v);});
         window._dbListen(KEYS_READINESS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setReadiness(v);});
         window._dbListen(KEYS_CORR,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setCorrespondences(v);});
@@ -4578,6 +4619,7 @@ function App(){
     {id:"procflow",icon:"🧭",label:"Proc. flow"},
     {id:"materials",icon:"🏗️",label:"Materials"},
     {id:"steel",icon:"🔩",label:"Steel"},
+    {id:"inventory",icon:"🗃️",label:"Inventory"},
     {id:"qadocs",icon:"🛡️",label:"WMS/ITP"},
     {id:"timeline",icon:"🗓",label:"Timeline"},
     {id:"moms",icon:"📝",label:"MoM"},
@@ -4614,7 +4656,7 @@ function App(){
     myPkgs=[...new Set([...(packages||[]).filter(function(pg){return(pkgOwners||{})[pg]===currentUser;}),...extraPkgs])];
     myTenders=(tenders||[]).filter(function(t){return t.ownerTender===currentUser||myPkgs.includes(t.package);});
     // Actions-only profile: no package/tender ownership and not a zone pilot → they just need their task list
-    actionsOnly=myPkgs.length===0&&myTenders.length===0&&!myAccess.zonePilot&&!myAccess.steelEditor;
+    actionsOnly=myPkgs.length===0&&myTenders.length===0&&!myAccess.zonePilot&&!myAccess.steelEditor&&!myAccess.inventoryEditor;
     effectiveNAV=actionsOnly
       ?[
         {id:"global",icon:"🌐",label:"My Actions"},
@@ -4624,6 +4666,7 @@ function App(){
         {id:"myprocurement",icon:"📦",label:"My Procurement"},
         ...(myAccess.zonePilot?[{id:"zone",icon:"🏢",label:"Zone"}]:[]),
         ...(myAccess.steelEditor?[{id:"steel",icon:"🔩",label:"Steel"}]:[]),
+        ...(myAccess.inventoryEditor?[{id:"inventory",icon:"🗃️",label:"Inventory"}]:[]),
         {id:"global",icon:"🌐",label:"Actions"},
         {id:"notes",icon:"🗒",label:"Notes"},
         {id:"settings",icon:"⚙️",label:"Settings"},
@@ -4708,6 +4751,7 @@ function App(){
         {view==="qadocs"&&<QualityDocsView tenders={tenders} packages={packages} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("qadocs")} setMemory={function(p){setMemoryFor("qadocs",p);}}/>}
         {view==="materials"&&<MaterialsView tenders={tenders} packages={packages} people={people} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("materials")} setMemory={function(p){setMemoryFor("materials",p);}} tasks={tasks}/>}
         {view==="steel"&&<SteelView dockets={steelDockets} saveDockets={saveSteelDockets} wbs={steelWbs} saveWbs={saveSteelWbs} periods={steelPeriods} savePeriods={saveSteelPeriods} zones={zones} tasks={tasks} saveTasks={saveT} currentUser={currentUser} isAdmin={isAppAdmin(currentUser)&&!isReadOnly} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.steelEditor))}/>}
+        {view==="inventory"&&<InventoryView items={invItems} saveItems={saveInvItems} pos={invPos} savePos={saveInvPos} dockets={invDockets} saveDockets={saveInvDockets} issues={invIssues} saveIssues={saveInvIssues} counts={invCounts} saveCounts={saveInvCounts} zones={zones} contractors={contractors} tasks={tasks} saveTasks={saveT} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.inventoryEditor))}/>}
         {view==="submissions"&&<ClientSubmissionsView tasks={tasks} tenders={tenders} contractors={contractors} packages={packages} people={people} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("submissions")} setMemory={function(p){setMemoryFor("submissions",p);}}/>}
     {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} tags={tags} tagrules={tagrules} pkgrules={pkgrules} onJumpOwner={function(name){setJumpOwner(name);setView("global");}} onNavTender={navToTender} memory={memoryFor("dashboard")} setMemory={function(p){setMemoryFor("dashboard",p);}}/>}
     {view==="notes"&&<NotesView notes={notes} saveNotes={saveNotes} tasks={tasks} saveTasks={saveT} people={people} zones={zones} packages={packages} tenders={tenders} tags={tags} peopleEmails={peopleEmails} onNavTender={navToTender} memory={memoryFor("notes")} setMemory={function(p){setMemoryFor("notes",p);}}/>}
