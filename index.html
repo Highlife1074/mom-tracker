@@ -1,7 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no" class="notranslate">
 <head>
 <meta charset="UTF-8"/>
+<!-- Browser auto-translation rewrites the text nodes React owns and crashes it
+     ("Failed to execute 'removeChild' on 'Node'"). The app stays in English. -->
+<meta name="google" content="notranslate"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Riviera Tower — Project Pilot</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -185,6 +188,20 @@ table td,table th{font-variant-numeric:tabular-nums}
 .tbl td{padding:9px 12px;font-size:var(--fs-small);border-bottom:1px solid var(--rule-2);vertical-align:middle;color:var(--ink)}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tr:hover td{background:#fafaf8}
+/* Tender list: one <tbody> per tender (main row + status line), banded one in two,
+   a clear rule between tenders and a thin rule between columns. */
+.tbl-tenders td{vertical-align:top}
+.tbl-tenders th+th,.tbl-tenders td+td{border-left:1px solid var(--rule-2)}
+.tbl-tenders .tcol-sep{border-left:2px solid #d9d2c3 !important}
+.tbl-tenders .tgroup-hdr th{background:#f2efe7;color:var(--ink-2,#444);text-align:center;padding:5px 12px;border-bottom:1px solid var(--rule)}
+.tbl-tenders .tgroup-hdr th:first-child{text-align:left}
+.tbl-tenders tbody.tgroup>tr:first-child>td{border-top:2px solid #cfc8b8}
+.tbl-tenders tbody.tgroup>tr:first-child:not(:last-child)>td{border-bottom:none}
+.tbl-tenders tbody.tgroup>tr+tr>td{border-bottom:none}
+.tbl-tenders tbody.tgroup tr:last-child td{border-bottom:none}
+.tbl-tenders tbody.tgroup:hover>tr:not(.tphase-hdr)>td{background:#efebe1}
+.tbl-tenders .tsort{cursor:pointer}.tbl-tenders .tsort:hover{color:#f97316}
+.tbl-tenders tr.tphase-hdr>td{background:#faf9f7;padding:8px 12px;font-size:12px;border-bottom:1px solid var(--rule)}
 .ac-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border-radius:8px;border:1px solid #e8e6df;margin-bottom:6px;transition:all .12s}
 .ac-item:hover{border-color:#bbb;box-shadow:0 2px 8px rgba(0,0,0,.05)}
 .ac-check{width:18px;height:18px;border-radius:5px;border:2px solid #ddd;flex-shrink:0;cursor:pointer;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:all .12s}
