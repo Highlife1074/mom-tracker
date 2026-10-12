@@ -501,6 +501,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [editRowId,setEditRowId]=useState(null);
   const [critOn,setCritOn]=useState(false);       // critical path shown; recomputed from the live schedule
   const critCache=useRef({sc:null,cp:null});
+  const [critOnly,setCritOnly]=useState(true);     // while the critical path is on: hide the other tasks
   const [showFloat,setShowFloat]=useState(false);  // float is opt-in: one number per row is a lot of ink
   // A 40-column grid cannot be squeezed into 380px. On a phone the schedule becomes what it
   // is actually used for there: what happens in the next four weeks, week by week.
@@ -1884,6 +1885,24 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     }
   }
 
+  // Critical path focus: only the tasks on it (and any other zero-float task), with the rooms
+  // and sections that hold them. The other rows are hidden, never changed, and collapsed
+  // rooms are opened so a critical task cannot hide inside one.
+  var critFocus=!!(sc&&critPath&&critOnly);
+  var critHidden=0;
+  if(critFocus){
+    var focusRows=[],secH=null,catH=null;
+    groupRows.forEach(function(r){
+      if(r.kind==="section"){secH={row:r,used:false};catH=null;return;}
+      if(r.kind==="category"){catH={row:r,used:false};return;}
+      if(!critPath.ids[r.id]&&!critPath.zeroFloat[r.id]){critHidden++;return;}
+      if(secH&&!secH.used){focusRows.push(secH.row);secH.used=true;}
+      if(catH&&!catH.used){focusRows.push(catH.row);catH.used=true;}
+      focusRows.push(r);
+    });
+    groupRows=focusRows;
+  }
+
   // Hide the tasks of any collapsed room/category so long schedules stay readable
   var visibleRows=[];
   if(sc){
@@ -1891,13 +1910,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var hidingSection=false; // inside a collapsed section: hides its rooms too
     groupRows.forEach(function(r){
       if(r.kind==="section"){
-        hidingSection=!!collapsedCats[r.id];
+        hidingSection=!critFocus&&!!collapsedCats[r.id];
         hiding=false;
         visibleRows.push(r);
         return;
       }
       if(r.kind==="category"){
-        hiding=!!collapsedCats[r.id];
+        hiding=!critFocus&&!!collapsedCats[r.id];
         if(!hidingSection)visibleRows.push(r);
         return;
       }
@@ -2369,6 +2388,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             style={{fontSize:11,fontWeight:700,color:"var(--red,#b3302a)"}}>links push the finish +{critPath.pushed} wk{critPath.beyond?" — past the last week of the schedule":""}</span>}
           <span style={{fontSize:11,color:"var(--ink-3,#6f6b62)",flex:1,minWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
             title={critPath.labels.join("  →  ")}>{critPath.labels.join(" → ")}</span>
+          <button className="btn btn-sm" onClick={function(){setCritOnly(!critOnly);}}
+            title={critOnly?"Show every task of the schedule again":"Hide the tasks that are not on the critical path"}>
+            {critOnly?"👁 Show all tasks"+(critHidden?" ("+critHidden+" hidden)":""):"🎯 Critical tasks only"}</button>
           <button className={"btn btn-sm"+(showFloat?" btn-pri":"")} onClick={function(){setShowFloat(!showFloat);}}
             title="Float = how many working weeks a task can slip before it delays the end of the schedule. Zero means it is critical.">
             {showFloat?"◧ Hide float":"◫ Show float"}</button>
