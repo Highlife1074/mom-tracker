@@ -13,7 +13,7 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
 - Il récupère ensuite les fichiers JS **dans cet ordre fixe** (`APP_PARTS`), les concatène et fait
   **une seule** transformation Babel (JSX) puis un `eval` :
 
-  `app-core.js` → `app-tenders.js` → `app-schedule.js` → `app-zone.js` → `app-reports.js` → `app-steel.js` → `app-mount.js`
+  `app-core.js` → `app-tenders.js` → `app-schedule.js` → `app-zone.js` → `app-reports.js` → `app-steel.js` → `app-inventory.js` → `app-mount.js`
 
 - Tous les fichiers partagent **une seule portée globale** : une fonction définie dans `app-core.js`
   est utilisable partout, sans `import`/`export`. Attention aux collisions de noms entre fichiers.
@@ -29,6 +29,7 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
 | `app-zone.js` | Espace zone : actions, rooms, KPIs |
 | `app-reports.js` | Rapports imprimables, MOM, timeline, dashboard, trackers |
 | `app-steel.js` | Suivi acier (barres + treillis) : dockets, bilans site / transformateur / JV (stocké en kg, affiché en tonnes) |
+| `app-inventory.js` | Inventaire (items critiques) : catalogue, PO, dockets de livraison, sorties de stock (zone / localisation / usage), comptages mensuels → consommation réelle, moyenne mensuelle, où c'est consommé |
 | `app-mount.js` | Montage React |
 
 ## Données — Firebase Firestore
