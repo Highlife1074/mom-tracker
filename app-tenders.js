@@ -3510,7 +3510,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           var _instr=String(td.instructionNumber||"").trim();
           // Two colours only, one tender in two, so the status line under a tender clearly
           // belongs to it and not to the next one. The state is read from the badges.
-          var rowBg=rowIdx%2?"#efebe0":"#fff";
+          var rowBg=rowIdx%2?"#f7f5ef":"#fff";
           var _ph=TENDER_PHASES.find(function(p){return p.k===tenderPhase(td);});
           var _now=listRange&&!td.cancelled?tenderNow(td):null;
           var _whoCol={us:"#6f6b62",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30"};
