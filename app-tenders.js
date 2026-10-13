@@ -1255,6 +1255,31 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         return null;
       }
 
+      // Signed: the circuit is history. One line, like an approved document.
+      if(!detail&&tenderPhase(td)==="sig"){
+        var lab={fontSize:10,color:"#888",textTransform:"uppercase",letterSpacing:".05em",marginRight:5};
+        var subs=(td.awards||[]).filter(function(a){return a.subcontractor;}).map(function(a){return a.subcontractor;});
+        if(!subs.length&&td.contractor)subs=[td.contractor];
+        var instr=String(td.instructionNumber||"").trim();
+        var ctNote=String((td.stepComments||{}).contract||"").trim();
+        return <div>
+          <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
+            <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Contract</h3>
+          </div>
+          <table className="tbl" style={{fontSize:12}}><tbody><tr style={{background:"#f2f9f3"}}>
+            <td style={{padding:"8px 12px"}}>
+              <div style={{display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12}}>
+                <span className="chip s-approved-a" style={{fontSize:11,fontWeight:700}}>✅ Signed{signedDone?" · "+fmtDate(signedDone):""}</span>
+                <span><span style={lab}>Subcontractor</span><b>{subs.length?subs.join(", "):"—"}</b></span>
+                {instr&&<span><span style={lab}>Instruction</span><b style={{fontFamily:"var(--font-mono)"}}>{instr}</b></span>}
+                {td.instructionAmount&&<span><span style={lab}>Instructed</span><b>{Number(td.instructionAmount).toLocaleString()}</b> {td.currency||"EUR"}</span>}
+                {ctNote&&<span style={{color:"#6f6b62",fontStyle:"italic"}} title={ctNote}>“{ctNote.slice(0,80)}{ctNote.length>80?"…":""}”</span>}
+              </div>
+            </td>
+          </tr></tbody></table>
+        </div>;
+      }
+
       return <div>
         <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)",flexWrap:"wrap"}}>
           <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Contract</h3>
