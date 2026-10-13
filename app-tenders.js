@@ -900,6 +900,9 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
 function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelTender,tasks,saveTasks,pkgOwners,updTd,afterSave}){
   // Rows that can be opened: "bidders", "acc", "wms", "itp", "circuit". Hooks stay first.
   const [openRow,setOpenRow]=useState({});
+  // Synthetic by default: once a document is with the client or approved, its row shrinks
+  // to what matters (reference, dates, status). "Show all details" brings every field back.
+  const [detail,setDetail]=useState(false);
   function toggleRow(k){setOpenRow(function(o){var n=Object.assign({},o);n[k]=!o[k];return n;});}
   // First submission of a document: R0 is sent today and its revisions open under the row.
   function recordSub(id){
@@ -970,12 +973,48 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
     </div>;
   }
 
+  // A submitted or approved document, in one line. A returned one (C/D) keeps the full
+  // row: something has to be done on it.
+  function isSynth(k){var st=flowDocState(td,k);return !detail&&(st==="pending"||st==="approved");}
+  function synthRow(s,span){
+    var k=s.key,d=flowDocOf(td,k),sm=docSummary(d),last=d.cycles[d.cycles.length-1]||{};
+    var ref=getReference(k),ok=sm.state==="approved";
+    var due=!ok&&last.submitted?docResponseDue(d,last.submitted):"";
+    var lab={fontSize:10,color:"#888",textTransform:"uppercase",letterSpacing:".05em",marginRight:5};
+    var proposed=Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0);
+    return <React.Fragment key={k}><tr style={{background:ok?"#f2f9f3":"#f4f8ff"}}>
+      <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{chev(k)}{s.label}</td>
+      <td colSpan={span} style={{padding:"8px 12px"}}>
+        <div style={{display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12}}>
+          <span><span style={lab}>Doc no.</span>{ref
+            ?<b style={{fontFamily:"var(--font-mono)",color:"#1a73e8"}}>{ref}</b>
+            :<RefMissingInput onSave={function(v){updateStep(td.id,k,"reference",v);}}/>}</span>
+          {ok
+            ?<span><span style={lab}>Status</span><FlowDocBadge td={td} id={k}/></span>
+            :<>
+              <span><span style={lab}>Submitted</span><b>{fmtDate(last.submitted)}</b>{last.rev>0&&<span style={{fontSize:10,color:"#b35c00",fontWeight:700,marginLeft:4}}>R{last.rev}</span>}</span>
+              <span title="Submission + the client's review time set in Settings › Durations"><span style={lab}>Theoretical return</span><b>{due?fmtDate(due):"—"}</b><OverdueTag o={sm.overdue}/></span>
+            </>}
+          {k==="acc"&&proposed>0&&<span><span style={lab}>Proposed</span><b>{proposed.toLocaleString()}</b> {td.currency||"EUR"}</span>}
+        </div>
+      </td>
+    </tr>
+    {openRow[k]&&<tr><td colSpan={span+1} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+      <DocRevisionsEditor td={td} d={d} updTd={updTd} afterSave={afterSave}/>
+    </td></tr>}
+    </React.Fragment>;
+  }
+  var accSent=flowDocState(td,"acc")!=="none";
+
   // Steps excluding contract (rendered separately at bottom)
   var theoMap=theoreticalDates(td);
   // WMS and ITP are quality documents driven by the start on site, not by the tender
   // submission chain — they get their own panel.
   var QA_KEYS=["wms","itp"];
   var mainSteps=TENDER_STEPS.filter(function(s){return s.key!=="contract"&&QA_KEYS.indexOf(s.key)<0;});
+  // Once the ACC is submitted, the steps before it are history: hidden unless details are asked.
+  var hiddenPrev=!detail&&accSent?mainSteps.filter(function(s){return s.key!=="acc";}).length:0;
+  if(hiddenPrev)mainSteps=mainSteps.filter(function(s){return s.key==="acc";});
   var qaSteps=TENDER_STEPS.filter(function(s){return QA_KEYS.indexOf(s.key)>=0;});
   var contractStep=TENDER_STEPS.find(function(s){return s.key==="contract";});
 
@@ -985,10 +1024,14 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
     <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Submission steps</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>bidders → tender package → ACC/Aconex</span>
+      {hiddenPrev>0&&<span style={{fontSize:11,color:"#9b968b"}}>· ACC submitted, {hiddenPrev} previous step{hiddenPrev>1?"s":""} hidden</span>}
+      <button type="button" className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setDetail(!detail);}}
+        title={detail?"Back to the short view: documents submitted or approved on one line":"Every step and every field, including the ones already done"}>{detail?"▴ Synthetic view":"▾ Show all details"}</button>
     </div>
     <div>
     <table className="tbl" style={{fontSize:12,marginBottom:16}}>
-      <thead style={{position:"sticky",top:0,zIndex:10,background:"#f5f4f0"}}><tr>
+      {/* Column headers only mean something for full rows. */}
+      {!mainSteps.every(function(s){return s.key==="acc"&&isSynth("acc");})&&<thead style={{position:"sticky",top:0,zIndex:10,background:"#f5f4f0"}}><tr>
         <th>Step</th>
         <th>Status</th>
         <th style={{textAlign:"center",minWidth:96}} title="Computed from the previous step. Turns solid once that step is done — it is no longer an estimate.">Theoretical</th>
@@ -997,8 +1040,9 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         <th style={{minWidth:200}}>Date of approval / Status</th>
         <th style={{minWidth:150}}>Reference</th>
         <th style={{minWidth:180}}>Comments</th>
-      </tr></thead>
+      </tr></thead>}
       <tbody>{mainSteps.map(function(s){
+        if(s.key==="acc"&&isSynth("acc"))return synthRow(s,7);
         var val=(td.steps||{})[s.key]||"";
         var dates=(td.stepDates||{})[s.key]||{};
         var comment=(td.stepComments||{})[s.key]||"";
@@ -1107,15 +1151,16 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>driven by the start on site, not by the submission chain</span>
     </div>
     <table className="tbl" style={{fontSize:12,marginBottom:16}}>
-      <thead><tr>
+      {!qaSteps.every(function(s){return isSynth(s.key);})&&<thead><tr>
         <th>Document</th><th>Status</th>
         <th style={{textAlign:"center",minWidth:96}} title="Start on site minus the lead time set in Settings › Durations">Theoretical</th>
         <th style={{textAlign:"center",minWidth:120}}>Submission target</th>
         <th style={{textAlign:"center",minWidth:110}}>Date done</th>
         <th style={{minWidth:110}}>Reference</th>
         <th style={{minWidth:190}}>Approval / Status</th>
-      </tr></thead>
+      </tr></thead>}
       <tbody>{qaSteps.map(function(s){
+        if(isSynth(s.key))return synthRow(s,6);
         var val=(td.steps||{})[s.key]||"";
         var dates=(td.stepDates||{})[s.key]||{};
         var th=(theoMap[s.key]||{});
@@ -1376,6 +1421,15 @@ function _flowPlanApproval(td,k,theo){
 // ---------------------------------------------------------------------------
 // The reference of a submitted document, shown on the step row itself so it stays
 // visible with the revisions folded. Red when the document went out without one.
+// Typed in full, saved on leaving the field or Enter: saving on every key would turn the
+// line into "Doc no. X" after the first character.
+function RefMissingInput({onSave}){
+  const [v,setV]=useState("");
+  function commit(){var x=v.trim();if(x)onSave(x);}
+  return <input type="text" value={v} placeholder="ref. missing" title="Aconex / transmittal number — saved when you leave the field or press Enter"
+    onChange={function(e){setV(e.target.value);}} onBlur={commit} onKeyDown={function(e){if(e.key==="Enter")commit();}}
+    style={{width:150,fontFamily:"var(--font-mono)",fontSize:11,padding:"3px 6px",border:"1px solid #f48fb1",background:"#fff8f9",borderRadius:5}}/>;
+}
 function RefTag({td,k}){
   var ref=String((((td.stepDates||{})[k])||{}).reference||"").trim();
   var sent=flowDocState(td,k)!=="none";
