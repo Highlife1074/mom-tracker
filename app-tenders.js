@@ -2606,6 +2606,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [phaseSel,setPhaseSel]=useState({pre:true,ctr:true,sig:true,can:false});
   const [quickF,setQuickF]=useState("");
   const [showTl,setShowTl]=useState(true);
+  const [showGaps,setShowGaps]=useState(false);
   const [linkedOpen,setLinkedOpen]=useState(true);
   var selTenderIdRef=useRef(selTender?selTender.id:"");
   function setSelTender(t){
@@ -3399,8 +3400,15 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     if(rsidebar)rsidebar.style.display=prevR;
   },500);
 }} style={{marginLeft:"auto"}}>🖨️ Print</button>
+      {(function(){
+        var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
+        return <button className="btn btn-sm" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
+          style={n?{borderColor:"#f48fb1",color:"#c62828"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
+      })()}
       <button className="btn btn-gold" onClick={openNew}>＋ New Tender</button>
     </div>
+    {showGaps&&<TenderGapsModal tenders={tenders} saveTenders={saveTenders} packages={packages} people={people}
+      onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>}
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search tender, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
       <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All packages</button>
@@ -6288,4 +6296,139 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
         </table>
       </div>}
   </div>;
+}
+
+// ---------------------------------------------------------------------------
+// Missing information, across every tender (cancelled ones aside), in one window:
+// each blank of the general table becomes an input, so it can be filled in one go.
+// Drafts stay local until "Save", then everything is written in ONE saveTenders call.
+// Only plain fields and step statuses are edited here: nothing that starts actions
+// (dates done / approvals stay in the tender sheet).
+// ---------------------------------------------------------------------------
+var TENDER_GAP_FIELDS=[
+  {k:"package",label:"Package",kind:"package"},
+  {k:"ownerTender",label:"Owner",kind:"person"},
+  {k:"budget",label:"Budget",kind:"number"},
+  {k:"startOnSite",label:"Target start",kind:"date"},
+  {k:"step:pkg",label:"Tender Package",kind:"step"},
+  {k:"step:acc",label:"ACC/Aconex",kind:"step"},
+  {k:"proposed",label:"Proposed",kind:"number",tip:"ACC amount, once the ACC is approved"},
+  {k:"awarded",label:"Awarded to",kind:"open",tip:"Recorded in the tender's Awards panel"},
+  {k:"instructionNumber",label:"Instruction no.",kind:"text",tip:"Once the contract is signed"},
+  {k:"instructionAmount",label:"Instructed",kind:"number",tip:"Once the contract is signed"},
+  {k:"step:itp",label:"ITP",kind:"step"},
+  {k:"step:wms",label:"WMS",kind:"step"}
+];
+function _gapBlank(v){return v===undefined||v===null||String(v).trim()===""||v==="—";}
+// Which of TENDER_GAP_FIELDS are missing for this tender. A field that only makes sense
+// later in the process (proposed, instruction…) is only asked for once that stage is reached.
+function tenderGaps(td){
+  if(td.cancelled)return[];
+  var ph=tenderPhase(td),st=td.steps||{},out=[];
+  TENDER_GAP_FIELDS.forEach(function(f){
+    var miss=false;
+    if(f.kind==="step"){
+      var key=f.k.slice(5);
+      miss=_gapBlank(st[key])&&flowDocState(td,key)==="none";
+    }
+    else if(f.k==="budget")miss=!Number(td.budget);
+    else if(f.k==="proposed")miss=(ph==="ctr"||ph==="sig")&&!(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0));
+    else if(f.k==="awarded")miss=(ph==="ctr"||ph==="sig")&&!(td.awards||[]).some(function(a){return a.subcontractor;})&&!td.contractor;
+    else if(f.k==="instructionNumber"||f.k==="instructionAmount")miss=ph==="sig"&&_gapBlank(f.k==="instructionAmount"&&!Number(td.instructionAmount)?"":td[f.k]);
+    else miss=_gapBlank(td[f.k]);
+    if(miss)out.push(f.k);
+  });
+  return out;
+}
+function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClose}){
+  const [drafts,setDrafts]=useState({});
+  const [fieldF,setFieldF]=useState("");
+  const [pkgF,setPkgF]=useState("");
+  var ro=isReadOnly();
+  // The list is frozen when the window opens: a line does not vanish while it is being typed in.
+  const [rows]=useState(function(){
+    return(tenders||[]).map(function(td){return{td:td,gaps:tenderGaps(td)};}).filter(function(r){return r.gaps.length;})
+      .sort(function(a,b){return(a.td.package||"").localeCompare(b.td.package||"")||(a.td.title||"").localeCompare(b.td.title||"");});
+  });
+  var shown=rows.filter(function(r){return(!fieldF||r.gaps.indexOf(fieldF)>=0)&&(!pkgF||(r.td.package||"(no package)")===pkgF);});
+  var cols=TENDER_GAP_FIELDS.filter(function(f){return(fieldF?f.k===fieldF:shown.some(function(r){return r.gaps.indexOf(f.k)>=0;}));});
+  var countBy={};rows.forEach(function(r){r.gaps.forEach(function(k){countBy[k]=(countBy[k]||0)+1;});});
+  var totalGaps=rows.reduce(function(s,r){return s+r.gaps.length;},0);
+  var nChanged=Object.keys(drafts).reduce(function(s,id){return s+Object.keys(drafts[id]).filter(function(k){return !_gapBlank(drafts[id][k]);}).length;},0);
+  var pkgs=[...new Set(rows.map(function(r){return r.td.package||"(no package)";}))].sort();
+  function setDraft(id,k,v){
+    var d=Object.assign({},drafts);d[id]=Object.assign({},d[id]||{});d[id][k]=v;setDrafts(d);
+  }
+  function save(){
+    if(blockIfReadOnly())return;
+    var next=(tenders||[]).map(function(t){
+      var dr=drafts[t.id];if(!dr)return t;
+      var u=Object.assign({},t),steps=Object.assign({},t.steps||{}),touched=false;
+      Object.keys(dr).forEach(function(k){
+        var v=dr[k];if(_gapBlank(v))return;
+        touched=true;
+        if(k.indexOf("step:")===0)steps[k.slice(5)]=v;
+        else if(k==="proposed")u.accAmountSubcontract=v;
+        else u[k]=v;
+      });
+      if(!touched)return t;
+      u.steps=steps;
+      return u;
+    });
+    saveTenders(next);
+    onClose();
+  }
+  function close(){if(nChanged&&!confirm("Leave without saving "+nChanged+" value"+(nChanged>1?"s":"")+"?"))return;onClose();}
+  var inp={width:"100%",minWidth:0,boxSizing:"border-box",fontSize:11,padding:"3px 5px",border:"1.5px solid #f48fb1",borderRadius:5,background:"#fff8f9",fontFamily:"inherit"};
+  function editor(td,f){
+    var v=(drafts[td.id]||{})[f.k];
+    var st=Object.assign({},inp,_gapBlank(v)?{}:{borderColor:"#81c784",background:"#f2f9f3"});
+    if(f.kind==="open")return <button className="btn btn-sm" style={{fontSize:10,height:24}} onClick={function(){onOpenTender(td);}} title={f.tip}>Open ↗</button>;
+    if(f.kind==="package")return <select disabled={ro} value={v||""} style={st} onChange={function(e){setDraft(td.id,f.k,e.target.value);}}><option value="">—</option>{(packages||[]).map(function(p){return <option key={p}>{p}</option>;})}</select>;
+    if(f.kind==="person")return <select disabled={ro} value={v||""} style={st} onChange={function(e){setDraft(td.id,f.k,e.target.value);}}><option value="">—</option>{(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}</select>;
+    if(f.kind==="step"){
+      var key=f.k.slice(5),def=TENDER_STEPS.find(function(s){return s.key===key;});
+      var opts=key==="acc"?flowPresubOpts(def.opts):def.opts;
+      return <select disabled={ro} value={v||""} style={st} onChange={function(e){setDraft(td.id,f.k,e.target.value==="—"?"":e.target.value);}}>{opts.map(function(o){return <option key={o} value={o==="—"?"":o}>{o}</option>;})}</select>;
+    }
+    return <input disabled={ro} type={f.kind==="number"?"number":f.kind==="date"?"date":"text"} value={v||""} placeholder="missing" style={Object.assign({},st,f.kind==="number"?{textAlign:"right"}:{})}
+      onChange={function(e){setDraft(td.id,f.k,e.target.value);}}/>;
+  }
+  return <div className="overlay"><div className="modal" style={{maxWidth:"min(1500px,96vw)"}}>
+    <div className="modal-hdr"><div>
+        <div className="modal-title">🧩 Missing information</div>
+        <div style={{fontSize:12,color:"#888",marginTop:2}}>{totalGaps} blank{totalGaps===1?"":"s"} in {rows.length} tender{rows.length===1?"":"s"} (cancelled tenders left out). Fill what you know, then Save once.</div>
+      </div>
+      <button onClick={close} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
+    <div className="modal-body">
+      {!rows.length?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">Nothing missing: the table is complete.</div></div>:<>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+        <button className={"fchip"+(fieldF===""?" on":"")} onClick={function(){setFieldF("");}}>All fields</button>
+        {TENDER_GAP_FIELDS.filter(function(f){return countBy[f.k];}).map(function(f){
+          return <button key={f.k} className={"fchip"+(fieldF===f.k?" on":"")} title={f.tip||""} onClick={function(){setFieldF(fieldF===f.k?"":f.k);}}>{f.label} <b style={{color:"#c62828",marginLeft:3}}>{countBy[f.k]}</b></button>;
+        })}
+        {pkgs.length>1&&<select value={pkgF} onChange={function(e){setPkgF(e.target.value);}} style={{marginLeft:"auto",fontSize:12,width:"auto",minWidth:160}}><option value="">All packages</option>{pkgs.map(function(p){return <option key={p}>{p}</option>;})}</select>}
+      </div>
+      <div style={{overflowX:"auto"}}><table className="tbl tbl-tenders">
+        <thead><tr><th style={{minWidth:200}}>Tender</th>{cols.map(function(f){return <th key={f.k} title={f.tip||""} style={{minWidth:f.kind==="person"||f.kind==="package"||f.kind==="step"?130:f.kind==="open"?80:105}}>{f.label}</th>;})}</tr></thead>
+        <tbody>{shown.map(function(r,i){
+          var td=r.td;
+          return <tr key={td.id} style={{background:i%2?"#f7f5ef":"#fff"}}>
+            <td style={{verticalAlign:"middle"}}><div style={{fontWeight:700,cursor:"pointer"}} onClick={function(){onOpenTender(td);}} title="Open the tender sheet">{td.title||"(no title)"}</div>
+              <div style={{fontSize:10,color:"#888"}}>{td.package||"no package"} · {r.gaps.length} missing</div></td>
+            {cols.map(function(f){
+              return <td key={f.k} style={{verticalAlign:"middle"}}>{r.gaps.indexOf(f.k)>=0?editor(td,f):<span style={{color:"#c8e6c9"}}>✓</span>}</td>;
+            })}
+          </tr>;
+        })}</tbody>
+      </table></div>
+      <div style={{fontSize:11,color:"#888",marginTop:8}}>Red = missing, green = filled here, ✓ = already known. “Awarded to” needs the tender's Awards panel: Open ↗. Proposed and Instruction are only asked once the ACC is approved / the contract is signed.</div>
+      </>}
+    </div>
+    <div className="modal-footer">
+      <span style={{marginRight:"auto",fontSize:12,color:nChanged?"#2e7d32":"#888",alignSelf:"center"}}>{nChanged?nChanged+" value"+(nChanged>1?"s":"")+" to save":"Nothing typed yet"}</span>
+      <button className="btn" onClick={close}>Cancel</button>
+      {!ro&&<button className="btn btn-pri" disabled={!nChanged} onClick={save}>✓ Save</button>}
+    </div>
+  </div></div>;
 }
