@@ -5,8 +5,9 @@
 //   Types   concrete types (grades): C15 blinding, C40/50…
 //   WBS     one line per work breakdown element: code, description, zone, planned start and
 //           finish, theoretical m³ per type, and a "complete" flag
-//   Pours   what was really poured: date, WBS, m³ per type. A pour with a "from" date is a
-//           cumulative entry (e.g. everything poured to date) spread evenly over [from, date].
+//   Pours   what was really poured: date, WBS, m³ per type and per supplier (one pour can be
+//           fed by several plants). A pour with a "from" date is a cumulative entry (e.g.
+//           everything poured to date) spread evenly over [from, date].
 //
 // Figures, per WBS and in total, for one type or all of them:
 //   variance = real − theoretical          (meaningful once the WBS is complete)
@@ -24,7 +25,7 @@
 // _invHas, invCanDelete, _invUpsert, _invRemove (app-inventory).
 // ===========================================================================
 
-var CON_VERSION="2026-10-13-a";
+var CON_VERSION="2026-10-13-b";
 var CON_UNIT="m³";
 var CON_DEFAULT_TYPES=["C15 blinding","C30/37","C40/50","C50/60","C60/75"];
 var CON_WARN_PCT=3;            // a variance above this % of the theoretical is flagged
@@ -39,7 +40,8 @@ function newConType(o){return Object.assign({id:uuid(),name:"",note:"",archived:
 function newConWbs(o){return Object.assign({id:uuid(),code:"",name:"",zone:"",start:"",finish:"",done:false,theo:{},splitFrom:"",note:""},_conStamp(),o||{});}
 // from: "" for a pour on one day; a date for a cumulative entry spread over [from, date]
 function newConPour(o){return Object.assign({id:uuid(),date:today(),from:"",wbsId:"",ref:"",lines:[],note:""},_conStamp(),o||{});}
-function newConLine(o){return Object.assign({id:uuid(),typeId:"",qty:""},o||{});}
+// supplier: free text (the plant / ready-mix company). "" on lines entered before suppliers existed.
+function newConLine(o){return Object.assign({id:uuid(),typeId:"",supplier:"",qty:""},o||{});}
 
 // ---------------------------------------------------------------- calculations
 function conFmt(v){return invFmt(v,1);}
@@ -54,6 +56,32 @@ function conWbsLabel(w){return w?(w.code?w.code+" — ":"")+(w.name||""):"(delet
 function conSum(map,typeIds){return typeIds.reduce(function(s,t){return s+_invNum((map||{})[t]);},0);}
 function conPourQty(p,typeIds){
   return(p.lines||[]).reduce(function(s,l){return typeIds.indexOf(l.typeId)>=0?s+_invNum(l.qty):s;},0);
+}
+var CON_NO_SUPPLIER="(supplier not stated)";
+function conSupplierOf(l){return String(l&&l.supplier||"").trim()||CON_NO_SUPPLIER;}
+// Every supplier named on a pour line, for the suggestions and the filters.
+function conSupplierNames(pours){
+  var seen={};
+  (pours||[]).forEach(function(p){(p.lines||[]).forEach(function(l){var n=String(l.supplier||"").trim();if(n&&!seen[n.toLowerCase()])seen[n.toLowerCase()]=n;});});
+  return Object.keys(seen).map(function(k){return seen[k];}).sort(function(a,b){return a.localeCompare(b);});
+}
+// Real m³ per supplier and per type over the pours of the given WBS: {supplier: {typeId: m³, _month: m³ this month}}
+function conBySupplier(pours,wbsIds,typeIds){
+  var out={},nowK=today().slice(0,7);
+  (pours||[]).forEach(function(p){
+    if(!wbsIds[p.wbsId])return;
+    (p.lines||[]).forEach(function(l){
+      if(typeIds.indexOf(l.typeId)<0)return;
+      var k=conSupplierOf(l),q=_invNum(l.qty);
+      if(!out[k])out[k]={_total:0,_month:0};
+      out[k][l.typeId]=(out[k][l.typeId]||0)+q;
+      out[k]._total+=q;
+      // a cumulative entry counts in this month only for its share of this month
+      if(p.from){var m={};conSpread(q,p.from,p.date,m);out[k]._month+=m[nowK]||0;}
+      else if(String(p.date).slice(0,7)===nowK)out[k]._month+=q;
+    });
+  });
+  return out;
 }
 // Real m³ per WBS and per type: {wbsId: {typeId: m³}}
 function conRealIndex(pours){
@@ -247,13 +275,28 @@ function conApplySplit(parent,rows,wbsAll,poursAll,dropParent){
     var child=children[ri],made={};
     Object.keys(r.real||{}).forEach(function(t){
       var need=_invNum(r.real[t]);
+      // Oldest pour first. Within one pour, the type's lines (one per supplier) give pro rata:
+      // a split does not know which supplier fed which part, so each keeps its share.
       mine.forEach(function(p){
-        p.lines.forEach(function(l){
-          if(need<=CON_EPS||l.typeId!==t||l.qty<=CON_EPS)return;
-          var take=Math.min(need,l.qty);
-          l.qty-=take;need-=take;
-          if(!made[p.id]){made[p.id]=newConPour({date:p.date,from:p.from||"",wbsId:child.id,ref:p.ref,note:p.note,splitFrom:p.id,lines:[]});newPours.push(made[p.id]);}
-          made[p.id].lines.push(newConLine({typeId:t,qty:Math.round(take*1e6)/1e6}));
+        if(need<=CON_EPS)return;
+        var ls=p.lines.filter(function(l){return l.typeId===t&&l.qty>CON_EPS;});
+        var avail=ls.reduce(function(s2,l){return s2+l.qty;},0);
+        if(avail<=CON_EPS)return;
+        var take=Math.min(need,avail);
+        need-=take;
+        if(!made[p.id]){made[p.id]=newConPour({date:p.date,from:p.from||"",wbsId:child.id,ref:p.ref,note:p.note,splitFrom:p.id,lines:[]});newPours.push(made[p.id]);}
+        ls.forEach(function(l,i){
+          var part=i===ls.length-1?take-ls.slice(0,i).reduce(function(s2,x){return s2+x._took;},0):take*l.qty/avail;
+          l._took=part;
+        });
+        ls.forEach(function(l){
+          l.qty-=l._took;
+          var q=Math.round(l._took*1e6)/1e6;
+          delete l._took;
+          if(q<=CON_EPS)return;
+          var ex=made[p.id].lines.find(function(x){return x.typeId===t&&x.supplier===(l.supplier||"");});
+          if(ex)ex.qty=Math.round((ex.qty+q)*1e6)/1e6;
+          else made[p.id].lines.push(newConLine({typeId:t,supplier:l.supplier||"",qty:q}));
         });
       });
     });
@@ -284,6 +327,12 @@ function ConZoneSelect({zones,value,onChange,disabled,all}){
     <option value="">{all?"All zones":"— zone —"}</option>
     {list.map(function(z){return <option key={z} value={z}>{z}</option>;})}
   </select>;
+}
+function ConSupplierInput({value,onChange,disabled,suppliers}){
+  return <>
+    <input type="text" list="con-supplier-list" disabled={disabled} value={value||""} placeholder="Supplier" onChange={function(e){onChange(e.target.value);}} style={{flex:"1 1 150px",minWidth:120,width:"auto"}}/>
+    <datalist id="con-supplier-list">{(suppliers||[]).map(function(n){return <option key={n} value={n}/>;})}</datalist>
+  </>;
 }
 function ConStatus({f}){
   var s={done:["complete","#e8f5e9","#2e7d32"],progress:["in progress","#e8f0fe","#1a73e8"],todo:["not started","#eceae3","#555"]}[f.status];
@@ -408,6 +457,30 @@ function ConOverview({types,wbs,pours,realIx,zones,onGo}){
         <td style={R}>{tot.nDone?conFmt(tot.doneVariance):"—"}</td><td style={R}>{tot.nDone?conPct(tot.donePct):"—"}</td><td style={R}>{conFmt(tot.remaining)}</td><td style={R}>{conFmt(tot.forecast)}</td><td style={R}>{conFmt(tot.forecastVariance)}</td></tr>
       </tbody></table></div>
 
+    {(function(){
+      var wIds={};list.forEach(function(w){wIds[w.id]=true;});
+      var bs=conBySupplier(pours,wIds,typeIds);
+      var names=Object.keys(bs).sort(function(a,b){return bs[b]._total-bs[a]._total;});
+      if(!names.length||(names.length===1&&names[0]===CON_NO_SUPPLIER))return null;
+      var cols=conSortTypes(types).filter(function(t){return names.some(function(n){return bs[n][t.id];});});
+      var all=names.reduce(function(a,n){return a+bs[n]._total;},0);
+      var allMonth=names.reduce(function(a,n){return a+bs[n]._month;},0);
+      return <>
+        <div className="card-title" style={{fontSize:15}}>Real per supplier</div>
+        <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
+          <thead><tr><th>Supplier</th>{cols.map(function(t){return <th key={t.id} style={R}>{t.name}</th>;})}<th style={R}>Total</th><th>Share</th><th style={R}>This month</th></tr></thead>
+          <tbody>{names.map(function(n){
+            var pct=all>0?bs[n]._total/all*100:0;
+            return <tr key={n}><td style={{color:n===CON_NO_SUPPLIER?"#888":undefined}}><b>{n}</b></td>
+              {cols.map(function(t){return <td key={t.id} style={R}>{bs[n][t.id]?conFmt(bs[n][t.id]):""}</td>;})}
+              <td style={Object.assign({fontWeight:700},R)}>{conFmt(bs[n]._total)}</td>
+              <td><div style={{display:"flex",alignItems:"center",gap:6,minWidth:120}}><div style={{flex:1,background:"#f2f0eb",borderRadius:4,height:8}}><div style={{width:pct+"%",background:CON_COL_REAL,height:8,borderRadius:4}}/></div><span style={{fontSize:11,width:34,textAlign:"right"}}>{pct.toFixed(0)}%</span></div></td>
+              <td style={R}>{bs[n]._month?conFmt(bs[n]._month):""}</td></tr>;
+          })}
+          <tr style={{fontWeight:700,background:"#f7f6f2"}}><td>Total</td>{cols.map(function(t){return <td key={t.id} style={R}>{conFmt(names.reduce(function(a,n){return a+(bs[n][t.id]||0);},0))}</td>;})}<td style={R}>{conFmt(all)}</td><td/><td style={R}>{conFmt(allMonth)}</td></tr>
+          </tbody></table></div>
+      </>;
+    })()}
     {worst.length>0&&<>
       <div className="card-title" style={{fontSize:15}}>WBS to look at <span style={{fontSize:12,fontWeight:400,color:"#888"}}>— variance above {CON_WARN_PCT}%</span></div>
       <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
@@ -584,7 +657,7 @@ function ConWbsList({types,wbs,pours,realIx,zones,edit,saveWbs,savePours,saveTyp
     {splitting&&<ConSplitModal parent={splitting} types={types} wbs={wbs} pours={pours} realIx={realIx} zones={zones}
       onApply={function(res){saveWbs(res.wbs);savePours(res.pours);setSplitting(null);}}
       onClose={function(){setSplitting(null);}}/>}
-    {past&&<ConPastModal types={types} wbs={wbs} zones={zones}
+    {past&&<ConPastModal types={types} wbs={wbs} pours={pours} zones={zones}
       onApply={function(w,pour){saveWbs([w].concat(wbs));if(pour)savePours([pour].concat(pours));setPast(false);}}
       onClose={function(){setPast(false);}}/>}
     {paste&&<ConPasteModal types={types} wbs={wbs} saveTypes={saveTypes}
@@ -635,16 +708,22 @@ function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,onSave,onDelete,onClo
 }
 
 // The past as one WBS: total theoretical, and the total real as one pour spread from start to the cut-off.
-function ConPastModal({types,wbs,zones,onApply,onClose}){
-  const [d,setD]=useState({code:"PAST",name:"Works completed to date",zone:"",start:"",cutoff:today(),done:true,theo:{},real:{}});
+function ConPastModal({types,wbs,pours,zones,onApply,onClose}){
+  // real: one block per supplier, each with m³ per type
+  const [d,setD]=useState({code:"PAST",name:"Works completed to date",zone:"",start:"",cutoff:today(),done:true,theo:{},real:[{key:uuid(),supplier:"",q:{}}]});
   function set(p){setD(Object.assign({},d,p));}
+  function setBlock(k,p){set({real:d.real.map(function(b){return b.key===k?Object.assign({},b,p):b;})});}
   var w=newConWbs({code:d.code.trim(),name:d.name,zone:d.zone,start:d.start,finish:d.cutoff,done:d.done,theo:conCleanTheo(d.theo)});
-  var real=conCleanTheo(d.real);
+  var lines=[];
+  d.real.forEach(function(b){var q=conCleanTheo(b.q);Object.keys(q).forEach(function(t){lines.push(newConLine({typeId:t,supplier:String(b.supplier||"").trim(),qty:q[t]}));});});
+  var real=lines;
+  var dupSup={},dupErr="";
+  d.real.forEach(function(b){var k=String(b.supplier||"").trim().toLowerCase();if(dupSup[k])dupErr="Supplier “"+(b.supplier||"not stated")+"” is listed twice.";dupSup[k]=true;});
   var err=conWbsError(w,wbs)||(!d.cutoff?"Give the cut-off date.":"")||(!d.start?"Give the date the concrete works started: the real quantity is spread from it to the cut-off on the curve.":"")
-    ||(!Object.keys(w.theo).length&&!Object.keys(real).length?"Enter at least one quantity.":"");
+    ||(!Object.keys(w.theo).length&&!real.length?"Enter at least one quantity.":"")||dupErr;
   function apply(){
-    var pour=Object.keys(real).length?newConPour({date:d.cutoff,from:d.start,wbsId:w.id,ref:"Cumulative to "+fmtDate(d.cutoff),
-      note:"Total poured to date, entered as one cumulative quantity",lines:Object.keys(real).map(function(t){return newConLine({typeId:t,qty:real[t]});})}):null;
+    var pour=real.length?newConPour({date:d.cutoff,from:d.start,wbsId:w.id,ref:"Cumulative to "+fmtDate(d.cutoff),
+      note:"Total poured to date, entered as one cumulative quantity",lines:real}):null;
     onApply(w,pour);
   }
   return <InvModal title="⏮ Works to date — one WBS for the past" width={760} onClose={onClose} footer={<>
@@ -666,8 +745,17 @@ function ConPastModal({types,wbs,zones,onApply,onClose}){
     </div>
     <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"4px 0 6px"}}>Theoretical to date, per type</div>
     <ConTypeQtyInputs types={types} map={d.theo} onChange={function(m){set({theo:m});}}/>
-    <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"12px 0 6px"}}>Real to date, per type</div>
-    <ConTypeQtyInputs types={types} map={d.real} onChange={function(m){set({real:m});}}/>
+    <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"12px 0 6px"}}>Real to date, per supplier and per type</div>
+    {d.real.map(function(b){
+      return <div key={b.key} style={{border:"1px solid #eee",borderRadius:8,padding:8,marginBottom:8}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+          <ConSupplierInput value={b.supplier} suppliers={conSupplierNames(pours)} onChange={function(v){setBlock(b.key,{supplier:v});}}/>
+          {d.real.length>1&&<button className="btn btn-sm" onClick={function(){set({real:d.real.filter(function(x){return x.key!==b.key;})});}}>×</button>}
+        </div>
+        <ConTypeQtyInputs types={types} map={b.q} onChange={function(m){setBlock(b.key,{q:m});}}/>
+      </div>;
+    })}
+    <button className="btn btn-sm" onClick={function(){set({real:d.real.concat([{key:uuid(),supplier:"",q:{}}])});}}>+ Supplier</button>
     {err&&<div style={{fontSize:12,color:"#c62828",marginTop:10}}>{err}</div>}
   </InvModal>;
 }
@@ -728,7 +816,7 @@ function ConSplitModal({parent,types,wbs,pours,realIx,zones,onApply,onClose}){
       <button className="btn" onClick={onClose}>Cancel</button>
       <button className="btn btn-pri" disabled={!!err} title={err} onClick={apply}>Split into {rows.length} WBS</button>
     </>}>
-    <div style={{fontSize:12,color:"#555",marginBottom:8}}>Give each detailed WBS its share of the theoretical and real quantities. What is not allocated stays on <b>{parent.code}</b>. Real quantities are moved with their pour dates, so the totals and the curve do not change.</div>
+    <div style={{fontSize:12,color:"#555",marginBottom:8}}>Give each detailed WBS its share of the theoretical and real quantities. What is not allocated stays on <b>{parent.code}</b>. Real quantities are moved with their pour dates, so the totals and the curve do not change; when several suppliers fed a pour, each part keeps their share pro rata.</div>
     <div style={{overflowX:"auto"}}><table className="tbl" style={{fontSize:12}}>
       <thead><tr><th>Code</th><th>Description</th><th>Zone</th><th>Start</th><th>Finish</th><th title="Complete">✔</th>
         {tIds.map(function(t){return <th key={t} colSpan={2} style={{textAlign:"center"}}>{tById[t].name}<div style={{fontSize:10,fontWeight:400}}>theor. · real</div></th>;})}<th/></tr></thead>
@@ -802,61 +890,68 @@ function ConPasteModal({types,wbs,saveTypes,onImport,onClose}){
 // ---------------------------------------------------------------- pours (real)
 function ConPours({types,wbs,pours,zones,edit,savePours}){
   const [wbsId,setWbsId]=useState("");
+  const [supplier,setSupplier]=useState("");
   const [q,setQ]=useState("");
   const [editing,setEditing]=useState(null);
   var wById={};wbs.forEach(function(w){wById[w.id]=w;});
   var tById={};types.forEach(function(t){tById[t.id]=t;});
   var ql=q.trim().toLowerCase();
+  var suppliers=conSupplierNames(pours);
+  // With a supplier filter, a pour shows only that supplier's lines.
+  function linesOf(p){return supplier?(p.lines||[]).filter(function(l){return conSupplierOf(l)===supplier;}):(p.lines||[]);}
   var list=pours.filter(function(p){
     if(wbsId&&p.wbsId!==wbsId)return false;
-    return !ql||[p.ref,p.note,conWbsLabel(wById[p.wbsId])].join(" ").toLowerCase().indexOf(ql)>=0;
+    if(supplier&&!linesOf(p).length)return false;
+    return !ql||[p.ref,p.note,conWbsLabel(wById[p.wbsId])].concat((p.lines||[]).map(function(l){return l.supplier||"";})).join(" ").toLowerCase().indexOf(ql)>=0;
   }).slice().sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:0;});
   var allIds=types.map(function(t){return t.id;});
-  var total=list.reduce(function(s,p){return s+conPourQty(p,allIds);},0);
+  var total=list.reduce(function(s,p){return s+conPourQty({lines:linesOf(p)},allIds);},0);
   if(!wbs.length)return <div className="empty"><div className="empty-ico">🚚</div><div className="empty-txt">Create the WBS first: every pour is booked on a WBS.</div></div>;
   return <div>
     <div className="filter-bar">
-      <input type="text" placeholder="Search reference, note…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:200}}/>
+      <input type="text" placeholder="Search reference, supplier, note…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:200}}/>
       <select value={wbsId} onChange={function(e){setWbsId(e.target.value);}} style={{width:"auto",maxWidth:280}}><option value="">All WBS</option>{conSortWbs(wbs).map(function(w){return <option key={w.id} value={w.id}>{conWbsLabel(w)}</option>;})}</select>
+      {suppliers.length>0&&<select value={supplier} onChange={function(e){setSupplier(e.target.value);}} style={{width:"auto",maxWidth:240}}><option value="">All suppliers</option>
+        {suppliers.concat(pours.some(function(p){return(p.lines||[]).some(function(l){return !String(l.supplier||"").trim();});})?[CON_NO_SUPPLIER]:[]).map(function(n){return <option key={n} value={n}>{n}</option>;})}</select>}
       <span style={{fontSize:12,color:"#888"}}>{list.length} pour{list.length===1?"":"s"} · {conFmt(total)} {CON_UNIT}</span>
       <div style={{flex:1}}/>
-      {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newConPour({wbsId:wbsId,lines:[newConLine()]}));}}>+ New pour</button>}
+      {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newConPour({wbsId:wbsId,lines:[newConLine({supplier:supplier&&supplier!==CON_NO_SUPPLIER?supplier:""})]}));}}>+ New pour</button>}
     </div>
     {!list.length?<div className="empty"><div className="empty-ico">🚚</div><div className="empty-txt">No pour recorded{wbsId?" on this WBS":""}.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
-      <thead><tr><th>Date</th><th>WBS</th><th>Reference</th><th>Types</th><th style={{textAlign:"right"}}>Total</th><th>Note</th></tr></thead>
+      <thead><tr><th>Date</th><th>WBS</th><th>Reference</th><th>Type · supplier</th><th style={{textAlign:"right"}}>Total</th><th>Note</th></tr></thead>
       <tbody>{list.map(function(p){
         return <tr key={p.id} onClick={function(){setEditing(p);}} style={{cursor:"pointer"}}>
           <td style={{whiteSpace:"nowrap"}}>{p.from?<span>{fmtDate(p.from)} → </span>:null}<b>{fmtDate(p.date)}</b>{p.from&&<div style={{fontSize:10,color:"#888"}}>cumulative</div>}</td>
           <td>{wById[p.wbsId]?<span><b>{wById[p.wbsId].code}</b> {wById[p.wbsId].name}</span>:<span style={{color:"#c62828"}}>(deleted WBS)</span>}</td>
           <td>{p.ref}</td>
-          <td style={{fontSize:12}}>{(p.lines||[]).map(function(l){return(tById[l.typeId]?tById[l.typeId].name:"?")+" "+conFmt(_invNum(l.qty));}).join(" · ")}</td>
-          <td style={{textAlign:"right",fontWeight:700}}>{conFmt(conPourQty(p,allIds))}</td>
+          <td style={{fontSize:12}}>{linesOf(p).map(function(l){return <div key={l.id}>{tById[l.typeId]?tById[l.typeId].name:"?"} <b>{conFmt(_invNum(l.qty))}</b> <span style={{color:l.supplier?"#555":"#aaa"}}>· {l.supplier||"no supplier"}</span></div>;})}</td>
+          <td style={{textAlign:"right",fontWeight:700}}>{conFmt(conPourQty({lines:linesOf(p)},allIds))}</td>
           <td style={{fontSize:12,color:"#555"}}>{p.note}</td>
         </tr>;
       })}</tbody></table></div>}
-    {editing&&<ConPourEditor p={editing} types={types} wbs={wbs} edit={edit} isNew={!pours.some(function(x){return x.id===editing.id;})}
+    {editing&&<ConPourEditor p={editing} types={types} wbs={wbs} edit={edit} suppliers={suppliers} isNew={!pours.some(function(x){return x.id===editing.id;})}
       onSave={function(d){_invUpsert(pours,savePours,d);setEditing(null);}}
-      onSaveNext={function(d){_invUpsert(pours,savePours,d);setEditing(newConPour({date:d.date,wbsId:d.wbsId,lines:[newConLine({typeId:(d.lines[0]||{}).typeId||""})]}));}}
+      onSaveNext={function(d){_invUpsert(pours,savePours,d);setEditing(newConPour({date:d.date,wbsId:d.wbsId,lines:[newConLine({typeId:(d.lines[0]||{}).typeId||"",supplier:(d.lines[0]||{}).supplier||""})]}));}}
       onDelete={pours.some(function(x){return x.id===editing.id;})&&edit&&invCanDelete()?function(d){if(_invRemove(pours,savePours,d,"this pour"))setEditing(null);}:null}
       onClose={function(){setEditing(null);}}/>}
   </div>;
 }
-function ConPourEditor({p,types,wbs,edit,isNew,onSave,onSaveNext,onDelete,onClose}){
+function ConPourEditor({p,types,wbs,edit,isNew,suppliers,onSave,onSaveNext,onDelete,onClose}){
   const [d,setD]=useState(Object.assign({},p,{lines:(p.lines||[]).slice()}));
   const [spread,setSpread]=useState(!!p.from);
   var ro=!edit;
   function set(x){setD(Object.assign({},d,x));}
   function setLine(id,x){set({lines:d.lines.map(function(l){return l.id===id?Object.assign({},l,x):l;})});}
-  var dup={};d.lines.forEach(function(l){if(l.typeId)dup[l.typeId]=(dup[l.typeId]||0)+1;});
+  var dup={};d.lines.forEach(function(l){if(l.typeId){var k=l.typeId+"|"+String(l.supplier||"").trim().toLowerCase();dup[k]=(dup[k]||0)+1;}});
   var err=!d.date||!isValidDate(d.date)?"Give the pour date.":!d.wbsId?"Choose the WBS.":
     spread&&(!d.from||!isValidDate(d.from))?"Give the start of the period.":spread&&d.from>d.date?"The period starts after it ends.":
     !d.lines.length||!d.lines.every(function(l){return l.typeId&&_invNum(l.qty)>0;})?"Every line needs a type and a quantity above zero.":
-    Object.keys(dup).some(function(k){return dup[k]>1;})?"A type is listed twice.":"";
-  function clean(){return Object.assign({},d,{from:spread?d.from:"",lines:d.lines.map(function(l){return{id:l.id,typeId:l.typeId,qty:_invNum(l.qty)};}),
+    Object.keys(dup).some(function(k){return dup[k]>1;})?"The same type and supplier are listed twice.":"";
+  function clean(){return Object.assign({},d,{from:spread?d.from:"",lines:d.lines.map(function(l){return{id:l.id,typeId:l.typeId,supplier:String(l.supplier||"").trim(),qty:_invNum(l.qty)};}),
     updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""});}
   var w=wbs.find(function(x){return x.id===d.wbsId;});
-  return <InvModal title={isNew?"🚚 New pour":"🚚 Pour "+(d.ref||fmtDate(d.date))} width={680} onClose={onClose} footer={<>
+  return <InvModal title={isNew?"🚚 New pour":"🚚 Pour "+(d.ref||fmtDate(d.date))} width={760} onClose={onClose} footer={<>
       {onDelete&&<button className="btn" style={{color:"#c62828",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&isNew&&<button className="btn" disabled={!!err} title={err} onClick={function(){onSaveNext(clean());}}>Save & next</button>}
@@ -872,17 +967,18 @@ function ConPourEditor({p,types,wbs,edit,isNew,onSave,onSaveNext,onDelete,onClos
     </label>
     <div className="fg"><label>WBS</label><select disabled={ro} value={d.wbsId} onChange={function(e){set({wbsId:e.target.value});}}>
       <option value="">— WBS —</option>{conSortWbs(wbs).map(function(x){return <option key={x.id} value={x.id}>{conWbsLabel(x)}{x.done?" (complete)":""}</option>;})}</select></div>
-    <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"6px 0"}}>Quantities</div>
+    <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"6px 0"}}>Quantities <span style={{textTransform:"none",fontWeight:400}}>— one line per type and supplier</span></div>
     {d.lines.map(function(l){
-      return <div key={l.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,padding:"6px 8px",background:"#fafafa",borderRadius:8}}>
+      return <div key={l.id} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:6,padding:"6px 8px",background:"#fafafa",borderRadius:8}}>
         <select disabled={ro} value={l.typeId} onChange={function(e){setLine(l.id,{typeId:e.target.value});}} style={{flex:"1 1 180px"}}>
           <option value="">— type —</option>{conSortTypes(types).filter(function(t){return !t.archived||t.id===l.typeId;}).map(function(t){return <option key={t.id} value={t.id}>{t.name}{w&&_invNum((w.theo||{})[t.id])?" · theor. "+conFmt(w.theo[t.id]):""}</option>;})}
         </select>
+        <ConSupplierInput disabled={ro} value={l.supplier} suppliers={suppliers} onChange={function(v){setLine(l.id,{supplier:v});}}/>
         <InvQtyInput disabled={ro} value={l.qty} onChange={function(v){setLine(l.id,{qty:v});}}/> <span style={{fontSize:12}}>{CON_UNIT}</span>
         {!ro&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){set({lines:d.lines.filter(function(x){return x.id!==l.id;})});}}>×</button>}
       </div>;
     })}
-    {!ro&&<button className="btn btn-sm" onClick={function(){set({lines:d.lines.concat([newConLine()])});}}>+ Type</button>}
+    {!ro&&<button className="btn btn-sm" onClick={function(){var last=d.lines[d.lines.length-1]||{};set({lines:d.lines.concat([newConLine({supplier:last.supplier||""})])});}}>+ Line</button>}
     <div className="fg" style={{marginTop:10}}><label>Note</label><textarea rows={2} disabled={ro} value={d.note||""} onChange={function(e){set({note:e.target.value});}}/></div>
     {err&&!ro&&<div style={{fontSize:12,color:"#c62828"}}>{err}</div>}
   </InvModal>;
@@ -958,12 +1054,19 @@ function conOpenReport(types,list,pours,realIx,typeIds,label){
     return"<tr><td><b>"+E(f.wbs.code)+"</b> "+E(f.wbs.name)+"</td><td>"+E(f.wbs.zone||"")+"</td><td>"+E(f.wbs.start||f.wbs.finish?fmtDate(f.wbs.start)+" → "+fmtDate(f.wbs.finish):"")+"</td><td>"+st+"</td>"
       +td(conFmt(f.theo))+td(conFmt(f.real))+td(conFmt(f.variance),true,conVarColour(f))+td(conPct(f.pct),false,conVarColour(f))+td(f.remaining?conFmt(f.remaining):"—")+"</tr>";
   }).join("");
+  var wIds={};list.forEach(function(w){wIds[w.id]=true;});
+  var bs=conBySupplier(pours,wIds,typeIds);
+  var sNames=Object.keys(bs).sort(function(a,b){return bs[b]._total-bs[a]._total;});
+  var sAll=sNames.reduce(function(a,n){return a+bs[n]._total;},0);
+  var sCols=conSortTypes(types).filter(function(t){return sNames.some(function(n){return bs[n][t.id];});});
+  var sRows=sNames.map(function(n){return"<tr><td><b>"+E(n)+"</b></td>"+sCols.map(function(t){return td(bs[n][t.id]?conFmt(bs[n][t.id]):"");}).join("")+td(conFmt(bs[n]._total),true)+td(sAll>0?(bs[n]._total/sAll*100).toFixed(0)+"%":"")+td(bs[n]._month?conFmt(bs[n]._month):"")+"</tr>";}).join("");
   var nowK=t0.slice(0,7);
   var mRows=s.months.filter(function(k){return k>=nowK;}).slice(0,12).map(function(k){var i=s.months.indexOf(k);return"<tr><td>"+conFmtMonth(k)+"</td>"+td(conFmt(s.plan[i]))+td(conFmt(s.cumPlan[i]))+"</tr>";}).join("");
   var html="<h1>Concrete — theoretical vs real</h1><div class=\"sub\">Riviera Tower · "+E(label)+" · situation at "+E(fmtDate(t0))+"</div>"
     +"<h2>Summary ("+CON_UNIT+")</h2><table><tr><th>Theoretical</th><th>Real to date</th><th>Variance, complete WBS</th><th>Still to pour</th><th>Forecast at completion</th><th>Forecast variance</th></tr><tr>"
     +td(conFmt(tot.theo))+td(conFmt(tot.real))+td(tot.nDone?conFmt(tot.doneVariance)+" ("+conPct(tot.donePct)+")":"—",true)+td(conFmt(tot.remaining))+td(conFmt(tot.forecast))+td(conFmt(tot.forecastVariance)+" ("+conPct(tot.forecastPct)+")")+"</tr></table>"
     +(byType?"<h2>Per type</h2><table><tr><th>Type</th><th>Theoretical</th><th>Real</th><th>Variance, complete WBS</th><th>Still to pour</th><th>Forecast</th><th>Forecast variance</th></tr>"+byType+"</table>":"")
+    +(sRows?"<h2>Real per supplier</h2><table><tr><th>Supplier</th>"+sCols.map(function(t){return"<th>"+E(t.name)+"</th>";}).join("")+"<th>Total</th><th>Share</th><th>This month</th></tr>"+sRows+"</table>":"")
     +(mRows?"<h2>Planned quantities, coming months</h2><table><tr><th>Month</th><th>Planned</th><th>Cumulative planned</th></tr>"+mRows+"</table>":"")
     +"<h2>Per WBS</h2><table><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th>Theoretical</th><th>Real</th><th>Variance</th><th>%</th><th>Still to pour</th></tr>"+wRows+"</table>"
     +"<div style=\"font-size:10px;color:#8b8578\">Variance = real − theoretical; final once a WBS is complete. Forecast at completion = real of complete WBS + the larger of real and theoretical for the others.</div>";
@@ -987,14 +1090,17 @@ function conExportXlsx(types,list,pours,realIx){
   var tById={};types.forEach(function(t){tById[t.id]=t;});
   var pr=[];
   pours.forEach(function(p){if(!inList[p.wbsId])return;(p.lines||[]).forEach(function(l){
-    pr.push({"Date":p.date,"From (cumulative)":p.from||"","WBS":inList[p.wbsId].code,"Reference":p.ref,"Type":tById[l.typeId]?tById[l.typeId].name:"","m³":_invNum(l.qty),"Note":p.note||""});
+    pr.push({"Date":p.date,"From (cumulative)":p.from||"","WBS":inList[p.wbsId].code,"Reference":p.ref,"Type":tById[l.typeId]?tById[l.typeId].name:"","Supplier":l.supplier||"","m³":_invNum(l.qty),"Note":p.note||""});
   });});
   pr.sort(function(a,b){return a.Date<b.Date?-1:1;});
+  var bs=conBySupplier(pours,inList,allIds);
+  var sr=Object.keys(bs).sort().map(function(n){var o={"Supplier":n};st.forEach(function(t){if(bs[n][t.id])o[t.name]=r2(bs[n][t.id]);});o["Total"]=r2(bs[n]._total);return o;});
   var s=conSeries(list,pours,allIds);
   var mr=s.months.map(function(k,i){return{"Month":k,"Planned":r2(s.plan[i]),"Real":s.real[i]===null?"":r2(s.real[i]),"Cum. planned":r2(s.cumPlan[i]),"Cum. real":s.cumReal[i]===null?"":r2(s.cumReal[i])};});
   var wb=window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(rows),"WBS");
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(pr),"Pours");
+  window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(sr),"Suppliers");
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(mr),"Monthly");
   window.XLSX.writeFile(wb,"Concrete "+today()+".xlsx");
 }
