@@ -2044,9 +2044,10 @@ function tenderListRange(list,now){
   var ds=[now];
   list.forEach(function(td){
     if(td.cancelled)return;
-    [td.tenderIssued,td.bidsReceived,td.startOnSite].forEach(function(d){if(isValidDate(d))ds.push(d);});
-    cyclesOfStep(td,"acc").forEach(function(c){if(isValidDate(c.submitted))ds.push(c.submitted);});
+    // Only what the rows draw: the ACC approval and contract marks, the target start, the delivery.
+    if(isValidDate(td.startOnSite))ds.push(td.startOnSite);
     var p=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
+    (p.steps||[]).forEach(function(x){if((x.key==="accApp"||x.key==="contract")&&isValidDate(x.done||x.date))ds.push(x.done||x.date);});
     if(isValidDate(p.deliveryDate))ds.push(p.deliveryDate);
   });
   ds.sort();
@@ -2110,13 +2111,15 @@ function TlMarkerKeys(){
   </React.Fragment>;
 }
 function TenderTimelineLegend(){
+  var it={display:"flex",alignItems:"center",gap:4};
   return <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:11,color:"#6f6b62",margin:"0 0 8px",padding:"6px 10px",background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8}}>
     <span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#9b968b"}}>Timeline</span>
     <TlMarkerKeys/>
-    {[["With client",FLOW_COL.client],["With us",FLOW_COL.us],["With sub / bidders",FLOW_COL.sub],["Internal circuit",FLOW_COL.internal],["Returned",FLOW_COL.returned]].map(function(x){
-      return <span key={x[0]} style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:14,height:6,borderRadius:2,background:x[1]}}/>{x[0]}</span>;})}
-    <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:14,height:6,borderRadius:2,border:"1px dashed "+FLOW_COL.sub}}/>Forecast (ACC, contract, fabrication)</span>
-    <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:7,height:7,transform:"rotate(45deg)",background:FLOW_COL.internal}}/>Contract signed</span>
+    <span style={it}><span style={{width:9,height:9,borderRadius:"50%",background:FLOW_COL.client}}/>ACC/Aconex approved</span>
+    <span style={it}><span style={{width:7,height:7,transform:"rotate(45deg)",background:FLOW_COL.internal}}/>Contract signed</span>
+    <span style={it}><span style={{width:9,height:9,borderRadius:"50%",border:"1.5px solid #9b968b"}}/>hollow = expected</span>
+    <span style={it}><span style={{width:14,height:6,borderRadius:2,border:"1px dashed "+FLOW_COL.sub}}/>Sub: shop drawings / fabrication</span>
+    <span style={it}><span style={{width:14,height:6,borderRadius:2,border:"1px dashed "+FLOW_COL.client}}/>Shop drawings with the client</span>
   </div>;
 }
 // Today as one continuous line over the whole list. It is measured from the scale row
@@ -2149,69 +2152,62 @@ function TenderTodayRail({range,dep}){
     </div>}
   </div>;
 }
+// One row of the tenders list. On purpose it shows very little:
+//   past    only two marks: the ACC/Aconex approval and the contract signature
+//   future  the shop-drawing circuit still to come (sub preparing → submission → client
+//           answer, and the resubmission after a C / D), then the fabrication with the truck
+// Everything before today is cut off, except those two marks. The full history stays in the
+// tender's Flow & history panel.
 function TenderMiniTimeline({td,range}){
   var now=today();
   var span=Math.max(1,(new Date(range.to)-new Date(range.from))/86400000);
   function X(d){return Math.max(0,Math.min(100,(new Date(d)-new Date(range.from))/86400000/span*100));}
   var out=[];var k=0;
-  function seg(a,b,col,tip,dashed,top){
-    if(!isValidDate(a))return;var e=isValidDate(b)?b:now;if(e<range.from)return;
-    out.push(<div key={"s"+(k++)} title={tip} style={{position:"absolute",top:top||5,height:top?4:6,borderRadius:2,left:X(a)+"%",width:Math.max(0.4,X(e)-X(a))+"%",
-      background:dashed?"transparent":col,border:dashed?"1px dashed "+col:"none",opacity:isValidDate(b)||dashed?1:.55}}/>);
+  // A forecast bar, clipped at today: only the part still to come is drawn.
+  function fut(a,b,col,tip){
+    if(!isValidDate(a)||!isValidDate(b))return;
+    var s=a<now?now:a;if(b<=s)return;
+    out.push(<div key={"f"+(k++)} title={tip} style={{position:"absolute",top:5,height:6,borderRadius:2,left:X(s)+"%",width:Math.max(0.4,X(b)-X(s))+"%",
+      border:"1px dashed "+col,background:"transparent"}}/>);
   }
-  function code(d,c,tip){
-    if(!isValidDate(d)||!c||d<range.from)return;var cc=FLOW_CODE_COL[c];
-    out.push(<div key={"c"+(k++)} title={tip} style={{position:"absolute",top:0,left:X(d)+"%",marginLeft:-6,width:13,height:13,borderRadius:3,
-      background:cc[0],color:cc[1],border:"1px solid "+cc[1],fontSize:8.5,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>{c}</div>);
-  }
-  function cyc(list,name,who){
-    list.forEach(function(c,i){
-      seg(c.submitted,c.returned,FLOW_COL.client,name+" R"+c.rev+" with client "+fmtDate(c.submitted)+" → "+(c.returned?fmtDate(c.returned):"pending"));
-      code(c.returned,c.code,name+" R"+c.rev+": "+((cycleCodeInfo(c.code)||{}).label||""));
-      var nx=list[i+1];if(nx&&isValidDate(c.returned))seg(c.returned,nx.submitted,FLOW_COL[who],name+" rework");
-    });
-  }
-  seg(td.tenderIssued,td.bidsReceived,FLOW_COL.sub,"Bidders pricing",!td.bidsReceived);
-  var acc=cyclesOfStep(td,"acc");
-  if(td.bidsReceived&&acc[0])seg(td.bidsReceived,acc[0].submitted,FLOW_COL.us,"Evaluation and ACC preparation");
-  cyc(acc,"ACC","us");
-  var cs=circuitState(circuitOf(td),now);
-  cs.stages.forEach(function(x){x.events.forEach(function(e){
-    var col=e.outcome==="returned"?FLOW_COL.returned:x.stage.branch==="internal"?FLOW_COL.internal:x.stage.branch==="sub"?FLOW_COL.sub:FLOW_COL.us;
-    seg(e.in,e.outcome?e.out:"",col,x.stage.label);});});
-  tenderDocs(td).filter(function(d){return d.kind==="sd";}).forEach(function(d){cyc(d.cycles,d.id==="sd:_main"?"SD":"SD "+d.label,"sub");});
   var p=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
-  // Before the fabrication, the row shows what has HAPPENED (solid) and only two forecasts
-  // (dashed): the ACC approval and the contract signing. No forecast for the documents.
   function pst(key){return (p.steps||[]).find(function(x){return x.key===key;})||{};}
-  var fAccSub=pst("accSub"),fAcc=pst("accApp"),fCt=pst("contract");
-  var accEnd=fAcc.done||fAcc.date;
-  if(!fAcc.done&&isValidDate(fAcc.date)){
-    var lastAcc=acc[acc.length-1];
-    var aFrom=!lastAcc?fAccSub.date:(lastAcc.submitted&&!lastAcc.code?now:"");
-    if(isValidDate(aFrom)&&aFrom<fAcc.date)seg(aFrom,fAcc.date,FLOW_COL.client,"Forecast: ACC approval "+fmtDate(fAcc.date),true);
+  var fAcc=pst("accApp"),fCt=pst("contract"),fSdS=pst("sdSub"),fSdA=pst("sdApp");
+  var accDone=fAcc.done||"",ctDone=fCt.done||"";
+  var ctEnd=ctDone||fCt.date;
+  // --- the two past marks (also shown, hollow, while they are still forecasts)
+  function mark(d,done,shape,col,tip){
+    if(!isValidDate(d)||d<range.from)return;
+    var sz=shape==="diamond"?8:9;
+    out.push(<div key={"m"+(k++)} title={tip} style={{position:"absolute",top:shape==="diamond"?3:2.5,left:X(d)+"%",marginLeft:-sz/2,width:sz,height:sz,zIndex:2,
+      borderRadius:shape==="diamond"?1:"50%",transform:shape==="diamond"?"rotate(45deg)":"none",
+      background:done?col:"#fff",border:(done?"1px solid #fff":"1.5px solid "+col)}}/>);
   }
-  var ctSigned=fCt.done||"";
-  if(!ctSigned&&isValidDate(fCt.date)&&isValidDate(accEnd)){
-    var cFrom=cs.started&&cs.started>accEnd?cs.started:accEnd;
-    if(cFrom<fCt.date)seg(cFrom,fCt.date,FLOW_COL.internal,"Forecast: contract signed "+fmtDate(fCt.date),true);
-  }
-  // Contract signed: a mark, even when the contract circuit was not followed step by step.
-  if(isValidDate(ctSigned)&&ctSigned>=range.from)out.push(<div key={"ct"+(k++)} title={"Contract signed "+fmtDate(ctSigned)}
-    style={{position:"absolute",top:3,left:X(ctSigned)+"%",marginLeft:-4,width:8,height:8,transform:"rotate(45deg)",background:FLOW_COL.internal,border:"1px solid #fff",zIndex:2}}/>);
-  // Documents done after the contract: the sub preparing the shop drawings (contract → first
-  // submission), then every submission / answer of the SD, MAR, MSS, WMS and ITP.
-  tenderDocs(td).forEach(function(d){
-    if(d.kind==="acc")return;
-    var l=d.cycles||[],first=l[0];
-    var name=d.kind==="sd"?(d.id==="sd:_main"?"SD":"SD "+d.label):d.label;
-    if(d.kind==="sd"&&first&&isValidDate(first.submitted)&&isValidDate(ctSigned)&&ctSigned<first.submitted)
-      seg(ctSigned,first.submitted,FLOW_COL.sub,"Sub prepared the "+name+": contract "+fmtDate(ctSigned)+" → submitted "+fmtDate(first.submitted),false,0);
-    if(d.kind!=="sd")cyc(l,name,"sub");
-    // an answer recorded without its submission date still shows its code
-    l.forEach(function(c){if(!isValidDate(c.submitted)&&isValidDate(c.returned))code(c.returned,c.code,name+" R"+c.rev+": "+((cycleCodeInfo(c.code)||{}).label||""));});
+  mark(accDone||fAcc.date,!!accDone,"circle",FLOW_COL.client,accDone?"ACC/Aconex approved "+fmtDate(accDone):"ACC/Aconex approval expected "+fmtDate(fAcc.date));
+  mark(ctEnd,!!ctDone,"diamond",FLOW_COL.internal,ctDone?"Contract signed "+fmtDate(ctDone):"Contract signing expected "+fmtDate(fCt.date));
+  // --- shop drawings still to come
+  tenderDocs(td).filter(function(d){return d.kind==="sd";}).forEach(function(d){
+    var l=d.cycles||[],last=l[l.length-1],name=d.id==="sd:_main"?"SD":"SD "+d.label,main=d.id==="sd:_main";
+    if(last&&(last.code==="A"||last.code==="B"))return;               // approved: nothing to come
+    if(!last){
+      var subD=main&&isValidDate(fSdS.date)?fSdS.date:d.theoSub;
+      var appD=main&&isValidDate(fSdA.date)?fSdA.date:d.theoApproval;
+      if(isValidDate(ctEnd)&&isValidDate(subD)&&ctEnd<subD)fut(ctEnd,subD,FLOW_COL.sub,"Forecast: sub prepares the "+name+", submission "+fmtDate(subD));
+      fut(subD,appD,FLOW_COL.client,"Forecast: "+name+" with the client "+fmtDate(subD)+" → approval "+fmtDate(appD));
+    }else if(isValidDate(last.submitted)&&!last.code){
+      // the main SD follows the delivery cascade, so its answer date matches the truck
+      var due=main&&isValidDate(fSdA.date)?fSdA.date:addWorkingDays(last.submitted,getDur("sdApproval"));
+      fut(now,due>now?due:addWorkingDays(now,1),FLOW_COL.client,name+" R"+last.rev+" with the client since "+fmtDate(last.submitted)+" — answer expected "+fmtDate(due));
+    }else if(last.code==="C"||last.code==="D"){
+      var from=isValidDate(last.returned)?last.returned:now;
+      var resub=addWorkingDays(from>now?from:now,14);
+      var reapp=addWorkingDays(resub,getDur("sdApproval"));
+      fut(from,resub,FLOW_COL.sub,"Forecast: sub reworks the "+name+" (returned "+last.code+"), resubmission "+fmtDate(resub));
+      fut(resub,reapp,FLOW_COL.client,"Forecast: "+name+" R"+(last.rev+1)+" with the client → approval "+fmtDate(reapp));
+    }
   });
-  seg(p.fabStart,p.deliveryDate,FLOW_COL.sub,"Fabrication forecast "+fmtDate(p.fabStart||"")+" → "+fmtDate(p.deliveryDate||""),true);
+  // --- fabrication and delivery
+  fut(p.fabStart,p.deliveryDate,FLOW_COL.sub,"Fabrication forecast "+fmtDate(p.fabStart||"")+" → "+fmtDate(p.deliveryDate||""));
   var dl=tlDelivery(td,p);
   return <div style={{position:"relative",height:15,margin:"2px 0"}}>
     <span style={{position:"absolute",left:0,right:0,top:7,height:1,background:"#ece9e1"}}/>
