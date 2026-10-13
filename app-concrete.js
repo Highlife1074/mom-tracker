@@ -15,7 +15,9 @@
 // The curve spreads each WBS's theoretical quantity evenly between its start and finish
 // (planned), and each pour on its date or over its period (real).
 //
-// Cut-off cost control (see the section at the end): physical progress % per WBS at a date,
+// Schedule links (end of file): a WBS can follow the planned dates of zone-schedule activities,
+// and their progress is offered at a cut-off.
+// Cut-off cost control (see the section near the end): physical progress % per WBS at a date,
 // budget unlocked vs real, remain to be spent theoretical and real (adjustable), EAC.
 //
 // The past is entered as ONE WBS ("works to date") holding the total theoretical and real
@@ -28,7 +30,7 @@
 // _invHas, invCanDelete, _invUpsert, _invRemove (app-inventory).
 // ===========================================================================
 
-var CON_VERSION="2026-10-13-c";
+var CON_VERSION="2026-10-13-d";
 var CON_UNIT="m³";
 var CON_DEFAULT_TYPES=["C15 blinding","C30/37","C40/50","C50/60","C60/75"];
 var CON_WARN_PCT=3;            // a variance above this % of the theoretical is flagged
@@ -264,7 +266,7 @@ function conTypeByName(types,name){
 function conApplySplit(parent,rows,wbsAll,poursAll,dropParent){
   var children=rows.map(function(r){
     return newConWbs({code:r.code,name:r.name,zone:r.zone,start:r.start,finish:r.finish,done:!!r.done,
-      theo:Object.assign({},r.theo),splitFrom:parent.code||parent.name});
+      theo:Object.assign({},r.theo),splitFrom:parent.code||parent.name});   // schedule links are set on each new line afterwards
   });
   var theoLeft=Object.assign({},parent.theo||{});
   rows.forEach(function(r){Object.keys(r.theo||{}).forEach(function(t){theoLeft[t]=_invNum(theoLeft[t])-_invNum(r.theo[t]);});});
@@ -362,12 +364,14 @@ function ConTypeQtyInputs({types,map,onChange,ro,realMap}){
 }
 
 // ---------------------------------------------------------------- main view
-function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveCutoffs,zones,canEdit,currentUser}){
+function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveCutoffs,schedules,zones,canEdit,currentUser}){
   types=types||[];wbs=wbs||[];pours=pours||[];cutoffs=cutoffs||[];
+  var schedIx=conSchedIndex(schedules);
+  var wbsEff=conEffectiveWbs(wbs,schedIx);
   const [tab,setTab]=useState(wbs.length?"overview":types.length?"wbs":"types");
   var edit=canEdit&&!window._ppReadOnly;
   var realIx=conRealIndex(pours);
-  var common={types:types,wbs:wbs,pours:pours,realIx:realIx,zones:zones,edit:edit,saveTypes:saveTypes,saveWbs:saveWbs,savePours:savePours,cutoffs:cutoffs,saveCutoffs:saveCutoffs};
+  var common={types:types,wbs:wbs,pours:pours,realIx:realIx,zones:zones,edit:edit,saveTypes:saveTypes,saveWbs:saveWbs,savePours:savePours,cutoffs:cutoffs,saveCutoffs:saveCutoffs,schedules:schedules||[],schedIx:schedIx,wbsEff:wbsEff};
   var TABS=[["overview","📊 Overview"],["wbs","🧱 WBS & variances"],["pours","🚚 Pours (real)"],["cutoff","💰 Cut-off cost control"],["types","🏷 Types"]];
   return <div>
     <div className="page-hdr">
@@ -380,7 +384,7 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
     <div className="filter-bar">
       {TABS.map(function(t){return <button key={t[0]} className={"fchip"+(tab===t[0]?" on":"")} onClick={function(){setTab(t[0]);}}>{t[1]}</button>;})}
     </div>
-    {tab==="overview"&&<ConOverview {...common} onGo={setTab}/>}
+    {tab==="overview"&&<ConOverview {...common} wbs={wbsEff} onGo={setTab}/>}
     {tab==="wbs"&&<ConWbsList {...common}/>}
     {tab==="pours"&&<ConPours {...common}/>}
     {tab==="cutoff"&&<ConCutoff {...common}/>}
@@ -580,7 +584,8 @@ function ConMonthly({s}){
 }
 
 // ---------------------------------------------------------------- WBS
-function ConWbsList({types,wbs,pours,realIx,zones,edit,saveWbs,savePours,saveTypes,cutoffs,saveCutoffs}){
+function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,saveWbs,savePours,saveTypes,cutoffs,saveCutoffs}){
+  var effById={};(wbsEff||wbs).forEach(function(w){effById[w.id]=w;});
   const [q,setQ]=useState("");
   const [typeId,setTypeId]=useState("");
   const [status,setStatus]=useState("");
@@ -627,7 +632,9 @@ function ConWbsList({types,wbs,pours,realIx,zones,edit,saveWbs,savePours,saveTyp
         var rows=[<tr key={w.id} onClick={function(){setEditing(w);}} style={{cursor:"pointer"}}>
           <td><b>{w.code}</b> {w.name}{w.splitFrom&&<div style={{fontSize:10,color:"#888"}}>split from {w.splitFrom}</div>}</td>
           <td>{w.zone}</td>
-          <td style={{fontSize:12,whiteSpace:"nowrap"}}>{w.start||w.finish?fmtDate(w.start)+" → "+fmtDate(w.finish):<span style={{color:"#ef6c00"}}>no dates</span>}</td>
+          <td style={{fontSize:12,whiteSpace:"nowrap"}}>{(function(){var e=effById[w.id]||w;var n=(w.schedLinks||[]).length;
+            return <span>{e.start||e.finish?fmtDate(e.start)+" → "+fmtDate(e.finish):<span style={{color:"#ef6c00"}}>no dates</span>}
+              {n>0&&<div style={{fontSize:10,color:e._schedDates?"var(--gold-ink)":"#888"}} title={e._schedDates?"Dates from the schedule":"Linked, dates typed on the WBS"}>🗓 {n} activit{n===1?"y":"ies"}{e._schedDates?" · dates from schedule":""}</div>}</span>;})()}</td>
           <td><ConStatus f={f}/></td>
           <td style={R}>{conFmt(f.theo)}</td><td style={R}>{conFmt(f.real)}</td>
           <td style={Object.assign({fontWeight:700,color:conVarColour(f)},R)}>{conFmt(f.variance)}</td>
@@ -651,7 +658,7 @@ function ConWbsList({types,wbs,pours,realIx,zones,edit,saveWbs,savePours,saveTyp
         <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{conFmt(tot.real)}</td><td style={Object.assign({color:"#aaa"},R)}>{conFmt(tot.real-tot.theo)}</td><td style={Object.assign({color:"#aaa"},R)}>{tot.theo>0?conPct((tot.real-tot.theo)/tot.theo*100):"—"}</td><td/><td style={R}>{conFmt(tot.remaining)}</td><td/></tr>
       </tbody></table></div>}
     <div style={{fontSize:11,color:"#888",marginTop:8}}>Variance = real − theoretical, in {CON_UNIT}. It is final once the WBS is marked complete; on an open WBS it is greyed (still being poured), red if already over. Click a WBS to edit its dates and theoretical quantities; real quantities come from the Pours tab.</div>
-    {editing&&<ConWbsEditor w={editing} types={types} wbs={wbs} pours={pours} realIx={realIx} zones={zones} edit={edit}
+    {editing&&<ConWbsEditor w={editing} types={types} wbs={wbs} pours={pours} realIx={realIx} zones={zones} edit={edit} schedIx={schedIx} schedules={schedules}
       onSave={function(d){_invUpsert(wbs,saveWbs,d);setEditing(null);}}
       onDelete={wbs.some(function(x){return x.id===editing.id;})&&edit&&invCanDelete()?function(d){
         if(pours.some(function(p){return p.wbsId===d.id;})){safeAlert("Pours are recorded on this WBS. Delete or move them first (Pours tab).");return;}
@@ -681,13 +688,15 @@ function conWbsError(d,wbs){
   return"";
 }
 function conCleanTheo(m){var o={};Object.keys(m||{}).forEach(function(k){var v=_invNum(m[k]);if(v)o[k]=v;});return o;}
-function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,onSave,onDelete,onClose}){
+function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onSave,onDelete,onClose}){
   const [d,setD]=useState(Object.assign({},w,{theo:Object.assign({},w.theo||{})}));
   var ro=!edit;
   function set(p){setD(Object.assign({},d,p));}
   var err=conWbsError(d,wbs);
   var f=conWbsFigures(Object.assign({},d,{theo:conCleanTheo(d.theo)}),realIx,types.map(function(t){return t.id;}));
   var nPours=pours.filter(function(p){return p.wbsId===w.id;}).length;
+  var sd=null;
+  if(d.datesFromSched&&(d.schedLinks||[]).length){var ss=conWbsSched(d,schedIx||{},"");if(ss.start||ss.finish)sd=ss;}
   return <InvModal title={"🧱 "+(wbs.some(function(x){return x.id===w.id;})?"WBS "+conWbsLabel(w):"New WBS")} width={760} onClose={onClose} footer={<>
       {onDelete&&<button className="btn" style={{color:"#c62828",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
@@ -699,12 +708,14 @@ function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,onSave,onDelete,onClo
       <div className="fg" style={{flex:"0 0 140px"}}><label>Zone</label><ConZoneSelect zones={zones} value={d.zone} disabled={ro} onChange={function(v){set({zone:v});}}/></div>
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+      {sd?<div className="fg"><label>Planned (from the schedule)</label><div style={{padding:"7px 0",fontSize:13,fontWeight:600}}>{fmtDate(sd.start)} → {fmtDate(sd.finish)}</div></div>:<>
       <div className="fg"><label>Planned start</label><input type="date" disabled={ro} value={d.start||""} onChange={function(e){set({start:e.target.value});}}/></div>
-      <div className="fg"><label>Planned finish</label><input type="date" disabled={ro} value={d.finish||""} onChange={function(e){set({finish:e.target.value});}}/></div>
+      <div className="fg"><label>Planned finish</label><input type="date" disabled={ro} value={d.finish||""} onChange={function(e){set({finish:e.target.value});}}/></div></>}
       <label style={{display:"flex",gap:6,alignItems:"center",fontSize:13,marginBottom:12,textTransform:"none",letterSpacing:"normal",fontWeight:600}}>
         <input type="checkbox" disabled={ro} checked={!!d.done} onChange={function(){set({done:!d.done});}} style={{width:15,height:15}}/> Complete — all its concrete is poured, the variance is final
       </label>
     </div>
+    <ConSchedLinks w={d} ix={schedIx||{}} edit={!ro} schedules={schedules} onChange={set}/>
     <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"4px 0 6px"}}>Theoretical quantities per type</div>
     <ConTypeQtyInputs types={types} map={d.theo} ro={ro} realMap={realIx[w.id]||{}} onChange={function(m){set({theo:m});}}/>
     <div style={{fontSize:12,margin:"10px 0",color:"#555"}}>
@@ -1220,7 +1231,7 @@ function ConNumCell({value,onCommit,disabled,width,placeholder,highlight,title})
     style={{width:width||70,textAlign:"right",fontVariantNumeric:"tabular-nums",padding:"4px 6px",background:highlight?"var(--gold-soft)":undefined,fontWeight:highlight?700:undefined}}/>;
 }
 
-function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit}){
+function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
   cutoffs=cutoffs||[];
   var sorted=cutoffs.slice().sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:0;});
   const [curId,setCurId]=useState(sorted[0]?sorted[0].id:"");
@@ -1260,10 +1271,11 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit}){
     if(i>=0)lines[i]=ln;else lines.push(ln);
     setCur({lines:lines});
   }
-  function commitPct(r,v){
+  // from: "schedule" when the % was taken from the linked activities, else typed by hand
+  function commitPct(r,v,from){
     var w=r.wbs;
     if(v!==null&&(v<0||v>100)){safeAlert("Progress is a percentage between 0 and 100.");return;}
-    var patch={pct:v===null?undefined:v};
+    var patch={pct:v===null?undefined:v,pctFrom:v!==null&&from?from:undefined};
     // At 100% nothing remains to be spent: an adjustment of the remain would be stale.
     if(v===100&&r.line.rts)patch.rts=undefined;
     setLine(w.id,patch);
@@ -1282,6 +1294,20 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit}){
       Object.keys(sp).forEach(function(t){rts[t]=sp[t];});
     }
     setLine(r.wbs.id,{rts:Object.keys(rts).length?rts:undefined});
+  }
+  // Progress of the linked schedule activities at the cut-off date.
+  var schedPct={};
+  rows.forEach(function(r){if((r.wbs.schedLinks||[]).length){var s=conWbsSched(r.wbs,schedIx||{},cur.date);if(s.pct!==null)schedPct[r.wbs.id]=s.pct;}});
+  var nFill=rows.filter(function(r){return !r.hasPct&&schedPct[r.wbs.id]!==undefined;}).length;
+  function fillFromSched(){
+    var lines=(cur.lines||[]).slice();
+    rows.forEach(function(r){
+      if(r.hasPct||schedPct[r.wbs.id]===undefined)return;
+      var i=lines.findIndex(function(l){return l.id===r.wbs.id;});
+      var ln=Object.assign({id:r.wbs.id},i>=0?lines[i]:{},{pct:schedPct[r.wbs.id],pctFrom:"schedule",updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""});
+      if(i>=0)lines[i]=ln;else lines.push(ln);
+    });
+    setCur({lines:lines});
   }
   function close(){
     if(tot.nNoPct&&!confirm(tot.nNoPct+" WBS have no progress % (counted as 0%). Close the cut-off anyway?"))return;
@@ -1333,10 +1359,11 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit}){
       <InvBig label="Remain to be spent, real" value={tot.rtsReal} unit={CON_UNIT} sub={tot.nAdj?tot.nAdj+" WBS adjusted":"= theoretical (no adjustment)"}/>
       <InvBig label="Estimate at completion" value={tot.eac} unit={CON_UNIT} colour={conVarCol(tot.eacPct)} sub={(tot.eacVar>0?"+":"")+conFmt(tot.eacVar)+" ("+conPct(tot.eacPct)+") vs budget"+(prevTot?" · was "+(prevTot.eacVar>0?"+":"")+conFmt(prevTot.eacVar):"")}/>
     </div>
-    {tot.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ {tot.nNoPct} WBS with a budget have no progress % at this cut-off (counted as 0%).</div>}
+    {tot.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ {tot.nNoPct} WBS with a budget have no progress % at this cut-off (counted as 0%).
+      {!ro&&nFill>0&&<button className="btn btn-sm" style={{marginLeft:8}} onClick={fillFromSched}>🗓 Fill {nFill} from the schedule</button>}</div>}
     {drift&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ Figures moved since the cut-off was closed (pours or theoretical quantities edited): at closing, budget {conFmt(drift.theo)}, earned {conFmt(drift.earned)}, real {conFmt(drift.real)} {CON_UNIT}.</div>}
     <div style={{overflowX:"auto"}}><table className="tbl">
-      <thead><tr><th>WBS</th><th style={R}>Budget</th><th style={R} title="Physical progress at the cut-off date">Progress %</th><th style={R} title="Budget × progress %">Earned</th>
+      <thead><tr><th>WBS</th><th style={R}>Budget</th><th style={R} title="Physical progress at the cut-off date">Progress %</th><th style={R} title="Progress of the linked schedule activities at the cut-off date (click to use it)">Sched. %</th><th style={R} title="Budget × progress %">Earned</th>
         <th style={R} title="Concrete poured up to the cut-off date">Real</th><th style={R} title="Real ÷ budget: compare with the physical %">Real %</th><th style={R}>Real − earned</th><th style={R}>%</th>
         <th style={R} title="Budget − earned">RTS theo.</th><th style={R} title="Remain to be spent, real. Empty = RTS theo. Type a value to adjust it.">RTS real</th>
         <th style={R} title="Real + RTS real">EAC</th><th style={R}>EAC − budget</th></tr></thead>
@@ -1347,8 +1374,11 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit}){
           <td><b>{w.code}</b> {w.name}{w.done&&<span style={{fontSize:10,color:"#2e7d32"}}> · complete</span>}
             {w.done&&r.hasPct&&r.pct<100&&<div style={{fontSize:10,color:"#ef6c00"}}>marked complete but below 100%</div>}</td>
           <td style={R}>{conFmt(r.theo)}</td>
-          <td style={R}>{ro?(r.hasPct?r.pct.toFixed(0)+"%":<span style={{color:"#ef6c00"}}>—</span>)
+          <td style={Object.assign({whiteSpace:"nowrap"},R)}>{r.line.pctFrom==="schedule"&&<span title="Taken from the schedule" style={{fontSize:10,marginRight:3}}>🗓</span>}{ro?(r.hasPct?r.pct.toFixed(0)+"%":<span style={{color:"#ef6c00"}}>—</span>)
             :<ConNumCell key={cur.id+w.id+"p"} value={r.line.pct} width={58} placeholder="—" onCommit={function(v){commitPct(r,v);}}/>}</td>
+          <td style={Object.assign({fontSize:12},R)}>{schedPct[w.id]===undefined?<span style={{color:"#ccc"}}>{(w.schedLinks||[]).length?"—":""}</span>
+            :<span onClick={ro?undefined:function(){commitPct(r,schedPct[w.id],"schedule");}} title={ro?"":"Use the schedule's progress"}
+              style={{cursor:ro?undefined:"pointer",color:r.hasPct&&Math.abs(r.pct-schedPct[w.id])>10?"#ef6c00":"#555",textDecoration:ro?undefined:"underline dotted"}}>{schedPct[w.id]}%</span>}</td>
           <td style={R}>{conFmt(r.earned)}</td>
           <td style={R}>{conFmt(r.real)}</td>
           <td style={Object.assign({color:mismatch?"#ef6c00":"#888",fontSize:12},R)} title={mismatch?"Volume progress far from the physical progress: check the % or the pours":""}>{r.realPct===null?"—":r.realPct.toFixed(0)+"%"}</td>
@@ -1362,7 +1392,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit}){
           <td style={Object.assign({fontWeight:700,color:conVarCol(r.eacPct)},R)}>{(r.eacVar>0?"+":"")+conFmt(r.eacVar)}<div style={{fontSize:10,fontWeight:400}}>{conPct(r.eacPct)}</div></td>
         </tr>;
       })}
-      <tr style={{fontWeight:700,background:"#f7f6f2"}}><td>Total — {rows.length} WBS</td><td style={R}>{conFmt(tot.theo)}</td><td style={R}>{tot.pct===null?"—":tot.pct.toFixed(1)+"%"}</td><td style={R}>{conFmt(tot.earned)}</td>
+      <tr style={{fontWeight:700,background:"#f7f6f2"}}><td>Total — {rows.length} WBS</td><td style={R}>{conFmt(tot.theo)}</td><td style={R}>{tot.pct===null?"—":tot.pct.toFixed(1)+"%"}</td><td/><td style={R}>{conFmt(tot.earned)}</td>
         <td style={R}>{conFmt(tot.real)}</td><td style={R}>{tot.theo>CON_EPS?(tot.real/tot.theo*100).toFixed(0)+"%":"—"}</td><td style={Object.assign({color:conVarCol(tot.varPct)},R)}>{conFmt(tot.variance)}</td><td style={Object.assign({color:conVarCol(tot.varPct)},R)}>{conPct(tot.varPct)}</td>
         <td style={R}>{conFmt(tot.rtsTheo)}</td><td style={R}>{conFmt(tot.rtsReal)}</td><td style={R}>{conFmt(tot.eac)}</td><td style={Object.assign({color:conVarCol(tot.eacPct)},R)}>{(tot.eacVar>0?"+":"")+conFmt(tot.eacVar)} <span style={{fontWeight:400,fontSize:11}}>{conPct(tot.eacPct)}</span></td></tr>
       </tbody></table></div>
@@ -1444,4 +1474,144 @@ function conSplitCutoffs(cutoffs,parentId,childIds,parentGone){
     childIds.forEach(function(id){lines.push({id:id,pct:pl.pct});});
     return Object.assign({},c,{lines:lines});
   });
+}
+
+// ---------------------------------------------------------------- link to the zone schedules
+// A WBS can be linked to one or more task rows of the zone schedules (pp_schedules):
+//   schedLinks: [{schedId, rowId}]
+//   datesFromSched: true → the WBS's planned start/finish follow the linked activities
+//     (earliest planned week → end of the latest planned week); the curve uses them.
+// The schedule's progress of the linked activities (weighted by their planned weeks) is
+// offered as the progress % at a cut-off.
+function conSchedIndex(schedules){
+  var ix={};
+  (schedules||[]).forEach(function(sc){
+    var sec="",cat="";
+    (sc.rows||[]).forEach(function(r){
+      if(r.kind==="section"){sec=r.label||"";cat="";return;}
+      if(r.kind==="category"){cat=r.label||"";return;}
+      ix[sc.id+":"+r.id]={sc:sc,row:r,ctx:[sec,cat].filter(Boolean).join(" › ")};
+    });
+  });
+  return ix;
+}
+function conSchedName(sc){return(sc.zone?sc.zone+" — ":"")+(sc.title||"Schedule");}
+function _conAddDays(iso,n){var d=parseISODate(iso);if(isNaN(d.getTime()))return"";d.setDate(d.getDate()+n);return toISO(d);}
+// Planned span of a schedule row: its planned bars, or startWeek/endWeek, else any bar.
+function conSchedRowSpan(row){
+  var c=row.cells||{},ks=Object.keys(c).sort();
+  var plan=ks.filter(function(w){return c[w]==="plan"||c[w]==="both";});
+  var s=plan[0]||row.startWeek||"",e=plan[plan.length-1]||row.endWeek||"";
+  if(!s&&!e){var any=ks.filter(function(w){return c[w];});s=any[0]||"";e=any[any.length-1]||"";}
+  return{start:s,finish:e?_conAddDays(e,WORK_DAYS_PER_WEEK-1):"",weeks:Math.max(1,plan.length)};
+}
+// Progress of a schedule row at a date: the latest weekly entry up to that date, else the
+// manual %, else actual weeks ÷ planned weeks counted up to that date. null = nothing known.
+function conSchedRowProgress(row,date){
+  var wp=row.weekProgress||{};
+  var ks=Object.keys(wp).filter(function(k){return k<=date&&wp[k]!==""&&wp[k]!==null&&wp[k]!==undefined;}).sort();
+  if(ks.length)return conClampPct(wp[ks[ks.length-1]]);
+  if(row.progress!==undefined&&row.progress!==null&&row.progress!=="")return conClampPct(row.progress);
+  var c=row.cells||{},plan=0,act=0;
+  Object.keys(c).forEach(function(w){
+    if(c[w]==="plan"||c[w]==="both")plan++;
+    if((c[w]==="actual"||c[w]==="both")&&w<=date)act++;
+  });
+  if(!plan&&!act)return null;
+  if(!plan)return 100;
+  return Math.min(100,Math.round(act/plan*100));
+}
+// What the links of a WBS point to, its dates from the schedule and its progress at a date.
+function conWbsSched(w,ix,date){
+  var acts=(w.schedLinks||[]).map(function(l){var e=ix[l.schedId+":"+l.rowId];return e?Object.assign({link:l},e,{span:conSchedRowSpan(e.row)}):{link:l,missing:true};});
+  var ok=acts.filter(function(a){return !a.missing;});
+  var start="",finish="";
+  ok.forEach(function(a){
+    if(a.span.start&&(!start||a.span.start<start))start=a.span.start;
+    if(a.span.finish&&(!finish||a.span.finish>finish))finish=a.span.finish;
+  });
+  var pct=null;
+  if(date){
+    var sw=0,sp=0;
+    ok.forEach(function(a){var p=conSchedRowProgress(a.row,date);if(p===null)return;sw+=a.span.weeks;sp+=p*a.span.weeks;});
+    if(sw>0)pct=Math.round(sp/sw*10)/10;
+  }
+  return{acts:acts,nMissing:acts.length-ok.length,start:start,finish:finish,pct:pct};
+}
+// The WBS list used for the curve and the tables: planned dates taken from the schedule where
+// the WBS says so. Never saved back (the stored WBS keep their own typed dates).
+function conEffectiveWbs(wbs,ix){
+  return(wbs||[]).map(function(w){
+    if(!w.datesFromSched||!(w.schedLinks||[]).length)return w;
+    var s=conWbsSched(w,ix,"");
+    if(!s.start&&!s.finish)return w;
+    return Object.assign({},w,{start:s.start,finish:s.finish,_schedDates:true});
+  });
+}
+// Pick schedule task rows for a WBS.
+function ConSchedPicker({schedules,ix,links,zone,onChange,onClose}){
+  var scs=(schedules||[]).slice().sort(function(a,b){return conSchedName(a).localeCompare(conSchedName(b));});
+  var first=scs.find(function(s){return zone&&s.zone===zone;})||scs[0];
+  const [scId,setScId]=useState(first?first.id:"");
+  const [q,setQ]=useState("");
+  const [sel,setSel]=useState((links||[]).slice());
+  var sc=scs.find(function(s){return s.id===scId;});
+  var ql=q.trim().toLowerCase();
+  var rows=sc?Object.keys(ix).map(function(k){return ix[k];}).filter(function(e){
+    return e.sc.id===sc.id&&(e.row.kind||"task")==="task"&&(!ql||[e.row.label,e.ctx,e.row.group].join(" ").toLowerCase().indexOf(ql)>=0);
+  }):[];
+  function on(e){return sel.some(function(l){return l.schedId===e.sc.id&&l.rowId===e.row.id;});}
+  function toggle(e){setSel(on(e)?sel.filter(function(l){return !(l.schedId===e.sc.id&&l.rowId===e.row.id);}):sel.concat([{schedId:e.sc.id,rowId:e.row.id}]));}
+  return <InvModal title="🗓 Link schedule activities" width={820} onClose={onClose} footer={<>
+      <span style={{fontSize:12,color:"#555",marginRight:"auto"}}>{sel.length} activit{sel.length===1?"y":"ies"} selected</span>
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn btn-pri" onClick={function(){onChange(sel);}}>Apply</button>
+    </>}>
+    {!scs.length?<div style={{fontSize:12,color:"#888"}}>No zone schedule yet.</div>:<>
+    <div className="filter-bar">
+      <select value={scId} onChange={function(e){setScId(e.target.value);}} style={{width:"auto"}}>
+        {scs.map(function(s){return <option key={s.id} value={s.id}>{conSchedName(s)}{sel.some(function(l){return l.schedId===s.id;})?" ●":""}</option>;})}
+      </select>
+      <input type="text" placeholder="Search activity…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:220}}/>
+    </div>
+    <div style={{maxHeight:420,overflowY:"auto"}}><table className="tbl" style={{fontSize:12}}>
+      <thead><tr><th/><th>Activity</th><th>Company</th><th>Planned</th><th style={{textAlign:"right"}}>Progress</th></tr></thead>
+      <tbody>{rows.map(function(e){
+        var sp=conSchedRowSpan(e.row),p=conSchedRowProgress(e.row,today());
+        return <tr key={e.row.id} onClick={function(){toggle(e);}} style={{cursor:"pointer",background:on(e)?"var(--gold-soft)":undefined}}>
+          <td><input type="checkbox" checked={on(e)} readOnly style={{width:14,height:14}}/></td>
+          <td><b>{e.row.label||"(no label)"}</b>{e.ctx&&<div style={{fontSize:10,color:"#888"}}>{e.ctx}</div>}</td>
+          <td>{e.row.group||""}</td>
+          <td style={{whiteSpace:"nowrap"}}>{sp.start?fmtDate(sp.start)+" → "+fmtDate(sp.finish):<span style={{color:"#aaa"}}>no bar</span>}</td>
+          <td style={{textAlign:"right"}}>{p===null?"—":p+"%"}</td>
+        </tr>;
+      })}</tbody></table>
+      {!rows.length&&<div style={{fontSize:12,color:"#888",padding:8}}>No activity{q?" matches":" in this schedule"}.</div>}</div>
+    </>}
+  </InvModal>;
+}
+// The linked activities, as shown in the WBS editor.
+function ConSchedLinks({w,ix,edit,schedules,onChange}){
+  const [picking,setPicking]=useState(false);
+  var s=conWbsSched(w,ix,today());
+  return <div style={{background:"#fafafa",borderRadius:8,padding:"8px 10px",margin:"6px 0 10px"}}>
+    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+      <span style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase"}}>Schedule activities</span>
+      {s.acts.length>0&&<span style={{fontSize:12,color:"#555"}}>{s.start?fmtDate(s.start)+" → "+fmtDate(s.finish):"no planned bar"}{s.pct!==null?" · progress "+s.pct+"%":""}</span>}
+      <div style={{flex:1}}/>
+      {edit&&<button className="btn btn-sm" onClick={function(){setPicking(true);}}>{s.acts.length?"Change links":"🗓 Link activities"}</button>}
+    </div>
+    {s.acts.map(function(a,i){
+      return <div key={i} style={{fontSize:12,marginTop:4}}>
+        {a.missing?<span style={{color:"#c62828"}}>(activity deleted from the schedule)</span>
+          :<span><b>{a.row.label}</b> <span style={{color:"#888"}}>· {conSchedName(a.sc)}{a.ctx?" › "+a.ctx:""} · {a.span.start?fmtDate(a.span.start)+" → "+fmtDate(a.span.finish):"no bar"}</span></span>}
+        {edit&&<button className="btn btn-sm" style={{marginLeft:6,padding:"0 6px"}} onClick={function(){onChange({schedLinks:(w.schedLinks||[]).filter(function(l){return l!==a.link;})});}}>×</button>}
+      </div>;
+    })}
+    {s.acts.length>0&&<label style={{display:"flex",gap:6,alignItems:"center",fontSize:12,marginTop:6,textTransform:"none",letterSpacing:"normal"}}>
+      <input type="checkbox" disabled={!edit} checked={!!w.datesFromSched} onChange={function(){onChange({datesFromSched:!w.datesFromSched});}}/> Planned dates follow the schedule (used by the curve)
+    </label>}
+    {picking&&<ConSchedPicker schedules={schedules} ix={ix} links={w.schedLinks} zone={w.zone} onClose={function(){setPicking(false);}}
+      onChange={function(l){var p={schedLinks:l};if(l.length&&!(w.schedLinks||[]).length)p.datesFromSched=true;onChange(p);setPicking(false);}}/>}
+  </div>;
 }
