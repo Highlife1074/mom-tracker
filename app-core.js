@@ -198,7 +198,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-13-d";
+var APP_BUILD="2026-10-13-e";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -481,6 +481,10 @@ const cloudStore={
 // it on the server's current copy. Field-level: two people editing different fields of
 // the same action both keep their change. An action deleted by someone else stays deleted.
 // Returns {noop:true} | {list:[...]} ; list===null means "fall back to a full write of next".
+// Save state of the list documents (see queuedListSave in App): per key, a save in flight,
+// the changes waiting for the next one, and whether a server snapshot was held meanwhile.
+var _ppSaves={},_ppListSetters={};
+function _ppSaveBusy(key){var st=_ppSaves[key];return !!(st&&(st.busy||st.next));}
 function mergeListChanges(base,next,remote){
   base=base||[];next=next||[];
   if(!Array.isArray(remote))return{list:next};
@@ -4285,31 +4289,80 @@ function App(){
     catch(e){console.error("Merge sync error",e);setSyncStatus("err");}
   },[]);
 
-  // Per-action write: re-read the server copy, replay only what this client changed.
-  // See mergeListChanges. Writes are queued so two quick saves cannot cross each other.
   // Per-item write for list collections: re-read the server copy, replay only what this
-  // client changed (see mergeListChanges). Queued per key so two quick saves cannot cross.
+  // client changed (see mergeListChanges), in one Firestore transaction.
+  //
+  // One save at a time per key. Changes made while a save is in flight are COALESCED into the
+  // next one (base = the list before the first of them, d = the latest list): ten quick edits
+  // cost two transactions, not ten chained round trips — that chain was the typing latency.
+  //
+  // While a key has a save in flight or waiting, the live listener must not push the server's
+  // copy into the screen: a transaction is not applied to the local cache before it commits,
+  // so every snapshot arriving meanwhile is the OLD document and wiped what was just typed
+  // (the "automatic rollbacks"), until the next snapshot put it back. Those snapshots are held;
+  // once the key is idle the document is read once and applied (it then holds everybody's
+  // changes, ours included).
+  // A failed save is not lost silently: its changes are replayed with the next save of the key,
+  // and with none pending the screen is put back on the server copy (the sync dot says "err").
   function queuedListSave(key,ref,queue,d){
     var base=ref.current||[];
     ref.current=d;
     setSyncStatus("syncing");
-    queue.current=queue.current.then(async function(){
-      if(typeof window._dbUpdate==="function"){
-        // Atomic path (index.html provides a Firestore transaction): read and write cannot be
-        // separated by someone else's save. The callback may run more than once — it is pure.
-        await window._dbUpdate(key,function(raw){
-          var res=mergeListChanges(base,d,_parseFirebaseVal(raw));
-          if(res.noop)return undefined;
-          var out=JSON.stringify(res.list);_noteDocSize(key,out);
-          return out;
-        });
-      } else {
-        var remote=await cloudStore.get(key);
-        var res=mergeListChanges(base,d,remote);
-        if(!res.noop)await cloudStore.set(key,res.list);
-      }
-      setSyncStatus("ok");
-    }).catch(function(e){console.error("Sync error "+key,e);setSyncStatus("err");});
+    var st=_ppSaves[key]||(_ppSaves[key]={busy:false,next:null,held:false});
+    if(st.next)st.next.d=d;              // coalesce: keep the first base, take the latest list
+    else st.next={base:base,d:d};
+    if(!st.busy)runListSave(key,st);
+  }
+  function runListSave(key,st){
+    var job=st.next;st.next=null;st.busy=true;
+    var p;
+    if(typeof window._dbUpdate==="function"){
+      // Atomic path (index.html provides a Firestore transaction): read and write cannot be
+      // separated by someone else's save. The callback may run more than once — it is pure.
+      p=window._dbUpdate(key,function(raw){
+        var res=mergeListChanges(job.base,job.d,_parseFirebaseVal(raw));
+        if(res.noop)return undefined;
+        var out=JSON.stringify(res.list);_noteDocSize(key,out);
+        return out;
+      });
+    } else {
+      p=cloudStore.get(key).then(function(remote){
+        var res=mergeListChanges(job.base,job.d,remote);
+        if(!res.noop)return cloudStore.set(key,res.list);
+      });
+    }
+    p.then(function(){return true;},function(e){
+      console.error("Sync error "+key,e);
+      // Replay these changes with the next save: its diff starts from before them.
+      if(st.next)st.next.base=job.base;
+      else st.held=true;                 // nothing else to send: show the server copy again
+      return false;
+    }).then(function(ok){
+      st.busy=false;
+      if(st.next){runListSave(key,st);return;}
+      setSyncStatus(ok?"ok":"err");
+      if(st.held){st.held=false;refreshList(key);}
+    });
+  }
+  // Re-read one list document and show it, unless a new save started meanwhile (it will
+  // refresh again when it ends).
+  function refreshList(key){
+    var set=_ppListSetters[key];
+    if(!set)return;
+    cloudStore.get(key).then(function(v){
+      if(_ppSaveBusy(key)){_ppSaves[key].held=true;return;}
+      if(Array.isArray(v))set(v);
+    }).catch(function(e){console.error("Refresh error "+key,e);});
+  }
+  // Live listener for a list document, quiet while this client is saving that key.
+  function listenList(key,set){
+    _ppListSetters[key]=set;
+    window._dbListen(key,function(val){
+      var v=_parseFirebaseVal(val);
+      if(!Array.isArray(v))return;
+      if(_ppSaveBusy(key)){_ppSaves[key].held=true;return;}
+      set(v);
+    });
   }
   const saveT=d=>{setTasks(d);queuedListSave(KEYS.tasks,tasksRef,tasksQueue,d);};
   const saveX=d=>{setTrackers(d);sync(KEYS.trackers,d);};
@@ -4589,33 +4642,33 @@ function App(){
       setLoaded(true);
 
       if(window._dbListen){
-        window._dbListen(KEYS.tasks,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setTasks(v);});
-          window._dbListen(KEYS.groups,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSubList(v);});
-          window._dbListen(KEYS.tenderrules,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setTenderRules(v);});
+        listenList(KEYS.tasks,setTasks);
+          listenList(KEYS.groups,setSubList);
+          listenList(KEYS.tenderrules,setTenderRules);
           window._dbListen(KEYS.pkgsubcontractors,function(val){var v=_parseFirebaseVal(val);if(v&&typeof v==="object"&&!Array.isArray(v))setSubColors(onlyColours(v));});
-        window._dbListen(KEYS.trackers,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setTrackers(v);});
-        window._dbListen(KEYS.tenders,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setTenders(v);});
-        window._dbListen(KEYS.contractors,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setContractors(v);});
-        window._dbListen(KEYS_ROOMS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setRooms(v);});
-        window._dbListen(KEYS_KPIS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setKpis(v);});
-        window._dbListen(KEYS_MEETINGS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setMeetings(v);});
-        window._dbListen(KEYS_MOMS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setMoms(v);});
-        window._dbListen(KEYS_NOTES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setNotes(v);});
-        window._dbListen(KEYS_STEEL_DOCKETS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSteelDockets(v);});
-        window._dbListen(KEYS_STEEL_WBS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSteelWbs(v);});
-        window._dbListen(KEYS_STEEL_PERIODS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSteelPeriods(v);});
-        window._dbListen(KEYS_INV_ITEMS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvItems(v);});
-        window._dbListen(KEYS_INV_POS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvPos(v);});
-        window._dbListen(KEYS_INV_DOCKETS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvDockets(v);});
-        window._dbListen(KEYS_INV_ISSUES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvIssues(v);});
-        window._dbListen(KEYS_INV_COUNTS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvCounts(v);});
-        window._dbListen(KEYS_CON_TYPES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConTypes(v);});
-        window._dbListen(KEYS_CON_WBS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConWbs(v);});
-        window._dbListen(KEYS_CON_POURS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConPours(v);});
-        window._dbListen(KEYS_CON_CUTOFFS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConCutoffs(v);});
-        window._dbListen(KEYS_SCHEDULES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSchedules(v);});
-        window._dbListen(KEYS_READINESS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setReadiness(v);});
-        window._dbListen(KEYS_CORR,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setCorrespondences(v);});
+        listenList(KEYS.trackers,setTrackers);
+        listenList(KEYS.tenders,setTenders);
+        listenList(KEYS.contractors,setContractors);
+        listenList(KEYS_ROOMS,setRooms);
+        listenList(KEYS_KPIS,setKpis);
+        listenList(KEYS_MEETINGS,setMeetings);
+        listenList(KEYS_MOMS,setMoms);
+        listenList(KEYS_NOTES,setNotes);
+        listenList(KEYS_STEEL_DOCKETS,setSteelDockets);
+        listenList(KEYS_STEEL_WBS,setSteelWbs);
+        listenList(KEYS_STEEL_PERIODS,setSteelPeriods);
+        listenList(KEYS_INV_ITEMS,setInvItems);
+        listenList(KEYS_INV_POS,setInvPos);
+        listenList(KEYS_INV_DOCKETS,setInvDockets);
+        listenList(KEYS_INV_ISSUES,setInvIssues);
+        listenList(KEYS_INV_COUNTS,setInvCounts);
+        listenList(KEYS_CON_TYPES,setConTypes);
+        listenList(KEYS_CON_WBS,setConWbs);
+        listenList(KEYS_CON_POURS,setConPours);
+        listenList(KEYS_CON_CUTOFFS,setConCutoffs);
+        listenList(KEYS_SCHEDULES,setSchedules);
+        listenList(KEYS_READINESS,setReadiness);
+        listenList(KEYS_CORR,setCorrespondences);
       }
     };
     if(window._dbReady)load();
