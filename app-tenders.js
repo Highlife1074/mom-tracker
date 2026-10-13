@@ -2115,7 +2115,8 @@ function TenderTimelineLegend(){
     <TlMarkerKeys/>
     {[["With client",FLOW_COL.client],["With us",FLOW_COL.us],["With sub / bidders",FLOW_COL.sub],["Internal circuit",FLOW_COL.internal],["Returned",FLOW_COL.returned]].map(function(x){
       return <span key={x[0]} style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:14,height:6,borderRadius:2,background:x[1]}}/>{x[0]}</span>;})}
-    <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:14,height:6,borderRadius:2,border:"1px dashed "+FLOW_COL.sub}}/>Fabrication forecast</span>
+    <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:14,height:6,borderRadius:2,border:"1px dashed "+FLOW_COL.sub}}/>Forecast (ACC, contract, fabrication)</span>
+    <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:7,height:7,transform:"rotate(45deg)",background:FLOW_COL.internal}}/>Contract signed</span>
   </div>;
 }
 // Today as one continuous line over the whole list. It is measured from the scale row
@@ -2180,6 +2181,36 @@ function TenderMiniTimeline({td,range}){
     seg(e.in,e.outcome?e.out:"",col,x.stage.label);});});
   tenderDocs(td).filter(function(d){return d.kind==="sd";}).forEach(function(d){cyc(d.cycles,d.id==="sd:_main"?"SD":"SD "+d.label,"sub");});
   var p=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
+  // Before the fabrication, the row shows what has HAPPENED (solid) and only two forecasts
+  // (dashed): the ACC approval and the contract signing. No forecast for the documents.
+  function pst(key){return (p.steps||[]).find(function(x){return x.key===key;})||{};}
+  var fAccSub=pst("accSub"),fAcc=pst("accApp"),fCt=pst("contract");
+  var accEnd=fAcc.done||fAcc.date;
+  if(!fAcc.done&&isValidDate(fAcc.date)){
+    var lastAcc=acc[acc.length-1];
+    var aFrom=!lastAcc?fAccSub.date:(lastAcc.submitted&&!lastAcc.code?now:"");
+    if(isValidDate(aFrom)&&aFrom<fAcc.date)seg(aFrom,fAcc.date,FLOW_COL.client,"Forecast: ACC approval "+fmtDate(fAcc.date),true);
+  }
+  var ctSigned=fCt.done||"";
+  if(!ctSigned&&isValidDate(fCt.date)&&isValidDate(accEnd)){
+    var cFrom=cs.started&&cs.started>accEnd?cs.started:accEnd;
+    if(cFrom<fCt.date)seg(cFrom,fCt.date,FLOW_COL.internal,"Forecast: contract signed "+fmtDate(fCt.date),true);
+  }
+  // Contract signed: a mark, even when the contract circuit was not followed step by step.
+  if(isValidDate(ctSigned)&&ctSigned>=range.from)out.push(<div key={"ct"+(k++)} title={"Contract signed "+fmtDate(ctSigned)}
+    style={{position:"absolute",top:3,left:X(ctSigned)+"%",marginLeft:-4,width:8,height:8,transform:"rotate(45deg)",background:FLOW_COL.internal,border:"1px solid #fff",zIndex:2}}/>);
+  // Documents done after the contract: the sub preparing the shop drawings (contract → first
+  // submission), then every submission / answer of the SD, MAR, MSS, WMS and ITP.
+  tenderDocs(td).forEach(function(d){
+    if(d.kind==="acc")return;
+    var l=d.cycles||[],first=l[0];
+    var name=d.kind==="sd"?(d.id==="sd:_main"?"SD":"SD "+d.label):d.label;
+    if(d.kind==="sd"&&first&&isValidDate(first.submitted)&&isValidDate(ctSigned)&&ctSigned<first.submitted)
+      seg(ctSigned,first.submitted,FLOW_COL.sub,"Sub prepared the "+name+": contract "+fmtDate(ctSigned)+" → submitted "+fmtDate(first.submitted),false,0);
+    if(d.kind!=="sd")cyc(l,name,"sub");
+    // an answer recorded without its submission date still shows its code
+    l.forEach(function(c){if(!isValidDate(c.submitted)&&isValidDate(c.returned))code(c.returned,c.code,name+" R"+c.rev+": "+((cycleCodeInfo(c.code)||{}).label||""));});
+  });
   seg(p.fabStart,p.deliveryDate,FLOW_COL.sub,"Fabrication forecast "+fmtDate(p.fabStart||"")+" → "+fmtDate(p.deliveryDate||""),true);
   var dl=tlDelivery(td,p);
   return <div style={{position:"relative",height:15,margin:"2px 0"}}>
