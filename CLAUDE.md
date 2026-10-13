@@ -30,7 +30,7 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
 | `app-reports.js` | Rapports imprimables, MOM, timeline, dashboard, trackers |
 | `app-steel.js` | Suivi acier (barres + treillis) : dockets, bilans site / transformateur / JV (stocké en kg, affiché en tonnes) |
 | `app-inventory.js` | Inventaire (items critiques) : catalogue, PO, dockets de livraison, sorties de stock (zone / localisation / usage), comptages mensuels → consommation réelle, moyenne mensuelle, où c'est consommé |
-| `app-concrete.js` | Béton : types, WBS avec quantités théoriques par type, coulages réels, courbe cumulée prévu/réel, écarts totaux / par type / par WBS, split d'un WBS (ex. « travaux à date ») en WBS détaillés |
+| `app-concrete.js` | Béton : types, WBS avec quantités théoriques par type, coulages réels (par type et par fournisseur), courbe cumulée prévu/réel, écarts totaux / par type / par WBS, split d'un WBS (ex. « travaux à date ») en WBS détaillés, cut-off cost control (% d'avancement par WBS → budget débloqué vs réel, remain to be spent théorique / réel ajustable, EAC) |
 | `app-mount.js` | Montage React |
 
 ## Données — Firebase Firestore

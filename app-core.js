@@ -49,6 +49,7 @@ const KEYS_INV_COUNTS="pp_inv_counts";
 const KEYS_CON_TYPES="pp_concrete_types";
 const KEYS_CON_WBS="pp_concrete_wbs";
 const KEYS_CON_POURS="pp_concrete_pours";
+const KEYS_CON_CUTOFFS="pp_concrete_cutoffs";
 // A schedule is a weekly bar-chart plan for one zone.
 // rows = [{id, kind:"category"|"task", label, cells:{ "<mondayISO>": "plan"|"actual"|"both" }}]
 function newSchedule(overrides){return Object.assign({id:uuid(),zone:"",title:"New schedule",startDate:today(),weeks:12,rows:[],holidayWeeks:[],groups:[],createdAt:today(),updatedAt:today(),updatedBy:window._currentUser?window._currentUser.name:""},overrides||{});}
@@ -4136,6 +4137,7 @@ function App(){
   const conTypesRef=useRef([]),conTypesQueue=useRef(Promise.resolve());
   const conWbsRef=useRef([]),conWbsQueue=useRef(Promise.resolve());
   const conPoursRef=useRef([]),conPoursQueue=useRef(Promise.resolve());
+  const conCutoffsRef=useRef([]),conCutoffsQueue=useRef(Promise.resolve());
   const [contractors,setContractors]=useState([]);
   const [people,setPeople]=useState(SEED_PEOPLE);
   const [packages,setPackages]=useState(SEED_PACKAGES);
@@ -4237,6 +4239,9 @@ function App(){
   const [conTypes,setConTypes]=useState([]);
   const [conWbs,setConWbs]=useState([]);
   const [conPours,setConPours]=useState([]);
+  const [conCutoffs,setConCutoffs]=useState([]);
+  useEffect(function(){conCutoffsRef.current=conCutoffs;},[conCutoffs]);
+  const saveConCutoffs=d=>{setConCutoffs(d);queuedListSave(KEYS_CON_CUTOFFS,conCutoffsRef,conCutoffsQueue,d);};
   useEffect(function(){conTypesRef.current=conTypes;},[conTypes]);
   useEffect(function(){conWbsRef.current=conWbs;},[conWbs]);
   useEffect(function(){conPoursRef.current=conPours;},[conPours]);
@@ -4442,6 +4447,7 @@ function App(){
         try{var cnt=await cloudStore.get(KEYS_CON_TYPES);if(Array.isArray(cnt))setConTypes(cnt);}catch(e){}
         try{var cnw=await cloudStore.get(KEYS_CON_WBS);if(Array.isArray(cnw))setConWbs(cnw);}catch(e){}
         try{var cnp=await cloudStore.get(KEYS_CON_POURS);if(Array.isArray(cnp))setConPours(cnp);}catch(e){}
+        try{var cnc=await cloudStore.get(KEYS_CON_CUTOFFS);if(Array.isArray(cnc))setConCutoffs(cnc);}catch(e){}
         try{var nts=await cloudStore.get(KEYS_NOTES);if(Array.isArray(nts))setNotes(nts);}catch(e){}
         if(rm)setRooms(rm);
         if(prefs)setUserPrefs(prefs);
@@ -4606,6 +4612,7 @@ function App(){
         window._dbListen(KEYS_CON_TYPES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConTypes(v);});
         window._dbListen(KEYS_CON_WBS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConWbs(v);});
         window._dbListen(KEYS_CON_POURS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConPours(v);});
+        window._dbListen(KEYS_CON_CUTOFFS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConCutoffs(v);});
         window._dbListen(KEYS_SCHEDULES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSchedules(v);});
         window._dbListen(KEYS_READINESS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setReadiness(v);});
         window._dbListen(KEYS_CORR,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setCorrespondences(v);});
@@ -4781,12 +4788,12 @@ function App(){
         {view==="materials"&&<MaterialsView tenders={tenders} packages={packages} people={people} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("materials")} setMemory={function(p){setMemoryFor("materials",p);}} tasks={tasks}/>}
         {view==="steel"&&<SteelView dockets={steelDockets} saveDockets={saveSteelDockets} wbs={steelWbs} saveWbs={saveSteelWbs} periods={steelPeriods} savePeriods={saveSteelPeriods} zones={zones} tasks={tasks} saveTasks={saveT} currentUser={currentUser} isAdmin={isAppAdmin(currentUser)&&!isReadOnly} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.steelEditor))}/>}
         {view==="inventory"&&<InventoryView items={invItems} saveItems={saveInvItems} pos={invPos} savePos={saveInvPos} dockets={invDockets} saveDockets={saveInvDockets} issues={invIssues} saveIssues={saveInvIssues} counts={invCounts} saveCounts={saveInvCounts} zones={zones} contractors={contractors} tasks={tasks} saveTasks={saveT} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.inventoryEditor))}/>}
-        {view==="concrete"&&<ConcreteView types={conTypes} saveTypes={saveConTypes} wbs={conWbs} saveWbs={saveConWbs} pours={conPours} savePours={saveConPours} zones={zones} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.concreteEditor))}/>}
+        {view==="concrete"&&<ConcreteView types={conTypes} saveTypes={saveConTypes} wbs={conWbs} saveWbs={saveConWbs} pours={conPours} savePours={saveConPours} cutoffs={conCutoffs} saveCutoffs={saveConCutoffs} zones={zones} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.concreteEditor))}/>}
         {view==="submissions"&&<ClientSubmissionsView tasks={tasks} tenders={tenders} contractors={contractors} packages={packages} people={people} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("submissions")} setMemory={function(p){setMemoryFor("submissions",p);}}/>}
     {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} tags={tags} tagrules={tagrules} pkgrules={pkgrules} onJumpOwner={function(name){setJumpOwner(name);setView("global");}} onNavTender={navToTender} memory={memoryFor("dashboard")} setMemory={function(p){setMemoryFor("dashboard",p);}}/>}
     {view==="notes"&&<NotesView notes={notes} saveNotes={saveNotes} tasks={tasks} saveTasks={saveT} people={people} zones={zones} packages={packages} tenders={tenders} tags={tags} peopleEmails={peopleEmails} onNavTender={navToTender} memory={memoryFor("notes")} setMemory={function(p){setMemoryFor("notes",p);}}/>}
     {view==="global"&&<GlobalView notes={notes} tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}} onNavTender={navToTender} memory={memoryFor("global")} setMemory={function(p){setMemoryFor("global",p);}} peopleEmails={peopleEmails} defaultCC={defaultCC} zones={zones} actionsOnly={actionsOnly} currentUser={currentUser}/>}
-        {view==="settings"&&<SettingsView subList={subList} saveSubList={saveSubList} subColors={subColors} saveSubColors={saveSubColors} contractors={contractors} tenderRules={tenderRules} saveTenderRules={saveTenderRules} tenders={tenders} tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} pkgSubcontractors={pkgSubcontractors} savePkgSubcontractors={savePkgSubcontractors} peopleEmails={peopleEmails} savePeopleEmails={savePeopleEmails} defaultCC={defaultCC} saveDefaultCC={saveDefaultCC} peopleAccess={peopleAccess} savePeopleAccess={savePeopleAccess} durations={durations} saveDurations={saveDurations} isAdmin={isAppAdmin(currentUser)} zones={zones} zoneOwners={zoneOwners} saveZoneOwners={saveZoneOwners} saveZones={saveZones} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} departments={departments} saveDepartments={saveDepartments} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners,schedules,rooms,moms,meetings,kpis,zones,zoneOwners,subList,subColors,pkgSubcontractors,tenderRules,peopleAccess,peopleEmails,defaultCC,durations,userPrefs,departments,notes,readiness,steelDockets,steelWbs,steelPeriods,conTypes,conWbs,conPours}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);if(d.steelDockets)saveSteelDockets(d.steelDockets);if(d.steelWbs)saveSteelWbs(d.steelWbs);if(d.steelPeriods)saveSteelPeriods(d.steelPeriods);if(d.conTypes)saveConTypes(d.conTypes);if(d.conWbs)saveConWbs(d.conWbs);if(d.conPours)saveConPours(d.conPours);}}/>}
+        {view==="settings"&&<SettingsView subList={subList} saveSubList={saveSubList} subColors={subColors} saveSubColors={saveSubColors} contractors={contractors} tenderRules={tenderRules} saveTenderRules={saveTenderRules} tenders={tenders} tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} pkgSubcontractors={pkgSubcontractors} savePkgSubcontractors={savePkgSubcontractors} peopleEmails={peopleEmails} savePeopleEmails={savePeopleEmails} defaultCC={defaultCC} saveDefaultCC={saveDefaultCC} peopleAccess={peopleAccess} savePeopleAccess={savePeopleAccess} durations={durations} saveDurations={saveDurations} isAdmin={isAppAdmin(currentUser)} zones={zones} zoneOwners={zoneOwners} saveZoneOwners={saveZoneOwners} saveZones={saveZones} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} departments={departments} saveDepartments={saveDepartments} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners,schedules,rooms,moms,meetings,kpis,zones,zoneOwners,subList,subColors,pkgSubcontractors,tenderRules,peopleAccess,peopleEmails,defaultCC,durations,userPrefs,departments,notes,readiness,steelDockets,steelWbs,steelPeriods,conTypes,conWbs,conPours,conCutoffs}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);if(d.steelDockets)saveSteelDockets(d.steelDockets);if(d.steelWbs)saveSteelWbs(d.steelWbs);if(d.steelPeriods)saveSteelPeriods(d.steelPeriods);if(d.conTypes)saveConTypes(d.conTypes);if(d.conWbs)saveConWbs(d.conWbs);if(d.conPours)saveConPours(d.conPours);if(d.conCutoffs)saveConCutoffs(d.conCutoffs);}}/>}
       </div>
 
       <aside className={"rsidebar "+(sidebarOpen?"open":"closed")}>
