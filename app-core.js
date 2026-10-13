@@ -45,6 +45,10 @@ const KEYS_INV_POS="pp_inv_pos";
 const KEYS_INV_DOCKETS="pp_inv_dockets";
 const KEYS_INV_ISSUES="pp_inv_issues";
 const KEYS_INV_COUNTS="pp_inv_counts";
+// Concrete module (app-concrete.js).
+const KEYS_CON_TYPES="pp_concrete_types";
+const KEYS_CON_WBS="pp_concrete_wbs";
+const KEYS_CON_POURS="pp_concrete_pours";
 // A schedule is a weekly bar-chart plan for one zone.
 // rows = [{id, kind:"category"|"task", label, cells:{ "<mondayISO>": "plan"|"actual"|"both" }}]
 function newSchedule(overrides){return Object.assign({id:uuid(),zone:"",title:"New schedule",startDate:today(),weeks:12,rows:[],holidayWeeks:[],groups:[],createdAt:today(),updatedAt:today(),updatedBy:window._currentUser?window._currentUser.name:""},overrides||{});}
@@ -2103,6 +2107,11 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
                 <input type="checkbox" checked={!!acc.inventoryEditor} onChange={function(){toggle("inventoryEditor");}} style={{width:14,height:14}}/>
                 🗃️ Inventory editor
               </label>
+              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.concreteEditor?"#455a64":"#888"}}
+                title="May enter concrete types, WBS lines with their theoretical quantities, and pours. A restricted person also gets the Concrete tab.">
+                <input type="checkbox" checked={!!acc.concreteEditor} onChange={function(){toggle("concreteEditor");}} style={{width:14,height:14}}/>
+                🧱 Concrete editor
+              </label>
               {isRestricted&&<label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.zonePilot?"#7b1fa2":"#888"}}>
                 <input type="checkbox" checked={!!acc.zonePilot} onChange={function(){toggle("zonePilot");}} style={{width:14,height:14}}/>
                 Zone Pilot
@@ -4124,6 +4133,9 @@ function App(){
   const invDocketsRef=useRef([]),invDocketsQueue=useRef(Promise.resolve());
   const invIssuesRef=useRef([]),invIssuesQueue=useRef(Promise.resolve());
   const invCountsRef=useRef([]),invCountsQueue=useRef(Promise.resolve());
+  const conTypesRef=useRef([]),conTypesQueue=useRef(Promise.resolve());
+  const conWbsRef=useRef([]),conWbsQueue=useRef(Promise.resolve());
+  const conPoursRef=useRef([]),conPoursQueue=useRef(Promise.resolve());
   const [contractors,setContractors]=useState([]);
   const [people,setPeople]=useState(SEED_PEOPLE);
   const [packages,setPackages]=useState(SEED_PACKAGES);
@@ -4222,6 +4234,15 @@ function App(){
   const saveInvDockets=d=>{setInvDockets(d);queuedListSave(KEYS_INV_DOCKETS,invDocketsRef,invDocketsQueue,d);};
   const saveInvIssues=d=>{setInvIssues(d);queuedListSave(KEYS_INV_ISSUES,invIssuesRef,invIssuesQueue,d);};
   const saveInvCounts=d=>{setInvCounts(d);queuedListSave(KEYS_INV_COUNTS,invCountsRef,invCountsQueue,d);};
+  const [conTypes,setConTypes]=useState([]);
+  const [conWbs,setConWbs]=useState([]);
+  const [conPours,setConPours]=useState([]);
+  useEffect(function(){conTypesRef.current=conTypes;},[conTypes]);
+  useEffect(function(){conWbsRef.current=conWbs;},[conWbs]);
+  useEffect(function(){conPoursRef.current=conPours;},[conPours]);
+  const saveConTypes=d=>{setConTypes(d);queuedListSave(KEYS_CON_TYPES,conTypesRef,conTypesQueue,d);};
+  const saveConWbs=d=>{setConWbs(d);queuedListSave(KEYS_CON_WBS,conWbsRef,conWbsQueue,d);};
+  const saveConPours=d=>{setConPours(d);queuedListSave(KEYS_CON_POURS,conPoursRef,conPoursQueue,d);};
   const [apiKey,setApiKey]=useState(function(){try{return localStorage.getItem('pp_apikey')||'';}catch(e){return '';}});
   function saveApiKey(k){setApiKey(k);try{localStorage.setItem('pp_apikey',k);}catch(e){}}
 
@@ -4418,6 +4439,9 @@ function App(){
         try{var ivd=await cloudStore.get(KEYS_INV_DOCKETS);if(Array.isArray(ivd))setInvDockets(ivd);}catch(e){}
         try{var ivs=await cloudStore.get(KEYS_INV_ISSUES);if(Array.isArray(ivs))setInvIssues(ivs);}catch(e){}
         try{var ivc=await cloudStore.get(KEYS_INV_COUNTS);if(Array.isArray(ivc))setInvCounts(ivc);}catch(e){}
+        try{var cnt=await cloudStore.get(KEYS_CON_TYPES);if(Array.isArray(cnt))setConTypes(cnt);}catch(e){}
+        try{var cnw=await cloudStore.get(KEYS_CON_WBS);if(Array.isArray(cnw))setConWbs(cnw);}catch(e){}
+        try{var cnp=await cloudStore.get(KEYS_CON_POURS);if(Array.isArray(cnp))setConPours(cnp);}catch(e){}
         try{var nts=await cloudStore.get(KEYS_NOTES);if(Array.isArray(nts))setNotes(nts);}catch(e){}
         if(rm)setRooms(rm);
         if(prefs)setUserPrefs(prefs);
@@ -4579,6 +4603,9 @@ function App(){
         window._dbListen(KEYS_INV_DOCKETS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvDockets(v);});
         window._dbListen(KEYS_INV_ISSUES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvIssues(v);});
         window._dbListen(KEYS_INV_COUNTS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setInvCounts(v);});
+        window._dbListen(KEYS_CON_TYPES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConTypes(v);});
+        window._dbListen(KEYS_CON_WBS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConWbs(v);});
+        window._dbListen(KEYS_CON_POURS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setConPours(v);});
         window._dbListen(KEYS_SCHEDULES,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setSchedules(v);});
         window._dbListen(KEYS_READINESS,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setReadiness(v);});
         window._dbListen(KEYS_CORR,function(val){var v=_parseFirebaseVal(val);if(Array.isArray(v))setCorrespondences(v);});
@@ -4620,6 +4647,7 @@ function App(){
     {id:"materials",icon:"🏗️",label:"Materials"},
     {id:"steel",icon:"🔩",label:"Steel"},
     {id:"inventory",icon:"🗃️",label:"Inventory"},
+    {id:"concrete",icon:"🧱",label:"Concrete"},
     {id:"qadocs",icon:"🛡️",label:"WMS/ITP"},
     {id:"timeline",icon:"🗓",label:"Timeline"},
     {id:"moms",icon:"📝",label:"MoM"},
@@ -4656,7 +4684,7 @@ function App(){
     myPkgs=[...new Set([...(packages||[]).filter(function(pg){return(pkgOwners||{})[pg]===currentUser;}),...extraPkgs])];
     myTenders=(tenders||[]).filter(function(t){return t.ownerTender===currentUser||myPkgs.includes(t.package);});
     // Actions-only profile: no package/tender ownership and not a zone pilot → they just need their task list
-    actionsOnly=myPkgs.length===0&&myTenders.length===0&&!myAccess.zonePilot&&!myAccess.steelEditor&&!myAccess.inventoryEditor;
+    actionsOnly=myPkgs.length===0&&myTenders.length===0&&!myAccess.zonePilot&&!myAccess.steelEditor&&!myAccess.inventoryEditor&&!myAccess.concreteEditor;
     effectiveNAV=actionsOnly
       ?[
         {id:"global",icon:"🌐",label:"My Actions"},
@@ -4667,6 +4695,7 @@ function App(){
         ...(myAccess.zonePilot?[{id:"zone",icon:"🏢",label:"Zone"}]:[]),
         ...(myAccess.steelEditor?[{id:"steel",icon:"🔩",label:"Steel"}]:[]),
         ...(myAccess.inventoryEditor?[{id:"inventory",icon:"🗃️",label:"Inventory"}]:[]),
+        ...(myAccess.concreteEditor?[{id:"concrete",icon:"🧱",label:"Concrete"}]:[]),
         {id:"global",icon:"🌐",label:"Actions"},
         {id:"notes",icon:"🗒",label:"Notes"},
         {id:"settings",icon:"⚙️",label:"Settings"},
@@ -4752,11 +4781,12 @@ function App(){
         {view==="materials"&&<MaterialsView tenders={tenders} packages={packages} people={people} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("materials")} setMemory={function(p){setMemoryFor("materials",p);}} tasks={tasks}/>}
         {view==="steel"&&<SteelView dockets={steelDockets} saveDockets={saveSteelDockets} wbs={steelWbs} saveWbs={saveSteelWbs} periods={steelPeriods} savePeriods={saveSteelPeriods} zones={zones} tasks={tasks} saveTasks={saveT} currentUser={currentUser} isAdmin={isAppAdmin(currentUser)&&!isReadOnly} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.steelEditor))}/>}
         {view==="inventory"&&<InventoryView items={invItems} saveItems={saveInvItems} pos={invPos} savePos={saveInvPos} dockets={invDockets} saveDockets={saveInvDockets} issues={invIssues} saveIssues={saveInvIssues} counts={invCounts} saveCounts={saveInvCounts} zones={zones} contractors={contractors} tasks={tasks} saveTasks={saveT} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.inventoryEditor))}/>}
+        {view==="concrete"&&<ConcreteView types={conTypes} saveTypes={saveConTypes} wbs={conWbs} saveWbs={saveConWbs} pours={conPours} savePours={saveConPours} zones={zones} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.concreteEditor))}/>}
         {view==="submissions"&&<ClientSubmissionsView tasks={tasks} tenders={tenders} contractors={contractors} packages={packages} people={people} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("submissions")} setMemory={function(p){setMemoryFor("submissions",p);}}/>}
     {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} tags={tags} tagrules={tagrules} pkgrules={pkgrules} onJumpOwner={function(name){setJumpOwner(name);setView("global");}} onNavTender={navToTender} memory={memoryFor("dashboard")} setMemory={function(p){setMemoryFor("dashboard",p);}}/>}
     {view==="notes"&&<NotesView notes={notes} saveNotes={saveNotes} tasks={tasks} saveTasks={saveT} people={people} zones={zones} packages={packages} tenders={tenders} tags={tags} peopleEmails={peopleEmails} onNavTender={navToTender} memory={memoryFor("notes")} setMemory={function(p){setMemoryFor("notes",p);}}/>}
     {view==="global"&&<GlobalView notes={notes} tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}} onNavTender={navToTender} memory={memoryFor("global")} setMemory={function(p){setMemoryFor("global",p);}} peopleEmails={peopleEmails} defaultCC={defaultCC} zones={zones} actionsOnly={actionsOnly} currentUser={currentUser}/>}
-        {view==="settings"&&<SettingsView subList={subList} saveSubList={saveSubList} subColors={subColors} saveSubColors={saveSubColors} contractors={contractors} tenderRules={tenderRules} saveTenderRules={saveTenderRules} tenders={tenders} tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} pkgSubcontractors={pkgSubcontractors} savePkgSubcontractors={savePkgSubcontractors} peopleEmails={peopleEmails} savePeopleEmails={savePeopleEmails} defaultCC={defaultCC} saveDefaultCC={saveDefaultCC} peopleAccess={peopleAccess} savePeopleAccess={savePeopleAccess} durations={durations} saveDurations={saveDurations} isAdmin={isAppAdmin(currentUser)} zones={zones} zoneOwners={zoneOwners} saveZoneOwners={saveZoneOwners} saveZones={saveZones} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} departments={departments} saveDepartments={saveDepartments} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners,schedules,rooms,moms,meetings,kpis,zones,zoneOwners,subList,subColors,pkgSubcontractors,tenderRules,peopleAccess,peopleEmails,defaultCC,durations,userPrefs,departments,notes,readiness,steelDockets,steelWbs,steelPeriods}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);if(d.steelDockets)saveSteelDockets(d.steelDockets);if(d.steelWbs)saveSteelWbs(d.steelWbs);if(d.steelPeriods)saveSteelPeriods(d.steelPeriods);}}/>}
+        {view==="settings"&&<SettingsView subList={subList} saveSubList={saveSubList} subColors={subColors} saveSubColors={saveSubColors} contractors={contractors} tenderRules={tenderRules} saveTenderRules={saveTenderRules} tenders={tenders} tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} pkgSubcontractors={pkgSubcontractors} savePkgSubcontractors={savePkgSubcontractors} peopleEmails={peopleEmails} savePeopleEmails={savePeopleEmails} defaultCC={defaultCC} saveDefaultCC={saveDefaultCC} peopleAccess={peopleAccess} savePeopleAccess={savePeopleAccess} durations={durations} saveDurations={saveDurations} isAdmin={isAppAdmin(currentUser)} zones={zones} zoneOwners={zoneOwners} saveZoneOwners={saveZoneOwners} saveZones={saveZones} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} departments={departments} saveDepartments={saveDepartments} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners,schedules,rooms,moms,meetings,kpis,zones,zoneOwners,subList,subColors,pkgSubcontractors,tenderRules,peopleAccess,peopleEmails,defaultCC,durations,userPrefs,departments,notes,readiness,steelDockets,steelWbs,steelPeriods,conTypes,conWbs,conPours}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);if(d.steelDockets)saveSteelDockets(d.steelDockets);if(d.steelWbs)saveSteelWbs(d.steelWbs);if(d.steelPeriods)saveSteelPeriods(d.steelPeriods);if(d.conTypes)saveConTypes(d.conTypes);if(d.conWbs)saveConWbs(d.conWbs);if(d.conPours)saveConPours(d.conPours);}}/>}
       </div>
 
       <aside className={"rsidebar "+(sidebarOpen?"open":"closed")}>
