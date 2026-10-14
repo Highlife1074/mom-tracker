@@ -563,9 +563,35 @@ function newSDTransmission(o){
   return Object.assign({id:uuid(),ref:"",description:"",target:"",done:"",approvalDone:"",
     status:"",numbers:[]},o||{});
 }
-function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people}){
+function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,focus}){
   var list=td.sdTransmissions||[];
   const [openIds,setOpenIds]=useState({});
+  // Revisions (R0, R1… codes A/B/C/D) are edited here, under each transmission: one place per document.
+  const [revOpen,setRevOpen]=useState({});
+  function toggleRev(id){setRevOpen(function(o){var n=Object.assign({},o);n[id]=!o[id];return n;});}
+  useEffect(function(){
+    if(!focus||!/^sd:/.test(focus.id))return;
+    setRevOpen(function(o){var n=Object.assign({},o);n[focus.id]=true;return n;});
+    scrollToDoc(focus.id);
+  },[focus&&focus.n]);
+  function docCell(id){
+    var d=flowDocOf(td,id);if(!d)return null;
+    var st=docSummary(d).state;
+    return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      <button type="button" onClick={function(){toggleRev(id);}} title="Show or edit the revisions"
+        style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{revOpen[id]?"▾":"▸"}</button>
+      <FlowDocBadge td={td} id={id}/>
+      {st==="none"&&<button type="button" className="btn btn-sm" style={{fontSize:10,padding:"1px 7px"}}
+        onClick={function(){recordDocSubmission(td,d,updTd,afterSave).then(function(p){if(p)setRevOpen(function(o){var n=Object.assign({},o);n[id]=true;return n;});});}}>＋ Record</button>}
+    </div>;
+  }
+  function revRow(id,span){
+    if(!revOpen[id])return null;
+    var d=flowDocOf(td,id);if(!d)return null;
+    return <tr><td colSpan={span} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+      <DocRevisionsEditor td={td} d={d} updTd={updTd} afterSave={afterSave}/>
+    </td></tr>;
+  }
   const SD_OPTS=["","under preparation","submitted","pending approval","approved","rejected"];
   const SD_LABELS={"":"— status —","under preparation":"Under preparation","submitted":"Submitted",
     "pending approval":"Pending approval","approved":"✅ Approved","rejected":"❌ Rejected"};
@@ -596,8 +622,12 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people}){
         onClick={function(){save([...(list),newSDTransmission()]);}}>＋ Transmission</button>
     </div>
 
-    {list.length===0&&<div style={{fontSize:12,color:"var(--ink-4,#9b968b)",padding:"4px 2px"}}>
+    {list.length===0&&!flowDocOf(td,"sd:_main")&&<div style={{fontSize:12,color:"var(--ink-4,#9b968b)",padding:"4px 2px"}}>
       No transmission yet. Add one when a set of drawings goes to the client.</div>}
+    {list.length===0&&flowDocOf(td,"sd:_main")&&<table className="tbl" style={{fontSize:12}}><tbody>
+      <tr id="tdoc-sd:_main"><td style={{fontWeight:600,width:200}}>Whole tender (no transmission)</td><td>{docCell("sd:_main")}</td></tr>
+      {revRow("sd:_main",2)}
+    </tbody></table>}
 
     {list.length>0&&<table className="tbl" style={{fontSize:12}}>
       <thead><tr>
@@ -605,7 +635,7 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people}){
         <th style={{minWidth:120}}>Transmission ref</th>
         <th style={{minWidth:180}}>Description</th>
         <th style={{textAlign:"center",minWidth:112}}>Target</th>
-        <th style={{minWidth:220}} title="Edit the revisions in Flow & history → Submissions, at the top of the tender">Submissions</th>
+        <th style={{minWidth:220}} title="▸ opens the revisions (R0, R1…, codes A/B/C/D)">Submissions</th>
         <th style={{width:34}}></th>
       </tr></thead>
       <tbody>{list.map(function(t,i){
@@ -615,7 +645,7 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people}){
         var due=t.done?addCalDays(t.done,getDur("clientResponse")):"";
         var overdue=!answered&&due&&due<today();
         return <React.Fragment key={t.id}>
-          <tr style={{background:overdue?"var(--red-soft,#fbe6e8)":"#fff"}}>
+          <tr id={"tdoc-sd:"+t.id} style={{background:overdue?"var(--red-soft,#fbe6e8)":"#fff"}}>
             <td style={{textAlign:"center"}}>
               <button onClick={function(){setOpenIds(Object.assign({},openIds,{[t.id]:!open}));}}
                 title={nums.length+" drawing number(s)"}
@@ -628,12 +658,13 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people}){
               placeholder="e.g. Level 3 ceiling layouts" style={{fontSize:11,padding:"4px 6px"}}/></td>
             <td style={{textAlign:"center"}}><input type="date" min="1990-01-01" max="2200-12-31" value={t.target||""}
               onChange={function(e){updT(i,{target:e.target.value});}} style={{fontSize:11,padding:"3px 5px"}}/></td>
-            <td><FlowDocBadge td={td} id={"sd:"+t.id}/></td>
+            <td>{docCell("sd:"+t.id)}</td>
             <td style={{textAlign:"center"}}>
               <button onClick={function(){delT(i);}} style={{background:"none",border:"none",color:"#ccc",cursor:"pointer",fontSize:13}}>🗑</button>
             </td>
           </tr>
 
+          {revRow("sd:"+t.id,6)}
           {open&&<tr><td></td><td colSpan={5} style={{background:"#faf9f7",padding:"8px 10px"}}>
             <div style={{fontSize:10,fontWeight:700,color:"var(--ink-3,#6f6b62)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>
               Drawings in this transmission</div>
@@ -727,10 +758,15 @@ function MatDocApproval({doc}){
     style={{fontSize:11,whiteSpace:"nowrap",color:late?"#c62828":"#1a73e8",fontWeight:late?700:500}}>{late?"⚠ due ":"expected "}{fmtDate(due)}</span>;
 }
 
-function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,pkgOwners,afterSave}){
+function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,pkgOwners,afterSave,focus}){
   const [open,setOpen]=useState(false);
   const [openRow,setOpenRow]=useState({});
   function toggleRow(id){setOpenRow(function(o){var n=Object.assign({},o);n[id]=!o[id];return n;});}
+  useEffect(function(){
+    if(!focus||!/^(mar|mss):/.test(focus.id))return;
+    setOpenRow(function(o){var n=Object.assign({},o);n[focus.id]=true;return n;});
+    scrollToDoc(focus.id);
+  },[focus&&focus.n]);
   var mats=td.materials||[];
 
   function pkgOwner(){return (pkgOwners||{})[td.package||""]||td.ownerTender||"";}
@@ -769,10 +805,9 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
   // First submission: R0 sent today, through the same writer as Flow & history.
   function recordSub(mat,mi,k){
     var d=matDoc(td,mat,mi,k,matTheo.date);
-    var patch=d.patchFor(addCycle(d.cycles,{submitted:today()}));
-    updTd(patch);
-    if(afterSave)afterSave(td,Object.assign({},td,patch));
-    setOpenRow(function(o){var n=Object.assign({},o);n[d.id]=true;return n;});
+    recordDocSubmission(td,d,updTd,afterSave).then(function(p){
+      if(p)setOpenRow(function(o){var n=Object.assign({},o);n[d.id]=true;return n;});
+    });
   }
 
   var COLS=11;
@@ -819,7 +854,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
               var due=mat[p+"Target"]||"";
               var late=due&&due<today()&&sum.state==="none";
               var isOpen=!!openRow[doc.id];
-              return <tr key={kind} style={{background:di>0?"#fafaf8":"#fff"}}>
+              return <tr key={kind} id={"tdoc-"+doc.id} style={{background:di>0?"#fafaf8":"#fff"}}>
                 {di===0&&<td rowSpan={kinds.length} style={{verticalAlign:"top"}}>
                   <input type="text" value={mat.name||""} onChange={function(e){updMat(mi,"name",e.target.value);}}
                     placeholder="Material name…" style={{fontSize:12,fontWeight:600,border:"none",background:"transparent",padding:"2px 0",width:"100%"}}/>
@@ -897,32 +932,27 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
 }
 
 
-function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelTender,tasks,saveTasks,pkgOwners,updTd,afterSave}){
+// part: "docs" = submission chain + WMS/ITP · "contract" = contract sub-steps only · omitted = both.
+// focus: {id,n} from the tender's document register — opens that row and scrolls to it.
+function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelTender,tasks,saveTasks,pkgOwners,updTd,afterSave,part,focus}){
   // Rows that can be opened: "bidders", "acc", "wms", "itp", "circuit". Hooks stay first.
   const [openRow,setOpenRow]=useState({});
   // Synthetic by default: once a document is with the client or approved, its row shrinks
   // to what matters (reference, dates, status). "Show all details" brings every field back.
   const [detail,setDetail]=useState(false);
   function toggleRow(k){setOpenRow(function(o){var n=Object.assign({},o);n[k]=!o[k];return n;});}
+  useEffect(function(){
+    if(!focus||["acc","wms","itp"].indexOf(focus.id)<0)return;
+    setOpenRow(function(o){var n=Object.assign({},o);n[focus.id]=true;return n;});
+    scrollToDoc(focus.id);
+  },[focus&&focus.n]);
   // First submission of a document: R0 is sent today and its revisions open under the row.
   function recordSub(id){
     var d=flowDocOf(td,id);if(!d||!updTd)return;
     // The document reference is asked at the moment it is sent: that is when it is known.
-    var curRef=getReference(id),ref=curRef;
-    if(id==="acc"||id==="wms"||id==="itp"){
-      try{ref=window.prompt("Reference of the "+(id==="acc"?"ACC/Aconex":id.toUpperCase())+" document submitted (Aconex / transmittal number).\nLeave empty if not known yet.",curRef);}catch(e){ref=curRef;}
-      if(ref===null)return;
-      ref=String(ref).trim();
-    }
-    var patch=d.patchFor(addCycle(d.cycles,{submitted:today()}));
-    if(ref!==curRef){
-      var sdp=Object.assign({},td.stepDates||{},patch.stepDates||{});
-      sdp[id]=Object.assign({},sdp[id]||{},{reference:ref});
-      patch=Object.assign({},patch,{stepDates:sdp});
-    }
-    updTd(patch);
-    if(afterSave)afterSave(td,Object.assign({},td,patch));
-    setOpenRow(function(o){var n=Object.assign({},o);n[id]=true;return n;});
+    recordDocSubmission(td,d,updTd,afterSave).then(function(p){
+      if(p)setOpenRow(function(o){var n=Object.assign({},o);n[id]=true;return n;});
+    });
   }
   function chev(k){return <button type="button" onClick={function(e){e.stopPropagation();toggleRow(k);}} title="Show or hide the details" style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{openRow[k]?"▾":"▸"}</button>;}
   function recordBtn(id){return flowDocState(td,id)==="none"&&updTd?<div><button type="button" className="btn btn-sm" onClick={function(){recordSub(id);}} style={{fontSize:10,padding:"1px 7px",marginTop:2}}>＋ Record submission</button></div>:null;}
@@ -982,7 +1012,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
     var due=!ok&&last.submitted?docResponseDue(d,last.submitted):"";
     var lab={fontSize:10,color:"#888",textTransform:"uppercase",letterSpacing:".05em",marginRight:5};
     var proposed=Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0);
-    return <React.Fragment key={k}><tr style={{background:ok?"#f2f9f3":"#f4f8ff"}}>
+    return <React.Fragment key={k}><tr id={"tdoc-"+k} style={{background:ok?"#f2f9f3":"#f4f8ff"}}>
       <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{chev(k)}{s.label}</td>
       <td colSpan={span} style={{padding:"8px 12px"}}>
         <div style={{display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12}}>
@@ -1021,14 +1051,15 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
   return <div>
     {/* Three sibling sections — Submission steps, WMS & ITP, Materials — all built the
         same way: a flat heading with a rule, then the table. None of them wraps another. */}
-    <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
+    {part!=="contract"&&<div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Submission steps</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>bidders → tender package → ACC/Aconex</span>
       {hiddenPrev>0&&<span style={{fontSize:11,color:"#9b968b"}}>· ACC submitted, {hiddenPrev} previous step{hiddenPrev>1?"s":""} hidden</span>}
       <button type="button" className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setDetail(!detail);}}
         title={detail?"Back to the short view: documents submitted or approved on one line":"Every step and every field, including the ones already done"}>{detail?"▴ Synthetic view":"▾ Show all details"}</button>
-    </div>
+    </div>}
     <div>
+    {part!=="contract"&&<React.Fragment>
     <table className="tbl" style={{fontSize:12,marginBottom:16}}>
       {/* Column headers only mean something for full rows. */}
       {!mainSteps.every(function(s){return s.key==="acc"&&isSynth("acc");})&&<thead style={{position:"sticky",top:0,zIndex:10,background:"#f5f4f0"}}><tr>
@@ -1051,7 +1082,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         var showApproval=HAS_APPROVAL.indexOf(s.key)>=0;
         var showReference=s.key==="acc";
         var expandable=s.special==="bidders"||s.key==="acc";
-        return <React.Fragment key={s.key}><tr>
+        return <React.Fragment key={s.key}><tr id={"tdoc-"+s.key}>
           <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{expandable&&chev(s.key)}{s.label}
             {showReference&&<RefTag td={td} k={s.key}/>}</td>
 
@@ -1165,7 +1196,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         var dates=(td.stepDates||{})[s.key]||{};
         var th=(theoMap[s.key]||{});
         var lead=s.key==="wms"?getDur("wmsBeforeStart"):getDur("itpBeforeStart");
-        return <React.Fragment key={s.key}><tr>
+        return <React.Fragment key={s.key}><tr id={"tdoc-"+s.key}>
           <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{chev(s.key)}{s.label}
             <div style={{fontSize:9,color:"#bbb",fontWeight:400}}>start − {lead} days</div><RefTag td={td} k={s.key}/></td>
           <td>
@@ -1204,7 +1235,9 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
       })}</tbody>
     </table>
 
-    {contractStep&&(function(){
+    </React.Fragment>}
+
+    {part!=="docs"&&contractStep&&(function(){
       var ct=(td.stepDates||{}).contract||{};
       var accApproval=((td.stepDates||{}).acc||{}).approval||"";
 
@@ -1265,6 +1298,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         return <div>
           <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
             <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Contract</h3>
+            <button type="button" className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setDetail(true);}} title="Show the request / circulation / signature dates and the desk-by-desk circuit">▾ Show the circuit</button>
           </div>
           <table className="tbl" style={{fontSize:12}}><tbody><tr style={{background:"#f2f9f3"}}>
             <td style={{padding:"8px 12px"}}>
@@ -1462,12 +1496,82 @@ function RefTag({td,k}){
   if(sent)return <div title="Submitted, but no reference recorded: type it in the Reference column" style={{fontSize:10,fontWeight:700,color:"#c62828",marginTop:3}}>⚠ ref. missing</div>;
   return null;
 }
+// ---------------------------------------------------------------------------
+// Document reference at submission time — ONE path for every document kind.
+// Each submission (R0, R1…) keeps the reference it went out with (cycle.ref); the document
+// keeps the latest one where every view already reads it:
+//   ACC / WMS / ITP → stepDates[k].reference · MAR / MSS → mat.marRef / mat.mssRef
+//   SD transmission → t.ref (only filled when empty: it names the transmission)
+// ---------------------------------------------------------------------------
+function docCurRef(td,d){
+  if(!d)return"";
+  if(d.kind==="acc"||d.kind==="wms"||d.kind==="itp")return String((((td.stepDates||{})[d.kind])||{}).reference||"").trim();
+  if(d.kind==="mar"||d.kind==="mss")return String(d.ref||"").trim();
+  if(d.kind==="sd"&&d.id!=="sd:_main"){var t=(td.sdTransmissions||[]).find(function(x){return "sd:"+x.id===d.id;});return String((t&&t.ref)||"").trim();}
+  return"";
+}
+function docRefPatch(td,d,patch,ref){
+  if(d.kind==="acc"||d.kind==="wms"||d.kind==="itp"){
+    var sdp=Object.assign({},td.stepDates||{},patch.stepDates||{});
+    sdp[d.kind]=Object.assign({},sdp[d.kind]||{},{reference:ref});
+    return Object.assign({},patch,{stepDates:sdp});
+  }
+  if(d.kind==="mar"||d.kind==="mss"){
+    var mid=d.id.slice(d.kind.length+1);
+    var ms=(patch.materials||td.materials||[]).map(function(x,j){
+      if(String((x&&x.id)||j)!==mid)return x;var u=Object.assign({},x);u[d.kind+"Ref"]=ref;return u;});
+    return Object.assign({},patch,{materials:ms});
+  }
+  if(d.kind==="sd"&&d.id!=="sd:_main"){
+    var tl=(patch.sdTransmissions||td.sdTransmissions||[]).map(function(x){
+      return "sd:"+x.id===d.id&&!String(x.ref||"").trim()?Object.assign({},x,{ref:ref}):x;});
+    return Object.assign({},patch,{sdTransmissions:tl});
+  }
+  return patch;
+}
+// Brings a document's row into view (the register in Flow & history links to it).
+function scrollToDoc(id){
+  setTimeout(function(){
+    var el=document.getElementById("tdoc-"+id);if(!el)return;
+    try{el.scrollIntoView({behavior:"smooth",block:"center"});}catch(e){el.scrollIntoView();}
+    el.classList.add("tdoc-flash");setTimeout(function(){el.classList.remove("tdoc-flash");},1800);
+  },120);
+}
+// Records R0 (or the next revision after a C/D) sent today, after asking its reference.
+// Resolves to the patch saved, or null when cancelled.
+function recordDocSubmission(td,d,updTd,afterSave){
+  if(!d||!updTd||!canAddCycle(d.cycles))return Promise.resolve(null);
+  if(blockIfReadOnly())return Promise.resolve(null);
+  var last=d.cycles[d.cycles.length-1];
+  var rev=last?last.rev+1:0;
+  var cur=docCurRef(td,d);
+  var name=(d.kind==="acc"?"ACC/Aconex":d.kind==="sd"?"Shop drawing":d.label)+(d.group==="Materials"&&d.sub?" — "+d.sub:"")+(d.kind==="sd"&&d.sub?" — "+d.sub:"");
+  return ppPrompt({
+    title:(rev?"Resubmission R"+rev:"Submission")+" · "+name,
+    message:"Reference of the document sent to the client (Aconex / transmittal number).\nLeave empty if it is not known yet: the row will show “ref. missing” until it is typed.",
+    value:rev?"":cur,placeholder:"e.g. RT-TRM-001234",okLabel:"Record submission",mono:true
+  }).then(function(ref){
+    if(ref===null)return null;
+    ref=String(ref).trim();
+    var patch=d.patchFor(addCycle(d.cycles,{submitted:today(),ref:ref}));
+    if(ref&&ref!==cur)patch=docRefPatch(td,d,patch,ref);
+    updTd(patch);
+    if(afterSave)afterSave(td,Object.assign({},td,patch));
+    return patch;
+  });
+}
 function DocRevisionsEditor({td,d,updTd,afterSave}){
   var now=today();
   function saveDoc(d,list){
     var patch=d.patchFor(list);
     updTd(patch);
     if(afterSave)afterSave(td,Object.assign({},td,patch));
+  }
+  // The latest revision's reference is also the document's: keep both in one save.
+  function saveRef(d,list,c,val){
+    var patch=d.patchFor(updCycle(list,c.id,{ref:val}));
+    if(c.id===list[list.length-1].id)patch=docRefPatch(td,d,patch,val);
+    updTd(patch);
   }
   var STATE_COL={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"};
   function _docEditor(d){
@@ -1477,7 +1581,7 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
       {list.length===0&&<div style={{fontSize:12,color:"#9b968b",marginBottom:6}}>Not submitted yet.</div>}
       {list.length>0&&<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
         <thead><tr style={{color:"#9b968b",fontSize:10,textTransform:"uppercase",letterSpacing:".06em",textAlign:"left"}}>
-          <th style={{padding:"4px 6px"}}>Rev</th><th>Submitted</th><th>Returned</th><th>Code</th><th>Comment</th><th style={{textAlign:"right"}}>With client</th>
+          <th style={{padding:"4px 6px"}}>Rev</th><th>Reference</th><th>Submitted</th><th>Returned</th><th>Code</th><th>Comment</th><th style={{textAlign:"right"}}>With client</th>
         </tr></thead>
         <tbody>{list.map(function(c,i){
           var isLast=i===list.length-1;
@@ -1486,6 +1590,10 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
           var k=FLOW_CODE_COL[c.code];
           return <tr key={c.id} style={{borderTop:"1px solid #f0ede6"}}>
             <td style={{padding:"4px 6px",fontFamily:"var(--font-mono,monospace)",fontWeight:700}}>R{c.rev}</td>
+            <td><input type="text" value={c.ref!==undefined?c.ref:(isLast?docCurRef(td,d):"")} placeholder={c.submitted?"ref. missing":"ref…"}
+              title="Aconex / transmittal number this revision went out with"
+              style={Object.assign({},inp,{width:130,fontFamily:"var(--font-mono)",fontSize:11},c.submitted&&!(c.ref||(isLast&&docCurRef(td,d)))?{border:"1px solid #f48fb1",background:"#fff8f9"}:{})}
+              onChange={function(e){saveRef(d,list,c,e.target.value);}}/></td>
             <td><input type="date" value={c.submitted||""} disabled={!isLast} style={inp} onChange={function(e){saveDoc(d,updCycle(list,c.id,{submitted:e.target.value}));}}/></td>
             <td><input type="date" value={c.returned||""} disabled={!isLast} style={inp} onChange={function(e){saveDoc(d,updCycle(list,c.id,{returned:e.target.value}));}}/></td>
             <td><select value={c.code||""} disabled={!isLast} style={Object.assign({},inp,k?{background:k[0],color:k[1],fontWeight:700}:{})}
@@ -1500,7 +1608,7 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
         })}</tbody>
       </table>}
       <div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,flexWrap:"wrap"}}>
-        {canAddCycle(list)&&<button className="btn btn-sm" onClick={function(){saveDoc(d,addCycle(list,{submitted:now}));}}>
+        {canAddCycle(list)&&<button className="btn btn-sm" onClick={function(){recordDocSubmission(td,d,updTd,afterSave);}}>
           {list.length?"↻ Resubmit as R"+(last.rev+1):"+ Record the submission"}</button>}
         {last&&!last.code&&last.submitted&&<span style={{fontSize:11,color:"#1a73e8"}}>Waiting for the client on R{last.rev}. Set the code when it comes back.</span>}
         {list.length>0&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){
@@ -1624,8 +1732,7 @@ function BiddersEditor({td,updTd}){
   return bidders();
 }
 
-function TenderFlowPanel({td,updTd,afterSave}){
-  const [openDoc,setOpenDoc]=useState("");
+function TenderFlowPanel({td,updTd,afterSave,onJump}){
   const [open,setOpen]=useState({timeline:true,cycles:true,circuit:true,bidders:false});
   var now=today();
   var theo=(function(){try{return theoreticalDates(td);}catch(e){return{};}})();
@@ -1821,19 +1928,23 @@ function TenderFlowPanel({td,updTd,afterSave}){
       {DOC_GROUPS.map(function(g){
         var ds=docs.filter(function(d){return d.group===g;});
         if(!ds.length){
-          if(g==="Shop drawings")return <div key={g} style={{fontSize:11,color:"#9b968b",padding:"8px 0 2px 18px"}}>Shop drawings — none on this tender. Tick “📐 Shop Drawing (SD)” below if it has some, or add a transmission in the Shop drawings panel.</div>;
+          if(g==="Shop drawings")return <div key={g} style={{fontSize:11,color:"#9b968b",padding:"8px 0 2px 18px"}}>Shop drawings — none on this package. Tick “📐 Shop Drawing (SD)” in the Submissions tab if it has some.</div>;
           return null;
         }
         return <div key={g}>
           <div style={{fontSize:10.5,fontWeight:700,color:"#6f6b62",padding:"8px 0 2px 18px"}}>{g}</div>
           {ds.map(function(d){
-            var s=sums[d.id];var inTbl=d.id==="acc"||d.id==="wms"||d.id==="itp";var isOpen=!inTbl&&openDoc===d.id;
+            // Read-only register: every document is edited in ONE place, its own section
+            // (Submission steps, WMS & ITP, Shop drawings, Materials). A click goes there.
+            var s=sums[d.id];var ref=docCurRef(td,d);
             return <div key={d.id}>
-              <div onClick={function(){if(!inTbl)setOpenDoc(isOpen?"":d.id);}} style={{display:"grid",gridTemplateColumns:"minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,1.6fr) 60px 70px",
-                gap:8,alignItems:"center",padding:"5px 4px",borderBottom:"1px solid #f0ede6",cursor:inTbl?"default":"pointer",fontSize:12,background:isOpen?"#f7f5f0":"transparent"}}>
+              <div onClick={function(){if(onJump)onJump(d.id);}} title={onJump?"Open this document where it is edited":""}
+                onMouseEnter={function(e){e.currentTarget.style.background="#f7f5f0";}} onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}
+                style={{display:"grid",gridTemplateColumns:"minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,1.6fr) 60px 70px",
+                gap:8,alignItems:"center",padding:"5px 4px",borderBottom:"1px solid #f0ede6",cursor:onJump?"pointer":"default",fontSize:12}}>
                 <span style={{display:"flex",gap:6,alignItems:"baseline",minWidth:0}}>
-                  <span style={{fontSize:10,color:"#9b968b",width:10,flex:"0 0 10px"}}>{inTbl?"":isOpen?"▾":"▸"}</span>
-                  <span style={{minWidth:0}}><b>{d.label}</b>{inTbl&&<span style={{fontSize:10,color:"#9b968b",marginLeft:6}}>edit in Submission steps ↓</span>}{d.sub&&<span style={{display:"block",fontSize:10.5,color:"#6f6b62",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.sub}{d.ref&&<span style={{fontFamily:"var(--font-mono,monospace)",marginLeft:6,color:"#9b968b"}}>{d.ref}</span>}</span>}</span>
+                  <span style={{fontSize:10,color:"#9b968b",width:10,flex:"0 0 10px"}}>{onJump?"↗":""}</span>
+                  <span style={{minWidth:0}}><b>{d.label}</b>{s.state!=="none"&&!ref&&d.id!=="sd:_main"&&<span style={{fontSize:10,fontWeight:700,color:"#c62828",marginLeft:6}}>⚠ ref. missing</span>}{d.sub&&<span style={{display:"block",fontSize:10.5,color:"#6f6b62",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.sub}{d.ref&&<span style={{fontFamily:"var(--font-mono,monospace)",marginLeft:6,color:"#9b968b"}}>{d.ref}</span>}</span>}</span>
                 </span>
                 <span style={{display:"flex",gap:3,alignItems:"center",flexWrap:"wrap"}}>
                   {s.codes.length===0&&<span style={{color:"#ccc"}}>—</span>}
@@ -1848,12 +1959,11 @@ function TenderFlowPanel({td,updTd,afterSave}){
                 <span style={{textAlign:"right",fontWeight:700,color:s.vsTheo===null?"#c9c4b8":s.vsTheo>0?"#b3302a":"#1e6b3a"}}>
                   {s.vsTheo===null?"—":(s.vsTheo>0?"+":"")+s.vsTheo+" d"}</span>
               </div>
-              {isOpen&&<DocRevisionsEditor td={td} d={d} updTd={updTd} afterSave={afterSave}/>}
             </div>;
           })}
         </div>;
       })}
-      <div style={{fontSize:10.5,color:"#9b968b",marginTop:6}}>Click a line to see and edit its revisions (shop drawings and materials). Only the latest revision is editable; a C or a D opens the next one. ACC, WMS and ITP are edited in Submission steps, below.</div>
+      <div style={{fontSize:10.5,color:"#9b968b",marginTop:6}}>Read-only register of every document of this package. Click a line to open it where it is edited (Submissions tab): its revisions, reference and codes live there, and only there.</div>
     </div>;
   }
 
@@ -1878,7 +1988,7 @@ function TenderFlowPanel({td,updTd,afterSave}){
     {open.timeline&&timeline()}
     {head("cycles","Submissions",<span style={{fontSize:10.5,color:"#9b968b"}}>{docs.length} documents · {docs.filter(function(d){return sums[d.id].state==="approved";}).length} approved</span>)}
     {open.cycles&&recap()}
-    <div style={{fontSize:10.5,color:"#9b968b",marginTop:10}}>The contract circuit and the tender results are edited in Submission steps, below.</div>
+    <div style={{fontSize:10.5,color:"#9b968b",marginTop:10}}>The contract circuit is edited in the Contract tab; the tender results (bidders) in the Submissions tab.</div>
   </div>;
 }
 
@@ -2709,7 +2819,232 @@ function AwardsPanel({td,updTd,contractors}){
   </div>;
 }
 
-function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,pkgOwners,jumpTender,clearJumpTender,jumpFrom,onBack,onNavZone}){
+// ============================================================================================
+// Contract & addendums of ONE package (tender), seen from the package sheet.
+// The contracts themselves stay where they always were — contractors[].contracts[], linked to
+// the package by ct.tenderRef — so the Contracts view, the reports and the import keep working.
+// This panel only reads / edits them in place: link or create a contract, follow its addendums
+// (amount, ACC / Aconex approval), and see base + addendums against the budget.
+// ============================================================================================
+var AD_STATUS_OPTS=[["","— status —"],["not submitted","Not submitted"],["pending approval","Pending approval"],["rejected","Rejected"],["approved","✅ Approved"]];
+// One word per addendum: approved when the client approved it on either channel.
+function addendumState(ad){
+  var a=(ad&&ad.accStatus)||"",b=(ad&&ad.aconexStatus)||"";
+  if(a==="approved"||b==="approved")return"approved";
+  if(a==="rejected"||b==="rejected")return"rejected";
+  if(a==="pending approval"||b==="pending approval")return"pending";
+  return"draft";
+}
+var AD_STATE_COL={approved:["#e6f2e9","#1e6b3a","Approved"],pending:["#e8f0fe","#1a73e8","Pending"],rejected:["#fce4ec","#b3302a","Rejected"],draft:["#f2f0eb","#6f6b62","Draft"]};
+function tenderContractTotals(td,contractors){
+  var linked=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct:ct,ctr:ctr};});});
+  var t={linked:linked,base:0,adApproved:0,adPending:0,adOther:0,adCount:0,certified:0};
+  linked.forEach(function(x){
+    t.base+=Number(x.ct.amount||0);
+    (x.ct.addendums||[]).forEach(function(ad){
+      t.adCount++;var v=Number(ad.amount||0),st=addendumState(ad);
+      if(st==="approved")t.adApproved+=v;else if(st==="pending")t.adPending+=v;else if(st!=="rejected")t.adOther+=v;
+    });
+    (x.ct.certifications||[]).forEach(function(c){t.certified+=Number(c.amount||0);});
+  });
+  t.current=t.base+t.adApproved;                       // signed today
+  t.forecast=t.current+t.adPending+t.adOther;           // if every open addendum goes through
+  return t;
+}
+function TenderContractsPanel({td,contractors,saveContractors,onOpenContracts}){
+  const [linkSel,setLinkSel]=useState("");
+  const [newFor,setNewFor]=useState("");
+  const [openAd,setOpenAd]=useState({});
+  var cur=td.currency||"EUR";
+  var tot=tenderContractTotals(td,contractors);
+  var budget=Number(td.budget)||0;
+  var editable=!!saveContractors&&!isReadOnly();
+  function fmt(n){return Math.round(Number(n)||0).toLocaleString();}
+
+  function saveCt(ctrId,ctId,fn){
+    if(blockIfReadOnly())return;
+    saveContractors((contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){return ct.id!==ctId?ct:fn(ct);})});
+    }));
+  }
+  function setCt(x,field,val){saveCt(x.ctr.id,x.ct.id,function(ct){var u=Object.assign({},ct);u[field]=val;return u;});}
+  function setAd(x,adId,field,val){
+    saveCt(x.ctr.id,x.ct.id,function(ct){
+      return Object.assign({},ct,{addendums:(ct.addendums||[]).map(function(a){if(a.id!==adId)return a;var u=Object.assign({},a);u[field]=val;return u;})});
+    });
+  }
+  function addAd(x){
+    var ads=x.ct.addendums||[];
+    var nums=ads.map(ctAddNo).filter(function(n){return n!=null;});
+    var ad=Object.assign(newAddendum(),{number:String((nums.length?Math.max.apply(null,nums):0)+1),date:today()});
+    saveCt(x.ctr.id,x.ct.id,function(ct){return Object.assign({},ct,{addendums:(ct.addendums||[]).concat([ad])});});
+    setOpenAd(function(o){var n=Object.assign({},o);n[ad.id]=true;return n;});
+  }
+  function delAd(x,ad){
+    if(!mayDelete()&&!isAppAdmin((window._currentUser||{}).name)){safeAlert("Deleting is not allowed for your account.");return;}
+    if(!safeConfirm("Delete addendum "+(ad.number||"")+"?"))return;
+    saveCt(x.ctr.id,x.ct.id,function(ct){return Object.assign({},ct,{addendums:(ct.addendums||[]).filter(function(a){return a.id!==ad.id;})});});
+  }
+  function unlink(x){
+    if(!safeConfirm("Unlink contract "+(x.ct.number||"")+" from this package? The contract itself is kept (Contract › Contracts)."))return;
+    setCt(x,"tenderRef","");
+  }
+  // Contracts that could be linked: not linked to this package yet. Awarded companies first.
+  var awarded=(td.awards||[]).map(function(a){return normCompanyName(a.subcontractor);}).filter(Boolean);
+  if(td.contractor)awarded.push(normCompanyName(td.contractor));
+  function isAwarded(name){return awarded.indexOf(normCompanyName(name))>=0;}
+  var linkable=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef!==td.id;}).map(function(ct){return{ct:ct,ctr:ctr};});})
+    .sort(function(a,b){return (isAwarded(b.ctr.name)?1:0)-(isAwarded(a.ctr.name)?1:0)||String(a.ctr.name).localeCompare(String(b.ctr.name));});
+  function doLink(){
+    var x=linkable.find(function(y){return y.ct.id===linkSel;});if(!x)return;
+    if(x.ct.tenderRef&&!safeConfirm("This contract is linked to another package. Move it to this one?"))return;
+    saveCt(x.ctr.id,x.ct.id,function(ct){return Object.assign({},ct,{tenderRef:td.id,package:ct.package||td.package||""});});
+    setLinkSel("");
+  }
+  // New contract: for an existing subcontractor, or for an awarded company not created yet.
+  var newOpts=[];
+  (td.awards||[]).forEach(function(a){
+    if(!a.subcontractor)return;
+    var hit=(contractors||[]).find(function(c){return normCompanyName(c.name)===normCompanyName(a.subcontractor);});
+    newOpts.push(hit?{v:"c:"+hit.id,l:"★ "+hit.name+" (awarded)"}:{v:"n:"+a.subcontractor,l:"★ "+a.subcontractor+" (awarded — creates the subcontractor)"});
+  });
+  (contractors||[]).slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).forEach(function(c){
+    if(!newOpts.some(function(o){return o.v==="c:"+c.id;}))newOpts.push({v:"c:"+c.id,l:c.name||"(no name)"});
+  });
+  function doNew(){
+    if(!newFor||blockIfReadOnly())return;
+    var nc=Object.assign(newContract(),{tenderRef:td.id,package:td.package||"",currency:cur,wbs:td.wbs||"",
+      amount:Number(td.instructionAmount)||0,description:td.title||"",owner:td.ownerTender||""});
+    var list=(contractors||[]).slice();
+    if(newFor.indexOf("n:")===0){
+      list=[newContractor({name:newFor.slice(2),package:td.package||"",tenderRefs:[td.id],contracts:[nc]})].concat(list);
+    }else{
+      var id=newFor.slice(2);
+      list=list.map(function(c){return c.id!==id?c:Object.assign({},c,{contracts:(c.contracts||[]).concat([nc])});});
+    }
+    saveContractors(list);setNewFor("");
+  }
+
+  function tile(label,val,col,sub,tip){
+    return <div title={tip||""} style={{flex:"1 1 130px",background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",cursor:tip?"help":"default"}}>
+      <div style={{fontSize:9.5,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"#6f6b62"}}>{label}</div>
+      <div style={{fontSize:17,fontWeight:800,color:col||"#16181d"}}>{val}</div>
+      {sub&&<div style={{fontSize:10.5,color:"#9b968b"}}>{sub}</div>}
+    </div>;
+  }
+  var inp={padding:"3px 6px",fontSize:11.5};
+  var vb=budget?budget-tot.forecast:null;
+
+  return <div className="card" style={{marginBottom:10}}>
+    <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"4px 0 10px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)",flexWrap:"wrap"}}>
+      <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Contract &amp; addendums</h3>
+      <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
+        {tot.linked.length} contract{tot.linked.length!==1?"s":""} · {tot.adCount} addendum{tot.adCount!==1?"s":""}</span>
+      {onOpenContracts&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={onOpenContracts} title="Certifications, scope, milestones, terms: the full contract sheet">📋 Open in Contracts ↗</button>}
+    </div>
+
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      {tile("Budget",budget?fmt(budget)+" "+cur:"—")}
+      {tile("Contract base",fmt(tot.base)+" "+cur,null,tot.linked.length?null:"no contract linked")}
+      {tile("Addendums approved",fmt(tot.adApproved)+" "+cur,"#1e6b3a")}
+      {tile("Addendums open",fmt(tot.adPending+tot.adOther)+" "+cur,tot.adPending+tot.adOther?"#1a73e8":null,"pending "+fmt(tot.adPending)+" · draft "+fmt(tot.adOther),"Pending = submitted to ACC or Aconex. Draft = not submitted yet. Rejected addendums are not counted.")}
+      {tile("Current value",fmt(tot.current)+" "+cur,"#b45309","base + approved")}
+      {tile("Forecast",fmt(tot.forecast)+" "+cur,null,vb===null?"":(vb<0?"⚠ ":"")+(vb>=0?"+":"")+fmt(vb)+" vs budget","Base + every addendum not rejected")}
+      {tot.certified>0&&tile("Certified",fmt(tot.certified)+" "+cur,"#7b1fa2",tot.current?Math.round(tot.certified/tot.current*100)+" % of current":"")}
+    </div>
+
+    {tot.linked.length===0&&<div style={{fontSize:12,color:"#9b968b",marginBottom:10}}>No contract is linked to this package yet. Link an existing one or create it below.</div>}
+
+    {tot.linked.map(function(x){
+      var ct=x.ct,ads=(ct.addendums||[]).slice().sort(function(a,b){var na=ctAddNo(a),nb=ctAddNo(b);if(na!=null&&nb!=null&&na!==nb)return na-nb;return (a.date||"").localeCompare(b.date||"");});
+      var eff=contractEffective(ct);
+      var cum=Number(ct.amount||0);
+      return <div key={ct.id} style={{border:"1px solid #e8e6df",borderRadius:9,marginBottom:12,overflow:"hidden"}}>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",padding:"9px 12px",background:"#faf8f3",borderBottom:"1px solid #ece9e1"}}>
+          <b style={{fontSize:13}}>{x.ctr.name||"Subcontractor"}</b>
+          <span style={{display:"flex",gap:4,alignItems:"center",fontSize:11}}>No.
+            <input type="text" value={ct.number||""} disabled={!editable} onChange={function(e){setCt(x,"number",e.target.value);}} placeholder="contract no." style={Object.assign({},inp,{width:110,fontFamily:"var(--font-mono)"})}/></span>
+          <span style={{display:"flex",gap:4,alignItems:"center",fontSize:11}}>Base
+            <input type="number" value={ct.amount||""} disabled={!editable} onChange={function(e){setCt(x,"amount",e.target.value);}} style={Object.assign({},inp,{width:110,textAlign:"right"})}/>{ct.currency||cur}</span>
+          <span style={{display:"flex",gap:4,alignItems:"center",fontSize:11}}>Start
+            <input type="date" value={ct.startDate||""} disabled={!editable} onChange={function(e){setCt(x,"startDate",e.target.value);}} style={inp}/></span>
+          <span style={{display:"flex",gap:4,alignItems:"center",fontSize:11}}>End
+            <input type="date" value={ct.endDate||""} disabled={!editable} onChange={function(e){setCt(x,"endDate",e.target.value);}} style={inp}/>
+            {eff.extensionDays?<span className="badge" title={"Changed by "+eff.changedBy.endDate} style={{background:"#f3e5f5",color:"#7b1fa2"}}>→ {fmtDate(eff.endDate)} (+{eff.extensionDays} d)</span>:null}</span>
+          <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,margin:0}}>
+            <input type="checkbox" checked={!!ct.closed} disabled={!editable} onChange={function(e){setCt(x,"closed",e.target.checked);}} style={{width:13,height:13}}/>Closed</label>
+          {editable&&<button className="btn btn-sm" style={{marginLeft:"auto",fontSize:10.5}} onClick={function(){unlink(x);}}>Unlink</button>}
+        </div>
+        <table className="tbl" style={{fontSize:11.5,margin:0}}>
+          <thead><tr>
+            <th style={{width:70}}>Add.</th><th style={{width:120}}>Date</th><th>Description</th>
+            <th style={{width:120,textAlign:"right"}}>Amount ({ct.currency||cur})</th><th style={{width:110,textAlign:"right"}}>Cumulative</th>
+            <th style={{width:90}}>State</th><th style={{width:60}}></th>
+          </tr></thead>
+          <tbody>
+            <tr style={{background:"#fbfaf7"}}><td colSpan={3} style={{fontWeight:600,color:"#6f6b62"}}>Original contract{ct.startDate?" · "+fmtDate(ct.startDate):""}</td>
+              <td style={{textAlign:"right",fontWeight:700}}>{fmt(ct.amount)}</td><td style={{textAlign:"right"}}>{fmt(cum)}</td><td colSpan={2}></td></tr>
+            {ads.map(function(ad){
+              var st=addendumState(ad),k=AD_STATE_COL[st];
+              if(st!=="rejected")cum+=Number(ad.amount||0);
+              var open=!!openAd[ad.id];
+              return <React.Fragment key={ad.id}>
+                <tr style={{opacity:st==="rejected"?.55:1}}>
+                  <td><input type="text" value={ad.number||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,"number",e.target.value);}} style={Object.assign({},inp,{width:56,fontWeight:700})}/></td>
+                  <td><input type="date" value={ad.date||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,"date",e.target.value);}} style={inp}/></td>
+                  <td><input type="text" value={ad.description||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,"description",e.target.value);}} placeholder="What changes…" style={Object.assign({},inp,{width:"100%"})}/></td>
+                  <td style={{textAlign:"right"}}><input type="number" value={ad.amount||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,"amount",e.target.value);}} style={Object.assign({},inp,{width:105,textAlign:"right"})}/></td>
+                  <td style={{textAlign:"right",color:"#6f6b62"}}>{fmt(cum)}</td>
+                  <td><span className="badge" style={{background:k[0],color:k[1]}}>{k[2]}</span></td>
+                  <td style={{whiteSpace:"nowrap"}}>
+                    <button className="btn btn-sm" style={{padding:"0 6px",fontSize:10}} onClick={function(){setOpenAd(function(o){var n=Object.assign({},o);n[ad.id]=!o[ad.id];return n;});}} title="Approval (ACC / Aconex), instruction, comment">{open?"▾":"▸"}</button>
+                    {editable&&<button onClick={function(){delAd(x,ad);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:12}}>🗑</button>}
+                  </td>
+                </tr>
+                {open&&<tr><td colSpan={7} style={{background:"#faf9f6",padding:"8px 12px"}}>
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",fontSize:11}}>
+                    {["acc","aconex"].map(function(dk){
+                      return <span key={dk} style={{display:"flex",gap:4,alignItems:"center"}}><b style={{color:dk==="acc"?"#1a73e8":"#7b1fa2"}}>{dk==="acc"?"ACC":"ACONEX"}</b>
+                        <select value={ad[dk+"Status"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Status",e.target.value);}} style={inp}>
+                          {AD_STATUS_OPTS.map(function(o){return <option key={o[0]} value={o[0]}>{o[1]}</option>;})}</select>
+                        <input type="date" value={ad[dk+"Date"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Date",e.target.value);}} style={inp}/></span>;
+                    })}
+                    <span style={{display:"flex",gap:4,alignItems:"center"}}>INS #
+                      <input type="text" value={ad.instructionNumber||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,"instructionNumber",e.target.value);}} style={Object.assign({},inp,{width:90})}/></span>
+                    <input type="text" value={ad.comment||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,"comment",e.target.value);}} placeholder="Comment…" style={Object.assign({},inp,{flex:"1 1 200px"})}/>
+                  </div>
+                </td></tr>}
+              </React.Fragment>;
+            })}
+            <tr style={{background:"#fffaf0"}}><td colSpan={3} style={{fontWeight:700}}>Total{ads.length?" · "+ads.length+" addendum"+(ads.length!==1?"s":""):""}</td>
+              <td style={{textAlign:"right",fontWeight:800,color:"#b45309"}}>{fmt(cum)}</td><td colSpan={3} style={{fontSize:10.5,color:"#9b968b"}}>rejected addendums not counted</td></tr>
+          </tbody>
+        </table>
+        {editable&&<div style={{padding:"7px 12px"}}><button className="btn btn-sm" onClick={function(){addAd(x);}}>＋ Addendum</button></div>}
+      </div>;
+    })}
+
+    {editable&&<div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",paddingTop:4}}>
+      <span style={{display:"flex",gap:6,alignItems:"center",fontSize:12}}>
+        <select value={linkSel} onChange={function(e){setLinkSel(e.target.value);}} style={Object.assign({},inp,{maxWidth:320})}>
+          <option value="">Link an existing contract…</option>
+          {linkable.map(function(y){return <option key={y.ct.id} value={y.ct.id}>{(isAwarded(y.ctr.name)?"★ ":"")+(y.ctr.name||"?")+" — "+(y.ct.number||"no number")+(y.ct.tenderRef?" (linked elsewhere)":"")}</option>;})}
+        </select>
+        <button className="btn btn-sm" disabled={!linkSel} onClick={doLink}>Link</button>
+      </span>
+      <span style={{display:"flex",gap:6,alignItems:"center",fontSize:12}}>
+        <select value={newFor} onChange={function(e){setNewFor(e.target.value);}} style={Object.assign({},inp,{maxWidth:320})}>
+          <option value="">New contract for…</option>
+          {newOpts.map(function(o){return <option key={o.v} value={o.v}>{o.l}</option>;})}
+        </select>
+        <button className="btn btn-sm" disabled={!newFor} onClick={doNew}>＋ Create</button>
+      </span>
+    </div>}
+  </div>;
+}
+
+function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,saveContractors,pkgOwners,jumpTender,clearJumpTender,jumpFrom,onBack,onNavZone,onNavContracts}){
 
   function lsGet(key,fallback){try{var v=localStorage.getItem(key);return v!==null?v:fallback;}catch(e){return fallback;}}
   function lsSet(key,val){try{localStorage.setItem(key,val);}catch(e){}}
@@ -2741,6 +3076,12 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [showTl,setShowTl]=useState(true);
   const [showGaps,setShowGaps]=useState(false);
   const [linkedOpen,setLinkedOpen]=useState(true);
+  // Package sheet tabs: each document is edited in ONE place (Submissions); the rest is read
+  // or linked from the other tabs. Remembered per browser.
+  const [tdTab,setTdTabRaw]=useState(function(){return lsGet("pp_tv_tdTab","docs");});
+  function setTdTab(t){setTdTabRaw(t);try{lsSet("pp_tv_tdTab",t);}catch(e){}}
+  const [docFocus,setDocFocus]=useState(null);
+  function jumpToDoc(id){setTdTab("docs");setDocFocus({id:id,n:Date.now()});}
   var selTenderIdRef=useRef(selTender?selTender.id:"");
   function setSelTender(t){
     var newId=t?t.id:"";
@@ -3004,10 +3345,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     return <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
 
       <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
-        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Tenders</div>
+        <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Packages</div>
         <div style={{padding:"6px 8px",borderBottom:"1px solid #f0ede6"}}>
           <select value={pkgFilter} onChange={function(e){setPkgFilter(e.target.value);}} style={{fontSize:11,border:"none",background:"transparent",fontFamily:"inherit",width:"100%"}}>
-            <option value="all">All packages</option>
+            <option value="all">All departments</option>
             {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
           </select>
         </div>
@@ -3020,7 +3361,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
         <div style={{position:"sticky",top:0,zIndex:30,background:"#f4f3f0",display:"flex",gap:6,paddingBottom:6,paddingTop:2,marginBottom:6}}>
           {onBack&&<button className="btn btn-sm" onClick={onBack} style={{flexShrink:0,color:"var(--blue)",borderColor:"var(--blue)"}}>← Back to {jumpFrom}</button>}
-          <button className="btn btn-sm" onClick={function(){setSelTender(null);onBack?null:null;}} style={{flexShrink:0}}>← All tenders</button>
+          <button className="btn btn-sm" onClick={function(){setSelTender(null);onBack?null:null;}} style={{flexShrink:0}}>← All packages</button>
         </div>
         <div className="page-hdr" style={{marginBottom:12}}>
           <div style={{flex:1}}>
@@ -3120,9 +3461,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               background:td.cancelled?"#fdf9f2":"#fff",marginBottom:16}}>
               <div className="tb-main" style={{flex:1,minWidth:0,padding:"12px 16px"}}>
                 <div className="tb-eyebrow" style={{fontSize:11,fontWeight:600,letterSpacing:".09em",
-                  textTransform:"uppercase",color:"#6f6b62",marginBottom:3}}>Tender · {td.package||"no package"}</div>
+                  textTransform:"uppercase",color:"#6f6b62",marginBottom:3}}>Package · {td.package||"no department"}</div>
                 <input type="text" value={td.title||""} onChange={function(e){updTd("title",e.target.value);}}
-                  placeholder="Tender title"
+                  placeholder="Package title"
                   style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-page)",letterSpacing:"-.01em",
                     border:"none",background:"transparent",outline:"none",width:"100%",padding:0,color:"var(--ink)",lineHeight:1.08}}/>
                 <div className="tb-sub" style={{fontSize:12,color:"#6f6b62",marginTop:3,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -3148,7 +3489,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                         // and the second one wiped cancelledAt.
                         updTd({cancelledAt:today(),cancelled:true});
                       }
-                    }}>{td.cancelled?"↺ Reinstate":"⊘ Cancel tender"}</button>
+                    }}>{td.cancelled?"↺ Reinstate":"⊘ Cancel package"}</button>
                 </div>
               </div>
               <div className="tb-cells" style={{display:"flex",borderLeft:"1.5px solid var(--gold,#c9a84c)",flexShrink:0}}>
@@ -3209,7 +3550,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,alignItems:"center"}}>
               <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>PKG</span>
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>DEPT</span>
                 <select value={td.package||""} onChange={function(e){updTd("package",e.target.value);}} style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px",fontFamily:"inherit"}}>
                   <option value="">—</option>
                   {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
@@ -3309,7 +3650,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <input type="number" value={td.accAmountTreated||""} onChange={function(e){updTd("accAmountTreated",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #ce93d8",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#7b1fa2"}}/>
               <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
             </div>
-            <div style={{fontSize:10,color:"#aaa"}}>Used for the Packages recap (Budget/Cost/Variance treated)</div>
+            <div style={{fontSize:10,color:"#aaa"}}>Used for the Departments recap (Budget/Cost/Variance treated)</div>
           </div>
           {budget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:effectiveCost>0&&variance<0?"#fff0f0":effectiveCost>0?"#f0fff4":"#f8f7f4"}}>
             <div style={{fontSize:10,color:effectiveCost>0?(variance<0?"#c62828":"#2e7d32"):"#888",marginBottom:2}}>{effectiveCost>0?varianceLabel:"Variance"}</div>
@@ -3323,73 +3664,37 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>}
         </div>
 
-        {/* Submission steps right under the budgets: it is what is looked at first. */}
-        <div className="card" style={{marginBottom:10}}>
-        <SubmissionSteps td={td} TENDER_STEPS={TENDER_STEPS} updateStep={updateStep} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} tasks={tasks} saveTasks={saveTasks} pkgOwners={pkgOwners} updTd={updTd} afterSave={flowAfterSave}/>
-        </div>
-
+        {/* One tab per job. Submissions = every document, edited in one place each;
+            Contract = contract circuit + contracts and addendums; Flow = read-only history. */}
         {(function(){
-          var notes=Array.isArray(td.tenderNotes)?td.tenderNotes:(td.notes?[{id:uuid(),title:"Note",content:td.notes}]:[]);
-          return <div className="card" style={{marginBottom:10}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:notes.length>0?10:0}}>
-              <div style={{fontWeight:700,fontSize:13}}>📝 Notes ({notes.length})</div>
-              <button className="btn btn-sm" onClick={function(){var ns=[...notes,{id:uuid(),title:"Note "+(notes.length+1),content:"",open:true}];updTd("tenderNotes",ns);}}>＋ Note</button>
-            </div>
-            {notes.map(function(note,ni){
-              function updNote(field,val){var ns=notes.map(function(n,j){return j!==ni?n:Object.assign({},n,{[field]:val});});updTd("tenderNotes",ns);}
-              return <div key={note.id||ni} style={{border:"1px solid #e8e6df",borderRadius:8,marginBottom:8,overflow:"hidden"}}>
-                <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
-                  <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
-                  <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-                  <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
-                </div>
-                {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
-                  <textarea value={note.content||""} onChange={function(e){updNote("content",e.target.value);}} placeholder="Write your note here..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-                </div>}
-              </div>;
+          var nNotes=Array.isArray(td.tenderNotes)?td.tenderNotes.length:(td.notes?1:0);
+          var nOpen=linkedTasks.filter(function(t){return t.status!=="done";}).length;
+          var ctt=tenderContractTotals(td,contractors);
+          var docs=tenderDocs(td);
+          var nWait=docs.filter(function(d){var st=docSummary(d).state;return st==="pending"||st==="returned";}).length;
+          var TABS=[
+            {k:"docs",icon:"📄",l:"Submissions",n:nWait?nWait+" open":"",tip:"Submission chain, WMS & ITP, shop drawings, materials: record each submission and its reference here"},
+            {k:"contract",icon:"📋",l:"Contract & addendums",n:ctt.linked.length?ctt.linked.length+" · "+ctt.adCount+" add.":"",tip:"Request, circulation, signature, then the contracts and their addendums"},
+            {k:"flow",icon:"📈",l:"Flow & history",n:docs.length?docs.length+" docs":"",tip:"Timeline and read-only register of every document"},
+            {k:"actions",icon:"✅",l:"Actions & notes",n:(nOpen?nOpen+" open":"")+(nNotes?(nOpen?" · ":"")+nNotes+" note"+(nNotes>1?"s":""):""),tip:"Next step, linked actions and notes"}
+          ];
+          return <div style={{display:"flex",gap:4,flexWrap:"wrap",margin:"4px 0 12px",borderBottom:"1.5px solid var(--rule,#ddd9cf)",position:"sticky",top:0,zIndex:20,background:"var(--paper,#f4f3f0)",paddingTop:4}}>
+            {TABS.map(function(t){
+              var on=tdTab===t.k;
+              return <button key={t.k} type="button" title={t.tip} onClick={function(){setTdTab(t.k);}}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",border:"none",borderBottom:"3px solid "+(on?"var(--gold,#c9a84c)":"transparent"),
+                  marginBottom:-1.5,background:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:on?700:500,color:on?"var(--ink,#16181d)":"var(--ink-3,#6f6b62)"}}>
+                <span>{t.icon}</span>{t.l}
+                {t.n&&<span style={{fontSize:10,fontWeight:600,padding:"1px 7px",borderRadius:9,background:on?"var(--gold-soft,#faf3e0)":"#eceae4",color:on?"var(--gold-ink,#8a6a1e)":"#6f6b62"}}>{t.n}</span>}
+              </button>;
             })}
           </div>;
         })()}
 
+        {tdTab==="docs"&&<React.Fragment>
         <div className="card" style={{marginBottom:10}}>
-          <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#7b1fa2"}}>🎯 Next Step</div>
-          <textarea value={td.nextStep||""} onChange={function(e){updTd("nextStep",e.target.value);}} placeholder="Describe the next step or action required for this tender…" style={{width:"100%",minHeight:60,padding:"7px 10px",fontSize:12,border:"1.5px solid #ce93d8",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+        <SubmissionSteps part="docs" focus={docFocus} td={td} TENDER_STEPS={TENDER_STEPS} updateStep={updateStep} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} tasks={tasks} saveTasks={saveTasks} pkgOwners={pkgOwners} updTd={updTd} afterSave={flowAfterSave}/>
         </div>
-
-        <div className="card" style={{marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-            <div onClick={function(){setLinkedOpen(!linkedOpen);}} title={linkedOpen?"Collapse the actions":"Show the actions"}
-              style={{fontWeight:700,fontSize:14,cursor:"pointer",userSelect:"none"}}>
-              <span style={{fontSize:10,color:"#9b968b",display:"inline-block",width:14}}>{linkedOpen?"▾":"▸"}</span>
-              Linked Actions ({shownLinked.length}{shownLinked.length!==linkedTasks.length?" / "+linkedTasks.length:""})</div>
-            {(function(){var nd=linkedTasks.filter(function(t){return t.status==="done";}).length;
-              return hideDoneLinked&&nd>0?<button className="btn btn-sm" style={{fontSize:10,padding:"1px 8px"}} onClick={function(){setHideDoneLinked(false);setLinkedOpen(true);}}>
-                show {nd} done</button>:null;})()}
-            <input type="text" value={qLinked} onChange={function(e){setQLinked(e.target.value);}}
-              placeholder="🔎 Search text, owner, tag, status…" style={{flex:1,minWidth:180,maxWidth:340,padding:"4px 9px",fontSize:11}}/>
-            {qLinked&&<button className="btn btn-sm" onClick={function(){setQLinked("");}}>✕</button>}
-            <label style={{display:"flex",alignItems:"center",gap:4,fontSize:10,textTransform:"none",letterSpacing:"normal",cursor:"pointer",color:"#888",margin:0}}>
-              <input type="checkbox" checked={hideDoneLinked} onChange={function(e){setHideDoneLinked(e.target.checked);}} style={{width:12,height:12}}/>
-              Hide done
-            </label>
-          </div>
-          {linkedOpen&&(shownLinked.length===0
-            ?<div style={{color:"#bbb",fontSize:13}}>{linkedTasks.length?"Every linked action is done.":"No actions linked to this tender yet."}</div>
-            :shownLinked.map(function(t){
-              return <ActionItem key={t.id} task={t}
-                onStatusChange={function(val){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
-                onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));if(field&&typeof field==="object"){Object.assign(u,field);}else{u[field]=val;}return u;}));}}
-                onDelete={function(){saveTasks((tasks||[]).filter(function(x){return x.id!==t.id;}));}}
-                people={people} packages={packages} tags={window._ppTags||[]} tenders={tenders} contractors={contractors} onNavTender={null}
-                zones={window._ppZones||[]} onOpenRooms={function(tk){setRoomPickTask(tk);}}/>;
-            }))}
-          {linkedOpen&&<QuickAddTask
-            prefill={{tenderRef:td.id, package:td.package||"", owner:td.ownerTender||""}}
-            onAdd={function(t){saveTasks([t,...(tasks||[])]);}} people={people}
-            tags={window._ppTags||[]} label="Add Task to this tender"
-          />}
-        </div>
-
 
         {(function(){
           var hasSd=td.hasSD||false;
@@ -3489,22 +3794,94 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>;
         })()}
 
-      <TenderFlowPanel td={td} updTd={updTd} afterSave={flowAfterSave}/>
 
-      <div className="card">
-
-
-        {td.hasSD&&<SDPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} people={people}/>}
+      <div className="card" style={{marginBottom:10}}>
+        {td.hasSD&&<SDPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} people={people} afterSave={flowAfterSave} focus={docFocus}/>}
 
         {/* Materials sit under the submission chain: their MAR date is derived from the
             contract, which is itself the end of that chain. */}
-        <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} saveT={saveTasks} tasks={tasks} pkgOwners={pkgOwners} afterSave={flowAfterSave}/>
+        <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} saveT={saveTasks} tasks={tasks} pkgOwners={pkgOwners} afterSave={flowAfterSave} focus={docFocus}/>
+      </div>
+        </React.Fragment>}
 
+        {tdTab==="contract"&&<React.Fragment>
+        <div className="card" style={{marginBottom:10}}>
+        <SubmissionSteps part="contract" td={td} TENDER_STEPS={TENDER_STEPS} updateStep={updateStep} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} tasks={tasks} saveTasks={saveTasks} pkgOwners={pkgOwners} updTd={updTd} afterSave={flowAfterSave}/>
+        </div>
+        <TenderContractsPanel td={td} contractors={contractors} saveContractors={saveContractors} onOpenContracts={onNavContracts}/>
+        <div className="card" style={{marginBottom:10}}>
         {/* One card per subcontractor retained on this tender, with its own contract conditions. */}
         <AwardsPanel td={td} updTd={updTd} contractors={contractors}/>
+        </div>
+        </React.Fragment>}
 
-      
-      </div>
+        {tdTab==="flow"&&<TenderFlowPanel td={td} updTd={updTd} afterSave={flowAfterSave} onJump={jumpToDoc}/>}
+
+        {tdTab==="actions"&&<React.Fragment>
+        <div className="card" style={{marginBottom:10}}>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#7b1fa2"}}>🎯 Next Step</div>
+          <textarea value={td.nextStep||""} onChange={function(e){updTd("nextStep",e.target.value);}} placeholder="Describe the next step or action required for this tender…" style={{width:"100%",minHeight:60,padding:"7px 10px",fontSize:12,border:"1.5px solid #ce93d8",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+        </div>
+
+        <div className="card" style={{marginBottom:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+            <div onClick={function(){setLinkedOpen(!linkedOpen);}} title={linkedOpen?"Collapse the actions":"Show the actions"}
+              style={{fontWeight:700,fontSize:14,cursor:"pointer",userSelect:"none"}}>
+              <span style={{fontSize:10,color:"#9b968b",display:"inline-block",width:14}}>{linkedOpen?"▾":"▸"}</span>
+              Linked Actions ({shownLinked.length}{shownLinked.length!==linkedTasks.length?" / "+linkedTasks.length:""})</div>
+            {(function(){var nd=linkedTasks.filter(function(t){return t.status==="done";}).length;
+              return hideDoneLinked&&nd>0?<button className="btn btn-sm" style={{fontSize:10,padding:"1px 8px"}} onClick={function(){setHideDoneLinked(false);setLinkedOpen(true);}}>
+                show {nd} done</button>:null;})()}
+            <input type="text" value={qLinked} onChange={function(e){setQLinked(e.target.value);}}
+              placeholder="🔎 Search text, owner, tag, status…" style={{flex:1,minWidth:180,maxWidth:340,padding:"4px 9px",fontSize:11}}/>
+            {qLinked&&<button className="btn btn-sm" onClick={function(){setQLinked("");}}>✕</button>}
+            <label style={{display:"flex",alignItems:"center",gap:4,fontSize:10,textTransform:"none",letterSpacing:"normal",cursor:"pointer",color:"#888",margin:0}}>
+              <input type="checkbox" checked={hideDoneLinked} onChange={function(e){setHideDoneLinked(e.target.checked);}} style={{width:12,height:12}}/>
+              Hide done
+            </label>
+          </div>
+          {linkedOpen&&(shownLinked.length===0
+            ?<div style={{color:"#bbb",fontSize:13}}>{linkedTasks.length?"Every linked action is done.":"No actions linked to this tender yet."}</div>
+            :shownLinked.map(function(t){
+              return <ActionItem key={t.id} task={t}
+                onStatusChange={function(val){saveTasks(tasks.map(function(x){return x.id!==t.id?x:Object.assign({},x,{status:val});}));}}
+                onUpdate={function(field,val){saveTasks(tasks.map(function(x){if(x.id!==t.id)return x;var u=stampModified(Object.assign({},x));if(field&&typeof field==="object"){Object.assign(u,field);}else{u[field]=val;}return u;}));}}
+                onDelete={function(){saveTasks((tasks||[]).filter(function(x){return x.id!==t.id;}));}}
+                people={people} packages={packages} tags={window._ppTags||[]} tenders={tenders} contractors={contractors} onNavTender={null}
+                zones={window._ppZones||[]} onOpenRooms={function(tk){setRoomPickTask(tk);}}/>;
+            }))}
+          {linkedOpen&&<QuickAddTask
+            prefill={{tenderRef:td.id, package:td.package||"", owner:td.ownerTender||""}}
+            onAdd={function(t){saveTasks([t,...(tasks||[])]);}} people={people}
+            tags={window._ppTags||[]} label="Add Task to this tender"
+          />}
+        </div>
+
+
+        {(function(){
+          var notes=Array.isArray(td.tenderNotes)?td.tenderNotes:(td.notes?[{id:uuid(),title:"Note",content:td.notes}]:[]);
+          return <div className="card" style={{marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:notes.length>0?10:0}}>
+              <div style={{fontWeight:700,fontSize:13}}>📝 Notes ({notes.length})</div>
+              <button className="btn btn-sm" onClick={function(){var ns=[...notes,{id:uuid(),title:"Note "+(notes.length+1),content:"",open:true}];updTd("tenderNotes",ns);}}>＋ Note</button>
+            </div>
+            {notes.map(function(note,ni){
+              function updNote(field,val){var ns=notes.map(function(n,j){return j!==ni?n:Object.assign({},n,{[field]:val});});updTd("tenderNotes",ns);}
+              return <div key={note.id||ni} style={{border:"1px solid #e8e6df",borderRadius:8,marginBottom:8,overflow:"hidden"}}>
+                <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
+                  <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
+                  <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+                </div>
+                {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
+                  <textarea value={note.content||""} onChange={function(e){updNote("content",e.target.value);}} placeholder="Write your note here..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                </div>}
+              </div>;
+            })}
+          </div>;
+        })()}
+
+        </React.Fragment>}
       </div>
 
       {roomPickTask&&<BlockedRoomsModal
@@ -3520,7 +3897,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
   return <div>
     <div className="page-hdr">
-      <div><div className="page-title">Tenders</div><div className="page-sub">Track submission steps by package</div></div>
+      <div><div className="page-title">Packages</div><div className="page-sub">Submissions, contracts and addendums — by department</div></div>
       <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
       <button className="btn btn-sm" onClick={function(){
   var leftnav=document.querySelector('.leftnav');
@@ -3540,13 +3917,13 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         return <button className="btn btn-sm" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
           style={n?{borderColor:"#f48fb1",color:"#c62828"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
       })()}
-      <button className="btn btn-gold" onClick={openNew}>＋ New Tender</button>
+      <button className="btn btn-gold" onClick={openNew}>＋ New Package</button>
     </div>
     {showGaps&&<TenderGapsModal tenders={tenders} saveTenders={saveTenders} packages={packages} people={people}
       onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>}
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-      <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search tender, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
-      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All packages</button>
+      <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search package, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
+      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All departments</button>
       {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
       {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
@@ -3616,11 +3993,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     {filtered.length>0&&<FlowDocLegend/>}
     {filtered.length>0&&listRange&&<TenderTimelineLegend/>}
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No tenders found.</div></div>
+      ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No packages found.</div></div>
       :<div style={{position:"relative"}}><table className="tbl tbl-tenders">
         <thead><tr className="tgroup-hdr">
           {/* One label over each family of columns, so the eye knows where it is in the row. */}
-          <th colSpan={5}>Tender</th>
+          <th colSpan={5}>Package</th>
           <th colSpan={5} className="tcol-sep">Finance</th>
           <th colSpan={2} className="tcol-sep">Dates</th>
           <th colSpan={TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length} className="tcol-sep">Submission steps</th>
@@ -3628,8 +4005,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         </tr><tr>
           <th><span className="tsort" style={{color:sortCol==="status"?"#f97316":undefined}} onClick={function(){toggleSort("status");}} title="Sort by status: before approval → contract phase → signed → cancelled">Status{sortIcon("status")}</span>
             <span style={{color:"#ccc",margin:"0 6px"}}>·</span>
-            <span className="tsort" style={{color:sortCol==="title"?"#f97316":undefined}} onClick={function(){toggleSort("title");}}>Tender{sortIcon("title")}</span></th>
-          <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+            <span className="tsort" style={{color:sortCol==="title"?"#f97316":undefined}} onClick={function(){toggleSort("title");}}>Package{sortIcon("title")}</span></th>
+          <th className="sortable" onClick={function(){toggleSort("package");}}>Department{sortIcon("package")}</th>
           <th style={{minWidth:130}} title="Subcontractor(s) recorded in the tender's Awards panel">Awarded to</th>
           <th style={{minWidth:170}} title="Every document sent to the client: green approved, blue with the client, orange returned to resubmit, dashed not submitted. Hover for details.">Submissions</th>
           <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
@@ -5473,8 +5850,8 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
   return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">📦 Packages</div>
-        <div className="page-sub">{shown.length} packages · live status from tenders, contracts, quality docs & actions</div>
+        <div className="page-title">🗂️ Departments</div>
+        <div className="page-sub">{shown.length} departments · live status from packages, contracts, quality docs & actions</div>
       </div>
       <button className={"fchip"+(fOnlyIssues?" on":"")} onClick={function(){setFOnlyIssues(!fOnlyIssues);}}>⚠️ Issues only</button>
     </div>
