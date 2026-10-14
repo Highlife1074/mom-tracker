@@ -2048,7 +2048,7 @@ function FlowDocLegend(){
     ["#fff3e0","#b35c00","solid","To resubmit","returned C or D"],
     ["#f5f3ee","#9b968b","dashed","Not submitted",""]
   ];
-  return <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:11,color:"#6f6b62",margin:"0 0 8px",padding:"6px 10px",background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8}}>
+  return <div className="phone-hide" style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:11,color:"#6f6b62",margin:"0 0 8px",padding:"6px 10px",background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8}}>
     <span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#9b968b"}}>Submissions</span>
     {items.map(function(x){
       return <span key={x[3]} style={{display:"flex",alignItems:"center",gap:5}}>
@@ -2226,7 +2226,7 @@ function TlMarkerKeys(){
 }
 function TenderTimelineLegend(){
   var it={display:"flex",alignItems:"center",gap:4};
-  return <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:11,color:"#6f6b62",margin:"0 0 8px",padding:"6px 10px",background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8}}>
+  return <div className="phone-hide" style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:11,color:"#6f6b62",margin:"0 0 8px",padding:"6px 10px",background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8}}>
     <span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#9b968b"}}>Timeline</span>
     <TlMarkerKeys/>
     <span style={it}><span style={{width:9,height:9,borderRadius:"50%",background:FLOW_COL.client}}/>ACC/Aconex approved</span>
@@ -3348,9 +3348,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     // Use contract total as instructed if available
     var instructedAmount=contractGrand>0?contractGrand:Number(td.instructionAmount)||0;
 
-    return <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
+    return <div className="md-wrap" style={{display:"flex",gap:16,alignItems:"flex-start"}}>
 
-      <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
+      <div className="md-side" style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Packages</div>
         <div style={{padding:"6px 8px",borderBottom:"1px solid #f0ede6"}}>
           <select value={pkgFilter} onChange={function(e){setPkgFilter(e.target.value);}} style={{fontSize:11,border:"none",background:"transparent",fontFamily:"inherit",width:"100%"}}>

@@ -610,11 +610,11 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
 
     {showEmail&&<EmailModal em={buildZoneReport()} onClose={function(){setShowEmail(false);}}/>}
 
-    {(zones||[]).length>1&&<div style={{display:"flex",gap:6,marginBottom:14}}>
+    {(zones||[]).length>1&&<div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
       {(zones||[]).map(function(z){return <button key={z} className={"fchip"+(curZone===z?" on gold":"")} onClick={function(){setCurZone(z);}} style={curZone===z?{background:"#c9a84c",borderColor:"#c9a84c",color:"#1c1c1e"}:{}}>{z}</button>;})}
     </div>}
 
-    <div style={{display:"flex",gap:6,marginBottom:16}}>
+    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
       <button className={"fchip"+(subTab==="actions"?" on":"")} onClick={function(){setSubTab("actions");}}>📋 Actions</button>
       <button className={"fchip"+(subTab==="rooms"?" on":"")} onClick={function(){setSubTab("rooms");}}>🚪 Rooms {zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length>0&&<span style={{marginLeft:4,color:"#c62828",fontWeight:700}}>({zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length} blocked)</span>}</button>
       <button className={"fchip"+(subTab==="ppi"?" on":"")} onClick={function(){setSubTab("ppi");}}>📈 PPI Tracker {avgPPI!==null&&<span style={{marginLeft:4,fontWeight:800,color:ppiColor(avgPPI)}}>{avgPPI}%</span>}</button>
