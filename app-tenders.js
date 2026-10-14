@@ -2198,6 +2198,10 @@ function TenderMiniTimeline({td,range}){
       // the main SD follows the delivery cascade, so its answer date matches the truck
       var due=main&&isValidDate(fSdA.date)?fSdA.date:addWorkingDays(last.submitted,getDur("sdApproval"));
       fut(now,due>now?due:addWorkingDays(now,1),FLOW_COL.client,name+" R"+last.rev+" with the client since "+fmtDate(last.submitted)+" — answer expected "+fmtDate(due));
+    }else if(main&&isValidDate(pst("sdReappBack").date)){
+      var rb=pst("sdResubBack"),ab=pst("sdReappBack");
+      fut(isValidDate(last.returned)?last.returned:now,rb.date,FLOW_COL.sub,"Forecast: sub reworks the "+name+" (returned "+last.code+"), resubmission "+fmtDate(rb.date));
+      fut(rb.date,ab.date,FLOW_COL.client,"Forecast: "+name+" R"+(last.rev+1)+" with the client → approval "+fmtDate(ab.date));
     }else if(last.code==="C"||last.code==="D"){
       var from=isValidDate(last.returned)?last.returned:now;
       var resub=addWorkingDays(from>now?from:now,14);
@@ -4124,6 +4128,14 @@ function calcProcurement(td){
   });
   var hasSd = td.hasSD||false;
   var sdResubCount = Number(td.sdResubCount||0);
+  // Main SD (no transmissions) whose last revision came back C or D: not approved, whatever
+  // sdApprovalDone says (it holds the date of that answer). Transmissions are already handled
+  // by _sdAggregate, which leaves sdApprovalDone empty until every one is approved.
+  var sdBack = null;
+  if(hasSd && !(td.sdTransmissions||[]).length){
+    var _sdl = cyclesOfSdMain(td), _sdz = _sdl[_sdl.length-1];
+    if(_sdz && (_sdz.code==="C"||_sdz.code==="D")) sdBack = _sdz;
+  }
 
   var accDoneActual = ((td.stepDates||{}).acc||{}).done || "";
   var accSubmittal = accDoneActual || ((td.stepDates||{}).acc||{}).target || "";
@@ -4200,6 +4212,18 @@ function calcProcurement(td){
       review:td.sdReview||"", autoDate:sdAppTargetAuto, overridden:!!(ov.sdApp&&ov.sdApp!==sdAppTargetAuto)});
 
     var lastSdDate = td.sdApprovalDone||sdAppTarget;
+    // Shop drawings returned C or D (main SD, last revision): the return date is an answer,
+    // not an approval. The sub reworks and resubmits (14 days after the return, or from
+    // today + 7 when that is already past), then the client approves again.
+    if(sdBack){
+      var _back=isValidDate(sdBack.returned)?sdBack.returned:(td.sdApprovalDone||today());
+      var _rs=addWorkDays(_back,14);
+      if(_rs<today())_rs=addWorkDays(today(),7);
+      var _ra=addWorkDays(_rs,getDur("sdApproval"));
+      steps.push({key:"sdResubBack", label:"SD Resubmission (returned "+sdBack.code+")", date:_rs, done:"", duration:14, manual:false, sd:true});
+      steps.push({key:"sdReappBack", label:"SD Approval R"+((sdBack.rev||0)+1), date:_ra, done:"", duration:getDur("sdApproval"), manual:false, sd:true});
+      lastSdDate=_ra;
+    }
     for(var r=0; r<sdResubCount; r++){
       var rSubTarget = addWorkDays(lastSdDate, 14);
       var rAppTarget = addWorkDays(rSubTarget, 14);
@@ -4210,7 +4234,7 @@ function calcProcurement(td){
 
     // Grace applies to the normal SD approval step; an open resubmission cascade already
     // pushes lastSdDate forward on its own and is not re-graced here.
-    sdBase = sdDateOrGrace(td.sdApprovalDone, sdAppTarget);
+    sdBase = sdBack ? lastSdDate : sdDateOrGrace(td.sdApprovalDone, sdAppTarget);
     if(lastSdDate>sdBase) sdBase=lastSdDate;
   }
 
@@ -4266,12 +4290,13 @@ function calcProcurement(td){
     var sdChain=[
       {label:"SD submitted", date:td.sdDone||sdSubTarget, firm:!!td.sdDone},
       {label:"SD approval target", date:sdAppTarget, firm:false},
-      {label:"SD approved (réel)", date:td.sdApprovalDone||"", firm:!!td.sdApprovalDone}
+      {label:sdBack?"SD returned "+sdBack.code+" (réel)":"SD approved (réel)", date:td.sdApprovalDone||"", firm:!!td.sdApprovalDone}
     ];
+    if(sdBack)sdChain.push({label:"Resubmission → approval R"+((sdBack.rev||0)+1), date:lastSdDate, firm:false});
     if(sdResubCount>0)sdChain.push({label:"After "+sdResubCount+" resubmission"+(sdResubCount>1?"s":""), date:lastSdDate, firm:false});
-    sdChain.push({label:"→ Retenu", date:sdBase, firm:!!td.sdApprovalDone, used:true,
-      note:graceReason(td.sdApprovalDone,sdAppTarget,"Approuvé")+(td.sdApprovalDone?"":" Grâce SD = aujourd'hui +7j (soumission) +14j (validation).")});
-    candidates.push({key:"sd", label:"SD approved / grace", date:sdBase, firm:!!td.sdApprovalDone, chain:sdChain});
+    sdChain.push({label:"→ Retenu", date:sdBase, firm:!!td.sdApprovalDone&&!sdBack, used:true,
+      note:sdBack?"Retourné "+sdBack.code+" : pas une approbation — resoumission 14j après le retour (ou aujourd'hui +7j si dépassé), puis validation.":graceReason(td.sdApprovalDone,sdAppTarget,"Approuvé")+(td.sdApprovalDone?"":" Grâce SD = aujourd'hui +7j (soumission) +14j (validation).")});
+    candidates.push({key:"sd", label:"SD approved / grace", date:sdBase, firm:!!td.sdApprovalDone&&!sdBack, chain:sdChain});
   }
    if(leadMaterial){
     var _marFirm = !!leadMaterial.marApprovalDone||marFirmByStatus;
