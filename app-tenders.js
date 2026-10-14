@@ -758,6 +758,23 @@ function MatDocApproval({doc}){
     style={{fontSize:11,whiteSpace:"nowrap",color:late?"#c62828":"#1a73e8",fontWeight:late?700:500}}>{late?"⚠ due ":"expected "}{fmtDate(due)}</span>;
 }
 
+// Before the submission only: "under preparation" opens the "Prepare the MAR: name — title"
+// action, back to "—" closes it. Shared by the tender's Materials table and the Materials view.
+function matPrepTasks(td,mat,kind,newStatus,tasks,owner){
+  var qtag=qualityTag(td.package||"");
+  var prepText="Prepare the "+kind+": "+(mat.name||"material")+" — "+td.title;
+  var updated=(tasks||[]).map(function(t){
+    if(t.tenderRef===td.id&&t.text===prepText&&t.status!=="done"&&newStatus!=="under preparation")
+      return Object.assign({},t,{status:"done",completedAt:today()});
+    return t;
+  });
+  if(newStatus==="under preparation"){
+    var exists=updated.some(function(t){return t.tenderRef===td.id&&t.text===prepText&&t.status!=="done";});
+    if(!exists)updated=[newTask({text:prepText,owner:owner||"",due:mat[kind.toLowerCase()+"Target"]||"",tenderRef:td.id,package:td.package||"",
+      importance:2,urgence:2,tags:[qtag],note:"Auto — "+kind+" under preparation",addedBy:"System"}),...updated];
+  }
+  return updated;
+}
 function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,pkgOwners,afterSave,focus}){
   const [open,setOpen]=useState(false);
   const [openRow,setOpenRow]=useState({});
@@ -776,20 +793,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
   // whose "Prepare the MAR: name — title" text is the same, so it closes this one.
   function stepAction(mat,kind,newStatus){
     if(!saveT||!tasks)return;
-    var qtag=qualityTag(td.package||"");
-    var base=kind+": "+(mat.name||"material")+" — "+td.title;
-    var prepText="Prepare the "+base;
-    var updated=(tasks||[]).map(function(t){
-      if(t.tenderRef===td.id&&t.text===prepText&&t.status!=="done"&&newStatus!=="under preparation")
-        return Object.assign({},t,{status:"done",completedAt:today()});
-      return t;
-    });
-    if(newStatus==="under preparation"){
-      var exists=updated.some(function(t){return t.tenderRef===td.id&&t.text===prepText&&t.status!=="done";});
-      if(!exists)updated=[newTask({text:prepText,owner:pkgOwner(),due:mat[kind.toLowerCase()+"Target"]||"",tenderRef:td.id,package:td.package||"",
-        importance:2,urgence:2,tags:[qtag],note:"Auto — "+kind+" under preparation",addedBy:"System"}),...updated];
-    }
-    saveT(updated);
+    saveT(matPrepTasks(td,mat,kind,newStatus,tasks,pkgOwner()));
   }
 
   function updMat(mi,field,val){
@@ -3115,6 +3119,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     if(jumpTender){
       var t=(tenders||[]).find(function(x){return x.id===jumpTender;});
       if(t){setSelTender(t);}
+      // Coming from a document view (Materials, WMS/ITP, client follow-up): open on the documents.
+      if(["materials","qadocs","submissions"].indexOf(jumpFrom)>=0)setTdTab("docs");
       if(clearJumpTender)clearJumpTender();
     }
   },[jumpTender]);
@@ -6667,7 +6673,27 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,memory,setMem
   </div>;
 }
 
-function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,setMemory,tasks}){
+function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,setMemory,tasks,saveTasks,pkgOwners}){
+  // Everything about a MAR / MSS is edited here too — status, submission and its reference,
+  // real dates, client code, resubmission — through the same writers as the package sheet
+  // (matDoc / recordDocSubmission / DocRevisionsEditor), so both views stay identical.
+  const [openDoc,setOpenDoc]=useState({});
+  function toggleDoc(id){setOpenDoc(function(o){var n=Object.assign({},o);n[id]=!o[id];return n;});}
+  function ownerOf(td){return (pkgOwners||window._ppPkgOwners||{})[td.package||""]||td.ownerTender||"";}
+  function updTdFor(td){
+    return function(field,val){
+      if(isReadOnly())return;
+      var patch=(field&&typeof field==="object")?field:{[field]:val};
+      saveTenders((tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,patch);}));
+    };
+  }
+  function afterSaveFor(td){
+    return function(prev,next){
+      if(!saveTasks||!tasks)return;
+      var n=flowTaskChanges(prev,next,tasks,ownerOf(next));
+      if(n)saveTasks(n);
+    };
+  }
   function docActionStats(tdId,matId,kind){
     var ref=tdId+"::"+matId+"::"+kind.toLowerCase();
     var acts=(tasks||[]).filter(function(t){return t.materialDocRef===ref&&t.status!=="done";});
@@ -6688,15 +6714,31 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     var st=docSummary(matDoc(r.td,r.mat,r.mi,k)).state;
     return st!=="none"?st:(r.mat[k+"Status"]==="under preparation"?"prep":"none");
   }
-  // One cell: status (only "under preparation" can be set here) and the client's answer.
-  // Revisions are recorded in the tender itself — the tender link opens it.
+  // One cell: status, submission (date, revision, reference) and the client's answer.
+  // ＋ Record asks the reference; ▸ opens the revisions underneath (dates, code, resubmission).
   function docCell(r,k){
-    if(matDocKinds(r.mat).indexOf(k)<0)return <span style={{color:"#ddd",fontSize:10}} title="No MSS required for this material">n/a</span>;
+    if(matDocKinds(r.mat).indexOf(k)<0)return <span style={{color:"#ddd",fontSize:10}} title="No MSS required for this material — tick MSS in the Material column">n/a</span>;
     var doc=matDoc(r.td,r.mat,r.mi,k);
-    return <div style={{display:"flex",flexDirection:"column",gap:2}}>
-      <MatDocStatus doc={doc} prep={r.mat[k+"Status"]==="under preparation"} onPrep={function(v){updMat(r.td,r.mi,k+"Status",v);}}/>
+    var last=doc.cycles[doc.cycles.length-1];
+    var key=r.td.id+"|"+doc.id;
+    var ro=isReadOnly();
+    return <div style={{display:"flex",flexDirection:"column",gap:3}}>
+      <div style={{display:"flex",alignItems:"center",gap:4}}>
+        <button type="button" onClick={function(){toggleDoc(key);}} title="Revisions: real submission date, returned date, code, reference, resubmission"
+          style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{openDoc[key]?"▾":"▸"}</button>
+        <div style={{flex:1}}><MatDocStatus doc={doc} prep={r.mat[k+"Status"]==="under preparation"} onPrep={ro?null:function(v){setPrep(r,k,v);}}/></div>
+      </div>
+      {last&&last.submitted&&<div style={{fontSize:10.5,color:"#555",whiteSpace:"nowrap"}}>sent {fmtDate(last.submitted)}{last.rev>0&&<b style={{color:"#b35c00",marginLeft:3}}>R{last.rev}</b>}
+        {doc.ref?<span style={{fontFamily:"var(--font-mono)",color:"#1a73e8",marginLeft:5}}>{doc.ref}</span>:<span style={{color:"#c62828",fontWeight:700,marginLeft:5}}>⚠ ref.</span>}</div>}
       <MatDocApproval doc={doc}/>
+      {!ro&&canAddCycle(doc.cycles)&&<button type="button" className="btn btn-sm" style={{fontSize:10,padding:"0 7px",height:22,alignSelf:"flex-start"}}
+        onClick={function(){recordDocSubmission(r.td,doc,updTdFor(r.td),afterSaveFor(r.td)).then(function(p){if(p)setOpenDoc(function(o){var n=Object.assign({},o);n[key]=true;return n;});});}}>
+        {doc.cycles.length?"↻ Resubmit R"+(last.rev+1):"＋ Record submission"}</button>}
     </div>;
+  }
+  function setPrep(r,k,v){
+    updMat(r.td,r.mi,k+"Status",v);
+    if(saveTasks&&tasks){var u={};u[k+"Status"]=v;saveTasks(matPrepTasks(r.td,Object.assign({},r.mat,u),k.toUpperCase(),v,tasks,ownerOf(r.td)));}
   }
 
   var rows=[];
@@ -6717,6 +6759,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
   });
 
   function updMat(td,mi,field,val){
+    if(blockIfReadOnly())return;
     var ms=(td.materials||[]).map(function(m,j){return j!==mi?m:Object.assign({},m,{[field]:val});});
     var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{materials:ms});});
     saveTenders(d);
@@ -6750,7 +6793,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     <div className="page-hdr">
       <div>
         <div className="page-title">🏗️ Materials</div>
-        <div className="page-sub">{filtered.length} materials across {new Set(filtered.map(function(r){return r.td.id;})).size} tenders — MSS/MAR status at a glance</div>
+        <div className="page-sub">{filtered.length} materials across {new Set(filtered.map(function(r){return r.td.id;})).size} packages — MSS / MAR edited here: status, submissions and references, dates, client codes</div>
       </div>
       <button className="btn btn-gold" onClick={handleAddClick}>＋ Add Material</button>
     </div>
@@ -6780,11 +6823,11 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
       <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search material, tender…" style={{width:200,padding:"5px 10px",fontSize:12}}/>
       <select value={fPkg} onChange={function(e){setFPkg(e.target.value);if(fTender!=="all"){var t=(tenders||[]).find(function(x){return x.id===fTender;});if(t&&t.package!==e.target.value)setFTender("all");}}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All packages</option>
+        <option value="all">All departments</option>
         {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
       <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All tenders</option>
+        <option value="all">All packages</option>
         {allPkgTenders.slice().sort(function(a,b){return(a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
       </select>
       <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
@@ -6801,29 +6844,41 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
         <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
           <thead>
             <tr>
-              <th>Tender</th><th>Package</th><th>Material</th><th>Lead time</th>
-              <th>MSS Status</th><th>MSS Target</th><th style={{textAlign:"center"}}>MSS Act.</th>
-              <th>MAR Status</th><th>MAR Target</th><th style={{textAlign:"center"}}>MAR Act.</th>
+              <th>Package</th><th>Dept.</th><th>Material</th><th>Lead time</th>
+              <th>MSS</th><th>MSS Target</th><th style={{textAlign:"center"}}>MSS Act.</th>
+              <th>MAR</th><th>MAR Target</th><th style={{textAlign:"center"}}>MAR Act.</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map(function(r,idx){
-              return <tr key={r.td.id+"_"+r.mi}>
+              var openKinds=matDocKinds(r.mat).filter(function(k){return openDoc[r.td.id+"|"+matDocId(r.mat,r.mi,k)];});
+              return <React.Fragment key={r.td.id+"_"+r.mi}><tr style={{verticalAlign:"top"}}>
                 <td style={{fontSize:11,whiteSpace:"nowrap"}}>
                   <button onClick={function(){if(onNavTender)onNavTender(r.td.id,"materials");}} style={{background:"none",border:"none",cursor:"pointer",color:"#3949ab",fontSize:11,fontWeight:500,textDecoration:"underline",padding:0,fontFamily:"inherit"}}>{r.td.title}</button>
                 </td>
                 <td style={{fontSize:11,color:"#888"}}>{r.td.package||"—"}</td>
                 <td style={{minWidth:140}}>
                   <input type="text" value={r.mat.name||""} onChange={function(e){updMat(r.td,r.mi,"name",e.target.value);}} placeholder="Material name" style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:4,fontWeight:600,boxSizing:"border-box"}}/>
+                  <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:10.5,fontWeight:500,margin:"4px 0 0",fontFamily:"inherit"}}
+                    title={cyclesOfMat(r.mat,"mss").length&&!r.mat.hasMSS?"This MSS already has submissions, so it stays listed":"This material requires a Material Submission Sheet"}>
+                    <input type="checkbox" checked={!!r.mat.hasMSS} onChange={function(e){updMat(r.td,r.mi,"hasMSS",e.target.checked);}} style={{width:12,height:12}}/>MSS required</label>
                 </td>
-                <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{r.mat.leadTime||"—"}</td>
+                <td><input type="text" value={r.mat.leadTime||""} onChange={function(e){updMat(r.td,r.mi,"leadTime",e.target.value);}} placeholder="e.g. 12 wks" style={{width:80,fontSize:11,padding:"3px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
                 <td style={{minWidth:120}}>{docCell(r,"mss")}</td>
                 <td><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.mssTarget||""} onChange={function(e){updMat(r.td,r.mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
                 <td style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MSS");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
                 <td style={{minWidth:120}}>{docCell(r,"mar")}</td>
                 <td><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.marTarget||""} onChange={function(e){updMat(r.td,r.mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
                 <td style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MAR");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
-              </tr>;
+              </tr>
+              {openKinds.map(function(k){
+                var doc=matDoc(r.td,r.mat,r.mi,k);
+                return <tr key={"ed-"+k}><td colSpan={10} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#6f6b62",marginBottom:2}}>{k.toUpperCase()} — {r.mat.name||"material"} · {r.td.title}</div>
+                  <DocRevisionsEditor td={r.td} d={doc} updTd={updTdFor(r.td)} afterSave={afterSaveFor(r.td)}/>
+                </td></tr>;
+              })}
+              </React.Fragment>;
             })}
           </tbody>
         </table>
