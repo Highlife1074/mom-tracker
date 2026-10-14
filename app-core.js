@@ -50,6 +50,8 @@ const KEYS_CON_TYPES="pp_concrete_types";
 const KEYS_CON_WBS="pp_concrete_wbs";
 const KEYS_CON_POURS="pp_concrete_pours";
 const KEYS_CON_CUTOFFS="pp_concrete_cutoffs";
+// Manpower module (app-manpower.js): one entry per week (approved / planned / real hours by company).
+const KEYS_MANPOWER="pp_manpower";
 // A schedule is a weekly bar-chart plan for one zone.
 // rows = [{id, kind:"category"|"task", label, cells:{ "<mondayISO>": "plan"|"actual"|"both" }}]
 function newSchedule(overrides){return Object.assign({id:uuid(),zone:"",title:"New schedule",startDate:today(),weeks:12,rows:[],holidayWeeks:[],groups:[],createdAt:today(),updatedAt:today(),updatedBy:window._currentUser?window._currentUser.name:""},overrides||{});}
@@ -198,7 +200,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-13-e";
+var APP_BUILD="2026-10-14-a";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -2116,6 +2118,11 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
                 title="May enter concrete types, WBS lines with their theoretical quantities, and pours. A restricted person also gets the Concrete tab.">
                 <input type="checkbox" checked={!!acc.concreteEditor} onChange={function(){toggle("concreteEditor");}} style={{width:14,height:14}}/>
                 🧱 Concrete editor
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.manpowerEditor?"#455a64":"#888"}}
+                title="May enter the weekly manpower: approved, planned and real hours per company. A restricted person also gets the Manpower tab.">
+                <input type="checkbox" checked={!!acc.manpowerEditor} onChange={function(){toggle("manpowerEditor");}} style={{width:14,height:14}}/>
+                👷 Manpower editor
               </label>
               {isRestricted&&<label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.zonePilot?"#7b1fa2":"#888"}}>
                 <input type="checkbox" checked={!!acc.zonePilot} onChange={function(){toggle("zonePilot");}} style={{width:14,height:14}}/>
@@ -4181,6 +4188,7 @@ function App(){
   const conWbsRef=useRef([]),conWbsQueue=useRef(Promise.resolve());
   const conPoursRef=useRef([]),conPoursQueue=useRef(Promise.resolve());
   const conCutoffsRef=useRef([]),conCutoffsQueue=useRef(Promise.resolve());
+  const manpowerRef=useRef([]),manpowerQueue=useRef(Promise.resolve());
   const [contractors,setContractors]=useState([]);
   const [people,setPeople]=useState(SEED_PEOPLE);
   const [packages,setPackages]=useState(SEED_PACKAGES);
@@ -4285,6 +4293,9 @@ function App(){
   const [conCutoffs,setConCutoffs]=useState([]);
   useEffect(function(){conCutoffsRef.current=conCutoffs;},[conCutoffs]);
   const saveConCutoffs=d=>{setConCutoffs(d);queuedListSave(KEYS_CON_CUTOFFS,conCutoffsRef,conCutoffsQueue,d);};
+  const [manpower,setManpower]=useState([]);
+  useEffect(function(){manpowerRef.current=manpower;},[manpower]);
+  const saveManpower=d=>{setManpower(d);queuedListSave(KEYS_MANPOWER,manpowerRef,manpowerQueue,d);};
   useEffect(function(){conTypesRef.current=conTypes;},[conTypes]);
   useEffect(function(){conWbsRef.current=conWbs;},[conWbs]);
   useEffect(function(){conPoursRef.current=conPours;},[conPours]);
@@ -4540,6 +4551,7 @@ function App(){
         try{var cnw=await cloudStore.get(KEYS_CON_WBS);if(Array.isArray(cnw))setConWbs(cnw);}catch(e){}
         try{var cnp=await cloudStore.get(KEYS_CON_POURS);if(Array.isArray(cnp))setConPours(cnp);}catch(e){}
         try{var cnc=await cloudStore.get(KEYS_CON_CUTOFFS);if(Array.isArray(cnc))setConCutoffs(cnc);}catch(e){}
+        try{var mpw=await cloudStore.get(KEYS_MANPOWER);if(Array.isArray(mpw))setManpower(mpw);}catch(e){}
         try{var nts=await cloudStore.get(KEYS_NOTES);if(Array.isArray(nts))setNotes(nts);}catch(e){}
         if(rm)setRooms(rm);
         if(prefs)setUserPrefs(prefs);
@@ -4705,6 +4717,7 @@ function App(){
         listenList(KEYS_CON_WBS,setConWbs);
         listenList(KEYS_CON_POURS,setConPours);
         listenList(KEYS_CON_CUTOFFS,setConCutoffs);
+        listenList(KEYS_MANPOWER,setManpower);
         listenList(KEYS_SCHEDULES,setSchedules);
         listenList(KEYS_READINESS,setReadiness);
         listenList(KEYS_CORR,setCorrespondences);
@@ -4749,6 +4762,7 @@ function App(){
     {id:"steel",icon:"🔩",label:"Steel"},
     {id:"inventory",icon:"🗃️",label:"Inventory"},
     {id:"concrete",icon:"🧱",label:"Concrete"},
+    {id:"manpower",icon:"👷",label:"Manpower"},
     {id:"qadocs",icon:"🛡️",label:"WMS/ITP"},
     {id:"timeline",icon:"🗓",label:"Timeline"},
     {id:"moms",icon:"📝",label:"MoM"},
@@ -4785,7 +4799,7 @@ function App(){
     myPkgs=[...new Set([...(packages||[]).filter(function(pg){return(pkgOwners||{})[pg]===currentUser;}),...extraPkgs])];
     myTenders=(tenders||[]).filter(function(t){return t.ownerTender===currentUser||myPkgs.includes(t.package);});
     // Actions-only profile: no package/tender ownership and not a zone pilot → they just need their task list
-    actionsOnly=myPkgs.length===0&&myTenders.length===0&&!myAccess.zonePilot&&!myAccess.steelEditor&&!myAccess.inventoryEditor&&!myAccess.concreteEditor;
+    actionsOnly=myPkgs.length===0&&myTenders.length===0&&!myAccess.zonePilot&&!myAccess.steelEditor&&!myAccess.inventoryEditor&&!myAccess.concreteEditor&&!myAccess.manpowerEditor;
     effectiveNAV=actionsOnly
       ?[
         {id:"global",icon:"🌐",label:"My Actions"},
@@ -4797,6 +4811,7 @@ function App(){
         ...(myAccess.steelEditor?[{id:"steel",icon:"🔩",label:"Steel"}]:[]),
         ...(myAccess.inventoryEditor?[{id:"inventory",icon:"🗃️",label:"Inventory"}]:[]),
         ...(myAccess.concreteEditor?[{id:"concrete",icon:"🧱",label:"Concrete"}]:[]),
+        ...(myAccess.manpowerEditor?[{id:"manpower",icon:"👷",label:"Manpower"}]:[]),
         {id:"global",icon:"🌐",label:"Actions"},
         {id:"notes",icon:"🗒",label:"Notes"},
         {id:"settings",icon:"⚙️",label:"Settings"},
@@ -4883,11 +4898,12 @@ function App(){
         {view==="steel"&&<SteelView dockets={steelDockets} saveDockets={saveSteelDockets} wbs={steelWbs} saveWbs={saveSteelWbs} periods={steelPeriods} savePeriods={saveSteelPeriods} zones={zones} tasks={tasks} saveTasks={saveT} currentUser={currentUser} isAdmin={isAppAdmin(currentUser)&&!isReadOnly} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.steelEditor))}/>}
         {view==="inventory"&&<InventoryView items={invItems} saveItems={saveInvItems} pos={invPos} savePos={saveInvPos} dockets={invDockets} saveDockets={saveInvDockets} issues={invIssues} saveIssues={saveInvIssues} counts={invCounts} saveCounts={saveInvCounts} zones={zones} contractors={contractors} tasks={tasks} saveTasks={saveT} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.inventoryEditor))}/>}
         {view==="concrete"&&<ConcreteView types={conTypes} saveTypes={saveConTypes} wbs={conWbs} saveWbs={saveConWbs} pours={conPours} savePours={saveConPours} cutoffs={conCutoffs} saveCutoffs={saveConCutoffs} schedules={schedules} zones={zones} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.concreteEditor))}/>}
+        {view==="manpower"&&<ManpowerView weeks={manpower} saveWeeks={saveManpower} contractors={contractors} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.manpowerEditor))}/>}
         {view==="submissions"&&<ClientSubmissionsView tasks={tasks} tenders={tenders} contractors={contractors} packages={packages} people={people} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("submissions")} setMemory={function(p){setMemoryFor("submissions",p);}}/>}
     {view==="dashboard"&&<DashboardView tasks={tasks} trackers={trackers} people={people} tenders={tenders} contractors={contractors} packages={packages} tags={tags} tagrules={tagrules} pkgrules={pkgrules} onJumpOwner={function(name){setJumpOwner(name);setView("global");}} onNavTender={navToTender} memory={memoryFor("dashboard")} setMemory={function(p){setMemoryFor("dashboard",p);}}/>}
     {view==="notes"&&<NotesView notes={notes} saveNotes={saveNotes} tasks={tasks} saveTasks={saveT} people={people} zones={zones} packages={packages} tenders={tenders} tags={tags} peopleEmails={peopleEmails} onNavTender={navToTender} memory={memoryFor("notes")} setMemory={function(p){setMemoryFor("notes",p);}}/>}
     {view==="global"&&<GlobalView notes={notes} tasks={tasks} trackers={trackers} tenders={tenders} contractors={contractors} people={people} packages={packages} tags={tags} saveTasks={saveT} saveTrackers={saveX} tagrules={tagrules} pkgrules={pkgrules} jumpOwner={jumpOwner} clearJump={function(){setJumpOwner(null);}} onNavTender={navToTender} memory={memoryFor("global")} setMemory={function(p){setMemoryFor("global",p);}} peopleEmails={peopleEmails} defaultCC={defaultCC} zones={zones} actionsOnly={actionsOnly} currentUser={currentUser}/>}
-        {view==="settings"&&<SettingsView subList={subList} saveSubList={saveSubList} subColors={subColors} saveSubColors={saveSubColors} contractors={contractors} tenderRules={tenderRules} saveTenderRules={saveTenderRules} tenders={tenders} tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} pkgSubcontractors={pkgSubcontractors} savePkgSubcontractors={savePkgSubcontractors} peopleEmails={peopleEmails} savePeopleEmails={savePeopleEmails} defaultCC={defaultCC} saveDefaultCC={saveDefaultCC} peopleAccess={peopleAccess} savePeopleAccess={savePeopleAccess} durations={durations} saveDurations={saveDurations} isAdmin={isAppAdmin(currentUser)} zones={zones} zoneOwners={zoneOwners} saveZoneOwners={saveZoneOwners} saveZones={saveZones} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} departments={departments} saveDepartments={saveDepartments} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners,schedules,rooms,moms,meetings,kpis,zones,zoneOwners,subList,subColors,pkgSubcontractors,tenderRules,peopleAccess,peopleEmails,defaultCC,durations,userPrefs,departments,notes,readiness,steelDockets,steelWbs,steelPeriods,conTypes,conWbs,conPours,conCutoffs}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);if(d.steelDockets)saveSteelDockets(d.steelDockets);if(d.steelWbs)saveSteelWbs(d.steelWbs);if(d.steelPeriods)saveSteelPeriods(d.steelPeriods);if(d.conTypes)saveConTypes(d.conTypes);if(d.conWbs)saveConWbs(d.conWbs);if(d.conPours)saveConPours(d.conPours);if(d.conCutoffs)saveConCutoffs(d.conCutoffs);}}/>}
+        {view==="settings"&&<SettingsView subList={subList} saveSubList={saveSubList} subColors={subColors} saveSubColors={saveSubColors} contractors={contractors} tenderRules={tenderRules} saveTenderRules={saveTenderRules} tenders={tenders} tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} pkgSubcontractors={pkgSubcontractors} savePkgSubcontractors={savePkgSubcontractors} peopleEmails={peopleEmails} savePeopleEmails={savePeopleEmails} defaultCC={defaultCC} saveDefaultCC={saveDefaultCC} peopleAccess={peopleAccess} savePeopleAccess={savePeopleAccess} durations={durations} saveDurations={saveDurations} isAdmin={isAppAdmin(currentUser)} zones={zones} zoneOwners={zoneOwners} saveZoneOwners={saveZoneOwners} saveZones={saveZones} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} departments={departments} saveDepartments={saveDepartments} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners,schedules,rooms,moms,meetings,kpis,zones,zoneOwners,subList,subColors,pkgSubcontractors,tenderRules,peopleAccess,peopleEmails,defaultCC,durations,userPrefs,departments,notes,readiness,steelDockets,steelWbs,steelPeriods,conTypes,conWbs,conPours,conCutoffs,manpower}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);if(d.steelDockets)saveSteelDockets(d.steelDockets);if(d.steelWbs)saveSteelWbs(d.steelWbs);if(d.steelPeriods)saveSteelPeriods(d.steelPeriods);if(d.conTypes)saveConTypes(d.conTypes);if(d.conWbs)saveConWbs(d.conWbs);if(d.conPours)saveConPours(d.conPours);if(d.conCutoffs)saveConCutoffs(d.conCutoffs);if(d.manpower)saveManpower(d.manpower);}}/>}
       </div>
 
       <aside className={"rsidebar "+(sidebarOpen?"open":"closed")}>

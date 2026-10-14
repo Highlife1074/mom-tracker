@@ -13,7 +13,7 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
 - Il récupère ensuite les fichiers JS **dans cet ordre fixe** (`APP_PARTS`), les concatène et fait
   **une seule** transformation Babel (JSX) puis un `eval` :
 
-  `app-core.js` → `app-tenders.js` → `app-schedule.js` → `app-zone.js` → `app-reports.js` → `app-steel.js` → `app-inventory.js` → `app-concrete.js` → `app-mount.js`
+  `app-core.js` → `app-tenders.js` → `app-schedule.js` → `app-zone.js` → `app-reports.js` → `app-steel.js` → `app-inventory.js` → `app-concrete.js` → `app-manpower.js` → `app-mount.js`
 
 - Tous les fichiers partagent **une seule portée globale** : une fonction définie dans `app-core.js`
   est utilisable partout, sans `import`/`export`. Attention aux collisions de noms entre fichiers.
@@ -24,13 +24,14 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
 | Fichier | Contenu |
 |---|---|
 | `app-core.js` | Constantes, clés de stockage, helpers dates/permissions, composants partagés, `App` |
-| `app-tenders.js` | Tender sheet, chaîne de soumission, matériaux, shop drawings, contrats, packages |
+| `app-tenders.js` | Tender sheet, chaîne de soumission, matériaux, shop drawings, contrats, packages. **Interface renommée** : onglet « Tenders » = **Package**, anciens « Packages » (`pp_packages`) = **Department** — clés et code inchangés (`tender`, `package`). Fiche en onglets : Submissions (chaque document édité à un seul endroit) / Contract & addendums / Flow & history (lecture seule) / Actions & notes. Référence d'un document demandée à chaque soumission (`recordDocSubmission`, modale `ppPrompt`) |
 | `app-schedule.js` | Grille de planning par zone, chemin critique, documents, impression, vue mobile |
 | `app-zone.js` | Espace zone : actions, rooms, KPIs |
 | `app-reports.js` | Rapports imprimables, MOM, timeline, dashboard, trackers |
 | `app-steel.js` | Suivi acier (barres + treillis) : dockets, bilans site / transformateur / JV (stocké en kg, affiché en tonnes) |
 | `app-inventory.js` | Inventaire (items critiques) : catalogue, PO, dockets de livraison, sorties de stock (zone / localisation / usage), comptages mensuels → consommation réelle, moyenne mensuelle, où c'est consommé |
 | `app-concrete.js` | Béton : types, WBS avec quantités théoriques par type, coulages réels (par type et par fournisseur), courbe cumulée prévu / coulé, perte ou gain de béton UNIQUEMENT au cut-off sur % d’avancement saisi à la main (aucun avancement automatique), split d'un WBS (ex. « travaux à date ») en WBS détaillés, cut-off cost control (% d'avancement par WBS → budget débloqué vs réel, remain to be spent théorique / réel ajustable, EAC), liens WBS ↔ activités des plannings de zone (dates prévues ; % du planning affiché pour référence seulement) |
+| `app-manpower.js` | Manpower : une entrée par semaine (`pp_manpower`) — heures approuvées, planifiées et réelles, les réelles par entreprise des ouvriers (saisies ou collées depuis l'app de pointage) ; vue d'ensemble, courbe hebdo / cumulée, tableau des semaines, entreprises, export CSV |
 | `app-mount.js` | Montage React |
 
 ## Données — Firebase Firestore

@@ -404,7 +404,7 @@ body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .
   // The app is split into six parts plus the mount, fetched in parallel and joined in a
   // fixed order before a single Babel pass. They share one scope, exactly as when it was
   // one file. The mount MUST stay last: it renders App, which needs every view defined.
-  var APP_PARTS=["app-core.js","app-tenders.js","app-schedule.js","app-zone.js","app-reports.js","app-steel.js","app-inventory.js","app-concrete.js","app-mount.js"];
+  var APP_PARTS=["app-core.js","app-tenders.js","app-schedule.js","app-zone.js","app-reports.js","app-steel.js","app-inventory.js","app-concrete.js","app-manpower.js","app-mount.js"];
   function run(){
     var v="?v="+Date.now();
     Promise.all(APP_PARTS.map(function(f){
