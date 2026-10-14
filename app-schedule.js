@@ -508,6 +508,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [monthView,setMonthView]=useState(function(){
     try{return window.innerWidth<=768;}catch(e){return false;}
   });
+  const [phoneWeeks,setPhoneWeeks]=useState(4);   // weeks shown by the phone view
   const [qTender,setQTender]=useState("");
   const [printPlan,setPrintPlan]=useState(null);
   const [fullScreen,setFullScreen]=useState(false);
@@ -1132,7 +1133,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(idx<0)idx=wl.findIndex(function(w){return w>t;});
     if(idx<0)idx=Math.max(0,wl.length-1);
     var out=[];
-    for(var k=0;k<4&&idx+k<wl.length;k++){
+    for(var k=0;k<phoneWeeks&&idx+k<wl.length;k++){
       var w=wl[idx+k];
       out.push({week:w,end:addCalDays(w,6),offset:k,holiday:(sc.holidayWeeks||[]).indexOf(w)>=0});
     }
@@ -2596,6 +2597,39 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         </div>}
 
         {monthView&&<div className="sched-noprint">
+          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
+            <span style={{fontSize:11,color:"var(--ink-3,#6f6b62)"}}>Weeks ahead</span>
+            {[2,4,8].map(function(n){return <button key={n} className={"fchip"+(phoneWeeks===n?" on":"")} onClick={function(){setPhoneWeeks(n);}}>{n}</button>;})}
+            <span style={{fontSize:10.5,color:"var(--ink-4,#9b968b)",flexBasis:"100%"}}>✓ = done on site this week · % = progress reached this week. Links, critical path and the full grid stay on a computer.</span>
+          </div>
+          {(function(){
+            // Behind schedule: a planned week already over, not done on site, task not at 100 %.
+            var t=today(),late=[];
+            (sc&&sc.rows||[]).forEach(function(r){
+              if(r.kind==="category")return;
+              var c=r.cells||{};var pr=rowProgress(r);if(pr!==null&&pr>=100)return;
+              var miss=Object.keys(c).filter(function(w){return c[w]==="plan"&&addCalDays(w,6)<t;}).sort();
+              if(miss.length)late.push({r:r,last:miss[miss.length-1],n:miss.length,pr:pr});
+            });
+            if(!late.length)return null;
+            return <div style={{marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"baseline",gap:8,padding:"7px 10px",borderRadius:8,background:"var(--red-soft,#fbe6e8)",color:"var(--red,#b3302a)",marginBottom:8}}>
+                <span style={{fontWeight:700,fontSize:13}}>Behind schedule</span>
+                <span style={{marginLeft:"auto",fontSize:11}}>{late.length} task{late.length!==1?"s":""}</span>
+              </div>
+              {late.map(function(x){
+                return <div key={x.r.id} style={{display:"flex",gap:10,alignItems:"center",background:"#fff",border:"1.5px solid #f0cdc9",borderLeft:"4px solid "+planColor(x.r),borderRadius:9,padding:"9px 11px",marginBottom:6}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600}}>{x.r.label||"(untitled)"}</div>
+                    <div style={{fontSize:11,color:"var(--ink-3,#6f6b62)"}}>{x.n} planned week{x.n>1?"s":""} not done · last {fmtDate(x.last)}{x.pr!==null?" · "+x.pr+" %":""}</div>
+                  </div>
+                  {canEdit&&<button className="btn btn-sm" onClick={function(){
+                    var cells=Object.assign({},x.r.cells||{});cells[x.last]="both";updRow(x.r.id,{cells:cells});
+                  }} title={"Mark the week of "+fmtDate(x.last)+" as done on site"}>✓ Done</button>}
+                </div>;
+              })}
+            </div>;
+          })()}
           {monthWindows().length===0&&<div className="empty"><div className="empty-ico">📅</div>
             <div className="empty-txt">This schedule has no week covering today.</div></div>}
           {monthWindows().map(function(win){
@@ -2645,6 +2679,18 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:13,fontWeight:600,lineHeight:1.35}}>{r.label||"(untitled)"}</div>
                           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:5}}>
+                            {(function(){
+                              var pr=rowProgress(r),wv=(r.weekProgress||{})[win.week];
+                              return <button type="button" disabled={!canEdit} onClick={function(){
+                                  ppPrompt({title:"Progress · "+(r.label||"task"),message:"Physical progress reached by the end of the week of "+fmtDate(win.week)+" (0–100 %). Empty clears this week's figure.",
+                                    value:wv!==undefined&&wv!==null?String(wv):(pr!==null?String(pr):""),placeholder:"e.g. 60",okLabel:"Save"})
+                                  .then(function(v){if(v===null)return;v=String(v).trim().replace("%","");if(v!==""&&!isFinite(Number(v)))return;setWeekProgress(r,win.week,v===""?"":Number(v));});
+                                }}
+                                title={canEdit?"Tap to record the progress reached this week":"Progress"}
+                                style={{fontFamily:"var(--font-mono)",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:10,cursor:canEdit?"pointer":"default",
+                                  border:"1px solid "+(pr>=100?"#c8e6c9":"var(--rule,#ddd9cf)"),background:pr>=100?"var(--green-soft,#e6f2e9)":"#f7f5f0",color:pr>=100?"var(--green,#1e6b3a)":"var(--ink-2,#4a4740)"}}>
+                                {pr===null?"— %":pr+" %"}{wv!==undefined&&wv!==null?" ✎":""}</button>;
+                            })()}
                             {rowGroup(r)&&<span className="badge" style={{background:planColor(r),color:"#fff"}}>{rowGroup(r)}</span>}
                             {r.qty&&<span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--ink-3,#6f6b62)"}}>{r.qty} {r.unit||""}</span>}
                             {pr&&pr.late&&<span className="badge" style={{background:"var(--red-soft,#fbe6e8)",color:"var(--red,#b3302a)"}}

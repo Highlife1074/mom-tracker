@@ -34,6 +34,16 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
 | `app-manpower.js` | Manpower : une entrée par semaine (`pp_manpower`) — heures approuvées, planifiées et réelles, les réelles par entreprise des ouvriers (saisies ou collées depuis l'app de pointage) ; vue d'ensemble, courbe hebdo / cumulée, tableau des semaines, entreprises, export CSV |
 | `app-mount.js` | Montage React |
 
+## Téléphone (≤ 768 px)
+
+- `usePhone()` / `isPhone()` (`app-core.js`) ; `window._ppPhone`. Le rail de gauche et la barre de droite sont masqués,
+  remplacés par `PhoneNav` : barre du bas (4 onglets épinglés, ★ dans le menu, stockés en localStorage `pp_phone_pins`) + menu de tous les onglets groupés.
+- CSS dans `index.html` (`@media(max-width:768px)`) : classes utilitaires `phone-hide`, `phone-scroll`, `md-wrap`/`md-side`
+  (liste + fiche → une seule à la fois), `tbl-cards` (une carte par ligne, libellé de chaque cellule via `data-l`).
+  Les tableaux `.tbl` défilent horizontalement, 1re colonne figée. Champs à 16 px (pas de zoom iOS).
+- Planning de zone : vue téléphone « semaines à venir » (2/4/8), section « Behind schedule », % d'avancement par semaine.
+  La grille complète reste sur ordinateur.
+
 ## Données — Firebase Firestore
 
 - Projet Firebase `rt-mom`, collection `mom_data`. Chaque clé `pp_*` (voir `KEYS` et `KEYS_*` dans

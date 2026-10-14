@@ -200,7 +200,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-14-b";
+var APP_BUILD="2026-10-14-c";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -3589,7 +3589,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">🔍</div><div className="empty-txt">No actions match the filters.</div></div>
       :<div style={{overflowX:"auto"}}>
-        <table className="tbl">
+        <table className="tbl tbl-cards">
           <thead><tr>
             <th style={{width:30,textAlign:"center"}}>
               <input type="checkbox"
@@ -3618,7 +3618,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
               <td style={{width:30,textAlign:"center"}} onClick={function(e){e.stopPropagation();}}>
                 <input type="checkbox" checked={isSel} onChange={function(){toggleSel(a.id);}} style={{width:14,height:14,cursor:"pointer",marginTop:6}}/>
               </td>
-              <td style={{minWidth:220}}>
+              <td className="card-main" style={{minWidth:220}}>
                 {isEdit
                   ?<div style={{display:"flex",flexDirection:"column",gap:5,padding:"4px 0"}}>
                     <textarea value={a.text||""} autoFocus onChange={function(e){updateField(a,"text",e.target.value);}} style={{width:"100%",padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:50,boxSizing:"border-box"}}/>
@@ -3644,19 +3644,19 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                     <div style={{fontSize:9,color:"#ddd",marginTop:2}}>✏️ click to edit</div>
                   </div>}
               </td>
-              <td>
+              <td data-l="Status">
                 <select className="btn btn-sm" value={a.status||"pending"} onChange={function(e){updateField(a,"status",e.target.value);}} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd"}}>
                   {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
                 </select>
               </td>
-              <td>
+              <td data-l="Owner">
                 {isEdit
                   ?<select value={a.owner||""} onChange={function(e){if(a._source==="task")updateMulti(a,ownerChangePatch(a,e.target.value));else updateField(a,"owner",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
                     <OwnerOptions people={people} emptyLabel="—"/>
                   </select>
                   :<span onClick={function(e){e.stopPropagation();}}><BallChip task={a} onHandBack={a._source==="task"?function(tr){updateMulti(a,ownerChangePatch(a,tr));}:null}/></span>}
               </td>
-              <td>
+              <td data-l="Package">
                 {isEdit
                   ?<div style={{display:"flex",flexDirection:"column",gap:3}}>
                     <select value={a.package||""} onChange={function(e){updateField(a,"package",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
@@ -3668,12 +3668,12 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   </div>
                   :<span>{a.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{a.package}</span>}{a.zone&&<span className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:10,marginLeft:3}}>📍 {a.zone}</span>}</span>}
               </td>
-              <td style={{whiteSpace:"nowrap"}}>
+              <td data-l="Due" style={{whiteSpace:"nowrap"}}>
                 {isEdit
                   ?<input type="date" min="1990-01-01" max="2200-12-31" value={a.due||""} onChange={function(e){updateField(a,"due",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd"}}/>
                   :<span style={{fontSize:12,color:a.due&&a.due<today()&&a.status!=="done"?"#c62828":"#888"}}>{fmtDate(a.due)}</span>}
               </td>
-              <td>
+              <td data-l="Score">
                 {isEdit
                   ?<div style={{display:"flex",flexDirection:"column",gap:3}}>
                     <div style={{display:"flex",gap:3}}>
@@ -3685,8 +3685,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   </div>
                   :<span>{sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}</span>}
               </td>
-              <td><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
-              <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
+              <td data-l="Source"><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
+              <td data-l="Tender" style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
               <td>
                 {isEdit
                   ?<select value={a.tenderRef||""} onChange={function(e){updateField(a,"tenderRef",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>

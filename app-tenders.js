@@ -2259,7 +2259,7 @@ function TenderTodayRail({range,dep}){
     window.addEventListener("resize",measure);
     return function(){if(ro)ro.disconnect();window.removeEventListener("resize",measure);};
   },[range.from,range.to,dep]);
-  return <div ref={ref} style={{position:"absolute",left:0,top:0,width:0,height:0,pointerEvents:"none"}}>
+  return <div ref={ref} className="phone-hide" style={{position:"absolute",left:0,top:0,width:0,height:0,pointerEvents:"none"}}>
     {pos&&<div title={"Today "+fmtDate(today())} style={{position:"absolute",left:pos.left,top:pos.top,height:pos.height,borderLeft:"2px solid "+TL_COL.today,zIndex:4}}>
       <span style={{position:"absolute",top:-1,left:0,transform:"translateX(-50%)",background:TL_COL.today,color:"#fff",fontSize:9,fontWeight:700,
         letterSpacing:".04em",borderRadius:3,padding:"0 5px",lineHeight:"13px",whiteSpace:"nowrap"}}>TODAY {fmtDate(today())}</span>
@@ -3684,7 +3684,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             {k:"flow",icon:"📈",l:"Flow & history",n:docs.length?docs.length+" docs":"",tip:"Timeline and read-only register of every document"},
             {k:"actions",icon:"✅",l:"Actions & notes",n:(nOpen?nOpen+" open":"")+(nNotes?(nOpen?" · ":"")+nNotes+" note"+(nNotes>1?"s":""):""),tip:"Next step, linked actions and notes"}
           ];
-          return <div style={{display:"flex",gap:4,flexWrap:"wrap",margin:"4px 0 12px",borderBottom:"1.5px solid var(--rule,#ddd9cf)",position:"sticky",top:0,zIndex:20,background:"var(--paper,#f4f3f0)",paddingTop:4}}>
+          return <div className="td-tabs" style={{display:"flex",gap:4,flexWrap:"wrap",margin:"4px 0 12px",borderBottom:"1.5px solid var(--rule,#ddd9cf)",position:"sticky",top:0,zIndex:20,background:"var(--paper,#f4f3f0)",paddingTop:4}}>
             {TABS.map(function(t){
               var on=tdTab===t.k;
               return <button key={t.k} type="button" title={t.tip} onClick={function(){setTdTab(t.k);}}
@@ -4335,9 +4335,9 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     var ctr=selCtr;
     var linkedTenders=(ctr.tenderRefs||[ctr.tenderRef].filter(Boolean)).map(function(id){return tnds.find(function(t){return t.id===id;});}).filter(Boolean);
     var sortedCtrs=(ctrs||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
-    return <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+    return <div className="md-wrap" style={{display:"flex",gap:14,alignItems:"flex-start"}}>
 
-      <div style={{width:180,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
+      <div className="md-side" style={{width:180,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Subcontractors</div>
           <select value={sidebarPkg||"all"} onChange={function(e){setSidebarPkg(e.target.value);}} style={{width:"100%",padding:"3px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",background:"#fafaf8"}}>
@@ -5522,9 +5522,9 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
     var linkedTender=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
     var allCtrContracts=(contractors||[]).flatMap(function(c){return (c.contracts||[]).map(function(ct2){return {ct:ct2,ctr:c};});});
 
-    return <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+    return <div className="md-wrap" style={{display:"flex",gap:14,alignItems:"flex-start"}}>
 
-      <div style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
+      <div className="md-side" style={{width:200,flexShrink:0,background:"#fff",borderRadius:12,border:"1.5px solid #e8e6df",overflow:"hidden",position:"sticky",top:0,alignSelf:"flex-start"}}>
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Contracts</div>
           <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"100%",padding:"3px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",background:"#fafaf8"}}>
@@ -6841,7 +6841,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">🏗️</div><div className="empty-txt">No materials found.</div></div>
       :<div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
-        <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
+        <table className="tbl tbl-cards" style={{width:"100%",borderCollapse:"collapse"}}>
           <thead>
             <tr>
               <th>Package</th><th>Dept.</th><th>Material</th><th>Lead time</th>
@@ -6853,23 +6853,23 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
             {filtered.map(function(r,idx){
               var openKinds=matDocKinds(r.mat).filter(function(k){return openDoc[r.td.id+"|"+matDocId(r.mat,r.mi,k)];});
               return <React.Fragment key={r.td.id+"_"+r.mi}><tr style={{verticalAlign:"top"}}>
-                <td style={{fontSize:11,whiteSpace:"nowrap"}}>
+                <td data-l="Package" style={{fontSize:11,whiteSpace:"nowrap"}}>
                   <button onClick={function(){if(onNavTender)onNavTender(r.td.id,"materials");}} style={{background:"none",border:"none",cursor:"pointer",color:"#3949ab",fontSize:11,fontWeight:500,textDecoration:"underline",padding:0,fontFamily:"inherit"}}>{r.td.title}</button>
                 </td>
-                <td style={{fontSize:11,color:"#888"}}>{r.td.package||"—"}</td>
-                <td style={{minWidth:140}}>
+                <td data-l="Dept." style={{fontSize:11,color:"#888"}}>{r.td.package||"—"}</td>
+                <td data-l="Material" className="card-main" style={{minWidth:140}}>
                   <input type="text" value={r.mat.name||""} onChange={function(e){updMat(r.td,r.mi,"name",e.target.value);}} placeholder="Material name" style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:4,fontWeight:600,boxSizing:"border-box"}}/>
                   <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:10.5,fontWeight:500,margin:"4px 0 0",fontFamily:"inherit"}}
                     title={cyclesOfMat(r.mat,"mss").length&&!r.mat.hasMSS?"This MSS already has submissions, so it stays listed":"This material requires a Material Submission Sheet"}>
                     <input type="checkbox" checked={!!r.mat.hasMSS} onChange={function(e){updMat(r.td,r.mi,"hasMSS",e.target.checked);}} style={{width:12,height:12}}/>MSS required</label>
                 </td>
-                <td><input type="text" value={r.mat.leadTime||""} onChange={function(e){updMat(r.td,r.mi,"leadTime",e.target.value);}} placeholder="e.g. 12 wks" style={{width:80,fontSize:11,padding:"3px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
-                <td style={{minWidth:120}}>{docCell(r,"mss")}</td>
-                <td><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.mssTarget||""} onChange={function(e){updMat(r.td,r.mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
-                <td style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MSS");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
-                <td style={{minWidth:120}}>{docCell(r,"mar")}</td>
-                <td><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.marTarget||""} onChange={function(e){updMat(r.td,r.mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
-                <td style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MAR");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
+                <td data-l="Lead time"><input type="text" value={r.mat.leadTime||""} onChange={function(e){updMat(r.td,r.mi,"leadTime",e.target.value);}} placeholder="e.g. 12 wks" style={{width:80,fontSize:11,padding:"3px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
+                <td data-l="MSS" style={{minWidth:120}}>{docCell(r,"mss")}</td>
+                <td data-l="MSS target"><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.mssTarget||""} onChange={function(e){updMat(r.td,r.mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
+                <td data-l="MSS actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MSS");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
+                <td data-l="MAR" style={{minWidth:120}}>{docCell(r,"mar")}</td>
+                <td data-l="MAR target"><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.marTarget||""} onChange={function(e){updMat(r.td,r.mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
+                <td data-l="MAR actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MAR");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
               </tr>
               {openKinds.map(function(k){
                 var doc=matDoc(r.td,r.mat,r.mi,k);

@@ -286,6 +286,7 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
   .mobile-qa-btn{display:flex!important;bottom:76px!important;right:14px!important;width:50px!important;height:50px!important;font-size:24px!important;}
   .phone-hide{display:none!important;}
   .page-hdr{flex-wrap:wrap;gap:8px;}
+  .page-hdr>*{max-width:100%;min-width:0;overflow-x:auto;}
   .page-title{font-size:19px;}
   .page-sub{font-size:12px;}
   .card{padding:12px;border-radius:10px;}
@@ -302,11 +303,31 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
   .phone-scroll{overflow-x:auto!important;-webkit-overflow-scrolling:touch;max-width:100%;}
   .md-wrap{display:block!important;}
   .md-side{display:none!important;}
+  .md-wrap>div{min-width:0;max-width:100%;overflow-x:clip;}
+  .titleblock{flex-direction:column!important;}
+  .titleblock .tb-cells{border-left:none!important;border-top:1.5px solid var(--gold,#c9a84c)!important;overflow-x:auto;flex-shrink:1!important;max-width:100%;}
   .sheet-h{flex-wrap:wrap;}
   .titleblock h2{white-space:normal;font-size:20px;}
   .modal{max-width:100%!important;width:100%!important;margin:0;border-radius:14px 14px 0 0;max-height:94dvh;}
   .modal-body{padding:14px;}
   .overlay{padding:0;align-items:flex-end;}
+}
+@media(max-width:768px){
+  /* A table marked tbl-cards becomes one card per row; each cell shows its column name (data-l). */
+  .content table.tbl.tbl-cards{display:block;overflow:visible;border:none;background:none}
+  .tbl-cards>thead{display:none}
+  .tbl-cards>tbody{display:block}
+  .tbl-cards>tbody>tr{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 14px;background:var(--surface)!important;border:1.5px solid var(--rule-2);
+    border-radius:12px;padding:10px 12px;margin-bottom:8px}
+  .content .tbl-cards>tbody>tr>td{display:block;border:none!important;padding:0!important;min-width:0!important;width:auto!important;max-width:100%;
+    position:static!important;box-shadow:none!important;background:none!important;white-space:normal!important}
+  .tbl-cards>tbody>tr>td[colspan]{flex:1 1 100%}
+  .tbl-cards td[data-l]::before{content:attr(data-l);display:block;font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--ink-4);margin-bottom:2px}
+  .tbl-cards td:empty{display:none!important}
+  .tbl-cards .card-main{flex:1 1 calc(100% - 50px)!important}
+  .td-tabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  .td-tabs>button{white-space:nowrap;flex-shrink:0;padding:8px 10px!important}
 }
 /* Bottom bar and menu exist only on a phone */
 .phone-bar{display:none}
