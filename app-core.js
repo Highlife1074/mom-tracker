@@ -200,7 +200,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-14-a";
+var APP_BUILD="2026-10-14-b";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -4894,7 +4894,7 @@ function App(){
         {view==="moms"&&<MomView moms={moms} saveMoms={saveMoms} tenders={tenders} packages={packages} people={people} contractors={contractors} tasks={tasks} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("moms")} setMemory={function(p){setMemoryFor("moms",p);}}/>}
         {view==="timeline"&&<TimelineView tasks={tasks} tenders={tenders} people={people} packages={packages} zones={zones} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("timeline")} setMemory={function(p){setMemoryFor("timeline",p);}}/>}
         {view==="qadocs"&&<QualityDocsView tenders={tenders} packages={packages} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("qadocs")} setMemory={function(p){setMemoryFor("qadocs",p);}}/>}
-        {view==="materials"&&<MaterialsView tenders={tenders} packages={packages} people={people} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("materials")} setMemory={function(p){setMemoryFor("materials",p);}} tasks={tasks}/>}
+        {view==="materials"&&<MaterialsView tenders={tenders} packages={packages} people={people} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("materials")} setMemory={function(p){setMemoryFor("materials",p);}} tasks={tasks} saveTasks={saveT} pkgOwners={pkgOwners}/>}
         {view==="steel"&&<SteelView dockets={steelDockets} saveDockets={saveSteelDockets} wbs={steelWbs} saveWbs={saveSteelWbs} periods={steelPeriods} savePeriods={saveSteelPeriods} zones={zones} tasks={tasks} saveTasks={saveT} currentUser={currentUser} isAdmin={isAppAdmin(currentUser)&&!isReadOnly} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.steelEditor))}/>}
         {view==="inventory"&&<InventoryView items={invItems} saveItems={saveInvItems} pos={invPos} savePos={saveInvPos} dockets={invDockets} saveDockets={saveInvDockets} issues={invIssues} saveIssues={saveInvIssues} counts={invCounts} saveCounts={saveInvCounts} zones={zones} contractors={contractors} tasks={tasks} saveTasks={saveT} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.inventoryEditor))}/>}
         {view==="concrete"&&<ConcreteView types={conTypes} saveTypes={saveConTypes} wbs={conWbs} saveWbs={saveConWbs} pours={conPours} savePours={saveConPours} cutoffs={conCutoffs} saveCutoffs={saveConCutoffs} schedules={schedules} zones={zones} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.concreteEditor))}/>}
