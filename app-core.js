@@ -2280,6 +2280,45 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
 }
 function safeConfirm(msg){try{return window.confirm(msg);}catch(e){return true;}}
 function safeAlert(msg){try{window.alert(msg);}catch(e){}}
+// In-app replacement for window.prompt. The browser prompt is silently suppressed in some
+// contexts (embedded pages, "prevent this page from creating dialogs"), so the question
+// never showed. This one is a normal modal mounted on its own root.
+// ppPrompt({title,message,value,placeholder,okLabel,mono}) → Promise<string|null> (null = cancelled)
+function PpPromptModal({o,done}){
+  const [v,setV]=useState(o.value||"");
+  const ref=useRef(null);
+  useEffect(function(){try{if(ref.current){ref.current.focus();ref.current.select();}}catch(e){}},[]);
+  return <div className="overlay" onMouseDown={function(e){if(e.target===e.currentTarget)done(null);}}>
+    <div className="modal" style={{maxWidth:480}}>
+      <div className="modal-hdr"><div className="modal-title">{o.title||"Enter a value"}</div>
+        <button className="btn btn-sm" onClick={function(){done(null);}}>✕</button></div>
+      <div className="modal-body">
+        {o.message&&<div style={{fontSize:12.5,color:"var(--ink-3,#6f6b62)",marginBottom:10,whiteSpace:"pre-line"}}>{o.message}</div>}
+        <input ref={ref} type="text" value={v} placeholder={o.placeholder||""} onChange={function(e){setV(e.target.value);}}
+          onKeyDown={function(e){if(e.key==="Enter")done(v);if(e.key==="Escape")done(null);}}
+          style={{width:"100%",fontSize:14,padding:"8px 10px",fontFamily:o.mono?"var(--font-mono)":"inherit"}}/>
+      </div>
+      <div className="modal-footer">
+        {o.skipLabel&&<button className="btn" style={{marginRight:"auto"}} onClick={function(){done("");}}>{o.skipLabel}</button>}
+        <button className="btn" onClick={function(){done(null);}}>Cancel</button>
+        <button className="btn btn-pri" onClick={function(){done(v);}}>{o.okLabel||"OK"}</button>
+      </div>
+    </div>
+  </div>;
+}
+function ppPrompt(o){
+  return new Promise(function(resolve){
+    var host=document.createElement("div");document.body.appendChild(host);
+    var root=ReactDOM.createRoot(host);
+    var closed=false;
+    function done(val){
+      if(closed)return;closed=true;
+      setTimeout(function(){try{root.unmount();}catch(e){}try{host.remove();}catch(e){}},0);
+      resolve(val===null||val===undefined?null:String(val));
+    }
+    root.render(<PpPromptModal o={o||{}} done={done}/>);
+  });
+}
 function calcProcurementUrgence(due){
   if(!due)return 1;
   var todayStr=today();

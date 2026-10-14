@@ -769,10 +769,9 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
   // First submission: R0 sent today, through the same writer as Flow & history.
   function recordSub(mat,mi,k){
     var d=matDoc(td,mat,mi,k,matTheo.date);
-    var patch=d.patchFor(addCycle(d.cycles,{submitted:today()}));
-    updTd(patch);
-    if(afterSave)afterSave(td,Object.assign({},td,patch));
-    setOpenRow(function(o){var n=Object.assign({},o);n[d.id]=true;return n;});
+    recordDocSubmission(td,d,updTd,afterSave).then(function(p){
+      if(p)setOpenRow(function(o){var n=Object.assign({},o);n[d.id]=true;return n;});
+    });
   }
 
   var COLS=11;
@@ -908,21 +907,9 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
   function recordSub(id){
     var d=flowDocOf(td,id);if(!d||!updTd)return;
     // The document reference is asked at the moment it is sent: that is when it is known.
-    var curRef=getReference(id),ref=curRef;
-    if(id==="acc"||id==="wms"||id==="itp"){
-      try{ref=window.prompt("Reference of the "+(id==="acc"?"ACC/Aconex":id.toUpperCase())+" document submitted (Aconex / transmittal number).\nLeave empty if not known yet.",curRef);}catch(e){ref=curRef;}
-      if(ref===null)return;
-      ref=String(ref).trim();
-    }
-    var patch=d.patchFor(addCycle(d.cycles,{submitted:today()}));
-    if(ref!==curRef){
-      var sdp=Object.assign({},td.stepDates||{},patch.stepDates||{});
-      sdp[id]=Object.assign({},sdp[id]||{},{reference:ref});
-      patch=Object.assign({},patch,{stepDates:sdp});
-    }
-    updTd(patch);
-    if(afterSave)afterSave(td,Object.assign({},td,patch));
-    setOpenRow(function(o){var n=Object.assign({},o);n[id]=true;return n;});
+    recordDocSubmission(td,d,updTd,afterSave).then(function(p){
+      if(p)setOpenRow(function(o){var n=Object.assign({},o);n[id]=true;return n;});
+    });
   }
   function chev(k){return <button type="button" onClick={function(e){e.stopPropagation();toggleRow(k);}} title="Show or hide the details" style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{openRow[k]?"▾":"▸"}</button>;}
   function recordBtn(id){return flowDocState(td,id)==="none"&&updTd?<div><button type="button" className="btn btn-sm" onClick={function(){recordSub(id);}} style={{fontSize:10,padding:"1px 7px",marginTop:2}}>＋ Record submission</button></div>:null;}
@@ -1462,12 +1449,74 @@ function RefTag({td,k}){
   if(sent)return <div title="Submitted, but no reference recorded: type it in the Reference column" style={{fontSize:10,fontWeight:700,color:"#c62828",marginTop:3}}>⚠ ref. missing</div>;
   return null;
 }
+// ---------------------------------------------------------------------------
+// Document reference at submission time — ONE path for every document kind.
+// Each submission (R0, R1…) keeps the reference it went out with (cycle.ref); the document
+// keeps the latest one where every view already reads it:
+//   ACC / WMS / ITP → stepDates[k].reference · MAR / MSS → mat.marRef / mat.mssRef
+//   SD transmission → t.ref (only filled when empty: it names the transmission)
+// ---------------------------------------------------------------------------
+function docCurRef(td,d){
+  if(!d)return"";
+  if(d.kind==="acc"||d.kind==="wms"||d.kind==="itp")return String((((td.stepDates||{})[d.kind])||{}).reference||"").trim();
+  if(d.kind==="mar"||d.kind==="mss")return String(d.ref||"").trim();
+  if(d.kind==="sd"&&d.id!=="sd:_main"){var t=(td.sdTransmissions||[]).find(function(x){return "sd:"+x.id===d.id;});return String((t&&t.ref)||"").trim();}
+  return"";
+}
+function docRefPatch(td,d,patch,ref){
+  if(d.kind==="acc"||d.kind==="wms"||d.kind==="itp"){
+    var sdp=Object.assign({},td.stepDates||{},patch.stepDates||{});
+    sdp[d.kind]=Object.assign({},sdp[d.kind]||{},{reference:ref});
+    return Object.assign({},patch,{stepDates:sdp});
+  }
+  if(d.kind==="mar"||d.kind==="mss"){
+    var mid=d.id.slice(d.kind.length+1);
+    var ms=(patch.materials||td.materials||[]).map(function(x,j){
+      if(String((x&&x.id)||j)!==mid)return x;var u=Object.assign({},x);u[d.kind+"Ref"]=ref;return u;});
+    return Object.assign({},patch,{materials:ms});
+  }
+  if(d.kind==="sd"&&d.id!=="sd:_main"){
+    var tl=(patch.sdTransmissions||td.sdTransmissions||[]).map(function(x){
+      return "sd:"+x.id===d.id&&!String(x.ref||"").trim()?Object.assign({},x,{ref:ref}):x;});
+    return Object.assign({},patch,{sdTransmissions:tl});
+  }
+  return patch;
+}
+// Records R0 (or the next revision after a C/D) sent today, after asking its reference.
+// Resolves to the patch saved, or null when cancelled.
+function recordDocSubmission(td,d,updTd,afterSave){
+  if(!d||!updTd||!canAddCycle(d.cycles))return Promise.resolve(null);
+  if(blockIfReadOnly())return Promise.resolve(null);
+  var last=d.cycles[d.cycles.length-1];
+  var rev=last?last.rev+1:0;
+  var cur=docCurRef(td,d);
+  var name=(d.kind==="acc"?"ACC/Aconex":d.kind==="sd"?"Shop drawing":d.label)+(d.group==="Materials"&&d.sub?" — "+d.sub:"")+(d.kind==="sd"&&d.sub?" — "+d.sub:"");
+  return ppPrompt({
+    title:(rev?"Resubmission R"+rev:"Submission")+" · "+name,
+    message:"Reference of the document sent to the client (Aconex / transmittal number).\nLeave empty if it is not known yet: the row will show “ref. missing” until it is typed.",
+    value:rev?"":cur,placeholder:"e.g. RT-TRM-001234",okLabel:"Record submission",mono:true
+  }).then(function(ref){
+    if(ref===null)return null;
+    ref=String(ref).trim();
+    var patch=d.patchFor(addCycle(d.cycles,{submitted:today(),ref:ref}));
+    if(ref&&ref!==cur)patch=docRefPatch(td,d,patch,ref);
+    updTd(patch);
+    if(afterSave)afterSave(td,Object.assign({},td,patch));
+    return patch;
+  });
+}
 function DocRevisionsEditor({td,d,updTd,afterSave}){
   var now=today();
   function saveDoc(d,list){
     var patch=d.patchFor(list);
     updTd(patch);
     if(afterSave)afterSave(td,Object.assign({},td,patch));
+  }
+  // The latest revision's reference is also the document's: keep both in one save.
+  function saveRef(d,list,c,val){
+    var patch=d.patchFor(updCycle(list,c.id,{ref:val}));
+    if(c.id===list[list.length-1].id)patch=docRefPatch(td,d,patch,val);
+    updTd(patch);
   }
   var STATE_COL={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"};
   function _docEditor(d){
@@ -1477,7 +1526,7 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
       {list.length===0&&<div style={{fontSize:12,color:"#9b968b",marginBottom:6}}>Not submitted yet.</div>}
       {list.length>0&&<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
         <thead><tr style={{color:"#9b968b",fontSize:10,textTransform:"uppercase",letterSpacing:".06em",textAlign:"left"}}>
-          <th style={{padding:"4px 6px"}}>Rev</th><th>Submitted</th><th>Returned</th><th>Code</th><th>Comment</th><th style={{textAlign:"right"}}>With client</th>
+          <th style={{padding:"4px 6px"}}>Rev</th><th>Reference</th><th>Submitted</th><th>Returned</th><th>Code</th><th>Comment</th><th style={{textAlign:"right"}}>With client</th>
         </tr></thead>
         <tbody>{list.map(function(c,i){
           var isLast=i===list.length-1;
@@ -1486,6 +1535,10 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
           var k=FLOW_CODE_COL[c.code];
           return <tr key={c.id} style={{borderTop:"1px solid #f0ede6"}}>
             <td style={{padding:"4px 6px",fontFamily:"var(--font-mono,monospace)",fontWeight:700}}>R{c.rev}</td>
+            <td><input type="text" value={c.ref!==undefined?c.ref:(isLast?docCurRef(td,d):"")} placeholder={c.submitted?"ref. missing":"ref…"}
+              title="Aconex / transmittal number this revision went out with"
+              style={Object.assign({},inp,{width:130,fontFamily:"var(--font-mono)",fontSize:11},c.submitted&&!(c.ref||(isLast&&docCurRef(td,d)))?{border:"1px solid #f48fb1",background:"#fff8f9"}:{})}
+              onChange={function(e){saveRef(d,list,c,e.target.value);}}/></td>
             <td><input type="date" value={c.submitted||""} disabled={!isLast} style={inp} onChange={function(e){saveDoc(d,updCycle(list,c.id,{submitted:e.target.value}));}}/></td>
             <td><input type="date" value={c.returned||""} disabled={!isLast} style={inp} onChange={function(e){saveDoc(d,updCycle(list,c.id,{returned:e.target.value}));}}/></td>
             <td><select value={c.code||""} disabled={!isLast} style={Object.assign({},inp,k?{background:k[0],color:k[1],fontWeight:700}:{})}
@@ -1500,7 +1553,7 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
         })}</tbody>
       </table>}
       <div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,flexWrap:"wrap"}}>
-        {canAddCycle(list)&&<button className="btn btn-sm" onClick={function(){saveDoc(d,addCycle(list,{submitted:now}));}}>
+        {canAddCycle(list)&&<button className="btn btn-sm" onClick={function(){recordDocSubmission(td,d,updTd,afterSave);}}>
           {list.length?"↻ Resubmit as R"+(last.rev+1):"+ Record the submission"}</button>}
         {last&&!last.code&&last.submitted&&<span style={{fontSize:11,color:"#1a73e8"}}>Waiting for the client on R{last.rev}. Set the code when it comes back.</span>}
         {list.length>0&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){
