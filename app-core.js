@@ -200,7 +200,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-14-b";
+var APP_BUILD="2026-10-14-c";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -621,8 +621,103 @@ function GlobalPdfModal({contractors,saveContractors,onClose}){
   </div></div>;
 }
 
-function ImprovementBox({improvements,saveImprovements,currentPage}){
+// ---------------------------------------------------------------------------
+// Phone. Below 768px the left rail and the right sidebar are hidden (index.html) and the
+// app is driven by a bottom bar of 4 pinned tabs + a menu holding every tab, grouped.
+// window._ppPhone mirrors the hook for code that renders without hooks.
+// ---------------------------------------------------------------------------
+var PHONE_MQ="(max-width:768px)";
+function isPhone(){try{return window.matchMedia(PHONE_MQ).matches;}catch(e){return false;}}
+function usePhone(){
+  const [p,setP]=useState(isPhone);
+  useEffect(function(){
+    var m;try{m=window.matchMedia(PHONE_MQ);}catch(e){return;}
+    function f(e){setP(e.matches);}
+    if(m.addEventListener)m.addEventListener("change",f);else m.addListener(f);
+    return function(){if(m.removeEventListener)m.removeEventListener("change",f);else m.removeListener(f);};
+  },[]);
+  window._ppPhone=p;
+  return p;
+}
+var PHONE_GROUPS=[
+  ["Follow-up",["global","moms","notes","timeline","trackers","dashboard","submissions"]],
+  ["Procurement",["myprocurement","tenders","packages","procflow","materials","qadocs"]],
+  ["Site",["zone","manpower","steel","inventory","concrete"]],
+  ["Contract",["contracts","awn","contractors"]],
+  ["Admin",["settings"]]
+];
+var PHONE_DEFAULT_PINS=["global","zone","tenders","notes"];
+function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras}){
   const [open,setOpen]=useState(false);
+  const [pins,setPinsRaw]=useState(function(){
+    try{var v=JSON.parse(localStorage.getItem("pp_phone_pins")||"null");if(Array.isArray(v))return v;}catch(e){}
+    return PHONE_DEFAULT_PINS;
+  });
+  function setPins(v){setPinsRaw(v);try{localStorage.setItem("pp_phone_pins",JSON.stringify(v));}catch(e){}}
+  // Every reachable view once, children of a grouped entry included.
+  var flat=[];
+  (nav||[]).forEach(function(n){
+    if(n.children)n.children.forEach(function(k){if(!flat.some(function(x){return x.id===k.id;}))flat.push(k);});
+    else if(!flat.some(function(x){return x.id===n.id;}))flat.push(n);
+  });
+  function byId(id){return flat.find(function(x){return x.id===id;});}
+  var bar=pins.map(byId).filter(Boolean).slice(0,4);
+  if(bar.length<4)flat.forEach(function(n){if(bar.length<4&&bar.indexOf(n)<0)bar.push(n);});
+  var inBar=bar.some(function(n){return n.id===view;});
+  function go(id){setView(id);setOpen(false);try{document.querySelector(".content").scrollTop=0;}catch(e){}}
+  function togglePin(id){
+    var cur=bar.map(function(n){return n.id;});
+    if(cur.indexOf(id)>=0)setPins(cur.filter(function(x){return x!==id;}));
+    else{if(cur.length>=4)cur=cur.slice(0,3);setPins(cur.concat([id]));}
+  }
+  var groups=PHONE_GROUPS.map(function(g){return [g[0],g[1].map(byId).filter(Boolean)];}).filter(function(g){return g[1].length;});
+  var listed=[];groups.forEach(function(g){g[1].forEach(function(n){listed.push(n.id);});});
+  var other=flat.filter(function(n){return listed.indexOf(n.id)<0;});
+  if(other.length)groups.push(["Other",other]);
+  var cur=byId(view);
+  return <React.Fragment>
+    <nav className="phone-bar">
+      {bar.map(function(n){
+        return <button key={n.id} className={view===n.id?"on":""} onClick={function(){go(n.id);}}><span className="ico">{n.icon}</span>{n.label}</button>;
+      })}
+      <button className={!inBar?"on":""} onClick={function(){setOpen(true);}}>
+        <span className="ico">{!inBar&&cur?cur.icon:"☰"}</span>{!inBar&&cur?cur.label:"Menu"}</button>
+    </nav>
+    {open&&<div className="phone-menu" onClick={function(e){if(e.target===e.currentTarget)setOpen(false);}}>
+      <div className="sheet">
+        <div style={{display:"flex",alignItems:"center",gap:8,margin:"0 4px 4px"}}>
+          <span className={"sync-dot sync-"+syncStatus}/>
+          <b style={{fontSize:14}}>{currentUser}</b>
+          <button className="btn btn-sm" onClick={function(){setOpen(false);onChangeUser();}}>change</button>
+          <span style={{marginLeft:"auto",fontFamily:"var(--font-mono)",fontSize:10,color:"var(--ink-4)"}}>{APP_BUILD}</span>
+          <button className="btn btn-sm" onClick={function(){setOpen(false);}}>✕</button>
+        </div>
+        <div style={{fontSize:11,color:"var(--ink-3)",margin:"0 4px"}}>★ pins a tab to the bottom bar (4 max).</div>
+        {groups.map(function(g){
+          return <div key={g[0]}>
+            <div className="grp">{g[0]}</div>
+            <div className="grid">{g[1].map(function(n){
+              var pinned=bar.some(function(b){return b.id===n.id;});
+              return <div key={n.id} className={"item"+(view===n.id?" on":"")} onClick={function(){go(n.id);}}>
+                <button className={"pin"+(pinned?" on":"")} title={pinned?"Unpin from the bar":"Pin to the bar"} onClick={function(e){e.stopPropagation();togglePin(n.id);}}>{pinned?"★":"☆"}</button>
+                <span className="ico">{n.icon}</span>{n.label}
+              </div>;
+            })}</div>
+          </div>;
+        })}
+        {(extras||[]).length>0&&<div>
+          <div className="grp">Tools</div>
+          <div className="grid">{extras.map(function(x){
+            return <div key={x.label} className="item" onClick={function(){setOpen(false);x.onClick();}}><span className="ico">{x.icon}</span>{x.label}</div>;
+          })}</div>
+        </div>}
+      </div>
+    </div>}
+  </React.Fragment>;
+}
+function ImprovementBox({improvements,saveImprovements,currentPage,openSignal,phone}){
+  const [open,setOpen]=useState(false);
+  useEffect(function(){if(openSignal)setOpen(true);},[openSignal]);
   const [text,setText]=useState("");
   const ref=useRef();
 
@@ -633,8 +728,9 @@ function ImprovementBox({improvements,saveImprovements,currentPage}){
     setText("");setOpen(false);
   }
 
-  return <div className="imp-btn-wrap" style={{position:"fixed",bottom:16,right:276,zIndex:500}}>
-    {open&&<div style={{position:"absolute",bottom:44,right:0,width:280,background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",border:"1.5px solid #e8e6df",padding:14}}>
+  if(phone&&!open)return null;
+  return <div className="imp-btn-wrap" style={phone?{position:"fixed",left:10,right:10,bottom:84,zIndex:900}:{position:"fixed",bottom:16,right:276,zIndex:500}}>
+    {open&&<div style={{position:phone?"static":"absolute",bottom:44,right:0,width:phone?"auto":280,background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",border:"1.5px solid #e8e6df",padding:14}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>💡 Improvement idea</div>
       <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Page: <strong>{currentPage}</strong></div>
       <textarea ref={ref} autoFocus value={text} onChange={function(e){setText(e.target.value);}}
@@ -645,10 +741,10 @@ function ImprovementBox({improvements,saveImprovements,currentPage}){
         <button className="btn btn-gold" style={{flex:1}} onClick={submit}>✓ Add</button>
       </div>
     </div>}
-    <button onClick={function(){setOpen(!open);}} title="Suggest an improvement"
+    {!phone&&<button onClick={function(){setOpen(!open);}} title="Suggest an improvement"
       style={{width:36,height:36,borderRadius:"50%",background:"#c9a84c",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#1c1c1e",transition:"all .15s"}}>
       💡
-    </button>
+    </button>}
   </div>;
 }
 
@@ -3493,7 +3589,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">🔍</div><div className="empty-txt">No actions match the filters.</div></div>
       :<div style={{overflowX:"auto"}}>
-        <table className="tbl">
+        <table className="tbl tbl-cards">
           <thead><tr>
             <th style={{width:30,textAlign:"center"}}>
               <input type="checkbox"
@@ -3522,7 +3618,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
               <td style={{width:30,textAlign:"center"}} onClick={function(e){e.stopPropagation();}}>
                 <input type="checkbox" checked={isSel} onChange={function(){toggleSel(a.id);}} style={{width:14,height:14,cursor:"pointer",marginTop:6}}/>
               </td>
-              <td style={{minWidth:220}}>
+              <td className="card-main" style={{minWidth:220}}>
                 {isEdit
                   ?<div style={{display:"flex",flexDirection:"column",gap:5,padding:"4px 0"}}>
                     <textarea value={a.text||""} autoFocus onChange={function(e){updateField(a,"text",e.target.value);}} style={{width:"100%",padding:"5px 8px",border:"1.5px solid #3949ab",borderRadius:6,fontFamily:"inherit",fontSize:12,resize:"vertical",outline:"none",minHeight:50,boxSizing:"border-box"}}/>
@@ -3548,19 +3644,19 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                     <div style={{fontSize:9,color:"#ddd",marginTop:2}}>✏️ click to edit</div>
                   </div>}
               </td>
-              <td>
+              <td data-l="Status">
                 <select className="btn btn-sm" value={a.status||"pending"} onChange={function(e){updateField(a,"status",e.target.value);}} style={{width:"auto",padding:"3px 6px",fontSize:10,border:"1px solid #ddd"}}>
                   {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
                 </select>
               </td>
-              <td>
+              <td data-l="Owner">
                 {isEdit
                   ?<select value={a.owner||""} onChange={function(e){if(a._source==="task")updateMulti(a,ownerChangePatch(a,e.target.value));else updateField(a,"owner",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
                     <OwnerOptions people={people} emptyLabel="—"/>
                   </select>
                   :<span onClick={function(e){e.stopPropagation();}}><BallChip task={a} onHandBack={a._source==="task"?function(tr){updateMulti(a,ownerChangePatch(a,tr));}:null}/></span>}
               </td>
-              <td>
+              <td data-l="Package">
                 {isEdit
                   ?<div style={{display:"flex",flexDirection:"column",gap:3}}>
                     <select value={a.package||""} onChange={function(e){updateField(a,"package",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
@@ -3572,12 +3668,12 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   </div>
                   :<span>{a.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{a.package}</span>}{a.zone&&<span className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:10,marginLeft:3}}>📍 {a.zone}</span>}</span>}
               </td>
-              <td style={{whiteSpace:"nowrap"}}>
+              <td data-l="Due" style={{whiteSpace:"nowrap"}}>
                 {isEdit
                   ?<input type="date" min="1990-01-01" max="2200-12-31" value={a.due||""} onChange={function(e){updateField(a,"due",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd"}}/>
                   :<span style={{fontSize:12,color:a.due&&a.due<today()&&a.status!=="done"?"#c62828":"#888"}}>{fmtDate(a.due)}</span>}
               </td>
-              <td>
+              <td data-l="Score">
                 {isEdit
                   ?<div style={{display:"flex",flexDirection:"column",gap:3}}>
                     <div style={{display:"flex",gap:3}}>
@@ -3589,8 +3685,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   </div>
                   :<span>{sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}</span>}
               </td>
-              <td><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
-              <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
+              <td data-l="Source"><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
+              <td data-l="Tender" style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
               <td>
                 {isEdit
                   ?<select value={a.tenderRef||""} onChange={function(e){updateField(a,"tenderRef",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
@@ -4248,6 +4344,8 @@ function App(){
   const [pdfGlobal,setPdfGlobal]=useState(null);
   const [sidebarOpen,setSidebarOpen]=useState(true);
   const [mobileQAOpen,setMobileQAOpen]=useState(false);
+  const phone=usePhone();
+  const [impSignal,setImpSignal]=useState(0);
   const [correspondences,setCorrespondences]=useState([]);
   const [awns,setAwns]=useState([]);
   function saveAwns(d){setAwns(d);sync(KEYS_AWN,d);}
@@ -4915,15 +5013,21 @@ function App(){
         </div>
         {sidebarOpen&&<QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} zones={zones} tasks={tasks} onAdd={addTask} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>}
       </aside>
-    <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/>
-    <div style={{position:"fixed",bottom:16,right:360,zIndex:490}}>
+    <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view} openSignal={impSignal} phone={phone}/>
+    {phone&&<PhoneNav nav={effectiveNAV} view={view} setView={setView} currentUser={currentUser} syncStatus={syncStatus}
+      onChangeUser={function(){try{localStorage.removeItem("pp_current_user");}catch(e){}setCurrentUser(null);}}
+      extras={[
+        {icon:"🗓",label:"Weekly actions",onClick:function(){setShowWeeklyPopup(true);}},
+        {icon:"💡",label:"Improvement idea",onClick:function(){setImpSignal(Date.now());}}
+      ].concat(actionsOnly?[]:[{icon:"📄",label:"Certification PDF",onClick:function(){setPdfGlobal({open:true});}}])}/>}
+    <div className="phone-hide" style={{position:"fixed",bottom:16,right:360,zIndex:490}}>
       <button onClick={function(){setShowWeeklyPopup(true);}} title="Weekly Actions" style={{width:36,height:36,borderRadius:"50%",background:"#3949ab",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>📋</button>
     </div>
     {newTasksPopup&&<NewTasksPopup tasks={newTasksPopup} tenders={tenders} contractors={contractors} onClose={function(){setNewTasksPopup(null);}}/> }
     {showWeeklyPopup&&<WeeklyPopup tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} tenders={tenders} contractors={contractors} saveT={saveT} saveX={saveX} onClose={function(){setShowWeeklyPopup(false);}}/>}
     <div className="mobile-qa-btn" onClick={function(){setMobileQAOpen(true);}} title="Quick Add Task" style={{display:"none",position:"fixed",bottom:62,right:16,zIndex:490,width:44,height:44,borderRadius:"50%",background:"#c9a84c",boxShadow:"0 2px 8px rgba(0,0,0,.2)",alignItems:"center",justifyContent:"center",fontSize:22,cursor:"pointer",color:"#1c1c1e"}}>＋</div>
     {mobileQAOpen&&<div className="overlay" style={{zIndex:600}} onClick={function(e){if(e.target===e.currentTarget)setMobileQAOpen(false);}}><div style={{background:"#fff",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",position:"absolute",bottom:0}}><QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} zones={zones} tasks={tasks} onAdd={function(t){addTask(t);setMobileQAOpen(false);}} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/></div></div>}
-    <div style={{position:"fixed",bottom:16,right:318,zIndex:500}}>
+    <div className="phone-hide" style={{position:"fixed",bottom:16,right:318,zIndex:500}}>
       <button onClick={function(){setPdfGlobal({open:true});}} title="Import certification from PDF"
         style={{width:36,height:36,borderRadius:"50%",background:"#1a73e8",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"all .15s"}}>
         📄

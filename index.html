@@ -274,23 +274,81 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 .fchip.gold.on{border-color:var(--gold);background:var(--gold);color:var(--ink)}
 .fchip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 @media(max-width:768px){
-  .mobile-qa-btn{display:flex!important;}
+  /* ---- Phone layout -------------------------------------------------------
+     The left rail is replaced by a bottom bar + a full menu (PhoneNav in app-core.js).
+     Tables keep every column and scroll sideways inside their own box, the first
+     column stays pinned. Inputs are 16px so iOS does not zoom on every tap. */
+  .leftnav{display:none!important;}
   .rsidebar{display:none!important;}
-  .imp-btn-wrap{right:70px!important;}
-  .layout{flex-direction:column;}
-  .leftnav{width:100%;flex-direction:row;height:48px;padding:0 8px;overflow-x:auto;justify-content:flex-start;}
-  .leftnav .logo{display:none;}
-  .navbtn{width:auto;height:44px;flex-direction:row;gap:4px;padding:0 10px;border-radius:6px;}
-  .navbtn span.lbl{font-size:10px;}
+  .layout{flex-direction:column;height:calc(100dvh - 44px);}
   .main-area{flex-direction:column-reverse;}
-  .rsidebar.closed{height:36px;max-height:36px;}
-  .content{padding:12px;}
-  .tbl{font-size:11px;}
-  .tbl th,.tbl td{padding:6px 8px;}
-  .page-title{font-size:18px;}
-  .modal{max-width:100%!important;margin:0;border-radius:0;max-height:100vh;}
+  .content{padding:12px 10px 92px;-webkit-overflow-scrolling:touch;}
+  .mobile-qa-btn{display:flex!important;bottom:76px!important;right:14px!important;width:50px!important;height:50px!important;font-size:24px!important;}
+  .phone-hide{display:none!important;}
+  .page-hdr{flex-wrap:wrap;gap:8px;}
+  .page-hdr>*{max-width:100%;min-width:0;overflow-x:auto;}
+  .page-title{font-size:19px;}
+  .page-sub{font-size:12px;}
+  .card{padding:12px;border-radius:10px;}
+  .btn{height:38px;}
+  .btn-sm{height:32px;padding:0 10px;}
+  .fchip{height:32px;}
+  input,select,textarea{font-size:16px!important;}
+  input[type=checkbox],input[type=radio]{width:20px!important;height:20px!important;}
+  .tbl{font-size:12px;}
+  .tbl th,.tbl td{padding:7px 8px;}
+  .content table.tbl{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .content table.tbl>thead>tr>th:first-child,.content table.tbl>tbody>tr>td:first-child{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--rule-2);}
+  .content table.tbl>thead>tr>th:first-child{z-index:3;}
+  .phone-scroll{overflow-x:auto!important;-webkit-overflow-scrolling:touch;max-width:100%;}
+  .md-wrap{display:block!important;}
+  .md-side{display:none!important;}
+  .md-wrap>div{min-width:0;max-width:100%;overflow-x:clip;}
+  .titleblock{flex-direction:column!important;}
+  .titleblock .tb-cells{border-left:none!important;border-top:1.5px solid var(--gold,#c9a84c)!important;overflow-x:auto;flex-shrink:1!important;max-width:100%;}
+  .sheet-h{flex-wrap:wrap;}
+  .titleblock h2{white-space:normal;font-size:20px;}
+  .modal{max-width:100%!important;width:100%!important;margin:0;border-radius:14px 14px 0 0;max-height:94dvh;}
+  .modal-body{padding:14px;}
   .overlay{padding:0;align-items:flex-end;}
 }
+@media(max-width:768px){
+  /* A table marked tbl-cards becomes one card per row; each cell shows its column name (data-l). */
+  .content table.tbl.tbl-cards{display:block;overflow:visible;border:none;background:none}
+  .tbl-cards>thead{display:none}
+  .tbl-cards>tbody{display:block}
+  .tbl-cards>tbody>tr{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 14px;background:var(--surface)!important;border:1.5px solid var(--rule-2);
+    border-radius:12px;padding:10px 12px;margin-bottom:8px}
+  .content .tbl-cards>tbody>tr>td{display:block;border:none!important;padding:0!important;min-width:0!important;width:auto!important;max-width:100%;
+    position:static!important;box-shadow:none!important;background:none!important;white-space:normal!important}
+  .tbl-cards>tbody>tr>td[colspan]{flex:1 1 100%}
+  .tbl-cards td[data-l]::before{content:attr(data-l);display:block;font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--ink-4);margin-bottom:2px}
+  .tbl-cards td:empty{display:none!important}
+  .tbl-cards .card-main{flex:1 1 calc(100% - 50px)!important}
+  .td-tabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  .td-tabs>button{white-space:nowrap;flex-shrink:0;padding:8px 10px!important}
+}
+/* Bottom bar and menu exist only on a phone */
+.phone-bar{display:none}
+@media(max-width:768px){
+  .phone-bar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:700;background:var(--surface);border-top:1.5px solid var(--rule);
+    padding:4px 4px calc(4px + env(safe-area-inset-bottom));justify-content:space-around}
+  .phone-bar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;border:none;background:none;font-family:var(--font-body);
+    font-size:10.5px;font-weight:600;color:var(--ink-3);padding:5px 2px;border-radius:10px;cursor:pointer;min-height:50px}
+  .phone-bar button .ico{font-size:21px;line-height:1.1}
+  .phone-bar button.on{background:var(--gold-soft);color:var(--ink)}
+}
+.phone-menu{position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.45);display:flex;align-items:flex-end}
+.phone-menu .sheet{background:var(--paper);width:100%;max-height:88dvh;overflow-y:auto;border-radius:16px 16px 0 0;padding:14px 12px calc(16px + env(safe-area-inset-bottom))}
+.phone-menu .grp{font-family:var(--font-mono);font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin:12px 4px 6px}
+.phone-menu .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.phone-menu .item{position:relative;background:var(--surface);border:1.5px solid var(--rule-2);border-radius:12px;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;font-family:var(--font-body);min-height:66px;text-align:center}
+.phone-menu .item.on{border-color:var(--gold);background:var(--gold-soft)}
+.phone-menu .item .ico{font-size:22px}
+.phone-menu .pin{position:absolute;top:2px;right:4px;font-size:14px;color:var(--ink-4);background:none;border:none;padding:4px;cursor:pointer}
+.phone-menu .pin.on{color:var(--gold-ink)}
 @media(max-width:480px){
   .frow{flex-direction:column;}
   .filter-bar{gap:4px;}
