@@ -265,6 +265,8 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 .sync-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .sync-ok{background:#4caf50}.sync-syncing{background:#f57f17;animation:pulse 1s infinite}.sync-err{background:#c62828}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes tdocflash{0%{box-shadow:inset 0 0 0 2px var(--gold,#c9a84c);background:#fff8e1}100%{box-shadow:inset 0 0 0 0 transparent}}
+.tdoc-flash>td{animation:tdocflash 1.8s ease-out}
 .filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .fchip{height:26px;padding:0 12px;border-radius:20px;border:1.5px solid var(--rule);background:var(--surface);font-family:var(--font-body);font-size:var(--fs-small);font-weight:600;cursor:pointer;color:var(--ink-3);transition:background .12s,border-color .12s,color .12s;display:inline-flex;align-items:center}
 .fchip:hover{border-color:var(--ink-3);color:var(--ink)}

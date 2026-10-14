@@ -1764,7 +1764,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
       <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>People ({people.length})</div>
       <div style={{fontSize:12,color:"#888",marginBottom:12}}>Add an email address to each person so they can be included as recipients when opening reports in Outlook.</div>
       <div style={{padding:"10px 12px",background:"#f7f4fc",border:"1px solid #e3dcf2",borderRadius:8,marginBottom:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#5e35b1",marginBottom:4}}>🏢 Departments ({(deps.list||[]).length})</div>
+        <div style={{fontSize:12,fontWeight:700,color:"#5e35b1",marginBottom:4}}>🏢 Teams — action owners ({(deps.list||[]).length})</div>
         <div style={{fontSize:11,color:"#888",marginBottom:8}}>Support services an action can be handed to — type <b>@Procurement</b> in Quick Add. Attach each person to their department below.</div>
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <input type="text" value={newDept} onChange={function(e){setNewDept(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addDept();}} placeholder="Procurement, Design, Methods, QA/QC…" style={{flex:1}}/>
@@ -1796,7 +1796,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
     </div>}
 
     {tab==="packages"&&<div className="card">
-      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Packages ({packages.length})</div>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>🗂️ Departments ({packages.length}) <span style={{fontSize:11,fontWeight:400,color:"var(--ink-3,#6f6b62)"}}>— formerly “Packages”; each package (ex-tender) belongs to one</span></div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>
         <input type="text" value={newPackage} onChange={e=>setNewPackage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPackage()} placeholder="Package name…" style={{flex:1}}/>
         <button className="btn btn-pri" onClick={addPackage}>＋ Add</button>
@@ -4739,9 +4739,11 @@ function App(){
   window._ppTenderRules=tenderRules;
   window._ppRooms=rooms;
   const NAV=[
-    {id:"packages",icon:"📦",label:"Packages"},
+    // Renamed in the interface only (ids and stored data unchanged):
+    // the old "Packages" (pp_packages) are now Departments, the old "Tenders" are now Packages.
+    {id:"packages",icon:"🗂️",label:"Department"},
     {id:"zone",icon:"🏢",label:"Zone"},
-    {id:"tenders",icon:"📑",label:"Tenders"},
+    {id:"tenders",icon:"📦",label:"Package"},
     {id:"procflow",icon:"🧭",label:"Proc. flow"},
     {id:"materials",icon:"🏗️",label:"Materials"},
     {id:"steel",icon:"🔩",label:"Steel"},
@@ -4866,7 +4868,7 @@ function App(){
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules} tasks={tasks} saveTasks={saveT} zones={zones}/>}
         {view==="procflow"&&<ProcFlowView tenders={tenders} onNavTender={navToTender}/>}
-        {view==="tenders"&&<TendersView tenders={hasFullAccess?tenders:myTenders} saveTenders={saveTenders} packages={hasFullAccess?packages:myPkgs} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} pkgOwners={pkgOwners} jumpTender={jumpTender} clearJumpTender={function(){setJumpTender(null);}} jumpFrom={jumpFrom} clearJumpFrom={function(){setJumpFrom(null);}} onBack={jumpFrom?function(){setView(jumpFrom);setJumpTender(null);setJumpFrom(null);}:null} onNavZone={function(){setView("zone");}}/>}
+        {view==="tenders"&&<TendersView tenders={hasFullAccess?tenders:myTenders} saveTenders={saveTenders} packages={hasFullAccess?packages:myPkgs} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} saveContractors={saveContractors} onNavContracts={hasFullAccess?function(){setView("contracts");}:null} pkgOwners={pkgOwners} jumpTender={jumpTender} clearJumpTender={function(){setJumpTender(null);}} jumpFrom={jumpFrom} clearJumpFrom={function(){setJumpFrom(null);}} onBack={jumpFrom?function(){setView(jumpFrom);setJumpTender(null);setJumpFrom(null);}:null} onNavZone={function(){setView("zone");}}/>}
         {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT} onNavTender={navToTender} memory={memoryFor("contractors")} setMemory={function(p){setMemoryFor("contractors",p);}}/>}
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
         {view==="awn"&&<AwnView awns={awns} saveAwns={saveAwns} people={people}/>}
