@@ -1839,6 +1839,8 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
   const [tChoice,setTChoice]=useState({});     // type key → type id | "new" | "skip"
   const [q,setQ]=useState("");
   const [onlyOpen,setOnlyOpen]=useState(false);
+  const [force,setForce]=useState({});          // delivery notes already imported, to book again anyway
+  const [show,setShow]=useState("");            // which diagnostic list is unfolded
 
   function onFile(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
@@ -1855,7 +1857,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
             var sh=wb.Sheets[n];if(!sh||!sh["!ref"])return;
             // only the first 40 columns: these registers carry hundreds of empty formatted ones
             var rg=window.XLSX.utils.decode_range(sh["!ref"]);if(rg.e.c>39)rg.e.c=39;
-            sheets[n]=function(){return window.XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:true,range:rg});};
+            sheets[n]=function(){var rows=window.XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:true,range:rg});rows.r0=rg.s.r;return rows;};
           });
           setBook({name:f.name,names:wb.SheetNames.filter(function(n){return sheets[n];}),sheets:sheets,cache:{}});
           setSheet(pick);setBusy("");
@@ -1873,29 +1875,34 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
     if(hi<0)return {error:"No header line with “Description” and “Real Qty” in this sheet."};
     var head=rows[hi].map(function(c){return String(c).trim();});
     var col={};Object.keys(CON_IMP_COLS).forEach(function(k){col[k]=head.findIndex(function(h){return CON_IMP_COLS[k].test(h);});});
-    return {hi:hi,head:head,col:col,body:rows.slice(hi+1)};
+    return {hi:hi,head:head,col:col,body:rows.slice(hi+1),r0:(rows.r0||0)+hi+2};   // r0 = Excel row number of body[0]
   })();
   // Zone column: the one headed "Zone" (column B in the workbook)
   var filterCol=parsed&&!parsed.error?parsed.head.findIndex(function(h){return /^zone$/i.test(h);}):-1;
   var fVal=CON_IMP_ZONE;
   if(parsed&&!parsed.error&&filterCol<0)parsed={error:"No “Zone” column in this sheet: the import keeps only the rows whose Zone is "+CON_IMP_ZONE+"."};
   // the rows kept, read into {desc, date, note, supplier, type, qty, theo}
-  var items=[],issues={noQty:0,dateFixed:0,noDate:0};
+  var items=[],issues={noQty:0,dateFixed:0,noDate:0},left={noZone:[],noQty:[],noDate:[]};
   if(parsed&&!parsed.error){
     var c=parsed.col,lastDate="";
-    parsed.body.forEach(function(r){
-      if(String(r[filterCol]).trim().toUpperCase()!==fVal)return;
+    parsed.body.forEach(function(r,ri){
+      var rowNo=parsed.r0+ri;
+      var zone=String(r[filterCol]).trim().toUpperCase();
       var qty=c.qty>=0?conParseNum(r[c.qty]):0;
-      if(!(qty>0)){if(String(r[c.desc]||"").trim())issues.noQty++;return;}
+      var dsc=String(r[c.desc]||"").trim();
+      // a row with a quantity and no zone at all: probably a new line whose Zone was forgotten
+      if(!zone){if(qty>0)left.noZone.push({row:rowNo,desc:dsc,qty:qty});return;}
+      if(zone!==fVal)return;
+      if(!(qty>0)){if(dsc){issues.noQty++;left.noQty.push({row:rowNo,desc:dsc,qty:String(r[c.qty]||"")});}return;}
       var d=c.date>=0?conImpDate(r[c.date]):"";
       var mo=c.month>=0?Number(r[c.month]):0,yr=c.year>=0?Number(r[c.year]):0;
       if(!d||d<"2000-01-01"){
         // a typo in the date: the previous row's date when it is in the same month, else the 1st of the month
         if(mo&&yr){var pre=yr+"-"+(mo<10?"0":"")+mo;d=lastDate&&lastDate.slice(0,7)===pre?lastDate:pre+"-01";issues.dateFixed++;}
-        else{issues.noDate++;return;}
+        else{issues.noDate++;left.noDate.push({row:rowNo,desc:dsc,qty:qty});return;}
       }
       lastDate=d;
-      items.push({desc:String(r[c.desc]||"").trim()||"(no description)",date:d,note:c.note>=0?String(r[c.note]||"").trim():"",
+      items.push({row:rowNo,desc:dsc||"(no description)",date:d,note:c.note>=0?String(r[c.note]||"").trim():"",
         supplier:c.supplier>=0?String(r[c.supplier]||"").trim():"",type:c.type>=0?String(r[c.type]||"").trim():"",qty:qty,
         level:c.level>=0?String(r[c.level]||"").trim():""});
     });
@@ -1903,8 +1910,9 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
   // delivery notes already booked
   var done={};pours.forEach(function(p){(p.importNotes||[]).forEach(function(k){done[k]=1;});});
   function noteKey(it){return it.note?conImpKey(it.supplier)+"|"+it.note+"|"+it.date:"";}
-  var fresh=items.filter(function(it){var k=noteKey(it);return !k||!done[k];});
-  var already=items.length-fresh.length;
+  var fresh=items.filter(function(it){var k=noteKey(it);return !k||!done[k]||force[it.row];});
+  var alreadyList=items.filter(function(it){var k=noteKey(it);return k&&done[k];});
+  var already=alreadyList.length-alreadyList.filter(function(it){return force[it.row];}).length;
   // descriptions and types met
   var descs={};fresh.forEach(function(it){var k=conImpKey(it.desc);var o=descs[k]||(descs[k]={key:k,name:it.desc,n:0,qty:0,from:it.date,to:it.date,levels:{}});
     o.n++;o.qty+=it.qty;if(it.date<o.from)o.from=it.date;if(it.date>o.to)o.to=it.date;if(it.level)o.levels[it.level]=1;});
@@ -1982,7 +1990,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
   var inp={padding:"4px 7px",fontSize:12.5,width:"auto"};
   var footer=<React.Fragment>
     <button className="btn" onClick={onClose}>Cancel</button>
-    <button className="btn btn-pri" disabled={!fresh.length} onClick={apply}>Import {fresh.length?conFmt(keptQty)+" "+CON_UNIT:""}</button>
+    <button className="btn btn-pri" disabled={!fresh.length} onClick={apply} title={fresh.length?"":"Nothing new in this file — see the lists above for the rows left out and why"}>Import {fresh.length?conFmt(keptQty)+" "+CON_UNIT:""}</button>
   </React.Fragment>;
   return <InvModal title="⬆ Import pours from the follow-up workbook" width={980} onClose={onClose} footer={footer}>
     <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>One row per delivery note (Description · Supplier · Date · N° delivery note · Type of concrete · Real Qty). Only the rows whose <b>Zone is {CON_IMP_ZONE}</b> are imported. Match each <b>Description</b> of the workbook to one of your WBS — or create the WBS here.</div>
@@ -2000,11 +2008,37 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
       <div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:12.5,marginBottom:8}}>
         <span><b>{items.length}</b> delivery notes · <b>{conFmt(items.reduce(function(s,it){return s+it.qty;},0))} {CON_UNIT}</b></span>
         {items.length>0&&<span>{fmtDate(items.reduce(function(m,it){return it.date<m?it.date:m;},"9999"))} → {fmtDate(items.reduce(function(m,it){return it.date>m?it.date:m;},""))}</span>}
-        {already>0&&<span style={{color:"#1e6b3a"}}>{already} already imported (skipped)</span>}
         {issues.noQty>0&&<span style={{color:"#b35c00"}}>{issues.noQty} row(s) without quantity</span>}
         {issues.dateFixed>0&&<span style={{color:"#b35c00"}} title="Date missing or before 2000: taken from the Month / Year columns">{issues.dateFixed} date(s) taken from Month/Year</span>}
         {issues.noDate>0&&<span style={{color:"#b3302a"}}>{issues.noDate} row(s) without date (skipped)</span>}
       </div>
+      {(function(){
+        // What is new, what is left out and why — each list unfolds with the Excel row numbers.
+        function list(key,title,col,rows,render){
+          if(!rows.length)return null;
+          var open=show===key;
+          return <div style={{marginBottom:6}}>
+            <button type="button" onClick={function(){setShow(open?"":key);}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontSize:12.5,color:col,fontWeight:600}}>
+              {open?"▾":"▸"} {title}</button>
+            {open&&<div style={{maxHeight:220,overflowY:"auto",border:"1px solid #ece9e1",borderRadius:6,marginTop:4}}><table className="tbl" style={{fontSize:11.5,margin:0}}><tbody>
+              {rows.slice(0,300).map(render)}</tbody></table></div>}
+          </div>;
+        }
+        var newQty=fresh.reduce(function(s,it){return s+it.qty;},0);
+        return <div style={{background:fresh.length?"#f3fbf4":"#fff8e1",border:"1px solid "+(fresh.length?"#c8e6c9":"#f0e2b8"),borderRadius:8,padding:"8px 12px",marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6,color:fresh.length?"#1e6b3a":"#8a6a1e"}}>
+            {fresh.length?fresh.length+" delivery note"+(fresh.length>1?"s":"")+" to import · "+conFmt(newQty)+" "+CON_UNIT
+              :"Nothing new to import"+(items.length?": every "+CON_IMP_ZONE+" delivery note of this file is already in the app.":".")}</div>
+          {list("new","See the new rows ("+fresh.length+")","#1e6b3a",fresh,function(it,i){return <tr key={"n"+i}><td>row {it.row}</td><td>{fmtDate(it.date)}</td><td>{it.desc}</td><td>{it.supplier} {it.note}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {list("done",alreadyList.length+" already imported — tick one to import it again","#6f6b62",alreadyList,function(it,i){
+            return <tr key={"d"+i}><td><input type="checkbox" checked={!!force[it.row]} onChange={function(e){var v=e.target.checked;setForce(function(o){var n=Object.assign({},o);if(v)n[it.row]=true;else delete n[it.row];return n;});}}/></td>
+              <td>row {it.row}</td><td>{fmtDate(it.date)}</td><td>{it.desc}</td><td>{it.supplier} {it.note}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {list("zone",left.noZone.length+" row(s) with a quantity but an empty Zone (column B) — not imported: write "+CON_IMP_ZONE+" in column B","#b3302a",left.noZone,function(it,i){return <tr key={"z"+i}><td>row {it.row}</td><td>{it.desc||"(no description)"}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {list("qty",left.noQty.length+" "+CON_IMP_ZONE+" row(s) without a Real Qty — not imported","#b35c00",left.noQty,function(it,i){return <tr key={"q"+i}><td>row {it.row}</td><td>{it.desc}</td><td>{it.qty||"(empty)"}</td></tr>;})}
+          {list("date",left.noDate.length+" row(s) without a readable date — not imported","#b3302a",left.noDate,function(it,i){return <tr key={"t"+i}><td>row {it.row}</td><td>{it.desc}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {!fresh.length&&<div style={{fontSize:11.5,color:"#6f6b62",marginTop:4}}>A row is “already imported” when the same supplier, delivery note n° and date were imported before (a copied row keeps them: change the n° or tick it above). Formulas in Real Qty need the file saved by Excel so their value is stored.</div>}
+        </div>;
+      })()}
       {tKeys.length>0&&<div style={{marginBottom:10}}>
         <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Concrete types</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{tKeys.map(function(k){var v=tCho(k);
