@@ -824,7 +824,8 @@ function mpOpenReport(M,bRec,notes,filterLabel,bWbs){
 // histogram: a cell changes the head count of one week only (empty = the line's default).
 function MpPlan({plan,savePlan,M,can,known,isAdmin,onAlign,onUndoAlign,planAlign}){
   const [edit,setEdit]=useState(null);
-  var weeks=M.rows.filter(function(r){return r.src==="plan"||r.workers>0;}).map(function(r){return r.week;});
+  // every week of the project (plan, budget and real), so a line can be extended from the grid
+  var weeks=M.rows.map(function(r){return r.week;});
   var lines=plan.slice().sort(function(a,b){return (a.start||"").localeCompare(b.start||"")||(a.label||"").localeCompare(b.label||"");});
   function save(l){
     if(blockIfReadOnly())return;
@@ -839,6 +840,17 @@ function MpPlan({plan,savePlan,M,can,known,isAdmin,onAlign,onUndoAlign,planAlign
   function del(l){
     if(!invCanDelete()){safeAlert("Deleting is not allowed for your account.");return;}
     if(_invRemove(plan,savePlan,l,"the plan line “"+(l.label||"untitled")+"”"))setEdit(null);
+  }
+  // A cell outside the line's weeks: the line is extended to that week, the weeks in between get 0
+  // workers (only the week typed gets a head count).
+  function extendTo(l,w,v){
+    if(!can||blockIfReadOnly())return;
+    v=String(v).trim();if(v===""||!isFinite(Number(v))||!(Number(v)>0))return;
+    var bw=Object.assign({},l.byWeek||{}),st=l.start,en=l.end;
+    if(w<l.start){mpWeeksBetween(addCalDays(w,7),addCalDays(l.start,-7)).forEach(function(x){bw[x]=0;});st=w;}
+    if(w>l.end){mpWeeksBetween(addCalDays(l.end,7),addCalDays(w,-7)).forEach(function(x){bw[x]=0;});en=w;}
+    if(Number(v)!==_invNum(l.workers))bw[w]=Number(v);else delete bw[w];
+    _invUpsert(plan,savePlan,Object.assign({},l,{start:st,end:en,byWeek:bw}));
   }
   function setCell(l,w,v){
     if(!can||blockIfReadOnly())return;
@@ -887,7 +899,7 @@ function MpPlan({plan,savePlan,M,can,known,isAdmin,onAlign,onUndoAlign,planAlign
     {lines.length>0&&weeks.length>0&&<div className="card">
       <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         <div style={{fontWeight:700,fontSize:14}}>Workers per week</div>
-        <span style={{fontSize:11,color:"#888"}}>{can?"type in a cell to change that week only · empty = the line's default · highlighted = changed":"head count per line and per week"}</span>
+        <span style={{fontSize:11,color:"#888"}}>{can?"type in a cell to change that week only · empty = the line's default · highlighted = changed · dashed = outside the line's weeks: typing there extends the line":"head count per line and per week"}</span>
       </div>
       <div className="phone-scroll" style={{overflowX:"auto"}}>
         <table style={{borderCollapse:"collapse",fontSize:11,minWidth:"100%"}}>
@@ -902,7 +914,10 @@ function MpPlan({plan,savePlan,M,can,known,isAdmin,onAlign,onUndoAlign,planAlign
                 <td style={{position:"sticky",left:0,background:"#fff",padding:"3px 8px",fontWeight:600,whiteSpace:"nowrap",borderBottom:"1px solid #f0ede6"}}>{l.label||"(untitled)"}<span style={{fontWeight:400,color:"#888"}}> · {mpLineHpw(l)} h</span></td>
                 {weeks.map(function(w){
                   var inR=w>=l.start&&w<=l.end;
-                  if(!inR)return <td key={w} style={{borderBottom:"1px solid #f0ede6"}}/>;
+                  if(!inR)return <td key={w} style={{padding:1,borderBottom:"1px solid #f0ede6",textAlign:"center"}}>
+                    {can&&<input key={l.id+w+"x"+l.start+l.end} type="number" min="0" defaultValue="" title="Outside this line's weeks: type a head count to extend the line to this week"
+                      onBlur={function(e){if(e.target.value!=="")extendTo(l,w,e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")e.target.blur();}}
+                      style={{width:36,padding:"2px 1px",fontSize:11,textAlign:"center",border:"1px dashed #ece9e1",borderRadius:3,background:"transparent"}}/>}</td>;
                   var ov=(l.byWeek||{})[w],val=mpLineWorkers(l,w);
                   return <td key={w} style={{padding:1,borderBottom:"1px solid #f0ede6",textAlign:"center"}}>
                     {can?<input key={l.id+w+val} type="number" min="0" defaultValue={val} onBlur={function(e){if(String(e.target.value)!==String(val))setCell(l,w,e.target.value);}}
