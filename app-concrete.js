@@ -1791,7 +1791,7 @@ function ConSchedLinks({w,ix,edit,schedules,onChange}){
 // by giving it the same name), or skipped. The matches are remembered on this browser.
 // Concrete types and suppliers are matched by name; an unknown type can be created.
 // The workbook's Theo Qty is NEVER read: the theoretical m³ are typed in the app only.
-// A delivery note already imported (supplier + note + date) is never booked twice.
+// A delivery note already imported (supplier + note + date) is never booked twice; a note n° on several rows is counted row by row.
 var CON_IMP_ZONE="EXTERNAL";      // the only zone of the workbook imported here
 var CON_IMP_COLS={
   desc:/^(description|désignation|designation)$/i,
@@ -1908,10 +1908,13 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
     });
   }
   // delivery notes already booked
-  var done={};pours.forEach(function(p){(p.importNotes||[]).forEach(function(k){done[k]=1;});});
+  // Counted per row: a note n° that appears on 2 rows and was booked once leaves its 2nd row new.
+  var done={};pours.forEach(function(p){(p.importNotes||[]).forEach(function(k){done[k]=(done[k]||0)+1;});});
   function noteKey(it){return it.note?conImpKey(it.supplier)+"|"+it.note+"|"+it.date:"";}
-  var fresh=items.filter(function(it){var k=noteKey(it);return !k||!done[k]||force[it.row];});
-  var alreadyList=items.filter(function(it){var k=noteKey(it);return k&&done[k];});
+  var seen={},isDone={};
+  items.forEach(function(it){var k=noteKey(it);if(!k)return;seen[k]=(seen[k]||0)+1;if(seen[k]<=(done[k]||0))isDone[it.row]=1;});
+  var fresh=items.filter(function(it){return !isDone[it.row]||force[it.row];});
+  var alreadyList=items.filter(function(it){return isDone[it.row];});
   var already=alreadyList.length-alreadyList.filter(function(it){return force[it.row];}).length;
   // descriptions and types met
   var descs={};fresh.forEach(function(it){var k=conImpKey(it.desc);var o=descs[k]||(descs[k]={key:k,name:it.desc,n:0,qty:0,from:it.date,to:it.date,levels:{}});
@@ -2036,7 +2039,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
           {list("zone",left.noZone.length+" row(s) with a quantity but an empty Zone (column B) — not imported: write "+CON_IMP_ZONE+" in column B","#b3302a",left.noZone,function(it,i){return <tr key={"z"+i}><td>row {it.row}</td><td>{it.desc||"(no description)"}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
           {list("qty",left.noQty.length+" "+CON_IMP_ZONE+" row(s) without a Real Qty — not imported","#b35c00",left.noQty,function(it,i){return <tr key={"q"+i}><td>row {it.row}</td><td>{it.desc}</td><td>{it.qty||"(empty)"}</td></tr>;})}
           {list("date",left.noDate.length+" row(s) without a readable date — not imported","#b3302a",left.noDate,function(it,i){return <tr key={"t"+i}><td>row {it.row}</td><td>{it.desc}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
-          {!fresh.length&&<div style={{fontSize:11.5,color:"#6f6b62",marginTop:4}}>A row is “already imported” when the same supplier, delivery note n° and date were imported before (a copied row keeps them: change the n° or tick it above). Formulas in Real Qty need the file saved by Excel so their value is stored.</div>}
+          {!fresh.length&&<div style={{fontSize:11.5,color:"#6f6b62",marginTop:4}}>A row is “already imported” when the same supplier, delivery note n° and date were imported before, as many times as that note appears in the file (a copied row keeps them: change the n° or tick it above). Formulas in Real Qty need the file saved by Excel so their value is stored.</div>}
         </div>;
       })()}
       {tKeys.length>0&&<div style={{marginBottom:10}}>
