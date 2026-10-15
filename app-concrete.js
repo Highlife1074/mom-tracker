@@ -654,6 +654,30 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
       <td key="v" style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}{r.varPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varPct)}</div>}</td>];
   }
   var sortedTypes=conSortTypes(types);
+  // Inline edits: planned dates and theoretical m³ change in the table itself, no dialog.
+  function updW(id,patch){
+    if(blockIfReadOnly())return;
+    saveWbs(wbs.map(function(x){return x.id===id?Object.assign({},x,patch):x;}));
+  }
+  function setDate(w,k,v){
+    var n=Object.assign({start:w.start||"",finish:w.finish||""},{[k]:v||""});
+    if(n.start&&n.finish&&n.start>n.finish){safeAlert("The start is after the finish.");return;}
+    updW(w.id,{[k]:v||""});
+  }
+  function setTheo(w,tid,v){
+    var t=Object.assign({},w.theo||{});
+    if(v===null||!(v>0))delete t[tid];else t[tid]=v;
+    updW(w.id,{theo:t});
+  }
+  // The type whose theoretical the main row edits: the filtered type, or the WBS's only type.
+  function rowType(w){
+    if(typeId)return typeId;
+    var ks=Object.keys(w.theo||{}).filter(function(k){return _invNum(w.theo[k])>0;});
+    if(ks.length===1)return ks[0];
+    if(!ks.length&&types.length===1)return types[0].id;
+    return "";
+  }
+  var dIn={padding:"3px 4px",fontSize:11.5,width:118};
   var wbsZones=[...new Set(wbs.map(function(w){return w.zone;}).filter(Boolean))];
   var R={textAlign:"right"};
   if(!types.length)return <div className="empty"><div className="empty-ico">🏷</div><div className="empty-txt">Create the concrete types first (Types tab): every quantity is entered per type.</div></div>;
@@ -678,22 +702,40 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
       <tbody>{list.map(function(f){
         var w=f.wbs;
         var rows=[<tr key={w.id} onClick={function(){setEditing(w);}} style={{cursor:"pointer"}}>
-          <td><b>{w.code}</b> {w.name}{w.splitFrom&&<div style={{fontSize:10,color:"#888"}}>split from {w.splitFrom}</div>}</td>
+          <td title="Open the WBS (code, name, zone, schedule links)"><b>{w.code}</b> {w.name}{w.splitFrom&&<div style={{fontSize:10,color:"#888"}}>split from {w.splitFrom}</div>}</td>
           <td>{w.zone}</td>
-          <td style={{fontSize:12,whiteSpace:"nowrap"}}>{(function(){var e=effById[w.id]||w;var n=(w.schedLinks||[]).length;
-            return <span>{e.start||e.finish?fmtDate(e.start)+" → "+fmtDate(e.finish):<span style={{color:"#ef6c00"}}>no dates</span>}
+          <td style={{fontSize:12,whiteSpace:"nowrap"}} onClick={edit?function(e){e.stopPropagation();}:undefined}>{(function(){var e=effById[w.id]||w;var n=(w.schedLinks||[]).length;
+            var inl=edit&&!e._schedDates;
+            return <span>{inl
+              ?<span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
+                <input type="date" value={w.start||""} onChange={function(ev){setDate(w,"start",ev.target.value);}} style={dIn} title="Planned start"/>→
+                <input type="date" value={w.finish||""} onChange={function(ev){setDate(w,"finish",ev.target.value);}} style={dIn} title="Planned finish"/>
+                {(w.start||w.finish)&&<button type="button" title="Clear the planned dates" onClick={function(){updW(w.id,{start:"",finish:""});}}
+                  style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
+              </span>
+              :e.start||e.finish?fmtDate(e.start)+" → "+fmtDate(e.finish):<span style={{color:"#ef6c00"}}>no dates</span>}
               {n>0&&<div style={{fontSize:10,color:e._schedDates?"var(--gold-ink)":"#888"}} title={e._schedDates?"Dates from the schedule":"Linked, dates typed on the WBS"}>🗓 {n} activit{n===1?"y":"ies"}{e._schedDates?" · dates from schedule":""}</div>}</span>;})()}</td>
           <td><ConStatus f={f}/></td>
-          <td style={R}>{conFmt(f.theo)}</td><td style={R}>{conFmt(f.real)}</td>
+          <td style={R} onClick={edit?function(e){e.stopPropagation();}:undefined}>{(function(){
+            var rt=edit?rowType(w):"";
+            if(!rt)return <span title={edit?"Several types: edit them with “Detail per type”":""}>{conFmt(f.theo)}</span>;
+            return <span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
+              <ConNumCell value={_invNum((w.theo||{})[rt])||null} width={80} placeholder="m³" title={"Theoretical m³ — "+((types.find(function(t){return t.id===rt;})||{}).name||"")+" · empty = none"} onCommit={function(v){setTheo(w,rt,v);}}/>
+              {!typeId&&<span style={{fontSize:10,color:"#888"}}>{(types.find(function(t){return t.id===rt;})||{}).name}</span>}
+              {_invNum((w.theo||{})[rt])>0&&<button type="button" title="Delete this theoretical quantity" onClick={function(){setTheo(w,rt,null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
+            </span>;})()}</td><td style={R}>{conFmt(f.real)}</td>
           {cutCells(cutRows[w.id])}
           <td onClick={function(e){e.stopPropagation();}}>{edit&&(conSum(w.theo,allTypeIds)>CON_EPS||conSum(realIx[w.id],allTypeIds)>CON_EPS)&&<button className="btn btn-sm" title="Split into detailed WBS" onClick={function(){setSplitting(w);}}>✂ Split</button>}</td>
         </tr>];
         if(detail&&!typeId)sortedTypes.forEach(function(t){
           var tf=conWbsFigures(w,realIx,[t.id]);
-          if(tf.theo<=CON_EPS&&tf.real<=CON_EPS)return;
+          if(!edit&&tf.theo<=CON_EPS&&tf.real<=CON_EPS)return;
           rows.push(<tr key={w.id+t.id} style={{fontSize:12,color:"#555",background:"#fbfaf7"}}>
             <td style={{paddingLeft:24}}>{t.name}</td><td/><td/><td/>
-            <td style={R}>{conFmt(tf.theo)}</td><td style={R}>{conFmt(tf.real)}</td>
+            <td style={R}>{edit?<span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
+              <ConNumCell value={_invNum((w.theo||{})[t.id])||null} width={80} placeholder="—" title={"Theoretical m³ — "+t.name+" · empty = none"} onCommit={function(v){setTheo(w,t.id,v);}}/>
+              {_invNum((w.theo||{})[t.id])>0&&<button type="button" title="Delete this theoretical quantity" onClick={function(){setTheo(w,t.id,null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
+            </span>:conFmt(tf.theo)}</td><td style={R}>{conFmt(tf.real)}</td>
             {lc&&cutCells(conCutoffRows(lc,[w],pours,[t.id])[0])}<td/></tr>);
         });
         return rows;
@@ -702,7 +744,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
         <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{conFmt(tot.real)}</td>
         {lc&&<><td style={R}>{cutTot.nPct} WBS</td><td style={R}>{conFmt(cutTot.earned)}</td><td style={Object.assign({color:conLossCol(cutTot.variance)},R)}>{cutTot.nPct?(cutTot.variance>0?"+":"")+conFmt(cutTot.variance):"—"}</td></>}<td/></tr>
       </tbody></table></div>}
-    <div style={{fontSize:11,color:"#888",marginTop:8}}>Poured = the pours, a volume, not a progress. {lc?"The loss / gain comes from the cut-off of "+fmtDate(lc.date)+": earned = theoretical × the progress % typed there; a WBS without a % shows —.":"The loss / gain of concrete appears once a cut-off has progress % typed by hand."} Click a WBS to edit its dates and theoretical quantities.</div>
+    <div style={{fontSize:11,color:"#888",marginTop:8}}>Poured = the pours, a volume, not a progress. {lc?"The loss / gain comes from the cut-off of "+fmtDate(lc.date)+": earned = theoretical × the progress % typed there; a WBS without a % shows —.":"The loss / gain of concrete appears once a cut-off has progress % typed by hand."} {edit?"Planned dates and theoretical m³ are edited in the table (✕ clears them; with several types use “Detail per type”). Click the WBS name for the other fields.":"Click a WBS to see its details."}</div>
     {editing&&<ConWbsEditor w={editing} types={types} wbs={wbs} pours={pours} realIx={realIx} zones={zones} edit={edit} schedIx={schedIx} schedules={schedules}
       onSave={function(d){_invUpsert(wbs,saveWbs,d);setEditing(null);}}
       onDelete={wbs.some(function(x){return x.id===editing.id;})&&edit&&invCanDelete()?function(d){
