@@ -3079,6 +3079,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [quickF,setQuickF]=useState("");
   const [showTl,setShowTl]=useState(true);
   const [showGaps,setShowGaps]=useState(false);
+  const [showPrint,setShowPrint]=useState(false);
   const [linkedOpen,setLinkedOpen]=useState(true);
   // Package sheet tabs: each document is edited in ONE place (Submissions); the rest is read
   // or linked from the other tabs. Remembered per browser.
@@ -3905,26 +3906,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     <div className="page-hdr">
       <div><div className="page-title">Packages</div><div className="page-sub">Submissions, contracts and addendums — by department</div></div>
       <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
-      <button className="btn btn-sm" onClick={function(){
-  var leftnav=document.querySelector('.leftnav');
-  var rsidebar=document.querySelector('.rsidebar');
-  var prevL=leftnav?leftnav.style.display:'';
-  var prevR=rsidebar?rsidebar.style.display:'';
-  if(leftnav)leftnav.style.display='none';
-  if(rsidebar)rsidebar.style.display='none';
-  // Narrow page margins and no screen padding, so the wide table uses the whole sheet.
-  var pst=document.createElement('style');
-  pst.textContent='@page{size:297mm 210mm;margin:4mm}';
-  document.head.appendChild(pst);
-  document.body.classList.add('printing-tenders');
-  window.print();
-  setTimeout(function(){
-    if(leftnav)leftnav.style.display=prevL;
-    if(rsidebar)rsidebar.style.display=prevR;
-    document.body.classList.remove('printing-tenders');
-    if(pst.parentNode)pst.parentNode.removeChild(pst);
-  },500);
-}} style={{marginLeft:"auto"}}>🖨️ Print</button>
+      <button className="btn btn-sm" onClick={function(){setShowPrint(true);}} title="Choose the sections to print" style={{marginLeft:"auto"}}>🖨️ Print</button>
       {(function(){
         var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
         return <button className="btn btn-sm" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
@@ -3932,15 +3914,17 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       })()}
       <button className="btn btn-gold" onClick={openNew}>＋ New Package</button>
     </div>
+    {showPrint&&<TenderPrintModal onClose={function(){setShowPrint(false);}}
+      onPrint={function(o){setShowPrint(false);setTimeout(function(){tenderPrint(o);},50);}}/>}
     {showGaps&&<TenderGapsModal tenders={tenders} saveTenders={saveTenders} packages={packages} people={people}
       onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>}
-    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+    <div className="tp-noprint" style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search package, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
       <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All departments</button>
       {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
       {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+    <div className="tp-noprint" style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
       <span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#9b968b",width:70}}>Phase</span>
       {TENDER_PHASES.map(function(p){
         var on=!!phaseSel[p.k];
@@ -3951,7 +3935,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           {p.label}<span style={{fontSize:10,opacity:.8,fontWeight:700}}>{phaseCounts[p.k]}</span></button>;
       })}
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+    <div className="tp-noprint" style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#9b968b",width:70}}>Show only</span>
       {[["cl","With client","At least one document waits for the client's answer"],["late","Late delivery","Forecast delivery after the start on site"],["na","Not awarded","No subcontractor recorded in Awards"]].map(function(x){
         var on=quickF===x[0];
@@ -3975,7 +3959,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       if(!totBudget&&!totAcc&&!totInstructed&&releasedTenders.length===0)return null;
       var totAllBudget=filtered.filter(function(t){return !t.cancelled;}).reduce(function(s,t){return s+Number(t.budget||0);},0);
       var totRemainAwarded=totAllBudget-totBudget;
-      return <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"stretch"}}>
+      return <div className="tp-kpis" style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"stretch"}}>
         <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px"}}>
           <div style={{fontSize:9,color:"#888",marginBottom:2,textTransform:"uppercase",fontWeight:600}}>Total Budget</div>
           <div style={{fontSize:16,fontWeight:800}}>{totAllBudget.toLocaleString()}</div>
@@ -4003,11 +3987,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         </div>
       </div>;
     })()}
-    {filtered.length>0&&<FlowDocLegend/>}
-    {filtered.length>0&&listRange&&<TenderTimelineLegend/>}
+    {filtered.length>0&&<div className="tp-legend"><FlowDocLegend/></div>}
+    {filtered.length>0&&listRange&&<div className="tp-legend tp-tl"><TenderTimelineLegend/></div>}
     {filtered.length===0
       ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No packages found.</div></div>
-      :<div style={{position:"relative"}}><table className="tbl tbl-tenders">
+      :<div className="tp-table" style={{position:"relative"}}><table className="tbl tbl-tenders">
         <thead><tr className="tgroup-hdr">
           {/* One label over each family of columns, so the eye knows where it is in the row. */}
           <th colSpan={5}>Package</th>
@@ -4035,7 +4019,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           })}
           <th className="tcol-sep" style={{minWidth:160,color:"#7b1fa2"}}>Next Step</th>
         </tr></thead>
-        {listRange&&<tbody><tr style={{background:"#fafaf8"}}><td colSpan={99} style={{padding:"3px 10px"}}>
+        {listRange&&<tbody className="tp-tl"><tr style={{background:"#fafaf8"}}><td colSpan={99} style={{padding:"3px 10px"}}>
             <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:12,alignItems:"center"}}>
               <span style={{fontSize:10,color:"#9b968b"}}>▸ now · who holds it · since</span><TenderMiniScale range={listRange}/></div></td></tr></tbody>}
           {filtered.map(function(td,rowIdx){
@@ -4173,7 +4157,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <textarea value={td.nextStep||""} onChange={function(e){var el=e.target;el.style.height="auto";el.style.height=el.scrollHeight+"px";var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{nextStep:e.target.value});});saveTenders(d);}} ref={function(el){if(el){el.style.height="auto";el.style.height=el.scrollHeight+"px";}}} placeholder="Next step…" rows={1} style={{width:"100%",fontSize:11,padding:"3px 7px",border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",boxSizing:"border-box",resize:"none",overflow:"hidden",lineHeight:1.4,minWidth:160,whiteSpace:"pre-wrap"}}/>
             </td>
           </tr>
-          {_now&&<tr style={{cursor:"pointer",background:rowBg}} onClick={function(){setSelTender(td);}}>
+          {_now&&<tr className="tp-tl" style={{cursor:"pointer",background:rowBg}} onClick={function(){setSelTender(td);}}>
             <td colSpan={99} style={{paddingTop:0,paddingBottom:6,borderTop:"none"}}>
               <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:12,alignItems:"center"}}>
                 <span style={{fontSize:11,color:_whoCol[_now.who]||"#6f6b62",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={_now.text}>
@@ -6935,6 +6919,110 @@ function tenderGaps(td){
   });
   return out;
 }
+// ── Packages list print ────────────────────────────────────────────────────
+// The live table is printed (same badges and colours as on screen) with only the column
+// families ticked in the window, then zoomed down so its whole width fits on the sheet.
+var TP_SECTIONS=[
+  {k:"fin",label:"Finance",hint:"Budget, proposed, instructed, instruction, variance"},
+  {k:"dat",label:"Dates",hint:"Target start, new starting date"},
+  {k:"sub",label:"Submission steps",hint:"One column per step"},
+  {k:"fol",label:"Follow-up",hint:"Next step"},
+  {k:"tl",label:"Timelines",hint:"Status line and mini timeline under each package"},
+  {k:"kpis",label:"Summary cards",hint:"Totals at the top"},
+  {k:"legend",label:"Legends",hint:"Colour keys above the table"}
+];
+var TP_DEFAULT={fin:true,dat:true,sub:true,fol:true,tl:true,kpis:true,legend:true,size:"A4",orient:"landscape"};
+function tpLoad(){
+  try{var o=JSON.parse(localStorage.getItem("pp_tender_print")||"null");if(o)return Object.assign({},TP_DEFAULT,o);}catch(e){}
+  return Object.assign({},TP_DEFAULT);
+}
+function tenderPrint(o){
+  try{localStorage.setItem("pp_tender_print",JSON.stringify(o));}catch(e){}
+  var nSteps=TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length;
+  // Cells of a package row: 5 package, 5 finance, 2 dates, the steps, 1 follow-up.
+  // The status / phase / totals rows are a single colSpan cell, never hit by these selectors.
+  var groups={fin:{g:2,from:6,to:10},dat:{g:3,from:11,to:12},sub:{g:4,from:13,to:12+nSteps},fol:{g:5,from:13+nSteps,to:13+nSteps}};
+  var hide=[];
+  Object.keys(groups).forEach(function(k){
+    if(o[k])return;
+    var g=groups[k];
+    hide.push("body.printing-tenders .tbl-tenders tr.tgroup-hdr>th:nth-child("+g.g+")");
+    for(var c=g.from;c<=g.to;c++){
+      hide.push("body.printing-tenders .tbl-tenders thead tr:not(.tgroup-hdr)>th:nth-child("+c+")");
+      hide.push("body.printing-tenders .tbl-tenders tbody.tgroup>tr:not(.tp-tl):not(.tphase-hdr)>td:nth-child("+c+")");
+    }
+  });
+  if(!o.tl)hide.push("body.printing-tenders .tp-tl");
+  if(!o.kpis)hide.push("body.printing-tenders .tp-kpis");
+  if(!o.legend)hide.push("body.printing-tenders .tp-legend");
+  var mm=4;
+  var W=o.size==="A3"?420:297,H=o.size==="A3"?297:210;
+  if(o.orient==="portrait"){var t=W;W=H;H=t;}
+  var pageW=Math.floor((W-2*mm)*96/25.4);
+  var st=document.createElement("style");
+  st.textContent="@page{size:"+W+"mm "+H+"mm;margin:"+mm+"mm}"+(hide.length?hide.join(",")+"{display:none!important}":"");
+  document.head.appendChild(st);
+  var body=document.body;
+  body.classList.add("printing-tenders");
+  var content=document.querySelector(".content");
+  var wrap=document.querySelector(".tp-table");
+  var prevW=content?content.style.width:"";
+  // Lay the page out at the printable width, then shrink the table if it still overflows.
+  if(content)content.style.width=pageW+"px";
+  if(wrap){
+    var tbl=wrap.querySelector("table");
+    var need=tbl?tbl.scrollWidth:pageW;
+    wrap.style.zoom=need>pageW?String(pageW/need):"";
+  }
+  var done=false;
+  function restore(){
+    if(done)return;done=true;
+    body.classList.remove("printing-tenders");
+    if(st.parentNode)st.parentNode.removeChild(st);
+    if(content)content.style.width=prevW;
+    if(wrap)wrap.style.zoom="";
+    window.removeEventListener("afterprint",restore);
+  }
+  window.addEventListener("afterprint",restore);
+  window.print();
+  setTimeout(restore,1000);
+}
+function TenderPrintModal({onClose,onPrint}){
+  const [o,setO]=useState(tpLoad);
+  function set(k,v){var n=Object.assign({},o);n[k]=v;setO(n);}
+  function chip(on){return {borderRadius:16,background:on?"var(--ink)":"#fff",color:on?"#fff":"var(--ink-3)",borderColor:on?"var(--ink)":"#d9d5ca"};}
+  return <div className="overlay" onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:480}}>
+      <div className="modal-hdr">
+        <div className="modal-title">🖨️ Print packages</div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+      </div>
+      <div className="modal-body">
+        <div style={{fontSize:12,color:"#6f6b62",marginBottom:10}}>The Package columns always print. The table is scaled to the page width; the current filters apply.</div>
+        {TP_SECTIONS.map(function(s,i){
+          return <React.Fragment key={s.k}>
+            {i===4&&<div style={{borderTop:"1px solid var(--rule-2)",margin:"8px 0"}}/>}
+            <label style={{display:"flex",alignItems:"baseline",gap:8,padding:"4px 0",cursor:"pointer",fontSize:13}}>
+              <input type="checkbox" checked={!!o[s.k]} onChange={function(e){set(s.k,e.target.checked);}} style={{width:"auto",margin:0}}/>
+              <span style={{fontWeight:600}}>{s.label}</span><span style={{fontSize:11,color:"#9b968b"}}>{s.hint}</span>
+            </label>
+          </React.Fragment>;
+        })}
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:12}}>
+          <span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#9b968b",width:50}}>Page</span>
+          {["A4","A3"].map(function(z){return <button key={z} className="btn btn-sm" style={chip(o.size===z)} onClick={function(){set("size",z);}}>{z}</button>;})}
+          <span style={{width:8}}/>
+          {[["landscape","Landscape"],["portrait","Portrait"]].map(function(x){return <button key={x[0]} className="btn btn-sm" style={chip(o.orient===x[0])} onClick={function(){set("orient",x[0]);}}>{x[1]}</button>;})}
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-gold" onClick={function(){onPrint(o);}}>🖨️ Print</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClose}){
   const [drafts,setDrafts]=useState({});
   const [fieldF,setFieldF]=useState("");
