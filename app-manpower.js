@@ -14,13 +14,15 @@
 //                     filtered. approved / planned are the older manual figures:
 //                     approved is still used as the week's budget when no plan line covers it.
 //
-//   pp_manpower_meta  {id:"budget", kind:"budget", lines:[{id, wbs, amount (€), note}], amount (= Σ lines,
+//   pp_manpower_meta  {id:"budget", kind:"budget", lines:[{id, wbs, amount (€), awarded (€), awardedTo, note}],
+//                     amount (= Σ lines,
 //                     the only figure of the first version), rate (€/h), start, end, byWeek:{monday: h},
 //                     alignedTo, updatedBy, updatedAt} — the global budget, set by the admin only — and the
 //                     overview notes {id, kind:"note", date, at, author, text}.
 //
 // Three series:
-//   Budget   = Σ budget lines (€, one per budget WBS the money comes from) ÷ hourly rate, spread evenly over the working days (Mon–Sat) from start to end;
+//   Budget   = Σ budget lines (€, one per budget WBS the money comes from) less what was awarded to a
+//              subcontractor on each line (net = amount − awarded) ÷ hourly rate, spread evenly over the working days (Mon–Sat) from start to end;
 //              byWeek holds the weeks the admin aligned on the real hours ("budget = real" on the past).
 //   Planned  = Σ plan lines of a week (workers that week × hours per worker per week).
 //   Real     = the hours entered or imported.
@@ -126,9 +128,12 @@ function mpBudgetLines(b){
   if(Array.isArray(b.lines)&&b.lines.length)return b.lines;
   return mpHas(b.amount)&&Number(b.amount)?[{id:"l0",wbs:"",amount:Number(b.amount),note:""}]:[];
 }
-function mpBudgetAmount(b,wbs){
+// Net of a line: the budget less what was awarded to a subcontractor (never below 0). The hours
+// budget is built on the net: the awarded part is no longer our own manpower.
+function mpLineNet(l){return Math.max(0,_invNum(l.amount)-_invNum(l.awarded));}
+function mpBudgetAmount(b,wbs,what){
   return mpBudgetLines(b).filter(function(l){return !wbs||mpActKey(l.wbs)===mpActKey(wbs);})
-    .reduce(function(s,l){return s+_invNum(l.amount);},0);
+    .reduce(function(s,l){return s+(what==="gross"?_invNum(l.amount):what==="awarded"?_invNum(l.awarded):mpLineNet(l));},0);
 }
 function mpBudgetHours(b,wbs){return b&&mpHas(b.rate)&&Number(b.rate)>0?mpBudgetAmount(b,wbs)/Number(b.rate):0;}
 function mpBudgetRate(b){return b&&mpHas(b.rate)&&Number(b.rate)>0?Number(b.rate):0;}
@@ -401,8 +406,12 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,bRec,meta,saveMeta,
     if(!isAdmin){safeAlert("Only the admin may change the budget.");return;}
     if(blockIfReadOnly())return;
     var lines=(b.lines||[]).filter(function(l){return String(l.wbs||"").trim()||mpHas(l.amount);})
-      .map(function(l){return {id:l.id||uuid(),wbs:String(l.wbs||"").trim(),amount:mpHas(l.amount)?Number(l.amount):0,note:String(l.note||"").trim()};});
+      .map(function(l){return {id:l.id||uuid(),wbs:String(l.wbs||"").trim(),amount:mpHas(l.amount)?Number(l.amount):0,
+        awarded:mpHas(l.awarded)?Number(l.awarded):0,awardedTo:String(l.awardedTo||"").trim(),note:String(l.note||"").trim()};});
     var amount=lines.reduce(function(s,l){return s+l.amount;},0);
+    var over=lines.filter(function(l){return l.awarded>l.amount;});
+    if(over.length&&!safeConfirm("The awarded amount is above the budget on "+over.map(function(l){return l.wbs||"(no WBS)";}).join(", ")+
+      ": the net of these lines counts as 0 €. Save anyway?"))return;
     if(!(amount>0)||!(Number(b.rate)>0)){safeAlert("Give at least one budget line in € and the hourly rate.");return;}
     if(lines.some(function(l){return !(l.amount>0);})){safeAlert("Every budget line needs an amount in € (remove the empty ones).");return;}
     if(!isValidDate(b.start)||!isValidDate(b.end)||b.end<b.start){safeAlert("Give the start and the end of the budget (the end after the start).");return;}
@@ -446,7 +455,7 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,bRec,meta,saveMeta,
   var nAligned=bRec?Object.keys(bRec.byWeek||{}).length:0;
   return <div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-      <InvBig label="Budget · whole duration" value={hasB?t.bgt:null} unit="h" colour={MP_COL_BGT} sub={hasB?(bRec?invFmt(mpBudgetAmount(bRec,filtered?fWbs:""),0)+" € · "+invFmt(rate,2)+" €/h"+(filtered?" · budget lines of this WBS":""):""):filtered&&bRec?"no budget line for this filter":"not set"+(isAdmin?" — set it below":" (admin)")}/>
+      <InvBig label="Budget · whole duration" value={hasB?t.bgt:null} unit="h" colour={MP_COL_BGT} sub={hasB?(bRec?invFmt(mpBudgetAmount(bRec,filtered?fWbs:""),0)+" € net"+(mpBudgetAmount(bRec,filtered?fWbs:"","awarded")?" (awarded "+invFmt(mpBudgetAmount(bRec,filtered?fWbs:"","awarded"),0)+" € deducted)":"")+" · "+invFmt(rate,2)+" €/h"+(filtered?" · budget lines of this WBS":""):""):filtered&&bRec?"no budget line for this filter":"not set"+(isAdmin?" — set it below":" (admin)")}/>
       <InvBig label="Budget to date" value={hasB&&t.cutoff?t.bgtToDate:null} unit="h" colour={MP_COL_BGT} sub={hasB&&t.cutoff?"to W"+mpIsoWeek(t.cutoff)+(rate?" · "+eur(t.bgtToDate):""):""}/>
       <InvBig label="Planned · whole duration" value={t.budget} unit="h" colour={MP_COL_BUDGET} sub={t.planStart?fmtDate(t.planStart)+" → "+fmtDate(addCalDays(t.planEnd,6))+" · "+t.planWeeks+" weeks":""}/>
       <InvBig label="Planned to date" value={t.cutoff?t.budgetToDate:null} unit="h" colour={MP_COL_BUDGET} sub={t.cutoff?"to W"+mpIsoWeek(t.cutoff):"no real hours yet"}/>
@@ -461,6 +470,7 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,bRec,meta,saveMeta,
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <div style={{fontWeight:700,fontSize:14}}>💶 Budget</div>
         {bRec?<span style={{fontSize:12.5,color:"#444"}}>
+          {mpBudgetAmount(bRec,"","awarded")>0&&<span>{invFmt(mpBudgetAmount(bRec,"","gross"),0)} € − awarded {invFmt(mpBudgetAmount(bRec,"","awarded"),0)} € = </span>}
           <b>{invFmt(mpBudgetAmount(bRec),0)} €</b> ÷ <b>{invFmt(rate,2)} €/h</b> = <b style={{color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)} h</b>
           {" "}spread from {fmtDate(bRec.start)} to {fmtDate(bRec.end)}
           {nAligned>0&&<span style={{color:"#b35c00"}}> · aligned on the real up to W{mpIsoWeek(bRec.alignedTo)} ({nAligned} week{nAligned!==1?"s":""}) → total {invFmt(M0.tot.bgt,0)} h{rate?" = "+invFmt(M0.tot.bgt*rate,0)+" €":""}</span>}
@@ -474,18 +484,24 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,bRec,meta,saveMeta,
         </span>
       </div>
       {bRec&&<table className="tbl" style={{fontSize:12,marginTop:8}}>
-        <thead><tr><th>Budget WBS</th><th style={{textAlign:"right"}}>€</th><th style={{textAlign:"right"}}>Hours</th><th style={{textAlign:"right"}}>Share</th><th>Note</th></tr></thead>
+        <thead><tr><th>Budget WBS</th><th style={{textAlign:"right"}}>Budget €</th><th style={{textAlign:"right"}} title="Awarded to a subcontractor: deducted from the budget">Awarded €</th><th>Awarded to</th>
+          <th style={{textAlign:"right"}} title="Budget − awarded: our own manpower">Net €</th><th style={{textAlign:"right"}}>Hours</th><th style={{textAlign:"right"}}>Share</th><th>Note</th></tr></thead>
         <tbody>{mpBudgetLines(bRec).map(function(l){
-          var tot=mpBudgetAmount(bRec);
+          var tot=mpBudgetAmount(bRec),net=mpLineNet(l),aw=_invNum(l.awarded);
           return <tr key={l.id}>
             <td style={{fontWeight:600}}>{l.wbs||<span style={{color:"#999",fontStyle:"italic"}}>(no WBS)</span>}</td>
             <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(_invNum(l.amount),0)}</td>
-            <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{rate?invFmt(_invNum(l.amount)/rate,0):"—"}</td>
-            <td style={{textAlign:"right",color:"#888"}}>{tot?Math.round(_invNum(l.amount)/tot*100)+" %":"—"}</td>
+            <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:aw?"#b35c00":"#ccc"}}>{aw?"− "+invFmt(aw,0):"—"}</td>
+            <td style={{fontSize:11.5}}>{l.awardedTo||""}{aw>_invNum(l.amount)&&<span style={{color:"#b3302a"}}> · above the budget</span>}</td>
+            <td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700}}>{invFmt(net,0)}</td>
+            <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{rate?invFmt(net/rate,0):"—"}</td>
+            <td style={{textAlign:"right",color:"#888"}}>{tot?Math.round(net/tot*100)+" %":"—"}</td>
             <td style={{fontSize:11,color:"#666"}}>{l.note||""}</td>
           </tr>;
         })}
-        <tr style={{background:"#f3f8f4",fontWeight:700}}><td>Total</td><td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(mpBudgetAmount(bRec),0)}</td>
+        <tr style={{background:"#f3f8f4",fontWeight:700}}><td>Total</td><td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(mpBudgetAmount(bRec,"","gross"),0)}</td>
+          <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#b35c00"}}>{mpBudgetAmount(bRec,"","awarded")?"− "+invFmt(mpBudgetAmount(bRec,"","awarded"),0):"—"}</td><td/>
+          <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(mpBudgetAmount(bRec),0)}</td>
           <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)}</td><td/><td/></tr></tbody>
       </table>}
       {!isAdmin&&<div style={{fontSize:11,color:"#9b968b",marginTop:4}}>Only the admin may change the budget.</div>}
@@ -540,7 +556,9 @@ function MpBudgetEditor({b,knownActs,onSave,onClose}){
   function setLine(i,k,v){setD(function(o){return Object.assign({},o,{lines:(o.lines||[]).map(function(l,j){if(j!==i)return l;var u=Object.assign({},l);u[k]=v;return u;})});});}
   function addLine(){setD(function(o){return Object.assign({},o,{lines:(o.lines||[]).concat([{id:uuid(),wbs:"",amount:"",note:""}])});});}
   function delLine(i){setD(function(o){return Object.assign({},o,{lines:(o.lines||[]).filter(function(_,j){return j!==i;})});});}
-  var total=(d.lines||[]).reduce(function(s,l){return s+_invNum(l.amount);},0);
+  var gross=(d.lines||[]).reduce(function(s,l){return s+_invNum(l.amount);},0);
+  var awarded=(d.lines||[]).reduce(function(s,l){return s+_invNum(l.awarded);},0);
+  var total=(d.lines||[]).reduce(function(s,l){return s+mpLineNet(l);},0);
   var H=mpHas(d.rate)&&Number(d.rate)>0?total/Number(d.rate):0,ws=isValidDate(d.start)&&isValidDate(d.end)&&d.end>=d.start?mpWeeksBetween(d.start,d.end).length:0;
   var months=ws?Math.max(1,Math.round(ws/4.345)):0;
   var inp={padding:"6px 8px",fontSize:13};
@@ -548,22 +566,29 @@ function MpBudgetEditor({b,knownActs,onSave,onClose}){
     <button className="btn" onClick={onClose}>Cancel</button>
     <button className="btn btn-pri" onClick={function(){onSave(d);}}>Save</button>
   </React.Fragment>;
-  return <InvModal title="💶 Manpower budget" width={700} onClose={onClose} footer={footer}>
+  return <InvModal title="💶 Manpower budget" width={920} onClose={onClose} footer={footer}>
     <div style={{fontWeight:700,fontSize:13,marginBottom:6}}>Budget lines <span style={{fontWeight:400,fontSize:11,color:"#888"}}>— one per budget WBS the money comes from</span></div>
     <datalist id="mp-bgt-wbs">{(knownActs||[]).map(function(n){return <option key={n} value={n}/>;})}</datalist>
     <table className="tbl" style={{fontSize:12,marginBottom:6}}>
-      <thead><tr><th>Budget WBS</th><th style={{textAlign:"right",width:130}}>€</th><th>Note</th><th style={{width:30}}></th></tr></thead>
+      <thead><tr><th>Budget WBS</th><th style={{textAlign:"right",width:115}}>Budget €</th><th style={{textAlign:"right",width:115}} title="Subcontract awarded on this line: deducted from the budget">Awarded €</th>
+        <th style={{width:150}}>Awarded to</th><th style={{textAlign:"right",width:95}}>Net €</th><th>Note</th><th style={{width:30}}></th></tr></thead>
       <tbody>{(d.lines||[]).map(function(l,i){
         return <tr key={l.id||i}>
           <td><input type="text" list="mp-bgt-wbs" value={l.wbs||""} onChange={function(e){setLine(i,"wbs",e.target.value);}} placeholder="e.g. 3.2 External works — labour" style={{width:"100%",padding:"4px 6px"}}/></td>
           <td><input type="number" min="0" value={l.amount} onChange={function(e){setLine(i,"amount",e.target.value);}} style={{width:"100%",padding:"4px 6px",textAlign:"right"}}/></td>
+          <td><input type="number" min="0" value={l.awarded===undefined?"":l.awarded} onChange={function(e){setLine(i,"awarded",e.target.value);}} placeholder="0" title="Amount of the subcontract awarded on this line" style={{width:"100%",padding:"4px 6px",textAlign:"right",background:_invNum(l.awarded)?"#fff4dc":"#fff"}}/></td>
+          <td><input type="text" value={l.awardedTo||""} onChange={function(e){setLine(i,"awardedTo",e.target.value);}} placeholder="subcontractor" style={{width:"100%",padding:"4px 6px"}}/></td>
+          <td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:_invNum(l.awarded)>_invNum(l.amount)?"#b3302a":"#14171c"}}>{invFmt(mpLineNet(l),0)}</td>
           <td><input type="text" value={l.note||""} onChange={function(e){setLine(i,"note",e.target.value);}} placeholder="optional" style={{width:"100%",padding:"4px 6px"}}/></td>
           <td><button onClick={function(){delLine(i);}} title="Remove the line" style={{background:"none",border:"none",cursor:"pointer",color:"#bbb"}}>✕</button></td>
         </tr>;
       })}
-      <tr style={{background:"#f3f8f4",fontWeight:700}}><td>Total</td><td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(total,0)} €</td><td/><td/></tr></tbody>
+      <tr style={{background:"#f3f8f4",fontWeight:700}}><td>Total</td><td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(gross,0)}</td>
+        <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#b35c00"}}>{awarded?"− "+invFmt(awarded,0):"—"}</td><td/>
+        <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(total,0)} €</td><td/><td/></tr></tbody>
     </table>
-    <button className="btn btn-sm" onClick={addLine} style={{marginBottom:12}}>＋ Budget line</button>
+    <button className="btn btn-sm" onClick={addLine} style={{marginBottom:4}}>＋ Budget line</button>
+    <div style={{fontSize:11,color:"#9b968b",marginBottom:12}}>Awarded = the part of a line given to a subcontractor (signed contract): it is deducted, and the hours budget is built on the net.</div>
     <div className="frow">
       <div className="fg"><label>Hourly rate (€/h)</label><input type="number" min="0" step="0.01" value={d.rate} onChange={function(e){set("rate",e.target.value);}} style={inp}/></div>
     </div>
@@ -690,9 +715,9 @@ function mpOpenReport(M,bRec,notes,filterLabel,bWbs){
   html+='<div class="kpis">'+kpi.map(function(k){return '<div class="k"><span>'+esc(k[0])+'</span><b>'+k[1]+'</b><i>'+esc(k[2])+'</i></div>';}).join("")+'</div>';
   var bl=mpBudgetLines(bRec);
   if(bl.length&&!filterLabel){
-    html+='<h2>Budget lines</h2><table><thead><tr><th>Budget WBS</th><th>€</th><th>Hours</th><th style="text-align:left">Note</th></tr></thead><tbody>'+
-      bl.map(function(l){return '<tr><td>'+esc(l.wbs||"(no WBS)")+'</td><td>'+invFmt(_invNum(l.amount),0)+'</td><td>'+(rate?invFmt(_invNum(l.amount)/rate,0):"—")+'</td><td style="text-align:left">'+esc(l.note||"")+'</td></tr>';}).join("")+
-      '<tr class="tot"><td>Total</td><td>'+invFmt(mpBudgetAmount(bRec),0)+'</td><td>'+(rate?invFmt(mpBudgetAmount(bRec)/rate,0):"—")+'</td><td></td></tr></tbody></table>';
+    html+='<h2>Budget lines</h2><table><thead><tr><th>Budget WBS</th><th>Budget €</th><th>Awarded €</th><th style="text-align:left">Awarded to</th><th>Net €</th><th>Hours</th><th style="text-align:left">Note</th></tr></thead><tbody>'+
+      bl.map(function(l){var net=mpLineNet(l),aw=_invNum(l.awarded);return '<tr><td>'+esc(l.wbs||"(no WBS)")+'</td><td>'+invFmt(_invNum(l.amount),0)+'</td><td>'+(aw?"− "+invFmt(aw,0):"—")+'</td><td style="text-align:left">'+esc(l.awardedTo||"")+'</td><td>'+invFmt(net,0)+'</td><td>'+(rate?invFmt(net/rate,0):"—")+'</td><td style="text-align:left">'+esc(l.note||"")+'</td></tr>';}).join("")+
+      '<tr class="tot"><td>Total</td><td>'+invFmt(mpBudgetAmount(bRec,"","gross"),0)+'</td><td>'+(mpBudgetAmount(bRec,"","awarded")?"− "+invFmt(mpBudgetAmount(bRec,"","awarded"),0):"—")+'</td><td></td><td>'+invFmt(mpBudgetAmount(bRec),0)+'</td><td>'+(rate?invFmt(mpBudgetAmount(bRec)/rate,0):"—")+'</td><td></td></tr></tbody></table>';
   }
   html+='<h2>Cumulative hours</h2>'+mpReportChart(M);
   // months
