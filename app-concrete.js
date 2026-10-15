@@ -362,6 +362,7 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
   var schedIx=conSchedIndex(schedules);
   var wbsEff=conEffectiveWbs(wbs,schedIx);
   const [tab,setTab]=useState(wbs.length?"overview":types.length?"wbs":"types");
+  const [importing,setImporting]=useState(false);
   var edit=canEdit&&!window._ppReadOnly;
   var realIx=conRealIndex(pours);
   var common={types:types,wbs:wbs,pours:pours,realIx:realIx,zones:zones,edit:edit,saveTypes:saveTypes,saveWbs:saveWbs,savePours:savePours,cutoffs:cutoffs,saveCutoffs:saveCutoffs,schedules:schedules||[],schedIx:schedIx,wbsEff:wbsEff};
@@ -373,7 +374,9 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
         <div className="page-sub">Theoretical quantities per WBS and per type, against what is really poured. Curve, variances in total and per WBS, and the quantities still to come.</div>
       </div>
       {!edit&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Concrete editor”"}</span>}
+      {edit&&<button className="btn btn-sm" onClick={function(){setImporting(true);}} title="Delivery notes from the site follow-up workbook (e.g. sheet SUPERSTRUCTURE), descriptions matched to your WBS">⬆ Import Excel</button>}
     </div>
+    {importing&&<ConImportModal types={types} saveTypes={saveTypes} wbs={wbs} saveWbs={saveWbs} pours={pours} savePours={savePours} onClose={function(){setImporting(false);}}/>}
     <div className="filter-bar">
       {TABS.map(function(t){return <button key={t[0]} className={"fchip"+(tab===t[0]?" on":"")} onClick={function(){setTab(t[0]);}}>{t[1]}</button>;})}
     </div>
@@ -1678,4 +1681,286 @@ function ConSchedLinks({w,ix,edit,schedules,onChange}){
     {picking&&<ConSchedPicker schedules={schedules} ix={ix} links={w.schedLinks} zone={w.zone} onClose={function(){setPicking(false);}}
       onChange={function(l){var p={schedLinks:l};if(l.length&&!(w.schedLinks||[]).length)p.datesFromSched=true;onChange(p);setPicking(false);}}/>}
   </div>;
+}
+
+// ---------------------------------------------------------------- import pours from the site follow-up workbook
+// Reads a delivery-note register (one row per truck: Zone, Level, Description, Supplier, Date,
+// N° delivery note, Type of concrete, Real Qty, Theo Qty, Month, Year — e.g. the sheet
+// SUPERSTRUCTURE of "RT - Superstructure Concrete FOLLOW UP"), keeps the rows of one value of a
+// filter column (Zone = EXTERNAL by default), and books them as pours.
+// The workbook's "Description" is not our WBS: every description is matched by hand to an
+// existing WBS, or to a new WBS created on the spot (several descriptions may share one new WBS
+// by giving it the same name), or skipped. The matches are remembered on this browser.
+// Concrete types and suppliers are matched by name; an unknown type can be created.
+// A delivery note already imported (supplier + note + date) is never booked twice.
+var CON_IMP_COLS={
+  desc:/^(description|désignation|designation)$/i,
+  supplier:/^(supplier|fournisseur|plant)$/i,
+  date:/^(date|pour date|delivery date)$/i,
+  note:/^(n°|no\.?|nr)\s*(of\s*)?(delivery note|dn|docket|bl|bon)$|^(delivery note|docket|bl)( n°| no\.?)?$/i,
+  type:/^(type of concrete|concrete type|type|grade|class)$/i,
+  qty:/^(real qty|real quantity|qty|quantity|quantité|m3|m³|volume)$/i,
+  theo:/^(theo qty|theoretical qty|theo|theoretical)$/i,
+  month:/^(month|mois)$/i,
+  year:/^(year|année|annee)$/i,
+  level:/^(level|niveau)$/i,
+  element:/^(elements?|élément)$/i
+};
+function conImpKey(s){return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
+function conImpDate(v){
+  if(v instanceof Date&&!isNaN(v))return toISO(new Date(v.getTime()+12*3600000));
+  if(typeof v==="number"&&v>20000&&v<80000)return new Date(Date.UTC(1899,11,30)+Math.round(v)*86400000).toISOString().slice(0,10);
+  var s=String(v||"").trim();if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  return conParseDate(s);
+}
+function conImpGuessWbs(desc,wbs){
+  var k=conImpKey(desc);if(!k)return"";
+  var hit=wbs.find(function(w){return conImpKey(w.name)===k||conImpKey(w.code)===k||conImpKey(conWbsLabel(w))===k;});
+  if(hit)return hit.id;
+  hit=wbs.find(function(w){var n=conImpKey(w.name);return n&&n.length>3&&(n.indexOf(k)>=0||k.indexOf(n)>=0);});
+  if(hit)return hit.id;
+  var kw=k.split(" ").filter(function(x){return x.length>1;}),best="",bs=0;
+  wbs.forEach(function(w){
+    var ww=conImpKey((w.code||"")+" "+(w.name||"")).split(" ").filter(function(x){return x.length>1;});
+    var c=kw.filter(function(x){return ww.indexOf(x)>=0;}).length,sc=c/Math.max(1,Math.min(kw.length,ww.length));
+    if(c>=2&&sc>bs){bs=sc;best=w.id;}
+  });
+  return bs>=0.75?best:"";
+}
+function conImpMapLoad(){try{return JSON.parse(localStorage.getItem("pp_con_wbsmap")||"{}")||{};}catch(e){return {};}}
+function conImpMapSave(m){try{localStorage.setItem("pp_con_wbsmap",JSON.stringify(m));}catch(e){}}
+
+function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
+  const [book,setBook]=useState(null);        // {name, sheets:{name:rows}}
+  const [sheet,setSheet]=useState("");
+  const [busy,setBusy]=useState("");
+  const [err,setErr]=useState("");
+  const [fCol,setFCol]=useState(-1);
+  const [fVal,setFVal]=useState("EXTERNAL");
+  const [group,setGroup]=useState(true);
+  const [useTheo,setUseTheo]=useState(true);
+  const [choice,setChoice]=useState({});       // desc key → {to:"wbs id"|"new"|"skip", name, code}
+  const [tChoice,setTChoice]=useState({});     // type key → type id | "new" | "skip"
+  const [q,setQ]=useState("");
+  const [onlyOpen,setOnlyOpen]=useState(false);
+
+  function onFile(e){
+    var f=e.target.files&&e.target.files[0];if(!f)return;
+    if(!window.XLSX||!window.XLSX.read){setErr("The Excel library is not loaded.");return;}
+    setErr("");setBusy("Reading "+f.name+"…");setBook(null);
+    var rd=new FileReader();
+    rd.onload=function(){
+      setTimeout(function(){
+        try{
+          var wb=window.XLSX.read(new Uint8Array(rd.result),{type:"array",cellDates:true,dense:true});
+          var pick=wb.SheetNames.find(function(n){return /superstructure/i.test(n);})||wb.SheetNames[0];
+          var sheets={};
+          wb.SheetNames.forEach(function(n){
+            var sh=wb.Sheets[n];if(!sh||!sh["!ref"])return;
+            // only the first 40 columns: these registers carry hundreds of empty formatted ones
+            var rg=window.XLSX.utils.decode_range(sh["!ref"]);if(rg.e.c>39)rg.e.c=39;
+            sheets[n]=function(){return window.XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:true,range:rg});};
+          });
+          setBook({name:f.name,names:wb.SheetNames.filter(function(n){return sheets[n];}),sheets:sheets,cache:{}});
+          setSheet(pick);setBusy("");
+        }catch(x){setBusy("");setErr("This file could not be read: "+x.message);}
+      },30);
+    };
+    rd.readAsArrayBuffer(f);
+  }
+  // rows of the chosen sheet, and its header line (the first line holding Description + a quantity)
+  var parsed=(function(){
+    if(!book||!sheet||!book.sheets[sheet])return null;
+    if(!book.cache[sheet])book.cache[sheet]=book.sheets[sheet]();
+    var rows=book.cache[sheet];
+    var hi=rows.findIndex(function(r){return r.some(function(c){return CON_IMP_COLS.desc.test(String(c).trim());})&&r.some(function(c){return CON_IMP_COLS.qty.test(String(c).trim());});});
+    if(hi<0)return {error:"No header line with “Description” and “Real Qty” in this sheet."};
+    var head=rows[hi].map(function(c){return String(c).trim();});
+    var col={};Object.keys(CON_IMP_COLS).forEach(function(k){col[k]=head.findIndex(function(h){return CON_IMP_COLS[k].test(h);});});
+    return {hi:hi,head:head,col:col,body:rows.slice(hi+1)};
+  })();
+  var filterCol=parsed&&!parsed.error?(fCol>=0?fCol:Math.max(0,parsed.head.findIndex(function(h){return /^zone$/i.test(h);}))):-1;
+  var filterVals=[];
+  if(parsed&&!parsed.error&&filterCol>=0){
+    var cnt={};parsed.body.forEach(function(r){var v=String(r[filterCol]===undefined?"":r[filterCol]).trim();if(v)cnt[v]=(cnt[v]||0)+1;});
+    filterVals=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];}).map(function(v){return {v:v,n:cnt[v]};});
+  }
+  // the rows kept, read into {desc, date, note, supplier, type, qty, theo}
+  var items=[],issues={noQty:0,dateFixed:0,noDate:0};
+  if(parsed&&!parsed.error){
+    var c=parsed.col,lastDate="";
+    parsed.body.forEach(function(r){
+      if(filterCol>=0&&String(r[filterCol]).trim().toUpperCase()!==String(fVal).trim().toUpperCase())return;
+      var qty=c.qty>=0?conParseNum(r[c.qty]):0;
+      if(!(qty>0)){if(String(r[c.desc]||"").trim())issues.noQty++;return;}
+      var d=c.date>=0?conImpDate(r[c.date]):"";
+      var mo=c.month>=0?Number(r[c.month]):0,yr=c.year>=0?Number(r[c.year]):0;
+      if(!d||d<"2000-01-01"){
+        // a typo in the date: the previous row's date when it is in the same month, else the 1st of the month
+        if(mo&&yr){var pre=yr+"-"+(mo<10?"0":"")+mo;d=lastDate&&lastDate.slice(0,7)===pre?lastDate:pre+"-01";issues.dateFixed++;}
+        else{issues.noDate++;return;}
+      }
+      lastDate=d;
+      items.push({desc:String(r[c.desc]||"").trim()||"(no description)",date:d,note:c.note>=0?String(r[c.note]||"").trim():"",
+        supplier:c.supplier>=0?String(r[c.supplier]||"").trim():"",type:c.type>=0?String(r[c.type]||"").trim():"",qty:qty,
+        theo:c.theo>=0?conParseNum(r[c.theo])||0:0,level:c.level>=0?String(r[c.level]||"").trim():""});
+    });
+  }
+  // delivery notes already booked
+  var done={};pours.forEach(function(p){(p.importNotes||[]).forEach(function(k){done[k]=1;});});
+  function noteKey(it){return it.note?conImpKey(it.supplier)+"|"+it.note+"|"+it.date:"";}
+  var fresh=items.filter(function(it){var k=noteKey(it);return !k||!done[k];});
+  var already=items.length-fresh.length;
+  // descriptions and types met
+  var descs={};fresh.forEach(function(it){var k=conImpKey(it.desc);var o=descs[k]||(descs[k]={key:k,name:it.desc,n:0,qty:0,theo:0,from:it.date,to:it.date,levels:{}});
+    o.n++;o.qty+=it.qty;o.theo+=it.theo;if(it.date<o.from)o.from=it.date;if(it.date>o.to)o.to=it.date;if(it.level)o.levels[it.level]=1;});
+  var dKeys=Object.keys(descs).sort(function(a,b){return descs[b].qty-descs[a].qty;});
+  var tNames={};fresh.forEach(function(it){var k=_conNormName(it.type);if(!tNames[k])tNames[k]={name:it.type.trim(),qty:0};tNames[k].qty+=it.qty;});
+  var tKeys=Object.keys(tNames).sort(function(a,b){return tNames[b].qty-tNames[a].qty;});
+  var mem=conImpMapLoad();
+  function cho(k){
+    if(choice[k])return choice[k];
+    var m=mem[k];
+    if(m&&(m==="skip"||wbs.some(function(w){return w.id===m;})))return {to:m};
+    var g=conImpGuessWbs(descs[k].name,wbs);
+    return g?{to:g}:{to:"new"};
+  }
+  function setCho(k,patch){setChoice(function(o){var n=Object.assign({},o);n[k]=Object.assign({},cho(k),patch);return n;});}
+  function tCho(k){if(tChoice[k])return tChoice[k];var t=conTypeByName(types,tNames[k].name);return t?t.id:"new";}
+  function newName(k){var c=cho(k);return (c.name!==undefined?c.name:descs[k].name).trim();}
+  var nNewWbs={};dKeys.forEach(function(k){if(cho(k).to==="new")nNewWbs[conImpKey(newName(k))]=1;});
+  var keptQty=fresh.filter(function(it){return cho(conImpKey(it.desc)).to!=="skip"&&tCho(_conNormName(it.type))!=="skip";}).reduce(function(s,it){return s+it.qty;},0);
+  var wSorted=conSortWbs(wbs);
+  var ql=q.trim().toLowerCase();
+  var shown=dKeys.filter(function(k){return (!ql||descs[k].name.toLowerCase().indexOf(ql)>=0)&&(!onlyOpen||cho(k).to==="new");});
+
+  function apply(){
+    if(blockIfReadOnly())return;
+    // 1. types
+    var allTypes=types.slice(),tMap={},createdT=[];
+    tKeys.forEach(function(k){
+      var v=tCho(k);
+      if(v==="new"){var t=newConType({name:tNames[k].name});allTypes.push(t);createdT.push(t);tMap[k]=t.id;}
+      else if(v!=="skip")tMap[k]=v;
+    });
+    // 2. WBS: one new WBS per distinct new name; theoretical = the file's Theo Qty per type when asked
+    var nextWbs=wbs.slice(),byNew={},dMap={},createdW=[];
+    var n0=wbs.length;
+    dKeys.forEach(function(k){
+      var c=cho(k);
+      if(c.to==="skip")return;
+      if(c.to!=="new"){dMap[k]=c.to;return;}
+      var nk=conImpKey(newName(k));
+      if(!byNew[nk]){
+        var w=newConWbs({code:(c.code||"").trim()||("X-"+String(n0+createdW.length+1).padStart(3,"0")),name:newName(k)||descs[k].name,
+          start:descs[k].from,finish:descs[k].to,note:"Created by the import of "+(book?book.name:"a workbook")+" ("+sheet+(filterCol>=0?" · "+fVal:"")+")"});
+        byNew[nk]=w;createdW.push(w);nextWbs.push(w);
+      }else{var w2=byNew[nk];if(descs[k].from<w2.start)w2.start=descs[k].from;if(descs[k].to>w2.finish)w2.finish=descs[k].to;}
+      dMap[k]=byNew[nk].id;
+    });
+    if(useTheo){
+      fresh.forEach(function(it){
+        var wid=dMap[conImpKey(it.desc)],tid=tMap[_conNormName(it.type)];
+        var w=createdW.find(function(x){return x.id===wid;});
+        if(w&&tid&&it.theo>0){w.theo=Object.assign({},w.theo);w.theo[tid]=(_invNum(w.theo[tid])+it.theo);}
+      });
+    }
+    // 3. pours: one per delivery note, or one per day × WBS (each type × supplier a line)
+    var newPours=[],groups={};
+    fresh.forEach(function(it){
+      var wid=dMap[conImpKey(it.desc)],tid=tMap[_conNormName(it.type)];
+      if(!wid||!tid)return;
+      var gk=group?it.date+"|"+wid:noteKey(it)||(it.date+"|"+wid+"|"+Math.random());
+      var p=groups[gk];
+      if(!p){p=newConPour({date:it.date,wbsId:wid,ref:"",lines:[],note:"Imported from "+(book?book.name:"workbook")+" — "+it.desc,importNotes:[]});groups[gk]=p;newPours.push(p);}
+      var sup=it.supplier;
+      var l=p.lines.find(function(x){return x.typeId===tid&&String(x.supplier).toLowerCase()===sup.toLowerCase();});
+      if(l)l.qty=Math.round((_invNum(l.qty)+it.qty)*100)/100;else p.lines.push(newConLine({typeId:tid,supplier:sup,qty:it.qty}));
+      var nk=noteKey(it);if(nk)p.importNotes.push(nk);
+      if(it.note&&p.ref.length<60)p.ref=p.ref?p.ref+", "+it.note:it.note;
+      if(p.note.indexOf(it.desc)<0&&p.note.length<160)p.note+=" / "+it.desc;
+    });
+    newPours.forEach(function(p){if(p.ref.length>=60)p.ref+="…";});
+    // 4. remember the matches
+    var m=conImpMapLoad();dKeys.forEach(function(k){var c=cho(k);m[k]=c.to==="new"?dMap[k]||"":c.to;});conImpMapSave(m);
+    if(createdT.length)saveTypes(types.concat(createdT));
+    if(createdW.length)saveWbs(nextWbs);
+    savePours(newPours.concat(pours));
+    safeAlert(newPours.length+" pour(s) imported — "+conFmt(newPours.reduce(function(s,p){return s+conPourQty(p,allTypes.map(function(t){return t.id;}));},0))+" "+CON_UNIT+"."+
+      (createdW.length?"\n\nNew WBS ("+createdW.length+"):\n• "+createdW.slice(0,15).map(function(w){return w.code+" — "+w.name;}).join("\n• ")+(createdW.length>15?"\n• …":""):"")+
+      (createdT.length?"\n\nNew concrete types: "+createdT.map(function(t){return t.name;}).join(", "):""));
+    onClose();
+  }
+
+  var inp={padding:"4px 7px",fontSize:12.5,width:"auto"};
+  var footer=<React.Fragment>
+    <button className="btn" onClick={onClose}>Cancel</button>
+    <button className="btn btn-pri" disabled={!fresh.length} onClick={apply}>Import {fresh.length?conFmt(keptQty)+" "+CON_UNIT:""}</button>
+  </React.Fragment>;
+  return <InvModal title="⬆ Import pours from the follow-up workbook" width={980} onClose={onClose} footer={footer}>
+    <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>One row per delivery note (Description · Supplier · Date · N° delivery note · Type of concrete · Real Qty). Choose the sheet and the rows to keep, then match each <b>Description</b> of the workbook to one of your WBS — or create the WBS here.</div>
+    <input type="file" accept=".xlsx,.xlsm,.xls" onChange={onFile}/>
+    {busy&&<div style={{fontSize:12.5,color:"#1a73e8",marginTop:6}}>⏳ {busy}</div>}
+    {err&&<div style={{fontSize:12.5,color:"#b3302a",marginTop:6}}>{err}</div>}
+    {book&&<div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",margin:"10px 0",fontSize:12.5}}>
+      <span>Sheet <select value={sheet} onChange={function(e){setSheet(e.target.value);setFCol(-1);setChoice({});setTChoice({});}} style={inp}>{book.names.map(function(n){return <option key={n} value={n}>{n}</option>;})}</select></span>
+      {parsed&&!parsed.error&&<span>Keep rows where <select value={filterCol} onChange={function(e){setFCol(Number(e.target.value));setFVal("");setChoice({});}} style={inp}>
+          {parsed.head.map(function(h,i){return h?<option key={i} value={i}>{String.fromCharCode(65+i)} · {h}</option>:null;})}</select>
+        {" = "}<select value={fVal} onChange={function(e){setFVal(e.target.value);setChoice({});}} style={inp}><option value="">— choose —</option>{filterVals.map(function(x){return <option key={x.v} value={x.v}>{x.v} ({x.n})</option>;})}</select></span>}
+      <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}} title="One pour per day and WBS, each type × supplier a line; the delivery notes are kept in the reference. Unticked: one pour per delivery note (much heavier).">
+        <input type="checkbox" checked={group} onChange={function(e){setGroup(e.target.checked);}}/>one pour per day × WBS</label>
+      <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}} title="The workbook's Theo Qty, summed per type, becomes the theoretical m³ of the WBS created here">
+        <input type="checkbox" checked={useTheo} onChange={function(e){setUseTheo(e.target.checked);}}/>new WBS take the file's Theo Qty</label>
+    </div>}
+    {parsed&&parsed.error&&<div style={{fontSize:12.5,color:"#b3302a"}}>{parsed.error}</div>}
+    {parsed&&!parsed.error&&<div>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:12.5,marginBottom:8}}>
+        <span><b>{items.length}</b> delivery notes · <b>{conFmt(items.reduce(function(s,it){return s+it.qty;},0))} {CON_UNIT}</b></span>
+        {items.length>0&&<span>{fmtDate(items.reduce(function(m,it){return it.date<m?it.date:m;},"9999"))} → {fmtDate(items.reduce(function(m,it){return it.date>m?it.date:m;},""))}</span>}
+        {already>0&&<span style={{color:"#1e6b3a"}}>{already} already imported (skipped)</span>}
+        {issues.noQty>0&&<span style={{color:"#b35c00"}}>{issues.noQty} row(s) without quantity</span>}
+        {issues.dateFixed>0&&<span style={{color:"#b35c00"}} title="Date missing or before 2000: taken from the Month / Year columns">{issues.dateFixed} date(s) taken from Month/Year</span>}
+        {issues.noDate>0&&<span style={{color:"#b3302a"}}>{issues.noDate} row(s) without date (skipped)</span>}
+      </div>
+      {tKeys.length>0&&<div style={{marginBottom:10}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Concrete types</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{tKeys.map(function(k){var v=tCho(k);
+          return <span key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,background:v==="new"?"#e8f5e9":"#fff",border:"1px solid #e8e6df",borderRadius:6,padding:"3px 6px"}}>
+            <b>{tNames[k].name||"(no type)"}</b> <span style={{color:"#888"}}>{conFmt(tNames[k].qty)}</span> →
+            <select value={v} onChange={function(e){var val=e.target.value;setTChoice(function(o){var n=Object.assign({},o);n[k]=val;return n;});}} style={Object.assign({},inp,{fontSize:12})}>
+              <option value="new">➕ new type</option>{conSortTypes(types).map(function(t){return <option key={t.id} value={t.id}>{t.name}</option>;})}<option value="skip">skip</option></select>
+          </span>;})}</div>
+      </div>}
+      {dKeys.length>0&&<div>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}>
+          <div style={{fontWeight:700,fontSize:13}}>Descriptions → WBS</div>
+          <span style={{fontSize:12,color:"#888"}}>{dKeys.length} descriptions · {dKeys.filter(function(k){return cho(k).to!=="new"&&cho(k).to!=="skip";}).length} matched · {Object.keys(nNewWbs).length} new WBS · {dKeys.filter(function(k){return cho(k).to==="skip";}).length} skipped</span>
+          <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 filter descriptions" style={Object.assign({},inp,{width:180,marginLeft:"auto"})}/>
+          <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12,fontFamily:"inherit"}}><input type="checkbox" checked={onlyOpen} onChange={function(e){setOnlyOpen(e.target.checked);}}/>only “new WBS”</label>
+        </div>
+        <div style={{maxHeight:"46vh",overflowY:"auto",border:"1px solid #ece9e1",borderRadius:8}}>
+        <table className="tbl" style={{fontSize:12,margin:0}}>
+          <thead><tr><th>Description in the workbook</th><th style={{textAlign:"right"}}>Notes</th><th style={{textAlign:"right"}}>{CON_UNIT}</th><th>Your WBS</th><th>New WBS: code · name</th></tr></thead>
+          <tbody>{shown.map(function(k){
+            var d=descs[k],c=cho(k),isNew=c.to==="new";
+            return <tr key={k} style={{background:isNew?"#f3fbf4":c.to==="skip"?"#fdf3f4":"#fff"}}>
+              <td style={{fontWeight:600}}>{d.name}<div style={{fontSize:10.5,color:"#888",fontWeight:400}}>{fmtDate(d.from)}{d.to!==d.from?" → "+fmtDate(d.to):""}{Object.keys(d.levels).length?" · "+Object.keys(d.levels).join(", "):""}</div></td>
+              <td style={{textAlign:"right"}}>{d.n}</td>
+              <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{conFmt(d.qty)}</td>
+              <td><select value={c.to} onChange={function(e){setCho(k,{to:e.target.value});}} style={Object.assign({},inp,{width:"100%",maxWidth:300})}>
+                <option value="new">➕ Create a new WBS</option>
+                {wSorted.length>0&&<optgroup label="Existing WBS">{wSorted.map(function(w){return <option key={w.id} value={w.id}>{conWbsLabel(w)}</option>;})}</optgroup>}
+                <option value="skip">Do not import</option>
+              </select></td>
+              <td>{isNew&&<span style={{display:"flex",gap:4}}>
+                <input type="text" value={c.code||""} onChange={function(e){setCho(k,{code:e.target.value});}} placeholder="code (auto)" style={Object.assign({},inp,{width:86,fontFamily:"var(--font-mono)"})}/>
+                <input type="text" value={c.name!==undefined?c.name:d.name} onChange={function(e){setCho(k,{name:e.target.value});}} title="Descriptions given the same name go into ONE new WBS" style={Object.assign({},inp,{flex:1,minWidth:150})}/>
+              </span>}</td>
+            </tr>;
+          })}</tbody>
+        </table></div>
+        <div style={{fontSize:11,color:"#9b968b",marginTop:5}}>Suggestions come from the names; your matches are remembered on this browser. Give several descriptions the same new name to put them in one new WBS. New WBS take the dates of their pours{useTheo?" and the workbook's Theo Qty as theoretical":""}.</div>
+      </div>}
+    </div>}
+  </InvModal>;
 }
