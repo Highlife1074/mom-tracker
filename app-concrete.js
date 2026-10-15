@@ -380,7 +380,7 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
     <div className="filter-bar">
       {TABS.map(function(t){return <button key={t[0]} className={"fchip"+(tab===t[0]?" on":"")} onClick={function(){setTab(t[0]);}}>{t[1]}</button>;})}
     </div>
-    {tab==="overview"&&<ConOverview {...common} wbs={wbsEff} onGo={setTab}/>}
+    {tab==="overview"&&<ConOverview {...common} wbs={wbsEff} rawWbs={wbs} onGo={setTab}/>}
     {tab==="wbs"&&<ConWbsList {...common}/>}
     {tab==="pours"&&<ConPours {...common}/>}
     {tab==="cutoff"&&<ConCutoff {...common}/>}
@@ -389,7 +389,7 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
 }
 
 // ---------------------------------------------------------------- overview
-function ConOverview({types,wbs,pours,realIx,zones,cutoffs,onGo}){
+function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,onGo}){
   const [typeId,setTypeId]=useState("");
   const [zone,setZone]=useState("");
   const [showTable,setShowTable]=useState(false);
@@ -438,6 +438,7 @@ function ConOverview({types,wbs,pours,realIx,zones,cutoffs,onGo}){
       <InvBig label="Estimate at completion" value={last?last.eac+last.theoNoPct:null} unit={unit} colour={last?conVarCol(last.eacPct):null}
         sub={last?"cut-off "+fmtDate(last.date)+(last.nNoPct?" · "+last.nNoPct+" WBS without % at budget":""):"from the cut-off"}/>
     </div>
+    <ConTheoEditor types={types} list={list} rawWbs={rawWbs||wbs} saveWbs={saveWbs} edit={edit} realIx={realIx} typeId={typeId}/>
     {last&&last.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ At the cut-off of {fmtDate(last.date)}, {last.nNoPct} WBS have no progress % ({conFmt(last.theoNoPct)} {unit} budget, {conFmt(last.realNoPct)} {unit} poured): they are left out of the loss / gain.</div>}
     {!last&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>The loss or gain of concrete is measured only at a cut-off, against the progress % typed for each WBS. <button className="btn btn-sm" onClick={function(){onGo("cutoff");}}>Go to the cut-offs</button></div>}
     {s.months.length>0?<>
@@ -513,6 +514,61 @@ function ConOverview({types,wbs,pours,realIx,zones,cutoffs,onGo}){
         })}</tbody></table></div>
     </>}
     <div style={{fontSize:11,color:"#888"}}>Nothing here estimates progress. The loss or gain of concrete exists only at a cut-off: earned = budget × the progress % typed for each WBS, against the volume poured up to that date, on the WBS that have a %. Planned = theoretical spread evenly between each WBS's start and finish; poured = the pours.</div>
+  </div>;
+}
+// Theoretical m³ per WBS and per type, typed straight in the overview (no dialog). Empty = none.
+// The theoretical is never taken from an imported workbook; the WBS created by an import carry
+// "Created by the import" in their note, and their theoretical can be cleared here in one go.
+function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId}){
+  const [open,setOpen]=useState(false);
+  const [q,setQ]=useState("");
+  var cols=conSortTypes(types).filter(function(t){
+    if(typeId)return t.id===typeId;
+    return !t.archived||list.some(function(w){return _invNum((w.theo||{})[t.id])>0;});
+  });
+  var ql=q.trim().toLowerCase();
+  var rows=conSortWbs(list).filter(function(w){return !ql||[w.code,w.name].join(" ").toLowerCase().indexOf(ql)>=0;});
+  var imported=rawWbs.filter(function(w){return /Created by the import/i.test(w.note||"")&&conSum(w.theo,types.map(function(t){return t.id;}))>CON_EPS;});
+  function setTheo(id,tid,v){
+    if(blockIfReadOnly())return;
+    saveWbs(rawWbs.map(function(w){
+      if(w.id!==id)return w;
+      var t=Object.assign({},w.theo||{});if(v===null||!(v>0))delete t[tid];else t[tid]=v;
+      return Object.assign({},w,{theo:t});
+    }));
+  }
+  function clearImported(){
+    if(blockIfReadOnly())return;
+    if(!safeConfirm("Clear the theoretical m³ of the "+imported.length+" WBS created by an Excel import?\n\nTheir pours are kept; only the theoretical quantities are emptied, to be typed again in the app."))return;
+    var ids={};imported.forEach(function(w){ids[w.id]=1;});
+    saveWbs(rawWbs.map(function(w){return ids[w.id]?Object.assign({},w,{theo:{}}):w;}));
+  }
+  var R={textAlign:"right"};
+  return <div className="card" style={{marginBottom:14}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <button type="button" onClick={function(){setOpen(!open);}} style={{background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:14,padding:0,fontFamily:"inherit"}}>
+        {open?"▾":"▸"} Theoretical per WBS</button>
+      <span style={{fontSize:12,color:"#888"}}>{rows.length} WBS · {conFmt(rows.reduce(function(s,w){return s+conSum(w.theo,cols.map(function(t){return t.id;}));},0))} {CON_UNIT}{edit?" · type the m³ in the cells, empty = none":""}</span>
+      {edit&&imported.length>0&&<button className="btn btn-sm" style={{marginLeft:"auto",color:"#b3302a"}} onClick={clearImported}
+        title="These WBS got their theoretical from the workbook's Theo Qty at an earlier import">✕ Clear the theoretical of {imported.length} imported WBS</button>}
+    </div>
+    {open&&<div style={{marginTop:10}}>
+      <input type="text" placeholder="Search code, description…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:220,marginBottom:8}}/>
+      <div style={{overflowX:"auto",maxHeight:"60vh",overflowY:"auto"}}><table className="tbl">
+        <thead><tr><th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R}>{t.name}</th>;})}<th style={R}>Total</th><th style={R}>Poured</th></tr></thead>
+        <tbody>{rows.map(function(w){
+          var tot=conSum(w.theo,cols.map(function(t){return t.id;}));
+          return <tr key={w.id}>
+            <td><b>{w.code}</b> {w.name}</td>
+            {cols.map(function(t){var v=_invNum((w.theo||{})[t.id]);
+              return <td key={t.id} style={R}>{edit
+                ?<ConNumCell value={v||null} width={74} placeholder="—" title={"Theoretical m³ — "+t.name+" · empty = none"} onCommit={function(nv){setTheo(w.id,t.id,nv);}}/>
+                :(v?conFmt(v):"—")}</td>;})}
+            <td style={Object.assign({fontWeight:700},R)}>{conFmt(tot)}</td>
+            <td style={Object.assign({color:"#555"},R)}>{conFmt(conSum(realIx[w.id],cols.map(function(t){return t.id;})))}</td>
+          </tr>;
+        })}</tbody></table></div>
+    </div>}
   </div>;
 }
 // Cumulative curve: planned and poured month by month; real progress (earned) only as points
@@ -1728,13 +1784,15 @@ function ConSchedLinks({w,ix,edit,schedules,onChange}){
 // ---------------------------------------------------------------- import pours from the site follow-up workbook
 // Reads a delivery-note register (one row per truck: Zone, Level, Description, Supplier, Date,
 // N° delivery note, Type of concrete, Real Qty, Theo Qty, Month, Year — e.g. the sheet
-// SUPERSTRUCTURE of "RT - Superstructure Concrete FOLLOW UP"), keeps the rows of one value of a
-// filter column (Zone = EXTERNAL by default), and books them as pours.
+// SUPERSTRUCTURE of "RT - Superstructure Concrete FOLLOW UP"), keeps ONLY the rows whose Zone is
+// EXTERNAL (TOWER, PODIUM, DWALL are never imported), and books them as pours.
 // The workbook's "Description" is not our WBS: every description is matched by hand to an
 // existing WBS, or to a new WBS created on the spot (several descriptions may share one new WBS
 // by giving it the same name), or skipped. The matches are remembered on this browser.
 // Concrete types and suppliers are matched by name; an unknown type can be created.
+// The workbook's Theo Qty is NEVER read: the theoretical m³ are typed in the app only.
 // A delivery note already imported (supplier + note + date) is never booked twice.
+var CON_IMP_ZONE="EXTERNAL";      // the only zone of the workbook imported here
 var CON_IMP_COLS={
   desc:/^(description|désignation|designation)$/i,
   supplier:/^(supplier|fournisseur|plant)$/i,
@@ -1742,7 +1800,6 @@ var CON_IMP_COLS={
   note:/^(n°|no\.?|nr)\s*(of\s*)?(delivery note|dn|docket|bl|bon)$|^(delivery note|docket|bl)( n°| no\.?)?$/i,
   type:/^(type of concrete|concrete type|type|grade|class)$/i,
   qty:/^(real qty|real quantity|qty|quantity|quantité|m3|m³|volume)$/i,
-  theo:/^(theo qty|theoretical qty|theo|theoretical)$/i,
   month:/^(month|mois)$/i,
   year:/^(year|année|annee)$/i,
   level:/^(level|niveau)$/i,
@@ -1777,14 +1834,13 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
   const [sheet,setSheet]=useState("");
   const [busy,setBusy]=useState("");
   const [err,setErr]=useState("");
-  const [fCol,setFCol]=useState(-1);
-  const [fVal,setFVal]=useState("EXTERNAL");
   const [group,setGroup]=useState(true);
-  const [useTheo,setUseTheo]=useState(true);
   const [choice,setChoice]=useState({});       // desc key → {to:"wbs id"|"new"|"skip", name, code}
   const [tChoice,setTChoice]=useState({});     // type key → type id | "new" | "skip"
   const [q,setQ]=useState("");
   const [onlyOpen,setOnlyOpen]=useState(false);
+  const [force,setForce]=useState({});          // delivery notes already imported, to book again anyway
+  const [show,setShow]=useState("");            // which diagnostic list is unfolded
 
   function onFile(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
@@ -1801,7 +1857,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
             var sh=wb.Sheets[n];if(!sh||!sh["!ref"])return;
             // only the first 40 columns: these registers carry hundreds of empty formatted ones
             var rg=window.XLSX.utils.decode_range(sh["!ref"]);if(rg.e.c>39)rg.e.c=39;
-            sheets[n]=function(){return window.XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:true,range:rg});};
+            sheets[n]=function(){var rows=window.XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:true,range:rg});rows.r0=rg.s.r;return rows;};
           });
           setBook({name:f.name,names:wb.SheetNames.filter(function(n){return sheets[n];}),sheets:sheets,cache:{}});
           setSheet(pick);setBusy("");
@@ -1819,43 +1875,47 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
     if(hi<0)return {error:"No header line with “Description” and “Real Qty” in this sheet."};
     var head=rows[hi].map(function(c){return String(c).trim();});
     var col={};Object.keys(CON_IMP_COLS).forEach(function(k){col[k]=head.findIndex(function(h){return CON_IMP_COLS[k].test(h);});});
-    return {hi:hi,head:head,col:col,body:rows.slice(hi+1)};
+    return {hi:hi,head:head,col:col,body:rows.slice(hi+1),r0:(rows.r0||0)+hi+2};   // r0 = Excel row number of body[0]
   })();
-  var filterCol=parsed&&!parsed.error?(fCol>=0?fCol:Math.max(0,parsed.head.findIndex(function(h){return /^zone$/i.test(h);}))):-1;
-  var filterVals=[];
-  if(parsed&&!parsed.error&&filterCol>=0){
-    var cnt={};parsed.body.forEach(function(r){var v=String(r[filterCol]===undefined?"":r[filterCol]).trim();if(v)cnt[v]=(cnt[v]||0)+1;});
-    filterVals=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];}).map(function(v){return {v:v,n:cnt[v]};});
-  }
+  // Zone column: the one headed "Zone" (column B in the workbook)
+  var filterCol=parsed&&!parsed.error?parsed.head.findIndex(function(h){return /^zone$/i.test(h);}):-1;
+  var fVal=CON_IMP_ZONE;
+  if(parsed&&!parsed.error&&filterCol<0)parsed={error:"No “Zone” column in this sheet: the import keeps only the rows whose Zone is "+CON_IMP_ZONE+"."};
   // the rows kept, read into {desc, date, note, supplier, type, qty, theo}
-  var items=[],issues={noQty:0,dateFixed:0,noDate:0};
+  var items=[],issues={noQty:0,dateFixed:0,noDate:0},left={noZone:[],noQty:[],noDate:[]};
   if(parsed&&!parsed.error){
     var c=parsed.col,lastDate="";
-    parsed.body.forEach(function(r){
-      if(filterCol>=0&&String(r[filterCol]).trim().toUpperCase()!==String(fVal).trim().toUpperCase())return;
+    parsed.body.forEach(function(r,ri){
+      var rowNo=parsed.r0+ri;
+      var zone=String(r[filterCol]).trim().toUpperCase();
       var qty=c.qty>=0?conParseNum(r[c.qty]):0;
-      if(!(qty>0)){if(String(r[c.desc]||"").trim())issues.noQty++;return;}
+      var dsc=String(r[c.desc]||"").trim();
+      // a row with a quantity and no zone at all: probably a new line whose Zone was forgotten
+      if(!zone){if(qty>0)left.noZone.push({row:rowNo,desc:dsc,qty:qty});return;}
+      if(zone!==fVal)return;
+      if(!(qty>0)){if(dsc){issues.noQty++;left.noQty.push({row:rowNo,desc:dsc,qty:String(r[c.qty]||"")});}return;}
       var d=c.date>=0?conImpDate(r[c.date]):"";
       var mo=c.month>=0?Number(r[c.month]):0,yr=c.year>=0?Number(r[c.year]):0;
       if(!d||d<"2000-01-01"){
         // a typo in the date: the previous row's date when it is in the same month, else the 1st of the month
         if(mo&&yr){var pre=yr+"-"+(mo<10?"0":"")+mo;d=lastDate&&lastDate.slice(0,7)===pre?lastDate:pre+"-01";issues.dateFixed++;}
-        else{issues.noDate++;return;}
+        else{issues.noDate++;left.noDate.push({row:rowNo,desc:dsc,qty:qty});return;}
       }
       lastDate=d;
-      items.push({desc:String(r[c.desc]||"").trim()||"(no description)",date:d,note:c.note>=0?String(r[c.note]||"").trim():"",
+      items.push({row:rowNo,desc:dsc||"(no description)",date:d,note:c.note>=0?String(r[c.note]||"").trim():"",
         supplier:c.supplier>=0?String(r[c.supplier]||"").trim():"",type:c.type>=0?String(r[c.type]||"").trim():"",qty:qty,
-        theo:c.theo>=0?conParseNum(r[c.theo])||0:0,level:c.level>=0?String(r[c.level]||"").trim():""});
+        level:c.level>=0?String(r[c.level]||"").trim():""});
     });
   }
   // delivery notes already booked
   var done={};pours.forEach(function(p){(p.importNotes||[]).forEach(function(k){done[k]=1;});});
   function noteKey(it){return it.note?conImpKey(it.supplier)+"|"+it.note+"|"+it.date:"";}
-  var fresh=items.filter(function(it){var k=noteKey(it);return !k||!done[k];});
-  var already=items.length-fresh.length;
+  var fresh=items.filter(function(it){var k=noteKey(it);return !k||!done[k]||force[it.row];});
+  var alreadyList=items.filter(function(it){var k=noteKey(it);return k&&done[k];});
+  var already=alreadyList.length-alreadyList.filter(function(it){return force[it.row];}).length;
   // descriptions and types met
-  var descs={};fresh.forEach(function(it){var k=conImpKey(it.desc);var o=descs[k]||(descs[k]={key:k,name:it.desc,n:0,qty:0,theo:0,from:it.date,to:it.date,levels:{}});
-    o.n++;o.qty+=it.qty;o.theo+=it.theo;if(it.date<o.from)o.from=it.date;if(it.date>o.to)o.to=it.date;if(it.level)o.levels[it.level]=1;});
+  var descs={};fresh.forEach(function(it){var k=conImpKey(it.desc);var o=descs[k]||(descs[k]={key:k,name:it.desc,n:0,qty:0,from:it.date,to:it.date,levels:{}});
+    o.n++;o.qty+=it.qty;if(it.date<o.from)o.from=it.date;if(it.date>o.to)o.to=it.date;if(it.level)o.levels[it.level]=1;});
   var dKeys=Object.keys(descs).sort(function(a,b){return descs[b].qty-descs[a].qty;});
   var tNames={};fresh.forEach(function(it){var k=_conNormName(it.type);if(!tNames[k])tNames[k]={name:it.type.trim(),qty:0};tNames[k].qty+=it.qty;});
   var tKeys=Object.keys(tNames).sort(function(a,b){return tNames[b].qty-tNames[a].qty;});
@@ -1885,7 +1945,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
       if(v==="new"){var t=newConType({name:tNames[k].name});allTypes.push(t);createdT.push(t);tMap[k]=t.id;}
       else if(v!=="skip")tMap[k]=v;
     });
-    // 2. WBS: one new WBS per distinct new name; theoretical = the file's Theo Qty per type when asked
+    // 2. WBS: one new WBS per distinct new name (theoretical left empty: typed in the app only)
     var nextWbs=wbs.slice(),byNew={},dMap={},createdW=[];
     var n0=wbs.length;
     dKeys.forEach(function(k){
@@ -1900,13 +1960,6 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
       }else{var w2=byNew[nk];if(descs[k].from<w2.start)w2.start=descs[k].from;if(descs[k].to>w2.finish)w2.finish=descs[k].to;}
       dMap[k]=byNew[nk].id;
     });
-    if(useTheo){
-      fresh.forEach(function(it){
-        var wid=dMap[conImpKey(it.desc)],tid=tMap[_conNormName(it.type)];
-        var w=createdW.find(function(x){return x.id===wid;});
-        if(w&&tid&&it.theo>0){w.theo=Object.assign({},w.theo);w.theo[tid]=(_invNum(w.theo[tid])+it.theo);}
-      });
-    }
     // 3. pours: one per delivery note, or one per day × WBS (each type × supplier a line)
     var newPours=[],groups={};
     fresh.forEach(function(it){
@@ -1937,33 +1990,55 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
   var inp={padding:"4px 7px",fontSize:12.5,width:"auto"};
   var footer=<React.Fragment>
     <button className="btn" onClick={onClose}>Cancel</button>
-    <button className="btn btn-pri" disabled={!fresh.length} onClick={apply}>Import {fresh.length?conFmt(keptQty)+" "+CON_UNIT:""}</button>
+    <button className="btn btn-pri" disabled={!fresh.length} onClick={apply} title={fresh.length?"":"Nothing new in this file — see the lists above for the rows left out and why"}>Import {fresh.length?conFmt(keptQty)+" "+CON_UNIT:""}</button>
   </React.Fragment>;
   return <InvModal title="⬆ Import pours from the follow-up workbook" width={980} onClose={onClose} footer={footer}>
-    <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>One row per delivery note (Description · Supplier · Date · N° delivery note · Type of concrete · Real Qty). Choose the sheet and the rows to keep, then match each <b>Description</b> of the workbook to one of your WBS — or create the WBS here.</div>
+    <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>One row per delivery note (Description · Supplier · Date · N° delivery note · Type of concrete · Real Qty). Only the rows whose <b>Zone is {CON_IMP_ZONE}</b> are imported. Match each <b>Description</b> of the workbook to one of your WBS — or create the WBS here.</div>
     <input type="file" accept=".xlsx,.xlsm,.xls" onChange={onFile}/>
     {busy&&<div style={{fontSize:12.5,color:"#1a73e8",marginTop:6}}>⏳ {busy}</div>}
     {err&&<div style={{fontSize:12.5,color:"#b3302a",marginTop:6}}>{err}</div>}
     {book&&<div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",margin:"10px 0",fontSize:12.5}}>
-      <span>Sheet <select value={sheet} onChange={function(e){setSheet(e.target.value);setFCol(-1);setChoice({});setTChoice({});}} style={inp}>{book.names.map(function(n){return <option key={n} value={n}>{n}</option>;})}</select></span>
-      {parsed&&!parsed.error&&<span>Keep rows where <select value={filterCol} onChange={function(e){setFCol(Number(e.target.value));setFVal("");setChoice({});}} style={inp}>
-          {parsed.head.map(function(h,i){return h?<option key={i} value={i}>{String.fromCharCode(65+i)} · {h}</option>:null;})}</select>
-        {" = "}<select value={fVal} onChange={function(e){setFVal(e.target.value);setChoice({});}} style={inp}><option value="">— choose —</option>{filterVals.map(function(x){return <option key={x.v} value={x.v}>{x.v} ({x.n})</option>;})}</select></span>}
+      <span>Sheet <select value={sheet} onChange={function(e){setSheet(e.target.value);setChoice({});setTChoice({});}} style={inp}>{book.names.map(function(n){return <option key={n} value={n}>{n}</option>;})}</select></span>
+      {parsed&&!parsed.error&&<span title="Only the external works are imported; TOWER, PODIUM and DWALL rows are left out">Rows kept: <b>{String.fromCharCode(65+filterCol)} · Zone = {CON_IMP_ZONE}</b> only</span>}
       <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}} title="One pour per day and WBS, each type × supplier a line; the delivery notes are kept in the reference. Unticked: one pour per delivery note (much heavier).">
         <input type="checkbox" checked={group} onChange={function(e){setGroup(e.target.checked);}}/>one pour per day × WBS</label>
-      <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}} title="The workbook's Theo Qty, summed per type, becomes the theoretical m³ of the WBS created here">
-        <input type="checkbox" checked={useTheo} onChange={function(e){setUseTheo(e.target.checked);}}/>new WBS take the file's Theo Qty</label>
     </div>}
     {parsed&&parsed.error&&<div style={{fontSize:12.5,color:"#b3302a"}}>{parsed.error}</div>}
     {parsed&&!parsed.error&&<div>
       <div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:12.5,marginBottom:8}}>
         <span><b>{items.length}</b> delivery notes · <b>{conFmt(items.reduce(function(s,it){return s+it.qty;},0))} {CON_UNIT}</b></span>
         {items.length>0&&<span>{fmtDate(items.reduce(function(m,it){return it.date<m?it.date:m;},"9999"))} → {fmtDate(items.reduce(function(m,it){return it.date>m?it.date:m;},""))}</span>}
-        {already>0&&<span style={{color:"#1e6b3a"}}>{already} already imported (skipped)</span>}
         {issues.noQty>0&&<span style={{color:"#b35c00"}}>{issues.noQty} row(s) without quantity</span>}
         {issues.dateFixed>0&&<span style={{color:"#b35c00"}} title="Date missing or before 2000: taken from the Month / Year columns">{issues.dateFixed} date(s) taken from Month/Year</span>}
         {issues.noDate>0&&<span style={{color:"#b3302a"}}>{issues.noDate} row(s) without date (skipped)</span>}
       </div>
+      {(function(){
+        // What is new, what is left out and why — each list unfolds with the Excel row numbers.
+        function list(key,title,col,rows,render){
+          if(!rows.length)return null;
+          var open=show===key;
+          return <div style={{marginBottom:6}}>
+            <button type="button" onClick={function(){setShow(open?"":key);}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontSize:12.5,color:col,fontWeight:600}}>
+              {open?"▾":"▸"} {title}</button>
+            {open&&<div style={{maxHeight:220,overflowY:"auto",border:"1px solid #ece9e1",borderRadius:6,marginTop:4}}><table className="tbl" style={{fontSize:11.5,margin:0}}><tbody>
+              {rows.slice(0,300).map(render)}</tbody></table></div>}
+          </div>;
+        }
+        var newQty=fresh.reduce(function(s,it){return s+it.qty;},0);
+        return <div style={{background:fresh.length?"#f3fbf4":"#fff8e1",border:"1px solid "+(fresh.length?"#c8e6c9":"#f0e2b8"),borderRadius:8,padding:"8px 12px",marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6,color:fresh.length?"#1e6b3a":"#8a6a1e"}}>
+            {fresh.length?fresh.length+" delivery note"+(fresh.length>1?"s":"")+" to import · "+conFmt(newQty)+" "+CON_UNIT
+              :"Nothing new to import"+(items.length?": every "+CON_IMP_ZONE+" delivery note of this file is already in the app.":".")}</div>
+          {list("new","See the new rows ("+fresh.length+")","#1e6b3a",fresh,function(it,i){return <tr key={"n"+i}><td>row {it.row}</td><td>{fmtDate(it.date)}</td><td>{it.desc}</td><td>{it.supplier} {it.note}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {list("done",alreadyList.length+" already imported — tick one to import it again","#6f6b62",alreadyList,function(it,i){
+            return <tr key={"d"+i}><td><input type="checkbox" checked={!!force[it.row]} onChange={function(e){var v=e.target.checked;setForce(function(o){var n=Object.assign({},o);if(v)n[it.row]=true;else delete n[it.row];return n;});}}/></td>
+              <td>row {it.row}</td><td>{fmtDate(it.date)}</td><td>{it.desc}</td><td>{it.supplier} {it.note}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {list("zone",left.noZone.length+" row(s) with a quantity but an empty Zone (column B) — not imported: write "+CON_IMP_ZONE+" in column B","#b3302a",left.noZone,function(it,i){return <tr key={"z"+i}><td>row {it.row}</td><td>{it.desc||"(no description)"}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {list("qty",left.noQty.length+" "+CON_IMP_ZONE+" row(s) without a Real Qty — not imported","#b35c00",left.noQty,function(it,i){return <tr key={"q"+i}><td>row {it.row}</td><td>{it.desc}</td><td>{it.qty||"(empty)"}</td></tr>;})}
+          {list("date",left.noDate.length+" row(s) without a readable date — not imported","#b3302a",left.noDate,function(it,i){return <tr key={"t"+i}><td>row {it.row}</td><td>{it.desc}</td><td style={{textAlign:"right"}}>{conFmt(it.qty)}</td></tr>;})}
+          {!fresh.length&&<div style={{fontSize:11.5,color:"#6f6b62",marginTop:4}}>A row is “already imported” when the same supplier, delivery note n° and date were imported before (a copied row keeps them: change the n° or tick it above). Formulas in Real Qty need the file saved by Excel so their value is stored.</div>}
+        </div>;
+      })()}
       {tKeys.length>0&&<div style={{marginBottom:10}}>
         <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Concrete types</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{tKeys.map(function(k){var v=tCho(k);
@@ -2001,7 +2076,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
             </tr>;
           })}</tbody>
         </table></div>
-        <div style={{fontSize:11,color:"#9b968b",marginTop:5}}>Suggestions come from the names; your matches are remembered on this browser. Give several descriptions the same new name to put them in one new WBS. New WBS take the dates of their pours{useTheo?" and the workbook's Theo Qty as theoretical":""}.</div>
+        <div style={{fontSize:11,color:"#9b968b",marginTop:5}}>Suggestions come from the names; your matches are remembered on this browser. Give several descriptions the same new name to put them in one new WBS. New WBS take the dates of their pours; their theoretical m³ stay empty — the workbook's Theo Qty is never imported, type the theoretical in the app.</div>
       </div>}
     </div>}
   </InvModal>;
