@@ -3912,10 +3912,17 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   var prevR=rsidebar?rsidebar.style.display:'';
   if(leftnav)leftnav.style.display='none';
   if(rsidebar)rsidebar.style.display='none';
+  // Narrow page margins and no screen padding, so the wide table uses the whole sheet.
+  var pst=document.createElement('style');
+  pst.textContent='@page{size:297mm 210mm;margin:4mm}';
+  document.head.appendChild(pst);
+  document.body.classList.add('printing-tenders');
   window.print();
   setTimeout(function(){
     if(leftnav)leftnav.style.display=prevL;
     if(rsidebar)rsidebar.style.display=prevR;
+    document.body.classList.remove('printing-tenders');
+    if(pst.parentNode)pst.parentNode.removeChild(pst);
   },500);
 }} style={{marginLeft:"auto"}}>🖨️ Print</button>
       {(function(){
