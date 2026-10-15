@@ -14,7 +14,15 @@
 //                     filtered. approved / planned are the older manual figures:
 //                     approved is still used as the week's budget when no plan line covers it.
 //
-// Budget of a week = Σ plan lines (workers that week × hours per worker per week).
+//   pp_manpower_meta  {id:"budget", kind:"budget", amount (€), rate (€/h), start, end, byWeek:{monday: h},
+//                     alignedTo, updatedBy, updatedAt} — the global budget, set by the admin only — and the
+//                     overview notes {id, kind:"note", date, at, author, text}.
+//
+// Three series:
+//   Budget   = amount ÷ hourly rate, spread evenly over the working days (Mon–Sat) from start to end;
+//              byWeek holds the weeks the admin aligned on the real hours ("budget = real" on the past).
+//   Planned  = Σ plan lines of a week (workers that week × hours per worker per week).
+//   Real     = the hours entered or imported.
 // A week's hours are spread over its working days (Mon–Sat) to build the months, so a week
 // across two months is split between them.
 // Cut-off = the last week with real hours entered: "to date" figures stop there, the plan after it
@@ -26,7 +34,8 @@
 // _invUpsert, _invRemove (app-inventory), normCompanyName (app-tenders), ppPrompt (app-core).
 // ===========================================================================
 
-var MP_COL_BUDGET="#a8862e";     // budget (plan) series
+var MP_COL_BUDGET="#a8862e";     // planned series (plan lines) — the name predates the € budget
+var MP_COL_BGT="#1f7a4d";        // budget series (€ budget ÷ hourly rate)
 var MP_COL_REAL="#2b6cb0";       // real series
 var MP_COMPANY_COLS=["#2b6cb0","#c2378a","#2e7d32","#d85a30","#7b1fa2","#00838f","#8d6e63","#5c6bc0"];
 var MP_TOP=7;                    // companies drawn on their own in the chart; the rest = "Others"
@@ -107,7 +116,25 @@ function mpParseCompanyPaste(text){
   return {rows:out,skipped:skipped};
 }
 
+// ---------------------------------------------------------------- € budget
+function mpBudgetRec(meta){return (meta||[]).find(function(x){return x&&x.kind==="budget";})||null;}
+function mpBudgetHours(b){return b&&mpHas(b.amount)&&mpHas(b.rate)&&Number(b.rate)>0?Number(b.amount)/Number(b.rate):0;}
+function mpBudgetRate(b){return b&&mpHas(b.rate)&&Number(b.rate)>0?Number(b.rate):0;}
+// Budget hours per week (Monday → h): amount ÷ rate spread over the working days between start
+// and end, then the weeks aligned on the real (byWeek) take their own figure.
+function mpBudgetWeeks(b){
+  var out={};if(!b)return out;
+  if(isValidDate(b.start)&&isValidDate(b.end)&&b.end>=b.start){
+    var H=mpBudgetHours(b),ws=mpWeeksBetween(b.start,b.end),days={},D=0;
+    ws.forEach(function(w){var n=0;for(var d=0;d<MP_WORK_DAYS;d++){var x=addCalDays(w,d);if(x>=b.start&&x<=b.end)n++;}days[w]=n;D+=n;});
+    ws.forEach(function(w){out[w]=D?H*days[w]/D:0;});
+  }
+  Object.keys(b.byWeek||{}).forEach(function(w){if(mpHas(b.byWeek[w]))out[w]=Number(b.byWeek[w]);});
+  return out;
+}
+
 // Everything the views show, from the plan and the weekly entries.
+// opt.bgt = budget hours per week (mpBudgetWeeks) · opt.cutoff = the cut-off of a filtered view.
 function mpModel(plan,weeks,opt){
   opt=opt||{};
   plan=(plan||[]).filter(function(l){return isValidDate(l.start)&&isValidDate(l.end);});
@@ -115,6 +142,8 @@ function mpModel(plan,weeks,opt){
   var set={};
   plan.forEach(function(l){mpWeeksBetween(l.start,l.end).forEach(function(w){set[w]=1;});});
   Object.keys(entries).forEach(function(w){set[w]=1;});
+  var bgtW=opt.bgt||null;
+  if(bgtW)Object.keys(bgtW).forEach(function(w){set[w]=1;});
   var all=Object.keys(set).sort();
   var cutoff="";all.forEach(function(w){var e=entries[w];if(e&&(e.real||[]).length)cutoff=w;});
   if(opt.cutoff!==undefined)cutoff=opt.cutoff;     // a filtered view keeps the cut-off of the whole project
@@ -135,7 +164,7 @@ function mpModel(plan,weeks,opt){
     var k=mpActKey(name)||"(not imported)";
     return srcs[k]||(srcs[k]={key:k,name:String(name||"").trim()||"(not imported)",real:0,weeks:{},byWbs:{}});
   }
-  var rows=[],cB=0,cR=0,cBd=0,peak=0,peakWeek="";
+  var rows=[],cB=0,cR=0,cBd=0,peak=0,peakWeek="",cG=0,cGd=0;
   all.forEach(function(w){
     var e=entries[w]||null,covered=false,workers=0,budget=0;
     plan.forEach(function(l){
@@ -157,29 +186,37 @@ function mpModel(plan,weeks,opt){
     });
     cB+=budget;if(hasR)cR+=real;
     var toDate=!!cutoff&&w<=cutoff;if(toDate)cBd+=budget;
+    var bgt=bgtW?(bgtW[w]||0):0;cG+=bgt;if(toDate)cGd+=bgt;
     if(workers>peak){peak=workers;peakWeek=w;}
     rows.push({week:w,entry:e,workers:workers,budget:budget,src:src,real:real,hasR:hasR,toDate:toDate,
-      diff:hasR?real-budget:null,pct:hasR&&budget?Math.round((real-budget)/budget*100):null,cumB:cB,cumR:cR,cumBd:cBd});
+      diff:hasR?real-budget:null,pct:hasR&&budget?Math.round((real-budget)/budget*100):null,cumB:cB,cumR:cR,cumBd:cBd,
+      bgt:bgt,cumG:cG,cumGd:cGd});
   });
   // months: each week split over its working days
   var mon={};
   rows.forEach(function(r){
     var sh=mpMonthShares(r.week);
     Object.keys(sh).forEach(function(k){
-      var m=mon[k]||(mon[k]={month:k,budget:0,budgetToDate:0,real:0,hasR:false});
-      m.budget+=r.budget*sh[k];
+      var m=mon[k]||(mon[k]={month:k,budget:0,budgetToDate:0,real:0,hasR:false,bgt:0,bgtToDate:0});
+      m.budget+=r.budget*sh[k];m.bgt+=r.bgt*sh[k];if(r.toDate)m.bgtToDate+=r.bgt*sh[k];
       if(r.toDate)m.budgetToDate+=r.budget*sh[k];
       if(r.hasR){m.real+=r.real*sh[k];m.hasR=true;}
     });
   });
   var months=Object.keys(mon).sort().map(function(k){return mon[k];});
-  var mb=0,mr=0,mbd=0;
-  months.forEach(function(m){mb+=m.budget;mr+=m.real;mbd+=m.budgetToDate;m.cumB=mb;m.cumR=mr;m.cumBd=mbd;
+  var mb=0,mr=0,mbd=0,mg=0;
+  months.forEach(function(m){mb+=m.budget;mr+=m.real;mbd+=m.budgetToDate;m.cumB=mb;m.cumR=mr;m.cumBd=mbd;mg+=m.bgt;m.cumG=mg;
     m.diff=m.hasR?m.real-m.budgetToDate:null;m.pct=m.hasR&&m.budgetToDate?Math.round((m.real-m.budgetToDate)/m.budgetToDate*100):null;});
   var tot={budget:cB,budgetToDate:cBd,real:cR,remaining:cB-cBd,eac:cR+(cB-cBd),
     diff:cutoff?cR-cBd:null,pct:cutoff&&cBd?Math.round((cR-cBd)/cBd*100):null,
     peak:peak,peakWeek:peakWeek,start:all[0]||"",end:all[all.length-1]||"",cutoff:cutoff,weeks:all.length};
   tot.eacDiff=tot.eac-cB;
+  var pw=rows.filter(function(r){return r.src==="plan";});      // the weeks the plan covers (the budget may run longer)
+  tot.planStart=pw.length?pw[0].week:"";tot.planEnd=pw.length?pw[pw.length-1].week:"";tot.planWeeks=pw.length;
+  // € budget: total, to date, variances of the real against it
+  tot.hasBgt=!!bgtW&&cG>0;tot.bgt=cG;tot.bgtToDate=cGd;tot.bgtRemaining=cG-cGd;
+  tot.bgtDiff=tot.hasBgt&&cutoff?cR-cGd:null;tot.bgtPct=tot.bgtDiff!==null&&cGd?Math.round(tot.bgtDiff/cGd*100):null;
+  tot.eacBgtDiff=tot.hasBgt?tot.eac-cG:null;
   var companies=Object.keys(comp).map(function(k){return comp[k];}).sort(function(a,b){return (b.real+b.budget)-(a.real+a.budget);});
   var activities=Object.keys(acts).map(function(k){return acts[k];}).sort(function(a,b){return (b.real+b.budget)-(a.real+a.budget);});
   var srcList=Object.keys(srcs).map(function(k){return srcs[k];}).sort(function(a,b){return b.real-a.real;});
@@ -203,18 +240,22 @@ function mpFilter(plan,weeks,fWbs,fSrc){
 }
 
 // ---------------------------------------------------------------- view
-function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,currentUser}){
-  weeks=weeks||[];plan=plan||[];
+function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contractors,canEdit,currentUser}){
+  weeks=weeks||[];plan=plan||[];meta=meta||[];saveMeta=saveMeta||function(){};
   const [tab,setTab]=useState(plan.length||weeks.length?"overview":"plan");
   const [edit,setEdit]=useState(null);       // week entry being edited
   const [importing,setImporting]=useState(false);
   const [fWbs,setFWbs]=useState("");         // filter: webapp WBS (activity / plan line name)
   const [fSrc,setFSrc]=useState("");         // filter: activity name in the imported file
   var can=canEdit&&!window._ppReadOnly;
-  var M0=mpModel(plan,weeks);
+  var bRec=mpBudgetRec(meta);
+  var M0=mpModel(plan,weeks,{bgt:bRec?mpBudgetWeeks(bRec):null});
   var filtered=!!(fWbs||fSrc);
   var F=mpFilter(plan,weeks,fWbs,fSrc);
+  // the € budget is the whole project's: a filtered view compares real to planned only
   var M=filtered?mpModel(F.plan,F.weeks,{cutoff:M0.tot.cutoff}):M0;
+  var notes=meta.filter(function(x){return x&&x.kind==="note";}).sort(function(a,b){return String(b.at||b.date||"").localeCompare(String(a.at||a.date||""));});
+  var filterLabel=filtered?[fWbs?"WBS “"+fWbs+"”":"",fSrc?"file activity “"+fSrc+"”":""].filter(Boolean).join(" · "):"";
   // Company names offered while typing: subcontractors first, then every name already used.
   var known=[];
   (contractors||[]).forEach(function(c){if(c.name&&known.indexOf(c.name)<0)known.push(c.name);});
@@ -263,20 +304,20 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
   }
   function exportCsv(){
     var names=M.companies.map(function(c){return c.name;});
-    var rows=[["Week","Monday","Planned workers","Budget h","Real h","Variance h","Variance %","Cumulative budget h","Cumulative real h"].concat(names)];
+    var rows=[["Week","Monday","Planned workers","Budget h","Planned h","Real h","Variance h (vs planned)","Variance %","Cumulative budget h","Cumulative planned h","Cumulative real h"].concat(names)];
     M.rows.forEach(function(r){
       var byC={};((r.entry&&r.entry.real)||[]).forEach(function(x){var k=mpCompanyKey(x.company)||"(no company)";byC[k]=(byC[k]||0)+_invNum(x.hours);});
-      rows.push(["W"+mpIsoWeek(r.week),r.week,r.workers,Math.round(r.budget),r.hasR?r.real:"",r.diff===null?"":Math.round(r.diff),r.pct===null?"":r.pct,Math.round(r.cumB),r.hasR?r.cumR:""]
+      rows.push(["W"+mpIsoWeek(r.week),r.week,r.workers,M.tot.hasBgt?Math.round(r.bgt):"",Math.round(r.budget),r.hasR?r.real:"",r.diff===null?"":Math.round(r.diff),r.pct===null?"":r.pct,M.tot.hasBgt?Math.round(r.cumG):"",Math.round(r.cumB),r.hasR?r.cumR:""]
         .concat(M.companies.map(function(c){return byC[c.key]||"";})));
     });
-    rows.push([]);rows.push(["Activity","","","Budget h","Budget to date h","Real h","Variance h (vs budget to date)"]);
+    rows.push([]);rows.push(["Activity","","","Planned h","Planned to date h","Real h","Variance h (vs planned to date)"]);
     M.activities.forEach(function(a){rows.push([a.name,"","",Math.round(a.budget),Math.round(a.budgetToDate),a.real,a.real-a.budgetToDate]);});
     if(M.srcs.some(function(x){return x.key!=="(not imported)";})){
       rows.push([]);rows.push(["File activity","WBS (webapp)","","","","Real h"]);
       M.srcs.forEach(function(x){Object.keys(x.byWbs).forEach(function(wn){rows.push([x.name,wn,"","","",x.byWbs[wn]]);});});
     }
-    rows.push([]);rows.push(["Month","","","Budget h","Real h","Variance h (vs budget to date)","Variance %"]);
-    M.months.forEach(function(m){rows.push([mpMonthLabel(m.month),"","",Math.round(m.budget),m.hasR?Math.round(m.real):"",m.diff===null?"":Math.round(m.diff),m.pct===null?"":m.pct]);});
+    rows.push([]);rows.push(["Month","","","Budget h","Planned h","Real h","Variance h (vs planned to date)","Variance %","Cumulative budget h","Cumulative planned h"]);
+    M.months.forEach(function(m){rows.push([mpMonthLabel(m.month),"","",M.tot.hasBgt?Math.round(m.bgt):"",Math.round(m.budget),m.hasR?Math.round(m.real):"",m.diff===null?"":Math.round(m.diff),m.pct===null?"":m.pct,M.tot.hasBgt?Math.round(m.cumG):"",Math.round(m.cumB)]);});
     var csv=rows.map(function(r){return r.map(function(v){v=String(v===undefined||v===null?"":v);return /[",;\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(";");}).join("\n");
     var a=document.createElement("a");
     a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}));
@@ -289,11 +330,12 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
     <div className="page-hdr">
       <div>
         <div className="page-title">👷 Manpower</div>
-        <div className="page-sub">Plan the workers week by week → budget in hours per week, per month and in total. Real hours per week by company → variances.</div>
+        <div className="page-sub">Budget (€ ÷ hourly rate, spread over the duration) · planned (workers week by week) · real hours per week by company and activity → variances.</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {!can&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Manpower editor”"}</span>}
-        {!empty&&<button className="btn btn-sm" onClick={exportCsv} title="Weeks and months, budget, real and variances, one column per company (Excel opens it)">⬇ CSV</button>}
+        {!empty&&<button className="btn btn-sm" onClick={function(){mpOpenReport(M,bRec,notes,filterLabel);}} title="Printable report of the hours: budget, planned, real, months, weeks, activities, notes">🖨 Report</button>}
+        {!empty&&<button className="btn btn-sm" onClick={exportCsv} title="Weeks and months, budget, planned, real and variances, one column per company (Excel opens it)">⬇ CSV</button>}
         {can&&<button className="btn btn-sm" onClick={function(){setImporting(true);}} title="Real hours from an Excel or CSV file: weeks as numbers or dates, activities matched to the webapp's">⬆ Import Excel</button>}
         {can&&<button className="btn btn-pri btn-sm" onClick={openNew} title="Real hours of a week, by company">＋ Real hours</button>}
       </div>
@@ -311,17 +353,20 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
       </span>}
       {M.tot.cutoff&&<span style={{marginLeft:"auto",fontSize:11,color:"#888"}} title="Last week with real hours entered: “to date” figures stop there">Cut-off <b>W{mpIsoWeek(M.tot.cutoff)}</b> · {fmtDate(M.tot.cutoff)}</span>}
     </div>
-    {empty&&tab!=="plan"&&<div className="empty"><div className="empty-ico">👷</div>
+    {empty&&tab!=="plan"&&tab!=="overview"&&<div className="empty"><div className="empty-ico">👷</div>
       <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks. The budget in hours follows.</div>
       {can&&<div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){setTab("plan");}}>Go to the plan</button></div>}</div>}
-    {!empty&&tab==="overview"&&<MpOverview M={M} onOpenWeek={openWeek}/>}
+    {(tab==="overview"&&(!empty||bRec||isAdmin))&&<MpOverview M={M} M0={M0} filtered={filtered} onOpenWeek={openWeek} bRec={bRec} meta={meta} saveMeta={saveMeta}
+      notes={notes} isAdmin={!!isAdmin&&!window._ppReadOnly} can={can} currentUser={currentUser}/>}
     {filtered&&tab!=="plan"&&!empty&&<div style={{fontSize:11.5,color:"#6f6b62",background:"#fff8e1",border:"1px solid #f0e2b8",borderRadius:8,padding:"5px 10px",marginBottom:10}}>
-      Filtered on {fWbs?<b>WBS “{fWbs}”</b>:null}{fWbs&&fSrc?" · ":""}{fSrc?<b>file activity “{fSrc}”</b>:null} — real hours of these lines only; budget = the plan lines of {fWbs?"this WBS":"the WBS these hours are matched to"}{fSrc?" (shared with the other file activities matched to the same WBS)":""}.</div>}
+      Filtered on {fWbs?<b>WBS “{fWbs}”</b>:null}{fWbs&&fSrc?" · ":""}{fSrc?<b>file activity “{fSrc}”</b>:null} — real hours of these lines only; planned = the plan lines of {fWbs?"this WBS":"the WBS these hours are matched to"}{fSrc?" (shared with the other file activities matched to the same WBS)":""}.</div>}
     {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M0} can={can} known={known}/>}
     {!empty&&tab==="weeks"&&<MpWeeks M={M} onOpen={openWeek} can={can}/>}
     {!empty&&tab==="months"&&<MpMonths M={M}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
     {!empty&&tab==="activities"&&<MpActivities M={M} onPick={function(k,v){if(k==="wbs"){setFWbs(v);setFSrc("");}else setFSrc(v);}}/>}
+    {empty&&tab==="overview"&&!bRec&&!isAdmin&&<div className="empty"><div className="empty-ico">👷</div>
+      <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks.</div></div>}
     {importing&&<MpImportModal weeks={weeks} saveWeeks={saveWeeks} plan={plan} savePlan={savePlan} knownActs={knownActs} currentUser={currentUser} onClose={function(){setImporting(false);}}/>}
     {edit&&<MpWeekEditor w={edit} known={known} knownActs={knownActs} can={can} M={M0} isNew={!weeks.some(function(x){return x.id===edit.id;})}
       onSave={saveWeek} onDelete={function(){delWeek(edit);}} onClose={function(){setEdit(null);}}/>}
@@ -329,24 +374,90 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
 }
 
 // ---------------------------------------------------------------- overview
-function MpOverview({M,onOpenWeek}){
-  const [mode,setMode]=useState("weekly");
-  var t=M.tot;
+function MpOverview({M,M0,filtered,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,can,currentUser}){
+  const [mode,setMode]=useState("cumul");
+  const [editB,setEditB]=useState(null);
+  var t=M.tot,rate=mpBudgetRate(bRec);
   var worst=M.rows.filter(function(r){return r.hasR&&r.diff!==null;}).slice().sort(function(a,b){return Math.abs(b.diff)-Math.abs(a.diff);}).slice(0,5);
+  function eur(h){return rate&&h!==null&&isFinite(h)?invFmt(h*rate,0)+" €":"";}
+  var hasB=t.hasBgt;
+  // ---- budget (admin only)
+  function saveBudget(b){
+    if(!isAdmin){safeAlert("Only the admin may change the budget.");return;}
+    if(blockIfReadOnly())return;
+    if(!(Number(b.amount)>0)||!(Number(b.rate)>0)){safeAlert("Give the budget in € and the hourly rate.");return;}
+    if(!isValidDate(b.start)||!isValidDate(b.end)||b.end<b.start){safeAlert("Give the start and the end of the budget (the end after the start).");return;}
+    _invUpsert(meta,saveMeta,Object.assign({},b,{id:"budget",kind:"budget",amount:Number(b.amount),rate:Number(b.rate),
+      updatedBy:currentUser||"",updatedAt:today()}));
+    setEditB(null);
+  }
+  // The real hours become the budget of every week up to the cut-off; the weeks after keep the spread.
+  function alignOnReal(){
+    if(!isAdmin){safeAlert("Only the admin may adjust the budget.");return;}
+    if(blockIfReadOnly()||!bRec)return;
+    var co=M0.tot.cutoff;
+    if(!co){safeAlert("No real hours yet: nothing to align.");return;}
+    var past=M0.rows.filter(function(r){return r.week<=co;});
+    var before=past.reduce(function(s,r){return s+r.bgt;},0),after=past.reduce(function(s,r){return s+r.real;},0);
+    if(!safeConfirm("Adjust the budget to the real hours on every week up to W"+mpIsoWeek(co)+" ("+fmtDate(co)+")?\n\n"+
+      "Budget of these weeks: "+invFmt(before,0)+" h → "+invFmt(after,0)+" h (the real spent).\n"+
+      "The weeks after the cut-off keep their budget, so the total budget becomes "+invFmt(M0.tot.bgt-before+after,0)+" h.\n\n"+
+      "“Reset adjustments” in the budget card brings the even spread back."))return;
+    var bw=Object.assign({},bRec.byWeek||{});
+    past.forEach(function(r){bw[r.week]=Math.round(r.real*100)/100;});
+    _invUpsert(meta,saveMeta,Object.assign({},bRec,{byWeek:bw,alignedTo:co,alignedBy:currentUser||"",alignedAt:today()}));
+  }
+  function resetAlign(){
+    if(!isAdmin||blockIfReadOnly()||!bRec)return;
+    if(!safeConfirm("Remove the adjustments and spread the budget evenly again over its duration?"))return;
+    _invUpsert(meta,saveMeta,Object.assign({},bRec,{byWeek:{},alignedTo:"",alignedBy:"",alignedAt:""}));
+  }
+  // ---- notes
+  const [txt,setTxt]=useState("");
+  function addNote(){
+    var v=txt.trim();if(!v)return;
+    if(!can||blockIfReadOnly())return;
+    saveMeta([{id:uuid(),kind:"note",date:today(),at:new Date().toISOString(),author:currentUser||"",text:v}].concat(meta));
+    setTxt("");
+  }
+  function delNote(n){
+    if(!(isAdmin||(can&&n.author===currentUser))){safeAlert("Only the author or the admin may delete a note.");return;}
+    _invRemove(meta,saveMeta,n,"this note");
+  }
+  var nAligned=bRec?Object.keys(bRec.byWeek||{}).length:0;
   return <div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-      <InvBig label="Budget · whole duration" value={t.budget} unit="h" colour={MP_COL_BUDGET} sub={t.start?fmtDate(t.start)+" → "+fmtDate(addCalDays(t.end,6))+" · "+t.weeks+" weeks":""}/>
-      <InvBig label="Budget to date" value={t.cutoff?t.budgetToDate:null} unit="h" colour={MP_COL_BUDGET} sub={t.cutoff?"to W"+mpIsoWeek(t.cutoff):"no real hours yet"}/>
-      <InvBig label="Spent to date" value={t.real} unit="h" colour={MP_COL_REAL}/>
-      <InvBig label="Variance to date" value={t.diff} unit="h" colour={t.diff===null?null:mpVarCol(t.pct)} sub={t.pct===null?"spent − budget to date":(t.pct>0?"+":"")+t.pct+" % · "+(t.diff>0?"overspent":t.diff<0?"under budget":"on budget")}/>
-      <InvBig label="Remaining budget" value={t.remaining} unit="h" sub="plan after the cut-off"/>
-      <InvBig label="Forecast at completion" value={t.eac} unit="h" colour={t.eacDiff>0?"#b3302a":"#1e6b3a"} sub={"spent + remaining · "+mpSigned(t.eacDiff)+" h vs budget"}/>
+      <InvBig label="Budget · whole duration" value={hasB?t.bgt:null} unit="h" colour={MP_COL_BGT} sub={hasB?(bRec?invFmt(_invNum(bRec.amount),0)+" € · "+invFmt(rate,2)+" €/h":""):filtered&&bRec?"whole project only — clear the filter":"not set"+(isAdmin?" — set it below":" (admin)")}/>
+      <InvBig label="Budget to date" value={hasB&&t.cutoff?t.bgtToDate:null} unit="h" colour={MP_COL_BGT} sub={hasB&&t.cutoff?"to W"+mpIsoWeek(t.cutoff)+(rate?" · "+eur(t.bgtToDate):""):""}/>
+      <InvBig label="Planned · whole duration" value={t.budget} unit="h" colour={MP_COL_BUDGET} sub={t.planStart?fmtDate(t.planStart)+" → "+fmtDate(addCalDays(t.planEnd,6))+" · "+t.planWeeks+" weeks":""}/>
+      <InvBig label="Planned to date" value={t.cutoff?t.budgetToDate:null} unit="h" colour={MP_COL_BUDGET} sub={t.cutoff?"to W"+mpIsoWeek(t.cutoff):"no real hours yet"}/>
+      <InvBig label="Spent to date" value={t.real} unit="h" colour={MP_COL_REAL} sub={rate&&t.real?eur(t.real)+" at "+invFmt(rate,2)+" €/h":""}/>
+      {hasB&&<InvBig label="Variance vs budget" value={t.bgtDiff} unit="h" colour={t.bgtDiff===null?null:mpVarCol(t.bgtPct)} sub={t.bgtPct===null?"spent − budget to date":(t.bgtPct>0?"+":"")+t.bgtPct+" % · "+(rate?eur(t.bgtDiff)+" · ":"")+(t.bgtDiff>0?"overspent":t.bgtDiff<0?"under budget":"on budget")}/>}
+      <InvBig label="Variance vs planned" value={t.diff} unit="h" colour={t.diff===null?null:mpVarCol(t.pct)} sub={t.pct===null?"spent − planned to date":(t.pct>0?"+":"")+t.pct+" % · "+(t.diff>0?"above plan":t.diff<0?"below plan":"on plan")}/>
+      <InvBig label="Remaining planned" value={t.remaining} unit="h" sub="plan after the cut-off"/>
+      <InvBig label="Forecast at completion" value={t.eac} unit="h" colour={(hasB?t.eacBgtDiff:t.eacDiff)>0?"#b3302a":"#1e6b3a"} sub={"spent + remaining planned · "+(hasB?mpSigned(t.eacBgtDiff)+" h vs budget"+(rate?" ("+eur(t.eacBgtDiff)+")":""):mpSigned(t.eacDiff)+" h vs planned")}/>
       <InvBig label="Peak workers" value={t.peak} sub={t.peakWeek?"W"+mpIsoWeek(t.peakWeek)+" · "+fmtDate(t.peakWeek):""}/>
     </div>
+    {!filtered&&(bRec||isAdmin)&&<div className="card" style={{marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <div style={{fontWeight:700,fontSize:14}}>💶 Budget</div>
+        {bRec?<span style={{fontSize:12.5,color:"#444"}}>
+          <b>{invFmt(_invNum(bRec.amount),0)} €</b> ÷ <b>{invFmt(rate,2)} €/h</b> = <b style={{color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)} h</b>
+          {" "}spread from {fmtDate(bRec.start)} to {fmtDate(bRec.end)}
+          {nAligned>0&&<span style={{color:"#b35c00"}}> · aligned on the real up to W{mpIsoWeek(bRec.alignedTo)} ({nAligned} week{nAligned!==1?"s":""}) → total {invFmt(M0.tot.bgt,0)} h{rate?" = "+invFmt(M0.tot.bgt*rate,0)+" €":""}</span>}
+        </span>:<span style={{fontSize:12,color:"#888"}}>No budget yet: give the amount in €, the hourly rate and the duration — the hours are spread evenly over the working days.</span>}
+        <span style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}}>
+          {isAdmin&&<button className="btn btn-sm" onClick={function(){var m=_flowMonday(today());setEditB(Object.assign({amount:"",rate:"",start:M0.tot.start||m,end:M0.tot.end?addCalDays(M0.tot.end,5):addCalDays(m,365)},bRec||{}));}}>{bRec?"✎ Edit budget":"＋ Set the budget"}</button>}
+          {isAdmin&&bRec&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={alignOnReal} title="The real hours become the budget of every week up to the cut-off">⇆ Budget = real on the past</button>}
+          {isAdmin&&nAligned>0&&<button className="btn btn-sm" onClick={resetAlign} title="Spread the budget evenly again">↺ Reset adjustments</button>}
+        </span>
+      </div>
+      {!isAdmin&&<div style={{fontSize:11,color:"#9b968b",marginTop:4}}>Only the admin may change the budget.</div>}
+    </div>}
     <div className="card" style={{marginBottom:14}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-        <div style={{fontWeight:700,fontSize:14}}>Budget and real hours</div>
-        <span style={{fontSize:11,color:"#888"}}>{mode==="weekly"?"bars = real hours by company · line = budget from the plan":"running totals: budget (whole plan) and real"}</span>
+        <div style={{fontWeight:700,fontSize:14}}>Budget, planned and real hours</div>
+        <span style={{fontSize:11,color:"#888"}}>{mode==="weekly"?"bars = real hours by company · lines = budget and planned per week":"running totals: budget, planned and real"}</span>
         <span style={{marginLeft:"auto",display:"flex",gap:4}}>
           <button className={"fchip"+(mode==="weekly"?" on":"")} onClick={function(){setMode("weekly");}}>Weekly</button>
           <button className={"fchip"+(mode==="cumul"?" on":"")} onClick={function(){setMode("cumul");}}>Cumulative</button>
@@ -354,29 +465,77 @@ function MpOverview({M,onOpenWeek}){
       </div>
       <MpChart M={M} mode={mode}/>
     </div>
+    <div className="card" style={{marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+        <div style={{fontWeight:700,fontSize:14}}>📝 Notes</div>
+        <span style={{fontSize:11,color:"#888"}}>comments on the hours, shared with everyone and printed in the report</span>
+      </div>
+      {can&&<div style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:8}}>
+        <textarea value={txt} onChange={function(e){setTxt(e.target.value);}} rows={2} placeholder="e.g. W41: rain 2 days, overtime on the rainwater channel…"
+          onKeyDown={function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))addNote();}} style={{flex:1,padding:6,fontSize:13,fontFamily:"inherit"}}/>
+        <button className="btn btn-pri btn-sm" disabled={!txt.trim()} onClick={addNote}>Add</button>
+      </div>}
+      {!notes.length&&<div style={{color:"#9b968b",fontSize:12}}>No note yet.</div>}
+      {notes.map(function(n){
+        return <div key={n.id} style={{display:"flex",gap:10,padding:"6px 2px",borderTop:"1px solid #f0ede6",fontSize:12.5}}>
+          <span style={{color:"#888",whiteSpace:"nowrap",width:150,flexShrink:0}}>{fmtDate(n.date)}<div style={{fontSize:10.5}}>{n.author}</div></span>
+          <span style={{flex:1,whiteSpace:"pre-wrap"}}>{n.text}</span>
+          {(isAdmin||(can&&n.author===currentUser))&&<button onClick={function(){delNote(n);}} title="Delete" style={{background:"none",border:"none",cursor:"pointer",color:"#ccc"}}>✕</button>}
+        </div>;
+      })}
+    </div>
     {worst.length>0&&<div className="card">
-      <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Largest weekly variances</div>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Largest weekly variances (real vs planned)</div>
       {worst.map(function(r){
         return <div key={r.week} onClick={function(){onOpenWeek(r.week);}} style={{display:"flex",gap:10,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid #f0ede6",cursor:"pointer",fontSize:12.5}}>
           <b style={{width:44}}>W{mpIsoWeek(r.week)}</b><span style={{color:"#888",width:72}}>{fmtDate(r.week)}</span>
-          <span style={{flex:1,color:"#555"}}>budget {mpFmtH(r.budget)} h · real {mpFmtH(r.real)} h{r.entry&&r.entry.note?" · "+r.entry.note:""}</span>
+          <span style={{flex:1,color:"#555"}}>planned {mpFmtH(r.budget)} h{hasB?" · budget "+mpFmtH(r.bgt)+" h":""} · real {mpFmtH(r.real)} h{r.entry&&r.entry.note?" · "+r.entry.note:""}</span>
           <b style={{color:mpVarCol(r.pct),fontFamily:"var(--font-mono)"}}>{mpSigned(r.diff)} h{r.pct!==null?" ("+(r.pct>0?"+":"")+r.pct+" %)":""}</b>
         </div>;
       })}
     </div>}
+    {editB&&<MpBudgetEditor b={editB} onSave={saveBudget} onClose={function(){setEditB(null);}}/>}
   </div>;
+}
+
+function MpBudgetEditor({b,onSave,onClose}){
+  const [d,setD]=useState(b);
+  function set(k,v){setD(function(o){var n=Object.assign({},o);n[k]=v;return n;});}
+  var H=mpBudgetHours(d),ws=isValidDate(d.start)&&isValidDate(d.end)&&d.end>=d.start?mpWeeksBetween(d.start,d.end).length:0;
+  var months=ws?Math.max(1,Math.round(ws/4.345)):0;
+  var inp={padding:"6px 8px",fontSize:13};
+  var footer=<React.Fragment>
+    <button className="btn" onClick={onClose}>Cancel</button>
+    <button className="btn btn-pri" onClick={function(){onSave(d);}}>Save</button>
+  </React.Fragment>;
+  return <InvModal title="💶 Manpower budget" width={560} onClose={onClose} footer={footer}>
+    <div className="frow">
+      <div className="fg"><label>Budget (€)</label><input type="number" min="0" value={d.amount} onChange={function(e){set("amount",e.target.value);}} style={inp}/></div>
+      <div className="fg"><label>Hourly rate (€/h)</label><input type="number" min="0" step="0.01" value={d.rate} onChange={function(e){set("rate",e.target.value);}} style={inp}/></div>
+    </div>
+    <div className="frow">
+      <div className="fg"><label>From</label><input type="date" value={d.start||""} onChange={function(e){set("start",e.target.value);}} style={inp}/></div>
+      <div className="fg"><label>To</label><input type="date" value={d.end||""} onChange={function(e){set("end",e.target.value);}} style={inp}/></div>
+    </div>
+    <div style={{background:"#f3f8f4",border:"1px solid #d5e8db",borderRadius:8,padding:"8px 12px",fontSize:12.5}}>
+      {H?<span><b style={{color:MP_COL_BGT}}>{invFmt(H,0)} h</b> over {ws} weeks ≈ <b>{invFmt(ws?H/ws:0,0)} h / week</b> ≈ {invFmt(months?H/months:0,0)} h / month, spread evenly over the working days (Mon–Sat).</span>
+        :<span style={{color:"#888"}}>Budget ÷ hourly rate = the budget in hours.</span>}
+      {Object.keys(d.byWeek||{}).length>0&&<div style={{color:"#b35c00",marginTop:4}}>{Object.keys(d.byWeek).length} week(s) aligned on the real keep their figure.</div>}
+    </div>
+  </InvModal>;
 }
 
 function MpChart({M,mode}){
   var list=M.rows;
   if(!list.length)return <div style={{color:"#9b968b",fontSize:12}}>No week yet.</div>;
+  var hasB=M.tot.hasBgt;
   var top=M.companies.filter(function(c){return c.real>0;}).slice(0,MP_TOP),topKeys=top.map(function(c){return c.key;});
   var hasOthers=M.companies.filter(function(c){return c.real>0;}).length>MP_TOP;
   var W=Math.max(640,list.length*22+70),H=280,L=56,R=14,T=12,B=40;
   var iw=W-L-R,ih=H-T-B,bw=Math.max(4,Math.min(20,iw/list.length*0.7));
   function x(i){return L+(i+0.5)*iw/list.length;}
   var max=1;
-  list.forEach(function(r){max=Math.max(max,mode==="cumul"?Math.max(r.cumB,r.cumR):Math.max(r.real,r.budget));});
+  list.forEach(function(r){max=Math.max(max,mode==="cumul"?Math.max(r.cumB,r.cumR,r.cumG):Math.max(r.real,r.budget,r.bgt));});
   var step=Math.pow(10,Math.floor(Math.log10(max)));var nice=[1,2,2.5,5,10].map(function(m){return m*step;}).find(function(v){return max/v<=6;})||step*10;
   var top_=Math.ceil(max/nice)*nice;
   function y(v){return T+ih-(v/top_)*ih;}
@@ -400,11 +559,15 @@ function MpChart({M,mode}){
           var y0=y(acc+h),hh=y(acc)-y(acc+h);acc+=h;
           return <rect key={k} x={x(i)-bw/2} y={y0} width={bw} height={Math.max(0.5,hh)} fill={k==="__others"?"#b9b4a8":MP_COMPANY_COLS[c%MP_COMPANY_COLS.length]}/>;
         })}
-        <rect x={x(i)-bw/2} y={T} width={bw} height={ih} fill="transparent"><title>{mpWeekLabel(r.week)+"\nWorkers planned "+r.workers+"\nBudget "+mpFmtH(r.budget)+" h\nReal "+(r.hasR?mpFmtH(r.real)+" h":"—")+(r.diff!==null?"\nVariance "+mpSigned(r.diff)+" h":"")}</title></rect></g>;
+        <rect x={x(i)-bw/2} y={T} width={bw} height={ih} fill="transparent"><title>{mpWeekLabel(r.week)+"\nWorkers planned "+r.workers+(hasB?"\nBudget "+mpFmtH(r.bgt)+" h":"")+"\nPlanned "+mpFmtH(r.budget)+" h\nReal "+(r.hasR?mpFmtH(r.real)+" h":"—")+(r.diff!==null?"\nVariance vs planned "+mpSigned(r.diff)+" h":"")}</title></rect></g>;
       })}
+      {mode==="weekly"&&hasB&&line(function(r){return r.bgt;},MP_COL_BGT,"6 3")}
       {mode==="weekly"&&line(function(r){return r.budget;},MP_COL_BUDGET)}
+      {mode==="cumul"&&hasB&&line(function(r){return r.cumG;},MP_COL_BGT,"6 3")}
       {mode==="cumul"&&line(function(r){return r.cumB;},MP_COL_BUDGET)}
       {mode==="cumul"&&line(function(r){return r.cumR;},MP_COL_REAL,"",function(r){return r.toDate;})}
+      {mode==="cumul"&&list.map(function(r,i){return <rect key={"t"+i} x={x(i)-iw/list.length/2} y={T} width={iw/list.length} height={ih} fill="transparent">
+        <title>{mpWeekLabel(r.week)+(hasB?"\nBudget cumul. "+mpFmtH(r.cumG)+" h":"")+"\nPlanned cumul. "+mpFmtH(r.cumB)+" h"+(r.toDate?"\nReal cumul. "+mpFmtH(r.cumR)+" h":"")}</title></rect>;})}
       {ci>=0&&<g><line x1={x(ci)} x2={x(ci)} y1={T} y2={T+ih} stroke="#14171c" strokeDasharray="3 3"/><text x={x(ci)+3} y={T+9} fontSize="9" fill="#14171c">cut-off</text></g>}
       {list.map(function(r,i){return i%labelEvery?null:<text key={"l"+i} x={x(i)} y={H-B+14} fontSize="9.5" textAnchor="middle" fill="#6f6b62">W{mpIsoWeek(r.week)}</text>;})}
       <text x={x(0)} y={H-B+27} fontSize="9" textAnchor="start" fill="#9b968b">{fmtDate(list[0].week)}</text>
@@ -412,12 +575,94 @@ function MpChart({M,mode}){
       <line x1={L} x2={W-R} y1={T+ih} y2={T+ih} stroke="#c9c4b8"/>
     </svg>
     <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:"#6f6b62",marginTop:6}}>
-      <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:16,height:2,background:MP_COL_BUDGET}}/>Budget (plan)</span>
+      {hasB&&<span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:16,height:0,borderTop:"2px dashed "+MP_COL_BGT}}/>Budget</span>}
+      <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:16,height:2,background:MP_COL_BUDGET}}/>Planned</span>
       {mode==="cumul"&&<span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:16,height:2,background:MP_COL_REAL}}/>Real</span>}
       {mode==="weekly"&&top.map(function(c,k){return <span key={c.key} style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:MP_COMPANY_COLS[k%MP_COMPANY_COLS.length]}}/>{c.name}</span>;})}
       {mode==="weekly"&&hasOthers&&<span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#b9b4a8"}}/>Others</span>}
     </div>
   </div>;
+}
+
+// ---------------------------------------------------------------- printable report
+// Standalone HTML in a new tab (openReport, app-reports.js): figures, cumulative curves, months,
+// weeks, WBS, companies and the notes.
+function mpReportChart(M){
+  var list=M.rows;if(!list.length)return "";
+  var hasB=M.tot.hasBgt,W=900,H=260,L=60,R=12,T=12,B=34,iw=W-L-R,ih=H-T-B;
+  function x(i){return L+(i+0.5)*iw/list.length;}
+  var max=1;list.forEach(function(r){max=Math.max(max,r.cumB,r.cumR,r.cumG);});
+  var step=Math.pow(10,Math.floor(Math.log10(max)));var nice=[1,2,2.5,5,10].map(function(m){return m*step;}).find(function(v){return max/v<=6;})||step*10;
+  var top=Math.ceil(max/nice)*nice;
+  function y(v){return T+ih-(v/top)*ih;}
+  function pl(get,col,dash,only){
+    var pts=[];list.forEach(function(r,i){if(!only||only(r))pts.push(x(i).toFixed(1)+","+y(get(r)).toFixed(1));});
+    return pts.length?'<polyline points="'+pts.join(" ")+'" fill="none" stroke="'+col+'" stroke-width="2"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>':"";
+  }
+  var g="";
+  for(var v=0;v<=top+1e-9;v+=nice)g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#e6e2d8"/><text x="'+(L-6)+'" y="'+(y(v)+3)+'" font-size="9" text-anchor="end" fill="#888">'+invFmt(v,0)+'</text>';
+  var every=Math.max(1,Math.ceil(list.length/18));
+  list.forEach(function(r,i){if(i%every===0)g+='<text x="'+x(i)+'" y="'+(H-B+13)+'" font-size="9" text-anchor="middle" fill="#666">W'+mpIsoWeek(r.week)+'</text>';});
+  var ci=M.tot.cutoff?list.findIndex(function(r){return r.week===M.tot.cutoff;}):-1;
+  if(ci>=0)g+='<line x1="'+x(ci)+'" x2="'+x(ci)+'" y1="'+T+'" y2="'+(T+ih)+'" stroke="#14171c" stroke-dasharray="3 3"/><text x="'+(x(ci)+3)+'" y="'+(T+9)+'" font-size="9">cut-off</text>';
+  g+=(hasB?pl(function(r){return r.cumG;},MP_COL_BGT,"6 3"):"")+pl(function(r){return r.cumB;},MP_COL_BUDGET)+pl(function(r){return r.cumR;},MP_COL_REAL,"",function(r){return r.toDate;});
+  g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+(T+ih)+'" y2="'+(T+ih)+'" stroke="#bbb"/>';
+  var leg=(hasB?'<span><i style="border-top:2px dashed '+MP_COL_BGT+'"></i>Budget</span>':'')+'<span><i style="border-top:2px solid '+MP_COL_BUDGET+'"></i>Planned</span><span><i style="border-top:2px solid '+MP_COL_REAL+'"></i>Real</span>';
+  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;font-family:IBM Plex Mono,monospace">'+g+'</svg><div class="mp-leg">'+leg+'</div>';
+}
+function mpOpenReport(M,bRec,notes,filterLabel){
+  var t=M.tot,hasB=t.hasBgt,rate=mpBudgetRate(bRec);
+  function h(v){return v===null||v===undefined||!isFinite(v)?"—":invFmt(v,0);}
+  function sg(v){return v===null||v===undefined||!isFinite(v)?"—":mpSigned(v);}
+  function eur(v){return rate&&v!==null&&isFinite(v)?invFmt(v*rate,0)+" €":"";}
+  function vc(v,base){if(v===null||!isFinite(v))return "";var p=base?v/base*100:null;return ' style="color:'+mpVarCol(p)+';font-weight:600"';}
+  var kpi=[];
+  if(hasB)kpi.push(["Budget",h(t.bgt)+" h",bRec?invFmt(_invNum(bRec.amount),0)+" € · "+invFmt(rate,2)+" €/h":""],["Budget to date",h(t.bgtToDate)+" h",eur(t.bgtToDate)]);
+  kpi.push(["Planned",h(t.budget)+" h",t.planStart?fmtDate(t.planStart)+" → "+fmtDate(addCalDays(t.planEnd,6)):""],["Planned to date",h(t.budgetToDate)+" h",""],
+    ["Spent to date",h(t.real)+" h",eur(t.real)]);
+  if(hasB)kpi.push(["Variance vs budget",sg(t.bgtDiff)+" h",(t.bgtPct!==null?(t.bgtPct>0?"+":"")+t.bgtPct+" % · ":"")+eur(t.bgtDiff)]);
+  kpi.push(["Variance vs planned",sg(t.diff)+" h",t.pct!==null?(t.pct>0?"+":"")+t.pct+" %":""],
+    ["Forecast at completion",h(t.eac)+" h",hasB?sg(t.eacBgtDiff)+" h vs budget":sg(t.eacDiff)+" h vs planned"]);
+  var html='<style>.mp h1{font-size:20px;margin:0 0 2px}.mp h2{font-size:14px;margin:18px 0 6px;border-bottom:2px solid #14171c;padding-bottom:3px}'+
+    '.mp .sub{color:#666;font-size:11.5px;margin-bottom:10px}.mp table{border-collapse:collapse;width:100%;font-size:10.5px}'+
+    '.mp th,.mp td{border-bottom:1px solid #e6e2d8;padding:3px 5px;text-align:right}.mp th:first-child,.mp td:first-child{text-align:left}'+
+    '.mp th{background:#f5f3ee;font-weight:700}.mp .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}'+
+    '.mp .k{border:1px solid #e6e2d8;border-radius:6px;padding:6px 8px}.mp .k b{display:block;font-size:15px}.mp .k span{font-size:9.5px;color:#777;text-transform:uppercase;letter-spacing:.04em}'+
+    '.mp .k i{font-size:10px;color:#666;font-style:normal}.mp .mp-leg{display:flex;gap:14px;font-size:10.5px;color:#555}.mp .mp-leg i{display:inline-block;width:18px;margin-right:4px;vertical-align:middle}'+
+    '.mp .tot td{font-weight:800;background:#fffaf0}.mp .note{border-bottom:1px solid #eee;padding:4px 0;font-size:11px}.mp .note em{color:#777;font-style:normal;margin-right:8px}'+
+    '@media print{.mp h2{break-after:avoid}.mp tr{break-inside:avoid}}</style><div class="mp">';
+  html+='<h1>Riviera Tower — Manpower hours report</h1><div class="sub">Printed '+fmtDate(today())+(t.cutoff?' · cut-off W'+mpIsoWeek(t.cutoff)+' ('+fmtDate(t.cutoff)+')':' · no real hours yet')+
+    (filterLabel?' · filtered on '+esc(filterLabel)+' (budget not shown)':'')+'</div>';
+  html+='<div class="kpis">'+kpi.map(function(k){return '<div class="k"><span>'+esc(k[0])+'</span><b>'+k[1]+'</b><i>'+esc(k[2])+'</i></div>';}).join("")+'</div>';
+  html+='<h2>Cumulative hours</h2>'+mpReportChart(M);
+  // months
+  html+='<h2>Months</h2><table><thead><tr><th>Month</th>'+(hasB?'<th>Budget</th>':'')+'<th>Planned</th><th>Planned to date</th><th>Real</th><th>Variance vs planned</th>'+(hasB?'<th>Cumul. budget</th>':'')+'<th>Cumul. planned</th><th>Cumul. real</th></tr></thead><tbody>';
+  M.months.forEach(function(m){html+='<tr><td>'+mpMonthLabel(m.month)+'</td>'+(hasB?'<td>'+h(m.bgt)+'</td>':'')+'<td>'+h(m.budget)+'</td><td>'+(m.budgetToDate?h(m.budgetToDate):"—")+'</td><td>'+(m.hasR?h(m.real):"—")+'</td><td'+vc(m.diff,m.budgetToDate)+'>'+sg(m.diff)+'</td>'+(hasB?'<td>'+h(m.cumG)+'</td>':'')+'<td>'+h(m.cumB)+'</td><td>'+(m.hasR?h(m.cumR):"—")+'</td></tr>';});
+  html+='<tr class="tot"><td>Whole duration</td>'+(hasB?'<td>'+h(t.bgt)+'</td>':'')+'<td>'+h(t.budget)+'</td><td>'+h(t.budgetToDate)+'</td><td>'+h(t.real)+'</td><td>'+sg(t.diff)+'</td><td colspan="'+(hasB?3:2)+'">forecast '+h(t.eac)+' h</td></tr></tbody></table>';
+  // weeks up to the cut-off
+  var past=M.rows.filter(function(r){return t.cutoff&&r.week<=t.cutoff;});
+  if(past.length){
+    html+='<h2>Weeks to the cut-off</h2><table><thead><tr><th>Week</th>'+(hasB?'<th>Budget</th>':'')+'<th>Planned</th><th>Real</th><th>Variance vs planned</th>'+(hasB?'<th>Cumul. budget</th>':'')+'<th>Cumul. planned</th><th>Cumul. real</th><th style="text-align:left">Note</th></tr></thead><tbody>';
+    past.forEach(function(r){html+='<tr><td>W'+mpIsoWeek(r.week)+' · '+fmtDate(r.week)+'</td>'+(hasB?'<td>'+h(r.bgt)+'</td>':'')+'<td>'+h(r.budget)+'</td><td>'+(r.hasR?h(r.real):"—")+'</td><td'+vc(r.diff,r.budget)+'>'+sg(r.diff)+'</td>'+(hasB?'<td>'+h(r.cumG)+'</td>':'')+'<td>'+h(r.cumB)+'</td><td>'+h(r.cumR)+'</td><td style="text-align:left;color:#666">'+esc((r.entry&&r.entry.note)||"")+'</td></tr>';});
+    html+='</tbody></table>';
+  }
+  // WBS / activities
+  if(M.activities.length){
+    html+='<h2>By WBS</h2><table><thead><tr><th>WBS</th><th>Planned</th><th>Planned to date</th><th>Real</th><th>Variance vs planned to date</th><th>Share of real</th></tr></thead><tbody>';
+    M.activities.forEach(function(a){var d=a.real-a.budgetToDate;html+='<tr><td>'+esc(a.name)+'</td><td>'+h(a.budget)+'</td><td>'+h(a.budgetToDate)+'</td><td>'+h(a.real)+'</td><td'+vc(d,a.budgetToDate)+'>'+sg(d)+'</td><td>'+(t.real&&a.real?Math.round(a.real/t.real*100)+" %":"—")+'</td></tr>';});
+    html+='</tbody></table>';
+  }
+  var cos=M.companies.filter(function(c){return c.real>0;});
+  if(cos.length){
+    html+='<h2>By company</h2><table><thead><tr><th>Company</th><th>Real</th><th>Share of real</th><th>Weeks present</th></tr></thead><tbody>';
+    cos.forEach(function(c){html+='<tr><td>'+esc(c.name)+'</td><td>'+h(c.real)+'</td><td>'+(t.real?Math.round(c.real/t.real*100)+" %":"—")+'</td><td>'+Object.keys(c.weeks).length+'</td></tr>';});
+    html+='</tbody></table>';
+  }
+  if((notes||[]).length){
+    html+='<h2>Notes</h2>'+notes.map(function(n){return '<div class="note"><em>'+fmtDate(n.date)+' · '+esc(n.author||"")+'</em>'+esc(n.text).replace(/\n/g,"<br/>")+'</div>';}).join("");
+  }
+  html+='</div>';
+  openReport("Manpower report "+today(),html);
 }
 
 // ---------------------------------------------------------------- plan
@@ -461,7 +706,7 @@ function MpPlan({plan,savePlan,M,can,known}){
       {!lines.length&&<div style={{color:"#9b968b",fontSize:12}}>No plan yet. Add one line per trade or team, e.g. “Formwork carpenters — 12 workers — W43 to W8 — 48 h”.</div>}
       {lines.length>0&&<table className="tbl tbl-cards" style={{fontSize:12}}>
         <thead><tr><th>Trade / team</th><th>Company</th><th style={{textAlign:"right"}}>Workers</th><th>From</th><th>To</th>
-          <th style={{textAlign:"right"}}>h / worker / week</th><th style={{textAlign:"right"}}>Weeks</th><th style={{textAlign:"right"}}>Budget h</th></tr></thead>
+          <th style={{textAlign:"right"}}>h / worker / week</th><th style={{textAlign:"right"}}>Weeks</th><th style={{textAlign:"right"}}>Planned h</th></tr></thead>
         <tbody>{lines.map(function(l){
           var n=mpWeeksBetween(l.start,l.end).length,ov=Object.keys(l.byWeek||{}).length;
           return <tr key={l.id} onClick={function(){setEdit(Object.assign({},l));}} style={{cursor:"pointer"}}>
@@ -472,11 +717,11 @@ function MpPlan({plan,savePlan,M,can,known}){
             <td data-l="To" style={{whiteSpace:"nowrap"}}>W{mpIsoWeek(l.end)} <span style={{color:"#888"}}>{fmtDate(l.end)}</span></td>
             <td data-l="h/worker/wk" style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{mpLineHpw(l)}</td>
             <td data-l="Weeks" style={{textAlign:"right"}}>{n}</td>
-            <td data-l="Budget h" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_BUDGET}}>{invFmt(mpLineTotal(l),0)}</td>
+            <td data-l="Planned h" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_BUDGET}}>{invFmt(mpLineTotal(l),0)}</td>
           </tr>;
         })}
-        <tr style={{background:"#fffaf0"}}><td className="card-main" style={{fontWeight:700}}>Total</td><td/><td/><td data-l="From">{M.tot.start?fmtDate(M.tot.start):""}</td><td data-l="To">{M.tot.end?fmtDate(M.tot.end):""}</td><td/><td/>
-          <td data-l="Budget h" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:800,color:MP_COL_BUDGET}}>{invFmt(lines.reduce(function(s,l){return s+mpLineTotal(l);},0),0)}</td></tr>
+        <tr style={{background:"#fffaf0"}}><td className="card-main" style={{fontWeight:700}}>Total</td><td/><td/><td data-l="From">{M.tot.planStart?fmtDate(M.tot.planStart):""}</td><td data-l="To">{M.tot.planEnd?fmtDate(addCalDays(M.tot.planEnd,6)):""}</td><td/><td/>
+          <td data-l="Planned h" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:800,color:MP_COL_BUDGET}}>{invFmt(lines.reduce(function(s,l){return s+mpLineTotal(l);},0),0)}</td></tr>
         </tbody>
       </table>}
     </div>
@@ -513,10 +758,17 @@ function MpPlan({plan,savePlan,M,can,known}){
               <td style={{position:"sticky",left:0,background:"#fffaf0",padding:"4px 8px"}}>Workers</td>
               {weeks.map(function(w){return <td key={w} style={{textAlign:"center",fontFamily:"var(--font-mono)"}}>{invFmt((weekTot[w]||{}).workers||0,1)}</td>;})}
             </tr>
-            <tr style={{background:"#fffaf0"}}>
-              <td style={{position:"sticky",left:0,background:"#fffaf0",padding:"4px 8px",fontWeight:700,color:MP_COL_BUDGET}}>Budget h</td>
-              {weeks.map(function(w){return <td key={w} style={{textAlign:"center",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET,fontSize:10}}>{invFmt((weekTot[w]||{}).budget||0,0)}</td>;})}
-            </tr>
+            {[["Planned h","budget",MP_COL_BUDGET,true],["Planned cumul.","cumB",MP_COL_BUDGET,true]]
+              .concat(M.tot.hasBgt?[["Budget h","bgt",MP_COL_BGT,false],["Budget cumul.","cumG",MP_COL_BGT,false]]:[])
+              .concat([["Real h","real",MP_COL_REAL,false],["Real cumul.","cumR",MP_COL_REAL,false]])
+              .map(function(rw){
+                var isReal=rw[1]==="real"||rw[1]==="cumR";
+                return <tr key={rw[1]} style={{background:"#fffaf0"}}>
+                  <td style={{position:"sticky",left:0,background:"#fffaf0",padding:"4px 8px",fontWeight:700,color:rw[2],whiteSpace:"nowrap"}}>{rw[0]}</td>
+                  {weeks.map(function(w){var r=weekTot[w]||{};var v=r[rw[1]];
+                    return <td key={w} style={{textAlign:"center",fontFamily:"var(--font-mono)",color:rw[2],fontSize:10,fontWeight:/cum/.test(rw[1])?700:400}}>{isReal&&!r.toDate?"":invFmt(v||0,0)}</td>;})}
+                </tr>;
+              })}
           </tbody>
         </table>
       </div>
@@ -581,25 +833,26 @@ function MpWeeks({M,onOpen,can}){
   return <div className="card" style={{padding:0,overflowX:"auto"}}>
     <table className="tbl tbl-cards" style={{fontSize:12,margin:0}}>
       <thead><tr>
-        <th>Week</th><th style={{textAlign:"right"}}>Workers</th><th style={{textAlign:"right"}}>Budget</th><th style={{textAlign:"right"}}>Real</th>
-        <th style={{textAlign:"right"}} title="Real − budget">Variance</th>
-        <th style={{textAlign:"right"}} title="Running totals to date: budget / real">Cumul. B / R</th>
+        <th>Week</th><th style={{textAlign:"right"}}>Workers</th>{M.tot.hasBgt&&<th style={{textAlign:"right"}}>Budget</th>}<th style={{textAlign:"right"}}>Planned</th><th style={{textAlign:"right"}}>Real</th>
+        <th style={{textAlign:"right"}} title="Real − planned">Variance</th>
+        <th style={{textAlign:"right"}} title={"Running totals: "+(M.tot.hasBgt?"budget / ":"")+"planned / real"}>Cumul. {M.tot.hasBgt?"B / ":""}P / R</th>
         <th style={{textAlign:"right"}} title="Running variance to date">Cumul. var.</th>
         <th>Companies</th><th>Note</th>
       </tr></thead>
       <tbody>{list.map(function(r){
-        if(r.sep)return <tr key="sep"><td colSpan={9} style={{background:"#f5f3ee",fontSize:11,fontWeight:700,color:"#6f6b62",textTransform:"uppercase",letterSpacing:".06em"}}>
-          Plan ahead · {ahead.length} week{ahead.length!==1?"s":""} · {invFmt(ahead.reduce(function(a,x){return a+x.budget;},0),0)} h</td></tr>;
+        if(r.sep)return <tr key="sep"><td colSpan={M.tot.hasBgt?10:9} style={{background:"#f5f3ee",fontSize:11,fontWeight:700,color:"#6f6b62",textTransform:"uppercase",letterSpacing:".06em"}}>
+          Plan ahead · {ahead.length} week{ahead.length!==1?"s":""} · planned {invFmt(ahead.reduce(function(a,x){return a+x.budget;},0),0)} h{M.tot.hasBgt?" · budget "+invFmt(ahead.reduce(function(a,x){return a+x.bgt;},0),0)+" h":""}</td></tr>;
         var real=((r.entry&&r.entry.real)||[]).slice().sort(function(a,b){return _invNum(b.hours)-_invNum(a.hours);});
         var future=M.tot.cutoff?r.week>M.tot.cutoff:true;
         var cd=r.toDate?r.cumR-r.cumBd:null;
         return <tr key={r.week} onClick={function(){onOpen(r.week);}} style={{cursor:"pointer",opacity:future&&!r.hasR?.7:1}} title={can?"Open to enter the real hours":"Open"}>
-          <td className="card-main" style={{whiteSpace:"nowrap"}}><b>W{mpIsoWeek(r.week)}</b> <span style={{color:"#888"}}>{fmtDate(r.week)}</span>{r.src==="manual"&&<span title="No plan line covers this week: the budget is the manual figure" style={{fontSize:10,color:"#b35c00",marginLeft:4}}>manual</span>}</td>
+          <td className="card-main" style={{whiteSpace:"nowrap"}}><b>W{mpIsoWeek(r.week)}</b> <span style={{color:"#888"}}>{fmtDate(r.week)}</span>{r.src==="manual"&&<span title="No plan line covers this week: the planned figure is the manual one" style={{fontSize:10,color:"#b35c00",marginLeft:4}}>manual</span>}</td>
           <td data-l="Workers" style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{r.workers?invFmt(r.workers,1):"—"}</td>
-          <td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{r.budget?invFmt(r.budget,0):"—"}</td>
+          {M.tot.hasBgt&&<td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{r.bgt?invFmt(r.bgt,0):"—"}</td>}
+          <td data-l="Planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{r.budget?invFmt(r.budget,0):"—"}</td>
           <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL}}>{r.hasR?invFmt(r.real,0):"—"}</td>
           {vcell(r.diff,r.pct)}
-          <td data-l="Cumul. B / R" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888",whiteSpace:"nowrap"}}>{invFmt(r.cumB,0)} / {r.toDate?invFmt(r.cumR,0):"—"}</td>
+          <td data-l="Cumulative" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888",whiteSpace:"nowrap"}}>{M.tot.hasBgt?<span style={{color:MP_COL_BGT}}>{invFmt(r.cumG,0)} / </span>:null}<span style={{color:MP_COL_BUDGET}}>{invFmt(r.cumB,0)}</span> / <span style={{color:MP_COL_REAL}}>{r.toDate?invFmt(r.cumR,0):"—"}</span></td>
           <td data-l="Cumul. var." style={{textAlign:"right",fontFamily:"var(--font-mono)",color:cd===null?"#ccc":mpVarCol(r.cumBd?cd/r.cumBd*100:null)}}>{cd===null?"—":mpSigned(cd)}</td>
           <td data-l="Companies" style={{fontSize:11,color:"#555"}}>{real.slice(0,3).map(function(x){return (x.company||"?")+" "+invFmt(_invNum(x.hours),0);}).join(" · ")}{real.length>3?" · +"+(real.length-3):""}</td>
           <td data-l="Note" style={{fontSize:11,color:"#888",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(r.entry&&r.entry.note)||""}</td>
@@ -612,41 +865,46 @@ function MpWeeks({M,onOpen,can}){
 // ---------------------------------------------------------------- months
 function MpMonths({M}){
   var t=M.tot;
-  var max=Math.max.apply(null,M.months.map(function(m){return Math.max(m.budget,m.real);}).concat([1]));
+  var max=Math.max.apply(null,M.months.map(function(m){return Math.max(m.budget,m.real,m.bgt);}).concat([1]));
+  var hasB=t.hasBgt;
   return <div>
     <div className="card" style={{padding:0,overflowX:"auto",marginBottom:12}}>
       <table className="tbl tbl-cards" style={{fontSize:12,margin:0}}>
-        <thead><tr><th>Month</th><th style={{textAlign:"right"}}>Budget</th><th style={{textAlign:"right"}} title="Budget of the weeks up to the cut-off">Budget to date</th>
-          <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − budget to date">Variance</th>
-          <th style={{textAlign:"right"}}>Cumul. budget</th><th style={{textAlign:"right"}}>Cumul. real</th><th style={{minWidth:140}}></th></tr></thead>
+        <thead><tr><th>Month</th>{hasB&&<th style={{textAlign:"right"}}>Budget</th>}<th style={{textAlign:"right"}}>Planned</th><th style={{textAlign:"right"}} title="Planned hours of the weeks up to the cut-off">Planned to date</th>
+          <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − planned to date">Variance</th>
+          {hasB&&<th style={{textAlign:"right"}}>Cumul. budget</th>}<th style={{textAlign:"right"}}>Cumul. planned</th><th style={{textAlign:"right"}}>Cumul. real</th><th style={{minWidth:140}}></th></tr></thead>
         <tbody>
           {M.months.map(function(m){
             return <tr key={m.month}>
               <td className="card-main" style={{fontWeight:700,whiteSpace:"nowrap"}}>{mpMonthLabel(m.month)}</td>
-              <td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{invFmt(m.budget,0)}</td>
-              <td data-l="Budget to date" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{m.budgetToDate?invFmt(m.budgetToDate,0):"—"}</td>
+              {hasB&&<td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(m.bgt,0)}</td>}
+              <td data-l="Planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{invFmt(m.budget,0)}</td>
+              <td data-l="Planned to date" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{m.budgetToDate?invFmt(m.budgetToDate,0):"—"}</td>
               <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL}}>{m.hasR?invFmt(m.real,0):"—"}</td>
               <td data-l="Variance" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:600,color:mpVarCol(m.pct)}}>{m.diff===null?"—":mpSigned(m.diff)}{m.pct!==null?<span style={{fontSize:10,marginLeft:4}}>{(m.pct>0?"+":"")+m.pct}%</span>:null}</td>
-              <td data-l="Cumul. budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{invFmt(m.cumB,0)}</td>
+              {hasB&&<td data-l="Cumul. budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(m.cumG,0)}</td>}
+              <td data-l="Cumul. planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{invFmt(m.cumB,0)}</td>
               <td data-l="Cumul. real" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{m.hasR?invFmt(m.cumR,0):"—"}</td>
               <td className="phone-hide"><div style={{position:"relative",height:14}}>
-                <div style={{position:"absolute",left:0,top:0,height:6,width:(m.budget/max*100)+"%",background:MP_COL_BUDGET,borderRadius:2,opacity:.75}}/>
-                {m.hasR&&<div style={{position:"absolute",left:0,top:7,height:6,width:(m.real/max*100)+"%",background:MP_COL_REAL,borderRadius:2}}/>}
+                {hasB&&<div style={{position:"absolute",left:0,top:0,height:4,width:(m.bgt/max*100)+"%",background:MP_COL_BGT,borderRadius:2,opacity:.75}}/>}
+                <div style={{position:"absolute",left:0,top:hasB?5:0,height:hasB?4:6,width:(m.budget/max*100)+"%",background:MP_COL_BUDGET,borderRadius:2,opacity:.75}}/>
+                {m.hasR&&<div style={{position:"absolute",left:0,top:hasB?10:7,height:hasB?4:6,width:(m.real/max*100)+"%",background:MP_COL_REAL,borderRadius:2}}/>}
               </div></td>
             </tr>;
           })}
           <tr style={{background:"#fffaf0"}}>
             <td className="card-main" style={{fontWeight:800}}>Whole duration</td>
-            <td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:800,color:MP_COL_BUDGET}}>{invFmt(t.budget,0)}</td>
-            <td data-l="Budget to date" style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{t.cutoff?invFmt(t.budgetToDate,0):"—"}</td>
+            {hasB&&<td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:800,color:MP_COL_BGT}}>{invFmt(t.bgt,0)}</td>}
+            <td data-l="Planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:800,color:MP_COL_BUDGET}}>{invFmt(t.budget,0)}</td>
+            <td data-l="Planned to date" style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{t.cutoff?invFmt(t.budgetToDate,0):"—"}</td>
             <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:800,color:MP_COL_REAL}}>{invFmt(t.real,0)}</td>
             <td data-l="Variance" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:800,color:mpVarCol(t.pct)}}>{t.diff===null?"—":mpSigned(t.diff)}{t.pct!==null?<span style={{fontSize:10,marginLeft:4}}>{(t.pct>0?"+":"")+t.pct}%</span>:null}</td>
-            <td data-l="Forecast" colSpan={3} style={{fontSize:11.5,color:"#555"}}>Remaining {invFmt(t.remaining,0)} h · forecast at completion <b style={{color:t.eacDiff>0?"#b3302a":"#1e6b3a"}}>{invFmt(t.eac,0)} h ({mpSigned(t.eacDiff)})</b></td>
+            <td data-l="Forecast" colSpan={hasB?4:3} style={{fontSize:11.5,color:"#555"}}>Remaining planned {invFmt(t.remaining,0)} h · forecast at completion <b style={{color:(hasB?t.eacBgtDiff:t.eacDiff)>0?"#b3302a":"#1e6b3a"}}>{invFmt(t.eac,0)} h ({hasB?mpSigned(t.eacBgtDiff)+" vs budget":mpSigned(t.eacDiff)+" vs planned"})</b></td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div style={{fontSize:11,color:"#9b968b"}}>A week across two months is split by working day (Mon–Sat). Variance = real − budget of the weeks up to the cut-off (W{t.cutoff?mpIsoWeek(t.cutoff):"—"}).</div>
+    <div style={{fontSize:11,color:"#9b968b"}}>A week across two months is split by working day (Mon–Sat). Variance = real − planned hours of the weeks up to the cut-off (W{t.cutoff?mpIsoWeek(t.cutoff):"—"}).</div>
   </div>;
 }
 
@@ -657,8 +915,8 @@ function MpCompanies({M}){
   if(!list.length)return <div className="empty"><div className="empty-txt">No company yet: give a company to the plan lines and to the real hours.</div></div>;
   return <div className="card" style={{padding:0,overflowX:"auto"}}>
     <table className="tbl tbl-cards" style={{fontSize:12,margin:0}}>
-      <thead><tr><th>Company</th><th style={{textAlign:"right"}}>Budget (plan)</th><th style={{textAlign:"right"}}>Budget to date</th>
-        <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − budget to date">Variance</th><th style={{textAlign:"right"}}>Share of real</th>
+      <thead><tr><th>Company</th><th style={{textAlign:"right"}}>Planned</th><th style={{textAlign:"right"}}>Planned to date</th>
+        <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − planned to date">Variance</th><th style={{textAlign:"right"}}>Share of real</th>
         <th style={{textAlign:"right"}}>Weeks present</th></tr></thead>
       <tbody>{list.map(function(c){
         var d=c.budgetToDate||c.real?c.real-c.budgetToDate:null;
@@ -675,7 +933,7 @@ function MpCompanies({M}){
         </tr>;
       })}</tbody>
     </table>
-    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Budget per company comes from the plan lines that name a company. Lines without one are only in the totals.</div>
+    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Planned hours per company come from the plan lines that name a company. Lines without one are only in the totals.</div>
   </div>;
 }
 
@@ -713,13 +971,13 @@ function MpActivities({M,onPick}){
         </tr>;
       })}</tbody>
     </table>
-    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>The activity names of the imported files, as they are in the file, with the webapp WBS they were matched to at the import. The budget lives on the WBS.</div>
+    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>The activity names of the imported files, as they are in the file, with the webapp WBS they were matched to at the import. The planned hours live on the WBS.</div>
   </div>;
   return <div className="card" style={{padding:0,overflowX:"auto"}}>
     {switcher}
     <table className="tbl tbl-cards" style={{fontSize:12,margin:0}}>
-      <thead><tr><th>{hasSrc?"WBS (webapp)":"Activity"}</th><th style={{textAlign:"right"}}>Budget (plan)</th><th style={{textAlign:"right"}}>Budget to date</th>
-        <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − budget to date">Variance</th><th style={{textAlign:"right"}}>Share of real</th>
+      <thead><tr><th>{hasSrc?"WBS (webapp)":"Activity"}</th><th style={{textAlign:"right"}}>Planned</th><th style={{textAlign:"right"}}>Planned to date</th>
+        <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − planned to date">Variance</th><th style={{textAlign:"right"}}>Share of real</th>
         <th>Companies</th></tr></thead>
       <tbody>{list.map(function(a){
         var d=a.budgetToDate||a.real?a.real-a.budgetToDate:null;
@@ -757,7 +1015,7 @@ function MpActivities({M,onPick}){
         </React.Fragment>;
       })}</tbody>
     </table>
-    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Budget per activity comes from the plan lines of the same name.{hasSrc?" Open a WBS to see the file activities matched to it.":""}{untagged&&untagged.real?" "+invFmt(untagged.real,0)+" h of real hours have no activity yet: open the weeks to tag them.":""}</div>
+    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Planned hours per activity come from the plan lines of the same name.{hasSrc?" Open a WBS to see the file activities matched to it.":""}{untagged&&untagged.real?" "+invFmt(untagged.real,0)+" h of real hours have no activity yet: open the weeks to tag them.":""}</div>
   </div>;
 }
 
@@ -922,6 +1180,17 @@ function mpImpGuess(name,acts){
   });
   return bs>=0.5?best:"";
 }
+// Lines of a week keyed by company + WBS + file activity, to compare a week with the file's version.
+function mpImpLineMap(lines){
+  var m={};
+  (lines||[]).forEach(function(r){
+    var k=mpCompanyKey(r.company)+"|"+mpActKey(r.activity)+"|"+mpActKey(r.src);
+    var o=m[k]||(m[k]={hours:0,label:[r.src||r.activity||"(no activity)",r.company].filter(Boolean).join(" · ")});
+    o.hours+=_invNum(r.hours);
+  });
+  Object.keys(m).forEach(function(k){m[k].hours=Math.round(m[k].hours*100)/100;});
+  return m;
+}
 function mpImpMapLoad(){try{return JSON.parse(localStorage.getItem("pp_mp_actmap")||"{}")||{};}catch(e){return {};}}
 function mpImpMapSave(m){try{localStorage.setItem("pp_mp_actmap",JSON.stringify(m));}catch(e){}}
 
@@ -933,7 +1202,7 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
   const [year,setYear]=useState(Number(today().slice(0,4)));
   const [colsAre,setColsAre]=useState("company");
   const [fixed,setFixed]=useState("");
-  const [mode,setMode]=useState("replace");
+  const [picks,setPicks]=useState({});        // changed week (Monday) → "old" | "new"
   const [map,setMap]=useState({});            // file activity → "new" | "none" | "skip" | existing name
   const [book,setBook]=useState(null);        // {name, sheets:{name: rows}} of an Excel file, to switch sheet
   const [sheet,setSheet]=useState("");
@@ -950,7 +1219,7 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
   function onFile(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
     e.target.value="";                         // the same file can be picked again after a change
-    setBook(null);setSheet("");setMap({});
+    setBook(null);setSheet("");setMap({});setPicks({});
     var rd=new FileReader();
     if(/\.(csv|txt)$/i.test(f.name)){
       rd.onload=function(){load(mpImpParseText(rd.result),f.name);};rd.readAsText(f);
@@ -994,13 +1263,39 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
   var unmatched=actKeys.filter(function(k){var st=status(k,true);return st==="none"||st==="guess";}).length;
   var wkSet={};res.items.forEach(function(it){wkSet[it.week]=1;});
   var wkList=Object.keys(wkSet).sort();
-  var existing=wkList.filter(function(w){return weeks.some(function(x){return _flowMonday(x.week)===w&&(x.real||[]).length;});});
   var total=res.items.reduce(function(s,it){return s+it.hours;},0);
   var skipH=res.items.filter(function(it){return it.activity&&choice(mpActKey(it.activity))==="skip";}).reduce(function(s,it){return s+it.hours;},0);
+  // The file's lines per week, activities mapped as chosen above.
+  var incoming={};
+  res.items.forEach(function(it){
+    var act="",src="";
+    if(it.activity){var c=choice(mpActKey(it.activity));if(c==="skip")return;act=c==="none"?"":c==="new"?fileActs[mpActKey(it.activity)].name:c;src=fileActs[mpActKey(it.activity)].name;}
+    var l=incoming[it.week]||(incoming[it.week]=[]);
+    var hit=l.find(function(x){return mpCompanyKey(x.company)===mpCompanyKey(it.company)&&mpActKey(x.activity)===mpActKey(act)&&mpActKey(x.src)===mpActKey(src);});
+    if(hit)hit.hours+=it.hours;else l.push({company:it.company,activity:act,src:src,hours:it.hours});
+  });
+  Object.keys(incoming).forEach(function(w){incoming[w]=incoming[w].map(function(x){var o={company:x.company,activity:x.activity,hours:Math.round(x.hours*100)/100};if(x.src)o.src=x.src;return o;});});
+  // Each week of the file against what the webapp holds: new, unchanged, or changed (→ old or new?).
+  var cmp=Object.keys(incoming).sort().map(function(w){
+    var cur=weeks.find(function(x){return _flowMonday(x.week)===w;});
+    if(!cur||!(cur.real||[]).length)return {week:w,state:"new",lines:incoming[w],cur:cur||null};
+    var a=mpImpLineMap(cur.real),b=mpImpLineMap(incoming[w]),diffs=[];
+    Object.keys(a).concat(Object.keys(b).filter(function(k){return !(k in a);})).forEach(function(k){
+      var o=a[k]?a[k].hours:0,n=b[k]?b[k].hours:0;
+      if(Math.abs(o-n)>0.005)diffs.push({label:(a[k]||b[k]).label,old:o,neu:n});
+    });
+    return {week:w,state:diffs.length?"changed":"same",lines:incoming[w],cur:cur,diffs:diffs,
+      oldH:mpReal(cur),newH:incoming[w].reduce(function(s,x){return s+x.hours;},0)};
+  });
+  var cNew=cmp.filter(function(c){return c.state==="new";}),cSame=cmp.filter(function(c){return c.state==="same";}),cChg=cmp.filter(function(c){return c.state==="changed";});
+  var undecided=cChg.filter(function(c){return !picks[c.week];}).length;
+  function pickAll(v){var n={};cChg.forEach(function(c){n[c.week]=v;});setPicks(n);}
+  var nToWrite=cNew.length+cChg.filter(function(c){return picks[c.week]==="new";}).length;
 
   function apply(){
     if(blockIfReadOnly())return;
     if(!res.items.length)return;
+    if(undecided){safeAlert("Choose the old or the new figures for the "+undecided+" changed week(s) first.");return;}
     // 1. new activities become plan lines (0 workers over the weeks they appear in), so they get a budget later
     var newPlan=plan.slice(),created=[];
     actKeys.forEach(function(k){
@@ -1009,43 +1304,31 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
       var line=newMpPlanLine({label:fileActs[k].name,workers:0,start:ws[0],end:ws[ws.length-1],note:"Created by the import of "+(fileName||"a file")+" — set the workers to give it a budget"});
       newPlan.push(line);created.push(line.label);
     });
-    // 2. the hours, week by week
-    var byWeek={};
-    res.items.forEach(function(it){
-      var act="",src="";
-      if(it.activity){var c=choice(mpActKey(it.activity));if(c==="skip")return;act=c==="none"?"":c==="new"?fileActs[mpActKey(it.activity)].name:c;src=fileActs[mpActKey(it.activity)].name;}
-      var l=byWeek[it.week]||(byWeek[it.week]=[]);
-      var hit=l.find(function(x){return mpCompanyKey(x.company)===mpCompanyKey(it.company)&&mpActKey(x.activity)===mpActKey(act)&&mpActKey(x.src)===mpActKey(src);});
-      if(hit)hit.hours+=it.hours;else l.push({company:it.company,activity:act,src:src,hours:it.hours});
-    });
-    var next=weeks.slice();
-    Object.keys(byWeek).forEach(function(w){
-      var i=next.findIndex(function(x){return _flowMonday(x.week)===w;});
-      var lines=byWeek[w].map(function(x){var o={company:x.company,activity:x.activity,hours:Math.round(x.hours*100)/100};if(x.src)o.src=x.src;return o;});
-      if(i<0){next.push(newManpowerWeek({week:w,real:lines,note:"Imported"+(fileName?" from "+fileName:""),updatedBy:currentUser||"",updatedAt:today()}));return;}
-      var cur=next[i],real;
-      if(mode==="replace")real=lines;
-      else{
-        real=(cur.real||[]).map(function(r){return Object.assign({},r);});
-        lines.forEach(function(x){
-          var h=real.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(x.company)&&mpActKey(r.activity)===mpActKey(x.activity)&&mpActKey(r.src)===mpActKey(x.src);});
-          if(h)h.hours=x.hours;else real.push(x);
-        });
-      }
-      next[i]=Object.assign({},cur,{real:real,updatedBy:currentUser||"",updatedAt:today()});
+    // 2. the hours: new weeks added, changed weeks as picked, unchanged weeks left alone
+    var next=weeks.slice(),added=0,updated=0,kept=0;
+    cmp.forEach(function(c){
+      if(c.state==="same")return;
+      if(c.state==="changed"&&picks[c.week]!=="new"){kept++;return;}
+      var stamp={updatedBy:currentUser||"",updatedAt:today()};
+      if(!c.cur){next.push(newManpowerWeek(Object.assign({week:c.week,real:c.lines,note:"Imported"+(fileName?" from "+fileName:"")},stamp)));added++;return;}
+      var i=next.findIndex(function(x){return x.id===c.cur.id;});
+      next[i]=Object.assign({},c.cur,{real:c.lines},stamp);
+      if(c.state==="new")added++;else updated++;
     });
     // remember the choices for the next file
     var mem=mpImpMapLoad();actKeys.forEach(function(k){var c=choice(k);mem[k]=c==="new"?fileActs[k].name:c;});mpImpMapSave(mem);
     if(created.length)savePlan(newPlan);
-    saveWeeks(next);
-    safeAlert(invFmt(total-skipH,0)+" h imported over "+Object.keys(byWeek).length+" week(s)."+(created.length?"\n\nNew WBS added to the plan (0 workers — give them workers to get a budget):\n• "+created.join("\n• "):""));
+    if(added||updated)saveWeeks(next);
+    safeAlert((added?added+" new week(s) added":"No new week")+(updated?", "+updated+" week(s) updated with the file":"")+
+      (kept?", "+kept+" changed week(s) kept as before":"")+(cSame.length?", "+cSame.length+" week(s) unchanged":"")+"."+(created.length?"\n\nNew WBS added to the plan (0 workers — give them workers to get a budget):\n• "+created.join("\n• "):""));
     onClose();
   }
 
   var inp={padding:"5px 8px",fontSize:13};
   var footer=<React.Fragment>
     <button className="btn" onClick={onClose}>Cancel</button>
-    <button className="btn btn-pri" disabled={!res.items.length} onClick={apply}>Import {res.items.length?invFmt(total-skipH,0)+" h":""}</button>
+    <button className="btn btn-pri" disabled={!res.items.length||undecided>0||(!nToWrite&&!actKeys.some(function(k){return choice(k)==="new";}))} onClick={apply}
+      title={undecided?"Choose old or new for every changed week":""}>{undecided?"Choose old / new for "+undecided+" week(s)":nToWrite?"Import "+nToWrite+" week"+(nToWrite!==1?"s":""):"Nothing new to import"}</button>
   </React.Fragment>;
   return <InvModal title={"⬆ Import real hours · build "+(window._appBuild||"")} width={820} onClose={onClose} footer={footer}>
     <div style={{fontSize:12,color:"#6f6b62",marginBottom:10}}>
@@ -1086,10 +1369,33 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
         <span>{wkList.length} week{wkList.length!==1?"s":""}: W{mpIsoWeek(wkList[0])} {fmtDate(wkList[0])} → W{mpIsoWeek(wkList[wkList.length-1])} {fmtDate(wkList[wkList.length-1])}</span>
         {res.skipped>0&&<span style={{color:"#b35c00"}}>{res.skipped} row(s) skipped (no readable week or hours)</span>}
       </div>}
-      {existing.length>0&&<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",fontSize:12.5,background:"#fff8e1",border:"1px solid #f0e2b8",borderRadius:8,padding:"6px 10px",marginBottom:10}}>
-        <span>{existing.length} week{existing.length!==1?"s":""} already have real hours ({existing.slice(0,4).map(function(w){return "W"+mpIsoWeek(w);}).join(", ")}{existing.length>4?"…":""}):</span>
-        <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}><input type="radio" checked={mode==="replace"} onChange={function(){setMode("replace");}}/>replace them with the file</label>
-        <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}><input type="radio" checked={mode==="merge"} onChange={function(){setMode("merge");}}/>keep them, update the same company + activity</label>
+      {cmp.length>0&&<div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",marginBottom:10,fontSize:12.5}}>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{color:"#1e6b3a"}}><b>{cNew.length}</b> new week{cNew.length!==1?"s":""}{cNew.length?" ("+cNew.slice(0,3).map(function(c){return "W"+mpIsoWeek(c.week);}).join(", ")+(cNew.length>3?"…":"")+")":""} → added</span>
+          <span style={{color:"#888"}}><b>{cSame.length}</b> unchanged → left as they are</span>
+          <span style={{color:cChg.length?"#b35c00":"#888"}}><b>{cChg.length}</b> changed since the last import</span>
+          {cChg.length>0&&<span style={{marginLeft:"auto",display:"flex",gap:6}}>
+            <button className="btn btn-sm" onClick={function(){pickAll("old");}}>Keep all old</button>
+            <button className="btn btn-sm" onClick={function(){pickAll("new");}}>Take all new</button></span>}
+        </div>
+        {cChg.length>0&&<table className="tbl" style={{fontSize:12,marginTop:8,background:"#fff"}}>
+          <thead><tr><th>Week</th><th style={{textAlign:"right"}}>In the webapp</th><th style={{textAlign:"right"}}>In the file</th><th>What changed</th><th style={{whiteSpace:"nowrap"}}>Keep</th></tr></thead>
+          <tbody>{cChg.map(function(c){
+            var p=picks[c.week];
+            function set(v){setPicks(function(o){var n=Object.assign({},o);n[c.week]=v;return n;});}
+            return <tr key={c.week} style={{background:p?"#fff":"#fff8e1"}}>
+              <td style={{whiteSpace:"nowrap"}}><b>W{mpIsoWeek(c.week)}</b> <span style={{color:"#888"}}>{fmtDate(c.week)}</span></td>
+              <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(c.oldH,1)} h</td>
+              <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:c.newH>c.oldH?"#b3302a":c.newH<c.oldH?"#1e6b3a":"#14171c"}}>{invFmt(c.newH,1)} h</td>
+              <td style={{fontSize:11,color:"#555"}}>{c.diffs.slice(0,3).map(function(d){return d.label+": "+invFmt(d.old,1)+" → "+invFmt(d.neu,1);}).join(" · ")}{c.diffs.length>3?" · +"+(c.diffs.length-3)+" more":""}</td>
+              <td style={{whiteSpace:"nowrap"}}>
+                <label style={{display:"inline-flex",alignItems:"center",gap:3,margin:"0 8px 0 0",textTransform:"none",letterSpacing:"normal",fontSize:12,fontFamily:"inherit"}}><input type="radio" checked={p==="old"} onChange={function(){set("old");}}/>old</label>
+                <label style={{display:"inline-flex",alignItems:"center",gap:3,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12,fontFamily:"inherit"}}><input type="radio" checked={p==="new"} onChange={function(){set("new");}}/>new</label>
+              </td>
+            </tr>;
+          })}</tbody>
+        </table>}
+        {cChg.length>0&&<div style={{fontSize:11,color:"#9b968b",marginTop:4}}>“new” replaces the whole week with the file's lines; “old” keeps the webapp's week as it is.</div>}
       </div>}
       {actKeys.length>0&&<div>
         <div style={{display:"flex",alignItems:"baseline",gap:8,margin:"4px 0 6px",flexWrap:"wrap"}}>
@@ -1160,16 +1466,16 @@ function MpWeekEditor({w,known,knownActs,can,isNew,M,onSave,onDelete,onClose}){
         <input type="date" value={d.week||""} disabled={!can} onChange={function(e){set("week",e.target.value);}} style={inp}/>
         {monday&&<span style={{fontSize:11,color:"#888"}}>Monday {fmtDate(monday)} → Sunday {fmtDate(addCalDays(monday,6))}</span>}</div>
       {row&&row.src==="plan"
-        ?<div className="fg"><label>Budget from the plan</label>
+        ?<div className="fg"><label>Planned (from the plan)</label>
           <div style={{fontSize:15,fontWeight:800,color:MP_COL_BUDGET,fontFamily:"var(--font-mono)",padding:"6px 0"}}>{invFmt(row.budget,0)} h</div>
           <span style={{fontSize:11,color:"#888"}}>{invFmt(row.workers,1)} workers planned</span></div>
-        :<div className="fg"><label>Budget (manual — no plan line covers this week)</label>
+        :<div className="fg"><label>Planned (manual — no plan line covers this week)</label>
           <input type="number" min="0" value={d.approved} disabled={!can} onChange={function(e){set("approved",e.target.value);}} style={inp}/></div>}
     </div>
     <div style={{display:"flex",alignItems:"baseline",gap:8,margin:"6px 0 6px"}}>
       <div style={{fontWeight:700,fontSize:13}}>Real hours by company and activity</div>
       <span style={{fontSize:12,color:MP_COL_REAL,fontWeight:700,fontFamily:"var(--font-mono)"}}>{invFmt(real,0)} h</span>
-      {budget!==null&&real>0&&<span style={{fontSize:11,color:real>budget?"#b3302a":"#1e6b3a"}}>{mpSigned(real-budget)} h vs budget{budget?" ("+(real>=budget?"+":"")+Math.round((real-budget)/budget*100)+" %)":""}</span>}
+      {budget!==null&&real>0&&<span style={{fontSize:11,color:real>budget?"#b3302a":"#1e6b3a"}}>{mpSigned(real-budget)} h vs planned{budget?" ("+(real>=budget?"+":"")+Math.round((real-budget)/budget*100)+" %)":""}</span>}
       {can&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setShowPaste(!showPaste);}}>📋 Paste from Excel</button>}
     </div>
     {showPaste&&<div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:10,marginBottom:10}}>
