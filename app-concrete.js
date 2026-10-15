@@ -144,19 +144,44 @@ function conShareUpTo(qty,from,to,date){
   if(date>=r.b)return qty;
   return qty*(_conDays(r.a,date)+1)/(_conDays(r.a,r.b)+1);
 }
+// Planned up to date: the theoretical spread over the WBS dates, or (pastReal) what was poured by then.
+function conPlannedToDate(list,pours,typeIds,date,pastReal){
+  if(pastReal){
+    var ids={};list.forEach(function(w){ids[w.id]=1;});
+    return(pours||[]).reduce(function(a,p){return ids[p.wbsId]?a+conShareUpTo(conPourQty(p,typeIds),p.from||p.date,p.date,date):a;},0);
+  }
+  return list.reduce(function(a,w){return a+conShareUpTo(conSum(w.theo,typeIds),w.start,w.finish,date);},0);
+}
 function conFmtMonth(k){
   var M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return M[Number(k.slice(5,7))-1]+" "+k.slice(2,4);
 }
 function _conNextMonth(k){var y=Number(k.slice(0,4)),m=Number(k.slice(5,7));m++;if(m>12){m=1;y++;}return y+"-"+(m<10?"0":"")+m;}
 // Month by month: planned (theoretical spread over the WBS dates) and real (pours).
-function conSeries(wbsList,pours,typeIds,extraMonths){
+// pastReal ("Planned = real for the past"): the planned of the past is what was poured, and
+// what each WBS still has to receive (theoretical − poured, 0 once done) is spread from
+// tomorrow (or its start, if later) to its finish.
+function _conTomorrow(){var d=parseISODate(today());d.setDate(d.getDate()+1);return toISO(d);}
+function conPlanRemain(w,pours,typeIds){
+  if(w.done)return 0;
+  var r=(pours||[]).reduce(function(a,p){return p.wbsId===w.id?a+conPourQty(p,typeIds):a;},0);
+  return Math.max(0,conSum(w.theo,typeIds)-r);
+}
+function conSeries(wbsList,pours,typeIds,extraMonths,pastReal){
   var plan={},real={},unscheduled=0,inList={};
+  var tm=pastReal?_conTomorrow():"";
   wbsList.forEach(function(w){
     inList[w.id]=true;
+    if(pastReal){
+      var rem=conPlanRemain(w,pours,typeIds);
+      if(!_conRange(w.start,w.finish)){unscheduled+=rem;return;}
+      var a=w.start&&w.start>tm?w.start:tm,b=w.finish&&w.finish>tm?w.finish:a;
+      conSpread(rem,a,b,plan);return;
+    }
     var q=conSum(w.theo,typeIds);
     if(!conSpread(q,w.start,w.finish,plan))unscheduled+=q;
   });
+  if(pastReal)(pours||[]).forEach(function(p){if(inList[p.wbsId])conSpread(conPourQty(p,typeIds),p.from||p.date,p.date,plan);});
   (pours||[]).forEach(function(p){
     if(!inList[p.wbsId])return;
     conSpread(conPourQty(p,typeIds),p.from||p.date,p.date,real);
@@ -393,6 +418,8 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
   const [typeId,setTypeId]=useState("");
   const [zone,setZone]=useState("");
   const [showTable,setShowTable]=useState(false);
+  const [pastReal,setPastReal]=useState(function(){try{return localStorage.getItem("pp_con_pastreal")==="1";}catch(e){return false;}});
+  function togglePastReal(){var v=!pastReal;setPastReal(v);try{localStorage.setItem("pp_con_pastreal",v?"1":"0");}catch(e){}}
   if(!wbs.length)return <div className="empty"><div className="empty-ico">🧱</div>
     <div className="empty-txt">{types.length?"No WBS yet. Start with the works done to date as one WBS, then add the WBS still to come.":"Start with the concrete types (grades), then the WBS."}</div>
     <div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){onGo(types.length?"wbs":"types");}}>{types.length?"Go to WBS":"Go to Types"}</button></div></div>;
@@ -400,9 +427,9 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
   var list=wbs.filter(function(w){return !zone||w.zone===zone;});
   var tot=conTotals(list.map(function(w){return conWbsFigures(w,realIx,typeIds);}));
   var t0=today();
-  var plannedToDate=list.reduce(function(s,w){return s+conShareUpTo(conSum(w.theo,typeIds),w.start,w.finish,t0);},0);
+  var plannedToDate=conPlannedToDate(list,pours,typeIds,t0,pastReal);
   var ep=conEarnedPoints(cutoffs,list,pours,typeIds);
-  var s=conSeries(list,pours,typeIds,ep.map(function(p){return p.date.slice(0,7);}));
+  var s=conSeries(list,pours,typeIds,ep.map(function(p){return p.date.slice(0,7);}),pastReal);
   var last=ep.length?ep[ep.length-1]:null;
   var unit=CON_UNIT;
   var R={textAlign:"right"};
@@ -424,12 +451,15 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
       <ConZoneSelect zones={zoneList} value={zone} onChange={setZone} all/>
       <span style={{fontSize:12,color:"#888"}}>{list.length} WBS · {label}</span>
       <div style={{flex:1}}/>
-      <button className="btn btn-sm" onClick={function(){conExportXlsx(types,list,pours,realIx,cutoffs);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs);}}>🖨 Report</button>
+      <button className={"btn btn-sm"+(pastReal?" btn-pri":"")} onClick={togglePastReal}
+        title={pastReal?"On: the planned of the past = what was poured; what each WBS still needs (theoretical − poured) is spread from tomorrow to its finish. Click to go back to the theoretical spread over the WBS dates.":"Set the planned of the past equal to the real pours, and spread what remains of each WBS from tomorrow to its finish."}>
+        {pastReal?"✓ ":""}Planned = real (past)</button>
+      <button className="btn btn-sm" onClick={function(){conExportXlsx(types,list,pours,realIx,cutoffs,pastReal);}}>⤓ Excel</button>
+      <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal);}}>🖨 Report</button>
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
       <InvBig label="Theoretical" value={tot.theo} unit={unit} sub={s.unscheduled>CON_EPS?conFmt(s.unscheduled)+" "+unit+" without dates":list.length+" WBS"}/>
-      <InvBig label="Planned to date" value={plannedToDate} unit={unit} sub="theoretical spread over the WBS dates"/>
+      <InvBig label="Planned to date" value={plannedToDate} unit={unit} sub={pastReal?"= poured (planned = real for the past)":"theoretical spread over the WBS dates"}/>
       <InvBig label="Poured to date" value={tot.real} unit={unit} sub="real volume (pours)"/>
       <InvBig label="Real progress (earned)" value={last?last.earned:null} unit={unit} colour={CON_COL_EARN}
         sub={last?"cut-off "+fmtDate(last.date)+" · "+(last.theoAll>0?(last.earned/last.theoAll*100).toFixed(1)+"% of budget":""):"needs a cut-off with progress % typed"}/>
@@ -513,7 +543,7 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
             <td style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}</td><td style={Object.assign({color:conLossCol(r.variance)},R)}>{conPct(r.varPct)}</td></tr>;
         })}</tbody></table></div>
     </>}
-    <div style={{fontSize:11,color:"#888"}}>Nothing here estimates progress. The loss or gain of concrete exists only at a cut-off: earned = budget × the progress % typed for each WBS, against the volume poured up to that date, on the WBS that have a %. Planned = theoretical spread evenly between each WBS's start and finish; poured = the pours.</div>
+    <div style={{fontSize:11,color:"#888"}}>Nothing here estimates progress. The loss or gain of concrete exists only at a cut-off: earned = budget × the progress % typed for each WBS, against the volume poured up to that date, on the WBS that have a %. {pastReal?"Planned = real for the past: up to today the planned is what was poured; what each WBS still needs (theoretical − poured, nothing once it is done) is spread evenly from tomorrow, or its start if later, to its finish.":"Planned = theoretical spread evenly between each WBS's start and finish."} Poured = the pours.</div>
   </div>;
 }
 // Theoretical m³ per WBS and per type, typed straight in the overview (no dialog). Empty = none.
@@ -1200,12 +1230,12 @@ function ConTypeEditor({t,types,edit,onSave,onDelete,onClose}){
 }
 
 // ---------------------------------------------------------------- report & export
-function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs){
+function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal){
   var E=esc,t0=today();
   var figs=conSortWbs(list).map(function(w){return conWbsFigures(w,realIx,typeIds);});
   var tot=conTotals(figs);
-  var s=conSeries(list,pours,typeIds);
-  var plannedToDate=list.reduce(function(a,w){return a+conShareUpTo(conSum(w.theo,typeIds),w.start,w.finish,t0);},0);
+  var s=conSeries(list,pours,typeIds,null,pastReal);
+  var plannedToDate=conPlannedToDate(list,pours,typeIds,t0,pastReal);
   var td=function(v,b,c){return'<td style="text-align:right;'+(b?"font-weight:700;":"")+(c?"color:"+c+";":"")+'">'+v+"</td>";};
   var sg=function(v){return(v>0?"+":"")+conFmt(v);};
   var ep=conEarnedPoints(cutoffs,list,pours,typeIds);
@@ -1235,7 +1265,7 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs){
   var sRows=sNames.map(function(n){return"<tr><td><b>"+E(n)+"</b></td>"+sCols.map(function(t){return td(bs[n][t.id]?conFmt(bs[n][t.id]):"");}).join("")+td(conFmt(bs[n]._total),true)+td(sAll>0?(bs[n]._total/sAll*100).toFixed(0)+"%":"")+td(bs[n]._month?conFmt(bs[n]._month):"")+"</tr>";}).join("");
   var nowK=t0.slice(0,7);
   var mRows=s.months.filter(function(k){return k>=nowK;}).slice(0,12).map(function(k){var i=s.months.indexOf(k);return"<tr><td>"+conFmtMonth(k)+"</td>"+td(conFmt(s.plan[i]))+td(conFmt(s.cumPlan[i]))+"</tr>";}).join("");
-  var html="<h1>Concrete — theoretical vs real</h1><div class=\"sub\">Riviera Tower · "+E(label)+" · situation at "+E(fmtDate(t0))+"</div>"
+  var html="<h1>Concrete — theoretical vs real</h1><div class=\"sub\">Riviera Tower · "+E(label)+" · situation at "+E(fmtDate(t0))+(pastReal?" · planned = real for the past":"")+"</div>"
     +"<h2>Summary ("+CON_UNIT+")</h2><table><tr><th>Theoretical</th><th>Planned to date</th><th>Poured to date</th>"+(last?"<th>Earned at "+E(fmtDate(last.date))+"</th><th>Loss (+) / gain (−)</th><th>EAC</th>":"")+"</tr><tr>"
     +td(conFmt(tot.theo))+td(conFmt(plannedToDate))+td(conFmt(tot.real))
     +(last?td(conFmt(last.earned))+td(sg(last.variance)+" ("+conPct(last.varPct)+")",true,conLossCol(last.variance))+td(conFmt(last.eac+last.theoNoPct)):"")+"</tr></table>"
@@ -1249,7 +1279,7 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs){
     +"<div style=\"font-size:10px;color:#8b8578\">No progress is estimated: the loss or gain = poured up to the cut-off − earned (budget × the progress % typed by hand), on the WBS that have a %. Poured = the pours, a volume.</div>";
   openReport("CONCRETE - "+t0,html);
 }
-function conExportXlsx(types,list,pours,realIx,cutoffs){
+function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
   if(!window.XLSX||!window.XLSX.utils||!window.XLSX.writeFile){safeAlert("The Excel library is not loaded.");return;}
   var st=conSortTypes(types),allIds=types.map(function(t){return t.id;});
   var r2=function(v){return Math.round(v*100)/100;};
@@ -1276,7 +1306,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs){
   pr.sort(function(a,b){return a.Date<b.Date?-1:1;});
   var bs=conBySupplier(pours,inList,allIds);
   var sr=Object.keys(bs).sort().map(function(n){var o={"Supplier":n};st.forEach(function(t){if(bs[n][t.id])o[t.name]=r2(bs[n][t.id]);});o["Total"]=r2(bs[n]._total);return o;});
-  var s=conSeries(list,pours,allIds);
+  var s=conSeries(list,pours,allIds,null,pastReal);
   var mr=s.months.map(function(k,i){return{"Month":k,"Planned":r2(s.plan[i]),"Poured":s.real[i]===null?"":r2(s.real[i]),"Cum. planned":r2(s.cumPlan[i]),"Cum. poured":s.cumReal[i]===null?"":r2(s.cumReal[i])};});
   var cr=conEarnedPoints(cutoffs,list,pours,allIds).map(function(p){return{"Cut-off":p.date,"Label":p.label,"Closed":p.closed?"Y":"","Budget (WBS with %)":r2(p.theo),"Earned":r2(p.earned),"Poured":r2(p.real),"Loss(+)/gain(-)":r2(p.variance),"%":p.varPct===null?"":r2(p.varPct),"WBS without %":p.nNoPct};});
   var wb=window.XLSX.utils.book_new();
