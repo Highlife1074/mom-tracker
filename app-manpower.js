@@ -177,6 +177,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
   weeks=weeks||[];plan=plan||[];
   const [tab,setTab]=useState(plan.length||weeks.length?"overview":"plan");
   const [edit,setEdit]=useState(null);       // week entry being edited
+  const [importing,setImporting]=useState(false);
   var can=canEdit&&!window._ppReadOnly;
   var M=mpModel(plan,weeks);
   // Company names offered while typing: subcontractors first, then every name already used.
@@ -245,6 +246,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {!can&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Manpower editor”"}</span>}
         {!empty&&<button className="btn btn-sm" onClick={exportCsv} title="Weeks and months, budget, real and variances, one column per company (Excel opens it)">⬇ CSV</button>}
+        {can&&<button className="btn btn-sm" onClick={function(){setImporting(true);}} title="Real hours from an Excel or CSV file: weeks as numbers or dates, activities matched to the webapp's">⬆ Import Excel</button>}
         {can&&<button className="btn btn-pri btn-sm" onClick={openNew} title="Real hours of a week, by company">＋ Real hours</button>}
       </div>
     </div>
@@ -261,6 +263,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
     {!empty&&tab==="months"&&<MpMonths M={M}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
     {!empty&&tab==="activities"&&<MpActivities M={M}/>}
+    {importing&&<MpImportModal weeks={weeks} saveWeeks={saveWeeks} plan={plan} savePlan={savePlan} knownActs={knownActs} currentUser={currentUser} onClose={function(){setImporting(false);}}/>}
     {edit&&<MpWeekEditor w={edit} known={known} knownActs={knownActs} can={can} M={M} isNew={!weeks.some(function(x){return x.id===edit.id;})}
       onSave={saveWeek} onDelete={function(){delWeek(edit);}} onClose={function(){setEdit(null);}}/>}
   </div>;
@@ -659,6 +662,297 @@ function MpActivities({M}){
     </table>
     <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Budget per activity comes from the plan lines of the same name.{untagged&&untagged.real?" "+invFmt(untagged.real,0)+" h of real hours have no activity yet: open the weeks to tag them.":""}</div>
   </div>;
+}
+
+// ---------------------------------------------------------------- import (Excel / CSV / paste)
+// Two layouts are understood:
+//   long  one row per week × company × activity — columns Week (or Monday / Date), Company,
+//         Activity, Hours (any order, header names in English or French)
+//   wide  one row per week, then one column per company (or per activity) holding the hours —
+//         e.g. the CSV exported by this view; its Budget / Real / Variance / Cumulative columns
+//         are recognised and ignored
+// Weeks may be ISO week numbers (W42, S42, 42, 2026-W42) — the year is chosen in the dialog and
+// rolls over when the numbers go back to 1 — or dates (any day, taken as its Monday).
+// Activities from the file are matched to the webapp's activities; the dialog asks for every
+// one it cannot match: map to an existing activity, create it (a new plan line), import
+// without activity, or skip. The choices are remembered on this browser for the next import.
+var MP_IMP_IGNORE=/^(monday|lundi|date|planned workers|workers|budget( h)?|real( h)?|variance( h| %)?|cumulative.*|total.*|month|year|week start|semaine du)$/i;
+var MP_IMP_COLS={
+  week:/^(week|wk|week ?(no|n°|#|number)|semaine|sem|s|n° ?semaine|week nr)$/i,
+  date:/^(monday|lundi|date|week start|semaine du|start)$/i,
+  company:/^(company|companies|entreprise|soci[eé]t[eé]|subcontractor|sous[- ]?traitant|contractor|employer|employeur)$/i,
+  activity:/^(activity|activities|activit[eé]|trade|corps d'?[eé]tat|task|t[aâ]che|poste|discipline|m[eé]tier|work ?type|cost code)$/i,
+  hours:/^(hours|heures|hrs|h|real h|real hours|man ?hours|total hours|qty|quantity|quantit[eé])$/i
+};
+// CSV / pasted text → rows of cells. The separator is the most frequent of ; , tab on line 1.
+function mpImpParseText(text){
+  var lines=String(text||"").replace(/^﻿/,"").split(/\r?\n/);
+  var first=lines.find(function(l){return l.trim();})||"";
+  var seps=["\t",";",","],sep=seps.reduce(function(b,c){return first.split(c).length>first.split(b).length?c:b;},";");
+  return lines.map(function(line){
+    var out=[],cur="",q=false;
+    for(var i=0;i<line.length;i++){
+      var ch=line[i];
+      if(q){if(ch==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(ch==='"')q=false;else cur+=ch;}
+      else if(ch==='"')q=true;else if(ch===sep){out.push(cur);cur="";}else cur+=ch;
+    }
+    out.push(cur);return out;
+  });
+}
+function mpImpNum(v){if(typeof v==="number")return v;var s=String(v===undefined||v===null?"":v).trim();if(!s)return null;var n=_stParseNum(s);return isFinite(n)?n:null;}
+// Monday of ISO week w of year y.
+function mpIsoMonday(y,w){
+  var j4=new Date(Date.UTC(y,0,4)),d=j4.getUTCDay()||7;
+  var m=new Date(j4.getTime()-(d-1)*86400000+(w-1)*7*86400000);
+  return m.toISOString().slice(0,10);
+}
+// A week cell → {week:n, year:y|null} or {date:"YYYY-MM-DD"} or null.
+function mpImpWeekCell(v){
+  if(v===undefined||v===null||v==="")return null;
+  if(typeof v==="number"){
+    if(v>=1&&v<=53&&Math.floor(v)===v)return {week:v,year:null};
+    if(v>20000&&v<80000){var d=new Date(Date.UTC(1899,11,30)+Math.round(v)*86400000);return {date:d.toISOString().slice(0,10)};}
+    return null;
+  }
+  if(v instanceof Date&&!isNaN(v))return {date:toISO(v)};
+  var s=String(v).trim();
+  var m=/^(\d{4})\s*[-_ ]?\s*[WwSs]\s*(\d{1,2})$/.exec(s);if(m)return {week:+m[2],year:+m[1]};
+  m=/^(?:w|wk|week|s|sem|semaine)?\s*\.?\s*(\d{1,2})(?:\s*[-\/]\s*(\d{4}))?$/i.exec(s);if(m&&+m[1]>=1&&+m[1]<=53)return {week:+m[1],year:m[2]?+m[2]:null};
+  m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);if(m)return {date:m[0].slice(0,10)};
+  m=/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/.exec(s);
+  if(m){var y=+m[3];if(y<100)y+=2000;var iso=y+"-"+String(+m[2]).padStart(2,"0")+"-"+String(+m[1]).padStart(2,"0");if(isValidDate(iso))return {date:iso};}
+  return null;
+}
+// Rows of cells → {layout, header, items:[{wk, company, activity, hours}], valueCols, issues}
+function mpImpAnalyse(rows){
+  rows=(rows||[]).map(function(r){return (r||[]).map(function(c){return c===undefined||c===null?"":c;});});
+  var norm=function(c){return String(c).trim();};
+  var hi=rows.findIndex(function(r){return r.some(function(c){return MP_IMP_COLS.week.test(norm(c))||MP_IMP_COLS.date.test(norm(c));});});
+  if(hi<0)return {error:"No week column found. The first row of the table must have a “Week” (or “Semaine”, “Monday”, “Date”) heading."};
+  var head=rows[hi].map(norm);
+  function col(re){return head.findIndex(function(h){return re.test(h);});}
+  var cW=col(MP_IMP_COLS.week),cD=col(MP_IMP_COLS.date),cC=col(MP_IMP_COLS.company),cA=col(MP_IMP_COLS.activity),cH=col(MP_IMP_COLS.hours);
+  var layout=(cH>=0&&(cC>=0||cA>=0))?"long":"wide";
+  var body=[];
+  for(var i=hi+1;i<rows.length;i++){
+    var r=rows[i];
+    if(!r.some(function(c){return norm(c)!=="";}))break;          // an empty row ends the table
+    body.push(r);
+  }
+  var valueCols=[];
+  if(layout==="wide")head.forEach(function(h,j){if(j!==cW&&j!==cD&&h&&!MP_IMP_IGNORE.test(h)&&!MP_IMP_COLS.week.test(h))valueCols.push({j:j,name:h});});
+  return {layout:layout,head:head,body:body,cW:cW,cD:cD,cC:cC,cA:cA,cH:cH,valueCols:valueCols};
+}
+// Analysis + options → items with their Monday. Week numbers get a year: the chosen one, +1 each
+// time the numbers wrap back (52 → 1).
+function mpImpItems(an,opts){
+  var items=[],skipped=0,year=opts.year,prevW=null;
+  an.body.forEach(function(r){
+    var wk=null;
+    if(an.cD>=0){var dc=mpImpWeekCell(r[an.cD]);if(dc&&dc.date)wk=_flowMonday(dc.date);}
+    if(!wk&&an.cW>=0){
+      var c=mpImpWeekCell(r[an.cW]);
+      if(c&&c.date)wk=_flowMonday(c.date);
+      else if(c){
+        var y=c.year;
+        if(!y){if(prevW!==null&&c.week<prevW-26)year++;y=year;}
+        prevW=c.week;wk=mpIsoMonday(y,c.week);
+      }
+    }
+    if(!wk){skipped++;return;}
+    if(an.layout==="long"){
+      var h=mpImpNum(r[an.cH]);if(h===null||!h){if(h===null)skipped++;return;}
+      items.push({week:wk,company:an.cC>=0?String(r[an.cC]).trim():(opts.fixed||""),activity:an.cA>=0?String(r[an.cA]).trim():"",hours:h});
+    }else{
+      an.valueCols.forEach(function(vc){
+        var h=mpImpNum(r[vc.j]);if(h===null||!h)return;
+        if(opts.colsAre==="activity")items.push({week:wk,company:opts.fixed||"",activity:vc.name,hours:h});
+        else items.push({week:wk,company:vc.name,activity:opts.fixed||"",hours:h});
+      });
+    }
+  });
+  return {items:items,skipped:skipped};
+}
+// Best guess for an activity name from the file: same name, one containing the other, or most
+// words in common.
+function mpImpGuess(name,acts){
+  var k=mpActKey(name);if(!k)return "";
+  var exact=acts.find(function(a){return mpActKey(a)===k;});if(exact)return exact;
+  var cont=acts.find(function(a){var ak=mpActKey(a);return ak&&(ak.indexOf(k)>=0||k.indexOf(ak)>=0);});if(cont)return cont;
+  var kw=k.split(" ").filter(function(w){return w.length>2;}),best="",bs=0;
+  acts.forEach(function(a){
+    var aw=mpActKey(a).split(" ").filter(function(w){return w.length>2;});
+    var common=kw.filter(function(w){return aw.indexOf(w)>=0;}).length;
+    var sc=common/Math.max(1,Math.min(kw.length,aw.length));
+    if(common&&sc>bs){bs=sc;best=a;}
+  });
+  return bs>=0.5?best:"";
+}
+function mpImpMapLoad(){try{return JSON.parse(localStorage.getItem("pp_mp_actmap")||"{}")||{};}catch(e){return {};}}
+function mpImpMapSave(m){try{localStorage.setItem("pp_mp_actmap",JSON.stringify(m));}catch(e){}}
+
+function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onClose}){
+  const [an,setAn]=useState(null);
+  const [err,setErr]=useState("");
+  const [fileName,setFileName]=useState("");
+  const [paste,setPaste]=useState("");
+  const [year,setYear]=useState(Number(today().slice(0,4)));
+  const [colsAre,setColsAre]=useState("company");
+  const [fixed,setFixed]=useState("");
+  const [mode,setMode]=useState("replace");
+  const [map,setMap]=useState({});            // file activity → "new" | "none" | "skip" | existing name
+  function load(rows,name){
+    var a=mpImpAnalyse(rows);
+    if(a.error){setErr(a.error);setAn(null);return;}
+    setErr("");setAn(a);setFileName(name||"");
+    // the year of the first week: the current year, unless the file names one
+    var y=null;a.body.some(function(r){var c=a.cW>=0?mpImpWeekCell(r[a.cW]):null;if(c&&c.year){y=c.year;return true;}return false;});
+    if(y)setYear(y);
+  }
+  function onFile(e){
+    var f=e.target.files&&e.target.files[0];if(!f)return;
+    var rd=new FileReader();
+    if(/\.(csv|txt)$/i.test(f.name)){
+      rd.onload=function(){load(mpImpParseText(rd.result),f.name);};rd.readAsText(f);
+    }else{
+      if(!window.XLSX||!window.XLSX.read){setErr("The Excel library is not loaded: save the sheet as CSV and import the CSV.");return;}
+      rd.onload=function(){
+        try{
+          var wb=window.XLSX.read(new Uint8Array(rd.result),{type:"array",cellDates:true});
+          var sh=wb.Sheets[wb.SheetNames[0]];
+          load(window.XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:true}),f.name+" · "+wb.SheetNames[0]);
+        }catch(x){setErr("This file could not be read: "+x.message);}
+      };
+      rd.readAsArrayBuffer(f);
+    }
+  }
+  var res=an?mpImpItems(an,{year:year,colsAre:colsAre,fixed:fixed}):{items:[],skipped:0};
+  // activities met in the file, and their default choice
+  var fileActs={};res.items.forEach(function(it){if(it.activity){var k=mpActKey(it.activity);var o=fileActs[k]||(fileActs[k]={name:it.activity,hours:0,rows:0});o.hours+=it.hours;o.rows++;}});
+  var remembered=mpImpMapLoad();
+  function choice(k){
+    if(map[k]!==undefined)return map[k];
+    var r=remembered[k];if(r&&(r==="none"||r==="skip"||knownActs.indexOf(r)>=0))return r;
+    return mpImpGuess(fileActs[k].name,knownActs)||"new";
+  }
+  var actKeys=Object.keys(fileActs).sort(function(a,b){return fileActs[b].hours-fileActs[a].hours;});
+  var wkSet={};res.items.forEach(function(it){wkSet[it.week]=1;});
+  var wkList=Object.keys(wkSet).sort();
+  var existing=wkList.filter(function(w){return weeks.some(function(x){return _flowMonday(x.week)===w&&(x.real||[]).length;});});
+  var total=res.items.reduce(function(s,it){return s+it.hours;},0);
+  var skipH=res.items.filter(function(it){return it.activity&&choice(mpActKey(it.activity))==="skip";}).reduce(function(s,it){return s+it.hours;},0);
+
+  function apply(){
+    if(blockIfReadOnly())return;
+    if(!res.items.length)return;
+    // 1. new activities become plan lines (0 workers over the weeks they appear in), so they get a budget later
+    var newPlan=plan.slice(),created=[];
+    actKeys.forEach(function(k){
+      if(choice(k)!=="new")return;
+      var ws=res.items.filter(function(it){return mpActKey(it.activity)===k;}).map(function(it){return it.week;}).sort();
+      var line=newMpPlanLine({label:fileActs[k].name,workers:0,start:ws[0],end:ws[ws.length-1],note:"Created by the import of "+(fileName||"a file")+" — set the workers to give it a budget"});
+      newPlan.push(line);created.push(line.label);
+    });
+    // 2. the hours, week by week
+    var byWeek={};
+    res.items.forEach(function(it){
+      var act="";
+      if(it.activity){var c=choice(mpActKey(it.activity));if(c==="skip")return;act=c==="none"?"":c==="new"?fileActs[mpActKey(it.activity)].name:c;}
+      var l=byWeek[it.week]||(byWeek[it.week]=[]);
+      var hit=l.find(function(x){return mpCompanyKey(x.company)===mpCompanyKey(it.company)&&mpActKey(x.activity)===mpActKey(act);});
+      if(hit)hit.hours+=it.hours;else l.push({company:it.company,activity:act,hours:it.hours});
+    });
+    var next=weeks.slice();
+    Object.keys(byWeek).forEach(function(w){
+      var i=next.findIndex(function(x){return _flowMonday(x.week)===w;});
+      var lines=byWeek[w].map(function(x){return {company:x.company,activity:x.activity,hours:Math.round(x.hours*100)/100};});
+      if(i<0){next.push(newManpowerWeek({week:w,real:lines,note:"Imported"+(fileName?" from "+fileName:""),updatedBy:currentUser||"",updatedAt:today()}));return;}
+      var cur=next[i],real;
+      if(mode==="replace")real=lines;
+      else{
+        real=(cur.real||[]).map(function(r){return Object.assign({},r);});
+        lines.forEach(function(x){
+          var h=real.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(x.company)&&mpActKey(r.activity)===mpActKey(x.activity);});
+          if(h)h.hours=x.hours;else real.push(x);
+        });
+      }
+      next[i]=Object.assign({},cur,{real:real,updatedBy:currentUser||"",updatedAt:today()});
+    });
+    // remember the choices for the next file
+    var mem=mpImpMapLoad();actKeys.forEach(function(k){var c=choice(k);mem[k]=c==="new"?fileActs[k].name:c;});mpImpMapSave(mem);
+    if(created.length)savePlan(newPlan);
+    saveWeeks(next);
+    safeAlert(invFmt(total-skipH,0)+" h imported over "+Object.keys(byWeek).length+" week(s)."+(created.length?"\n\nNew activities added to the plan (0 workers — give them workers to get a budget):\n• "+created.join("\n• "):""));
+    onClose();
+  }
+
+  var inp={padding:"5px 8px",fontSize:13};
+  var footer=<React.Fragment>
+    <button className="btn" onClick={onClose}>Cancel</button>
+    <button className="btn btn-pri" disabled={!res.items.length} onClick={apply}>Import {res.items.length?invFmt(total-skipH,0)+" h":""}</button>
+  </React.Fragment>;
+  return <InvModal title="⬆ Import real hours" width={820} onClose={onClose} footer={footer}>
+    <div style={{fontSize:12,color:"#6f6b62",marginBottom:10}}>
+      Excel or CSV. Either <b>one row per week</b> with a <b>Week</b> column and one column per company (or per activity) — like the CSV exported here —
+      or <b>one row per week × company × activity</b> with columns <b>Week · Company · Activity · Hours</b>. Weeks as numbers (W42, S42, 42) or dates.
+    </div>
+    <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+      <input type="file" accept=".xlsx,.xls,.xlsm,.csv,.txt" onChange={onFile}/>
+      <span style={{fontSize:11,color:"#9b968b"}}>or paste the cells:</span>
+      <textarea value={paste} onChange={function(e){setPaste(e.target.value);}} rows={2} placeholder="paste from Excel, headings included"
+        style={{flex:"1 1 220px",fontFamily:"var(--font-mono)",fontSize:11,padding:4}}/>
+      <button className="btn btn-sm" disabled={!paste.trim()} onClick={function(){load(mpImpParseText(paste),"pasted cells");}}>Read</button>
+    </div>
+    {err&&<div style={{color:"#b3302a",fontSize:12.5,margin:"6px 0"}}>{err}</div>}
+    {an&&<div>
+      <div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",marginBottom:10,display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:12.5}}>
+        <span><b>{fileName}</b> · {an.layout==="long"?"one row per week × company × activity":"one row per week, "+an.valueCols.length+" value column"+(an.valueCols.length!==1?"s":"")}</span>
+        {an.cW>=0&&an.cD<0&&<label style={{display:"flex",alignItems:"center",gap:5,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}>Year of the first week
+          <input type="number" value={year} onChange={function(e){setYear(Number(e.target.value)||year);}} style={Object.assign({},inp,{width:80})}/></label>}
+        {an.layout==="wide"&&<span style={{display:"flex",alignItems:"center",gap:6}}>Columns {an.valueCols.map(function(c){return c.name;}).slice(0,4).join(", ")}{an.valueCols.length>4?"…":""} are
+          <select value={colsAre} onChange={function(e){setColsAre(e.target.value);setFixed("");setMap({});}} style={inp}>
+            <option value="company">companies</option><option value="activity">activities</option></select></span>}
+        {(an.layout==="wide"||(an.cC<0)||(an.cA<0))&&<span style={{display:"flex",alignItems:"center",gap:6}}>
+          {(an.layout==="wide"?colsAre==="company":an.cA<0)?"Activity for all these hours":"Company for all these hours"}
+          {(an.layout==="wide"?colsAre==="company":an.cA<0)
+            ?<select value={fixed} onChange={function(e){setFixed(e.target.value);}} style={inp}><option value="">— none —</option>{knownActs.map(function(a){return <option key={a} value={a}>{a}</option>;})}</select>
+            :<input type="text" value={fixed} onChange={function(e){setFixed(e.target.value);}} placeholder="optional" style={Object.assign({},inp,{width:140})}/>}
+        </span>}
+      </div>
+      {!res.items.length&&<div style={{color:"#b3302a",fontSize:12.5}}>No hours found under the headings{res.skipped?" ("+res.skipped+" row(s) without a readable week)":""}.</div>}
+      {res.items.length>0&&<div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:12.5,marginBottom:10}}>
+        <span><b>{invFmt(total,0)} h</b> in {res.items.length} line{res.items.length!==1?"s":""}</span>
+        <span>{wkList.length} week{wkList.length!==1?"s":""}: W{mpIsoWeek(wkList[0])} {fmtDate(wkList[0])} → W{mpIsoWeek(wkList[wkList.length-1])} {fmtDate(wkList[wkList.length-1])}</span>
+        {res.skipped>0&&<span style={{color:"#b35c00"}}>{res.skipped} row(s) skipped (no readable week or hours)</span>}
+      </div>}
+      {existing.length>0&&<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",fontSize:12.5,background:"#fff8e1",border:"1px solid #f0e2b8",borderRadius:8,padding:"6px 10px",marginBottom:10}}>
+        <span>{existing.length} week{existing.length!==1?"s":""} already have real hours ({existing.slice(0,4).map(function(w){return "W"+mpIsoWeek(w);}).join(", ")}{existing.length>4?"…":""}):</span>
+        <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}><input type="radio" checked={mode==="replace"} onChange={function(){setMode("replace");}}/>replace them with the file</label>
+        <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}><input type="radio" checked={mode==="merge"} onChange={function(){setMode("merge");}}/>keep them, update the same company + activity</label>
+      </div>}
+      {actKeys.length>0&&<div>
+        <div style={{fontWeight:700,fontSize:13,margin:"4px 0 6px"}}>Activities in the file → activities in the webapp</div>
+        <table className="tbl" style={{fontSize:12}}>
+          <thead><tr><th>In the file</th><th style={{textAlign:"right"}}>Hours</th><th>In the webapp</th></tr></thead>
+          <tbody>{actKeys.map(function(k){
+            var c=choice(k),isNew=c==="new";
+            return <tr key={k}>
+              <td style={{fontWeight:600}}>{fileActs[k].name}</td>
+              <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(fileActs[k].hours,0)}</td>
+              <td><select value={c} onChange={function(e){var v=e.target.value;setMap(function(m){var n=Object.assign({},m);n[k]=v;return n;});}}
+                style={Object.assign({},inp,{width:"100%",maxWidth:360,background:isNew?"#e8f5e9":c==="skip"?"#fce4ec":"#fff"})}>
+                <option value="new">➕ Create the activity “{fileActs[k].name}”</option>
+                {knownActs.length>0&&<optgroup label="Same as">{knownActs.map(function(a){return <option key={a} value={a}>= {a}</option>;})}</optgroup>}
+                <option value="none">Import without activity</option>
+                <option value="skip">Do not import these hours</option>
+              </select></td>
+            </tr>;
+          })}</tbody>
+        </table>
+        <div style={{fontSize:11,color:"#9b968b",marginTop:4}}>Suggestions come from the names; your choices are remembered on this browser for the next import. A created activity becomes a plan line with 0 workers over the weeks it appears in — give it workers in the Plan tab to get its budget.</div>
+      </div>}
+    </div>}
+  </InvModal>;
 }
 
 // ---------------------------------------------------------------- week editor (real hours)
