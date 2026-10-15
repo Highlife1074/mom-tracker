@@ -2238,6 +2238,14 @@ function TenderTimelineLegend(){
 }
 // Today as one continuous line over the whole list. It is measured from the scale row
 // (data-tl-scale) so it lands exactly where the mini timelines put today.
+function tlRailPos(wrap,range){
+  var sc=wrap.querySelector("[data-tl-scale]"),tbs=wrap.querySelectorAll("tbody"),tb=tbs[tbs.length-1];
+  if(!sc||!tb)return null;
+  var w=wrap.getBoundingClientRect(),r=sc.getBoundingClientRect(),b=tb.getBoundingClientRect();
+  var span=Math.max(1,tlDayGap(range.to,range.from));
+  var f=Math.max(0,Math.min(1,tlDayGap(today(),range.from)/span));
+  return {left:Math.round(r.left-w.left+f*r.width),top:Math.round(r.top-w.top),height:Math.round(b.bottom-r.top)};
+}
 function TenderTodayRail({range,dep}){
   const ref=useRef(null);
   const [pos,setPos]=useState(null);
@@ -2245,12 +2253,8 @@ function TenderTodayRail({range,dep}){
     var el=ref.current;if(!el)return;
     var wrap=el.parentNode;
     function measure(){
-      var sc=wrap.querySelector("[data-tl-scale]"),tbs=wrap.querySelectorAll("tbody"),tb=tbs[tbs.length-1];
-      if(!sc||!tb){setPos(null);return;}
-      var w=wrap.getBoundingClientRect(),r=sc.getBoundingClientRect(),b=tb.getBoundingClientRect();
-      var span=Math.max(1,tlDayGap(range.to,range.from));
-      var f=Math.max(0,Math.min(1,tlDayGap(today(),range.from)/span));
-      var p={left:Math.round(r.left-w.left+f*r.width),top:Math.round(r.top-w.top),height:Math.round(b.bottom-r.top)};
+      var p=tlRailPos(wrap,range);
+      if(!p){setPos(null);return;}
       setPos(function(o){return o&&o.left===p.left&&o.top===p.top&&o.height===p.height?o:p;});
     }
     measure();
@@ -2259,8 +2263,8 @@ function TenderTodayRail({range,dep}){
     window.addEventListener("resize",measure);
     return function(){if(ro)ro.disconnect();window.removeEventListener("resize",measure);};
   },[range.from,range.to,dep]);
-  return <div ref={ref} className="phone-hide" style={{position:"absolute",left:0,top:0,width:0,height:0,pointerEvents:"none"}}>
-    {pos&&<div title={"Today "+fmtDate(today())} style={{position:"absolute",left:pos.left,top:pos.top,height:pos.height,borderLeft:"2px solid "+TL_COL.today,zIndex:4}}>
+  return <div ref={ref} className="phone-hide tp-tl" data-from={range.from} data-to={range.to} style={{position:"absolute",left:0,top:0,width:0,height:0,pointerEvents:"none"}}>
+    {pos&&<div data-tl-rail="1" title={"Today "+fmtDate(today())} style={{position:"absolute",left:pos.left,top:pos.top,height:pos.height,borderLeft:"2px solid "+TL_COL.today,zIndex:4}}>
       <span style={{position:"absolute",top:-1,left:0,transform:"translateX(-50%)",background:TL_COL.today,color:"#fff",fontSize:9,fontWeight:700,
         letterSpacing:".04em",borderRadius:3,padding:"0 5px",lineHeight:"13px",whiteSpace:"nowrap"}}>TODAY {fmtDate(today())}</span>
     </div>}
@@ -6969,6 +6973,15 @@ function tenderPrint(o){
   var prevW=content?content.style.width:"";
   // Lay the page out at the printable width, then shrink the table if it still overflows.
   if(content)content.style.width=pageW+"px";
+  // The today line is placed in pixels from the screen layout; React would only move it
+  // after the print, so it is re-placed here on the print layout (before the zoom).
+  var rail=wrap&&wrap.querySelector("[data-tl-rail]"),railPrev=null;
+  if(rail){
+    var holder=rail.parentNode,rp=tlRailPos(wrap,{from:holder.getAttribute("data-from"),to:holder.getAttribute("data-to")});
+    railPrev={left:rail.style.left,top:rail.style.top,height:rail.style.height,display:rail.style.display};
+    if(rp){rail.style.left=rp.left+"px";rail.style.top=rp.top+"px";rail.style.height=rp.height+"px";}
+    else rail.style.display="none";
+  }
   if(wrap){
     var tbl=wrap.querySelector("table");
     var need=tbl?tbl.scrollWidth:pageW;
@@ -6981,6 +6994,7 @@ function tenderPrint(o){
     if(st.parentNode)st.parentNode.removeChild(st);
     if(content)content.style.width=prevW;
     if(wrap)wrap.style.zoom="";
+    if(rail&&railPrev)Object.assign(rail.style,railPrev);
     window.removeEventListener("afterprint",restore);
   }
   window.addEventListener("afterprint",restore);
