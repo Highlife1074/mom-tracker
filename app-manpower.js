@@ -72,7 +72,7 @@ function mpCompanyKey(s){
 function mpActKey(s){return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
 function mpPct(a,b){return b?Math.round(a/b*100):null;}
 function mpFmtH(v){return v===null||v===undefined||!isFinite(v)?"—":invFmt(v,0);}
-function mpSigned(v){if(v===null||v===undefined||!isFinite(v))return"—";return (v>0?"+":"")+invFmt(v,0);}
+function mpSigned(v){if(v===null||v===undefined||!isFinite(v))return"—";if(Math.round(v)===0)return"0";return (v>0?"+":"")+invFmt(v,0);}
 
 function mpMonthLabel(k){
   var p=String(k).split("-");if(p.length<2)return k;
@@ -241,6 +241,47 @@ function mpModel(plan,weeks,opt){
   return {rows:rows,months:months,tot:tot,companies:companies,activities:activities,srcs:srcList,plan:plan};
 }
 
+// "Planned = real on the past": every plan line gets, for each week up to the cut-off, the head
+// count that gives the real hours of its WBS (real ÷ hours per worker), so planned = real per WBS
+// and per week. A WBS with real hours and no plan line gets a new line. Several lines with the
+// same name: the first one takes the real, the others 0. Real hours without a WBS cannot be
+// placed (returned as untagged). prev = what the touched lines were, to undo.
+function mpAlignPlan(plan,weeks,cutoff){
+  var realBy={},names={},untagged=0,first="";
+  (weeks||[]).forEach(function(e){
+    if(!isValidDate(e.week))return;var w=_flowMonday(e.week);if(w>cutoff)return;
+    (e.real||[]).forEach(function(r){
+      var h=_invNum(r.hours);if(!h)return;
+      var k=mpActKey(r.activity);if(!k){untagged+=h;return;}
+      var m=realBy[k]||(realBy[k]={});m[w]=(m[w]||0)+h;names[k]=names[k]||String(r.activity).trim();
+      if(!first||w<first)first=w;
+    });
+  });
+  var next=plan.map(function(l){return l;}),prev=[],created=[];
+  Object.keys(realBy).forEach(function(k){
+    if(next.some(function(l){return l.label&&mpActKey(l.label)===k;}))return;
+    var ws=Object.keys(realBy[k]).sort();
+    var nl=newMpPlanLine({label:names[k],workers:0,start:ws[0],end:ws[ws.length-1],note:"Created by “Planned = real on the past”"});
+    next.push(nl);created.push(nl.id);
+  });
+  var firstOf={};                                            // the line of each WBS that takes the real
+  next.slice().sort(function(a,b){return (a.start||"").localeCompare(b.start||"");})
+    .forEach(function(l){var k=mpActKey(l.label);if(k&&!firstOf[k])firstOf[k]=l.id;});
+  next=next.map(function(l){
+    if(!isValidDate(l.start)||!isValidDate(l.end))return l;
+    var k=mpActKey(l.label),mine=k&&firstOf[k]===l.id?(realBy[k]||{}):{};
+    var rw=Object.keys(mine).sort();
+    var st=l.start,en=l.end;
+    if(rw.length){if(rw[0]<st)st=rw[0];if(rw[rw.length-1]>en)en=rw[rw.length-1];}
+    if(st>cutoff&&!rw.length)return l;                      // a line that starts after the cut-off is left alone
+    var hpw=mpLineHpw(l),bw=Object.assign({},l.byWeek||{});
+    mpWeeksBetween(st,en<cutoff?en:cutoff).forEach(function(w){bw[w]=Math.round((mine[w]||0)/hpw*1e6)/1e6;});
+    if(created.indexOf(l.id)<0)prev.push({id:l.id,start:l.start,end:l.end,byWeek:l.byWeek||{}});
+    return Object.assign({},l,{start:st,end:en,byWeek:bw});
+  });
+  return {plan:next,prev:prev,created:created,untagged:untagged};
+}
+
 // Plan and weeks narrowed to one webapp WBS and/or one file activity. The budget follows the WBS:
 // the plan lines of the chosen WBS, or — for a file activity alone — of the WBS its hours were
 // matched to.
@@ -274,6 +315,32 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
   // a WBS filter keeps the budget lines of that WBS, when there are some
   var fBgt=fWbs&&!fSrc&&bRec&&mpBudgetAmount(bRec,fWbs)>0?mpBudgetWeeks(bRec,fWbs):null;
   var M=filtered?mpModel(F.plan,F.weeks,{cutoff:M0.tot.cutoff,bgt:fBgt}):M0;
+  // ---- planned = real on the past (admin), with undo
+  var planAlign=meta.find(function(x){return x&&x.kind==="planAlign";})||null;
+  function alignPlanOnReal(){
+    if(!isAdmin){safeAlert("Only the admin may align the planned hours on the real.");return;}
+    if(blockIfReadOnly())return;
+    var co=M0.tot.cutoff;if(!co){safeAlert("No real hours yet: nothing to align.");return;}
+    var r=mpAlignPlan(plan,weeks,co);
+    var before=M0.tot.budgetToDate,after=mpModel(r.plan,weeks).tot.budgetToDate;
+    if(!safeConfirm("Set the planned hours equal to the real hours on every week up to W"+mpIsoWeek(co)+" ("+fmtDate(co)+"), WBS by WBS?\n\n"+
+      "Planned to date: "+invFmt(before,0)+" h → "+invFmt(after,0)+" h (real "+invFmt(M0.tot.real,0)+" h).\n"+
+      "The weeks after the cut-off keep their plan."+(r.created.length?"\n"+r.created.length+" plan line(s) created for WBS with real hours and no plan line.":"")+
+      (r.untagged?"\n"+invFmt(r.untagged,0)+" h of real hours have no WBS and cannot be placed: tag them in the weeks first.":"")+
+      "\n\n“Undo” in the Plan tab puts the plan back as it was."))return;
+    savePlan(r.plan);
+    var rec={id:"planAlign",kind:"planAlign",cutoff:co,prev:r.prev,created:r.created,at:today(),by:currentUser||""};
+    _invUpsert(meta,saveMeta,rec);
+  }
+  function undoPlanAlign(){
+    if(!isAdmin||blockIfReadOnly()||!planAlign)return;
+    if(!safeConfirm("Put the plan back as it was before “Planned = real on the past” of "+fmtDate(planAlign.at)+"?\nChanges made to these lines since then are lost."))return;
+    var pv={};(planAlign.prev||[]).forEach(function(x){pv[x.id]=x;});
+    var next=plan.filter(function(l){return (planAlign.created||[]).indexOf(l.id)<0;})
+      .map(function(l){var x=pv[l.id];return x?Object.assign({},l,{start:x.start,end:x.end,byWeek:x.byWeek||{}}):l;});
+    savePlan(next);
+    saveMeta(meta.filter(function(x){return x.id!=="planAlign";}));
+  }
   var notes=meta.filter(function(x){return x&&x.kind==="note";}).sort(function(a,b){return String(b.at||b.date||"").localeCompare(String(a.at||a.date||""));});
   var filterLabel=filtered?[fWbs?"WBS “"+fWbs+"”":"",fSrc?"file activity “"+fSrc+"”":""].filter(Boolean).join(" · "):"";
   // Company names offered while typing: subcontractors first, then every name already used.
@@ -376,11 +443,12 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
     {empty&&tab!=="plan"&&tab!=="overview"&&<div className="empty"><div className="empty-ico">👷</div>
       <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks. The budget in hours follows.</div>
       {can&&<div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){setTab("plan");}}>Go to the plan</button></div>}</div>}
-    {(tab==="overview"&&(!empty||bRec||isAdmin))&&<MpOverview M={M} M0={M0} filtered={filtered} fWbs={fWbs} knownActs={knownActs} onOpenWeek={openWeek} bRec={bRec} meta={meta} saveMeta={saveMeta}
+    {(tab==="overview"&&(!empty||bRec||isAdmin))&&<MpOverview M={M} M0={M0} filtered={filtered} fWbs={fWbs} knownActs={knownActs} onOpenWeek={openWeek} onAlignPlan={alignPlanOnReal} bRec={bRec} meta={meta} saveMeta={saveMeta}
       notes={notes} isAdmin={!!isAdmin&&!window._ppReadOnly} can={can} currentUser={currentUser}/>}
     {filtered&&tab!=="plan"&&!empty&&<div style={{fontSize:11.5,color:"#6f6b62",background:"#fff8e1",border:"1px solid #f0e2b8",borderRadius:8,padding:"5px 10px",marginBottom:10}}>
       Filtered on {fWbs?<b>WBS “{fWbs}”</b>:null}{fWbs&&fSrc?" · ":""}{fSrc?<b>file activity “{fSrc}”</b>:null} — real hours of these lines only; planned = the plan lines of {fWbs?"this WBS":"the WBS these hours are matched to"}{fSrc?" (shared with the other file activities matched to the same WBS)":""}.</div>}
-    {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M0} can={can} known={known}/>}
+    {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M0} can={can} known={known} isAdmin={!!isAdmin&&!window._ppReadOnly}
+      onAlign={alignPlanOnReal} onUndoAlign={planAlign?undoPlanAlign:null} planAlign={planAlign}/>}
     {!empty&&tab==="weeks"&&<MpWeeks M={M} onOpen={openWeek} can={can}/>}
     {!empty&&tab==="months"&&<MpMonths M={M}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
@@ -394,7 +462,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
 }
 
 // ---------------------------------------------------------------- overview
-function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,can,currentUser}){
+function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,onAlignPlan,bRec,meta,saveMeta,notes,isAdmin,can,currentUser}){
   const [mode,setMode]=useState("cumul");
   const [editB,setEditB]=useState(null);
   var t=M.tot,rate=mpBudgetRate(bRec);
@@ -480,6 +548,7 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,bRec,meta,saveMeta,
             init.lines=mpBudgetLines(bRec).map(function(l){return Object.assign({},l);});if(!init.lines.length)init.lines=[{id:uuid(),wbs:"",amount:"",note:""}];
             setEditB(init);}}>{bRec?"✎ Edit budget":"＋ Set the budget"}</button>}
           {isAdmin&&bRec&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={alignOnReal} title="The real hours become the budget of every week up to the cut-off">⇆ Budget = real on the past</button>}
+          {isAdmin&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={onAlignPlan} title="The real hours become the planned hours of every week up to the cut-off, WBS by WBS">⇆ Planned = real on the past</button>}
           {isAdmin&&nAligned>0&&<button className="btn btn-sm" onClick={resetAlign} title="Spread the budget evenly again">↺ Reset adjustments</button>}
         </span>
       </div>
@@ -753,7 +822,7 @@ function mpOpenReport(M,bRec,notes,filterLabel,bWbs){
 // ---------------------------------------------------------------- plan
 // One line per trade / team: workers × weeks × hours per worker. The grid underneath is the
 // histogram: a cell changes the head count of one week only (empty = the line's default).
-function MpPlan({plan,savePlan,M,can,known}){
+function MpPlan({plan,savePlan,M,can,known,isAdmin,onAlign,onUndoAlign,planAlign}){
   const [edit,setEdit]=useState(null);
   var weeks=M.rows.filter(function(r){return r.src==="plan"||r.workers>0;}).map(function(r){return r.week;});
   var lines=plan.slice().sort(function(a,b){return (a.start||"").localeCompare(b.start||"")||(a.label||"").localeCompare(b.label||"");});
@@ -784,10 +853,15 @@ function MpPlan({plan,savePlan,M,can,known}){
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         <div style={{fontWeight:700,fontSize:14}}>Plan lines</div>
         <span style={{fontSize:11,color:"#888"}}>workers × hours per worker per week, from the first to the last week</span>
-        {can&&<button className="btn btn-pri btn-sm" style={{marginLeft:"auto"}} onClick={function(){
-          var last=lines[lines.length-1];
-          setEdit(newMpPlanLine(last?{hpw:last.hpw}:{}));}}>＋ Plan line</button>}
+        <span style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}}>
+          {isAdmin&&M.tot.cutoff&&<button className="btn btn-sm" onClick={onAlign} title="For every week up to the cut-off, the head count of each line is set so that planned = real hours of its WBS">⇆ Planned = real on the past</button>}
+          {isAdmin&&onUndoAlign&&<button className="btn btn-sm" onClick={onUndoAlign} title="Put the plan back as it was before the alignment">↺ Undo alignment</button>}
+          {can&&<button className="btn btn-pri btn-sm" onClick={function(){
+            var last=lines[lines.length-1];
+            setEdit(newMpPlanLine(last?{hpw:last.hpw}:{}));}}>＋ Plan line</button>}
+        </span>
       </div>
+      {planAlign&&<div style={{fontSize:11.5,color:"#b35c00",marginBottom:8}}>Planned aligned on the real up to W{mpIsoWeek(planAlign.cutoff)} ({fmtDate(planAlign.cutoff)}) on {fmtDate(planAlign.at)}{planAlign.by?" by "+planAlign.by:""}: the head counts of those weeks are real hours ÷ hours per worker.</div>}
       {!lines.length&&<div style={{color:"#9b968b",fontSize:12}}>No plan yet. Add one line per trade or team, e.g. “Formwork carpenters — 12 workers — W43 to W8 — 48 h”.</div>}
       {lines.length>0&&<table className="tbl tbl-cards" style={{fontSize:12}}>
         <thead><tr><th>Trade / team</th><th>Company</th><th style={{textAlign:"right"}}>Workers</th><th>From</th><th>To</th>
