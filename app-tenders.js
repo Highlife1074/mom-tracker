@@ -2144,6 +2144,78 @@ function tenderNow(td,now){
   if(waiting.length)return {text:waiting.length+" document"+(waiting.length>1?"s":"")+" to submit",who:"sub",days:null};
   return {text:"Waiting for fabrication",who:"sub",days:null};
 }
+// Stage column of the list: where the package is now (tenderNow) and the step that comes
+// after it. Computed only from the dates and statuses already entered, never typed.
+// The free-text "Next Step" of the Follow-up column stays the team's own comment.
+var STAGE_WHO_COL={us:"#6f6b62",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30"};
+var STAGE_WHO_LABEL={us:"Us",client:"Client",sub:"Subcontractor",internal:"Internal"};
+function tenderStage(td,now){
+  now=now||today();
+  var cur=Object.assign({},tenderNow(td,now));
+  var ph=tenderPhase(td);
+  if(ph==="can")return Object.assign(cur,{next:""});
+  var sums=tenderDocs(td).map(function(d){return {d:d,s:docSummary(d,now)};});
+  function name(d){return d.kind==="mar"||d.kind==="mss"?d.label+" "+d.sub:d.kind==="sd"&&d.id!=="sd:_main"?"SD "+d.label:d.label;}
+  var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
+  function fab(){return "Fabrication"+(isValidDate(proc.fabStart)?" · "+fmtDate(proc.fabStart):"");}
+  var next="";
+  if(ph==="pre"){
+    var acc=sums.find(function(x){return x.d.id==="acc";});
+    var st=acc?acc.s.state:"none",val=String((td.steps||{}).acc||"");
+    if(st==="pending")next="ACC/Aconex approved → contract request";
+    else if(st==="returned")next="ACC/Aconex · with client";
+    else if(/internal review/i.test(val)){cur={text:"ACC/Aconex · internal review",who:"internal",days:null};next="ACC/Aconex · with client";}
+    else if(/under preparation/i.test(val)){cur={text:"ACC/Aconex · under preparation",who:"us",days:null};next="ACC/Aconex · internal review";}
+    else if(td.tenderIssued&&!td.bidsReceived)next="Bid evaluation";
+    else if(td.bidsReceived)next="ACC/Aconex · with client";
+    else next="Tender out to bidders";
+  }else if(ph==="ctr"){
+    var cs=circuitState(circuitOf(td),now);
+    var lbl=function(x){
+      var s=x.stage,b=s.branch;
+      if(b==="start")return "Contract · request to contract dept";
+      if(b==="internal")return "Contract · internal ("+s.label.replace(/^Circulation to /,"")+")";
+      if(b==="sub")return "Contract · with sub ("+s.label+")";
+      return "Contract · "+s.label;
+    };
+    var open=cs.stages.filter(function(x){return x.state!=="done";});
+    if(cs.current.length){
+      cur.text=cs.current.map(lbl).join(" / ");
+      var last=Math.max.apply(null,cs.current.map(function(x){return cs.stages.indexOf(x);}));
+      var n=open.find(function(x){return cs.stages.indexOf(x)>last;});
+      next=n?lbl(n):"Shop drawings / documents";
+    }else{
+      if(open[0]&&open[0].stage.branch!=="start")cur.text=lbl(open[0])+" · to send";
+      next=open[1]?lbl(open[1]):"Shop drawings / documents";
+    }
+  }else{
+    var opened=sums.filter(function(x){return x.s.state==="pending"||x.s.state==="returned";})
+      .sort(function(a,b){return (a.s.state==="returned"?0:1)-(b.s.state==="returned"?0:1);});
+    var waiting=sums.filter(function(x){return x.s.state==="none";});
+    if(opened.length){
+      var o=opened[0];
+      if(o.s.state==="returned")next=name(o.d)+" · with client";
+      else if(opened[1])next=name(opened[1].d)+(opened[1].s.state==="returned"?" · to resubmit":" · client answer");
+      else if(waiting.length)next=name(waiting[0].d)+" · to submit";
+      else next=fab();
+    }else if(isValidDate(proc.deliveryDate)&&proc.deliveryDate<=now)next="";
+    else if(isValidDate(proc.fabStart)&&proc.fabStart<=now)next="Delivery · "+fmtDate(proc.deliveryDate||"");
+    else if(waiting.length)next=name(waiting[0].d)+" · with client";
+    else next=fab();
+  }
+  return Object.assign(cur,{next:next});
+}
+function TenderStageCell({td}){
+  var s=tenderStage(td);
+  var col=STAGE_WHO_COL[s.who]||STAGE_WHO_COL.us;
+  return <div style={{minWidth:170,fontSize:11,lineHeight:1.35}}>
+    <div style={{display:"flex",alignItems:"baseline",gap:5}} title={"Held by: "+(STAGE_WHO_LABEL[s.who]||"Us")}>
+      <span style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0,display:"inline-block",transform:"translateY(-1px)"}}/>
+      <span style={{color:col,fontWeight:700}}>{s.text}{s.days!==null&&s.days>=0?<span style={{fontWeight:400,color:"#9b968b"}}>{" · "+s.days+" d"}</span>:null}<OverdueTag o={s.overdue}/></span>
+    </div>
+    {s.next&&<div style={{color:"#6f6b62",marginLeft:13}}><span style={{fontSize:9.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b"}}>Next </span>{s.next}</div>}
+  </div>;
+}
 // Quick filters of the tenders list.
 function tenderQuick(td,k){
   if(k==="na")return !(td.awards||[]).some(function(a){return a.subcontractor;});
@@ -3998,7 +4070,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       :<div className="tp-table" style={{position:"relative"}}><table className="tbl tbl-tenders">
         <thead><tr className="tgroup-hdr">
           {/* One label over each family of columns, so the eye knows where it is in the row. */}
-          <th colSpan={5}>Package</th>
+          <th colSpan={6}>Package</th>
           <th colSpan={5} className="tcol-sep">Finance</th>
           <th colSpan={2} className="tcol-sep">Dates</th>
           <th colSpan={TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length} className="tcol-sep">Submission steps</th>
@@ -4010,6 +4082,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <th className="sortable" onClick={function(){toggleSort("package");}}>Department{sortIcon("package")}</th>
           <th style={{minWidth:130}} title="Subcontractor(s) recorded in the tender's Awards panel">Awarded to</th>
           <th style={{minWidth:170}} title="Every document sent to the client: green approved, blue with the client, orange returned to resubmit, dashed not submitted. Hover for details.">Submissions</th>
+          <th style={{minWidth:180}} title="Computed from the dates and statuses entered: the step in progress, who holds it (grey us, orange internal, blue client, purple subcontractor), for how long, and the step after it. The free-text Next Step stays in Follow-up.">Stage</th>
           <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
           <th className="tcol-sep" style={{textAlign:"right"}}>Budget</th>
           <th style={{textAlign:"right"}}>Proposed</th>
@@ -4066,6 +4139,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               })()}
             </td>
             <td><FlowDocDots td={td}/></td>
+            <td style={{verticalAlign:"top"}}><TenderStageCell td={td}/></td>
             <td>{td.ownerTender&&<OwnerChip owner={td.ownerTender}/>}</td>
             <td className="tcol-sep" style={{textAlign:"right",whiteSpace:"nowrap"}}>
               {td.budget?<span style={{fontSize:11,fontWeight:600}}>{Number(td.budget).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
@@ -6943,9 +7017,9 @@ function tpLoad(){
 function tenderPrint(o){
   try{localStorage.setItem("pp_tender_print",JSON.stringify(o));}catch(e){}
   var nSteps=TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).length;
-  // Cells of a package row: 5 package, 5 finance, 2 dates, the steps, 1 follow-up.
+  // Cells of a package row: 6 package, 5 finance, 2 dates, the steps, 1 follow-up.
   // The status / phase / totals rows are a single colSpan cell, never hit by these selectors.
-  var groups={fin:{g:2,from:6,to:10},dat:{g:3,from:11,to:12},sub:{g:4,from:13,to:12+nSteps},fol:{g:5,from:13+nSteps,to:13+nSteps}};
+  var groups={fin:{g:2,from:7,to:11},dat:{g:3,from:12,to:13},sub:{g:4,from:14,to:13+nSteps},fol:{g:5,from:14+nSteps,to:14+nSteps}};
   var hide=[];
   Object.keys(groups).forEach(function(k){
     if(o[k])return;
