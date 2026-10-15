@@ -5,9 +5,10 @@
 //   pp_manpower_plan  plan lines — {id, label, company, workers, start, end (Mondays, inclusive),
 //                     hpw (hours per worker per week), byWeek:{monday: workers}, note}
 //                     byWeek overrides the head count for one week (the histogram cells).
-//   pp_manpower       one entry per week — {id, week (Monday), real:[{company, hours}], note,
+//   pp_manpower       one entry per week — {id, week (Monday), real:[{company, activity, hours}], note,
 //                     approved, planned, updatedBy, updatedAt}
-//                     real = hours really spent, by the company of the workers, typed or pasted
+//                     real = hours really spent, by company and by activity (activity optional; it
+//                     matches the plan line names, so budget and real meet per activity), typed or pasted
 //                     from the time-keeping app. approved / planned are the older manual figures:
 //                     approved is still used as the week's budget when no plan line covers it.
 //
@@ -53,6 +54,8 @@ function mpWeekLabel(iso){return "W"+mpIsoWeek(iso)+" · "+fmtDate(iso);}
 function mpCompanyKey(s){
   return (typeof normCompanyName==="function"?normCompanyName(s):String(s||"").toLowerCase().trim())||String(s||"").trim().toLowerCase();
 }
+// Activities are typed by hand too: compare without case, accents or punctuation.
+function mpActKey(s){return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
 function mpPct(a,b){return b?Math.round(a/b*100):null;}
 function mpFmtH(v){return v===null||v===undefined||!isFinite(v)?"—":invFmt(v,0);}
 function mpSigned(v){if(v===null||v===undefined||!isFinite(v))return"—";return (v>0?"+":"")+invFmt(v,0);}
@@ -83,8 +86,9 @@ function mpMonthShares(w){
   return m;
 }
 
-// "Company<TAB>hours" lines, as copied from Excel or from the time-keeping app's export.
-// Repeated companies are added up; a header line or a line without a number is skipped.
+// "Company<TAB>hours" or "Company<TAB>activity<TAB>hours" lines, as copied from Excel or from the
+// time-keeping app's export. The same company + activity twice is added up; a header line or a
+// line without a number is skipped.
 function mpParseCompanyPaste(text){
   var out=[],skipped=0;
   String(text||"").split(/\r?\n/).forEach(function(line){
@@ -93,14 +97,13 @@ function mpParseCompanyPaste(text){
     if(cells.length<2){var m=/^(.*?\S)\s+(\d[\d.,\s]*)$/.exec(line.trim());if(m)cells=[m[1],m[2]];}
     if(cells.length<2){skipped++;return;}
     var h=_stParseNum(cells[cells.length-1]);
-    var name=cells.slice(0,cells.length-1).join(" ").trim();
+    var name=cells[0].trim(),act=cells.length>2?cells.slice(1,cells.length-1).join(" ").trim():"";
     if(!name||!isFinite(h)||h===0&&!/^0+([.,]0+)?$/.test(cells[cells.length-1])){skipped++;return;}
-    var hit=out.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(name);});
-    if(hit)hit.hours=_invNum(hit.hours)+h;else out.push({company:name,hours:h});
+    var hit=out.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(name)&&mpActKey(r.activity)===mpActKey(act);});
+    if(hit)hit.hours=_invNum(hit.hours)+h;else out.push({company:name,activity:act,hours:h});
   });
   return {rows:out,skipped:skipped};
 }
-
 
 // Everything the views show, from the plan and the weekly entries.
 function mpModel(plan,weeks){
@@ -116,6 +119,12 @@ function mpModel(plan,weeks){
     var k=mpCompanyKey(name)||"(no company)";
     return comp[k]||(comp[k]={key:k,name:String(name||"").trim()||"(no company)",budget:0,budgetToDate:0,real:0,weeks:{}});
   }
+  // Activities: budget from the plan line names, real from the activity typed on each real line.
+  var acts={};
+  function A(name){
+    var k=mpActKey(name)||"(no activity)";
+    return acts[k]||(acts[k]={key:k,name:String(name||"").trim()||"(no activity)",budget:0,budgetToDate:0,real:0,weeks:{},byCompany:{}});
+  }
   var rows=[],cB=0,cR=0,cBd=0,peak=0,peakWeek="";
   all.forEach(function(w){
     var e=entries[w]||null,covered=false,workers=0,budget=0;
@@ -123,11 +132,16 @@ function mpModel(plan,weeks){
       var n=mpLineWorkers(l,w);if(!n&&!(w>=l.start&&w<=l.end))return;
       covered=true;workers+=n;var h=n*mpLineHpw(l);budget+=h;
       if(l.company){var c=C(l.company);c.budget+=h;if(cutoff&&w<=cutoff)c.budgetToDate+=h;}
+      if(l.label){var a=A(l.label);a.budget+=h;if(cutoff&&w<=cutoff)a.budgetToDate+=h;}
     });
     var src=covered?"plan":"";
     if(!covered&&e&&mpHas(e.approved)){budget=Number(e.approved);src="manual";}
     var hasR=!!(e&&(e.real||[]).length),real=hasR?mpReal(e):0;
-    if(hasR)(e.real||[]).forEach(function(r){var c=C(r.company);c.real+=_invNum(r.hours);c.weeks[w]=(c.weeks[w]||0)+_invNum(r.hours);});
+    if(hasR)(e.real||[]).forEach(function(r){
+      var h=_invNum(r.hours),c=C(r.company);c.real+=h;c.weeks[w]=(c.weeks[w]||0)+h;
+      var a=A(r.activity);a.real+=h;a.weeks[w]=(a.weeks[w]||0)+h;
+      var cn=String(r.company||"").trim()||"(no company)";a.byCompany[cn]=(a.byCompany[cn]||0)+h;
+    });
     cB+=budget;if(hasR)cR+=real;
     var toDate=!!cutoff&&w<=cutoff;if(toDate)cBd+=budget;
     if(workers>peak){peak=workers;peakWeek=w;}
@@ -154,7 +168,8 @@ function mpModel(plan,weeks){
     peak:peak,peakWeek:peakWeek,start:all[0]||"",end:all[all.length-1]||"",cutoff:cutoff,weeks:all.length};
   tot.eacDiff=tot.eac-cB;
   var companies=Object.keys(comp).map(function(k){return comp[k];}).sort(function(a,b){return (b.real+b.budget)-(a.real+a.budget);});
-  return {rows:rows,months:months,tot:tot,companies:companies,plan:plan};
+  var activities=Object.keys(acts).map(function(k){return acts[k];}).sort(function(a,b){return (b.real+b.budget)-(a.real+a.budget);});
+  return {rows:rows,months:months,tot:tot,companies:companies,activities:activities,plan:plan};
 }
 
 // ---------------------------------------------------------------- view
@@ -168,13 +183,17 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
   var known=[];
   (contractors||[]).forEach(function(c){if(c.name&&known.indexOf(c.name)<0)known.push(c.name);});
   M.companies.forEach(function(c){if(c.name!=="(no company)"&&known.indexOf(c.name)<0)known.push(c.name);});
+  // Activities offered while typing: the plan line names first, then every activity already used.
+  var knownActs=[];
+  plan.forEach(function(l){if(l.label&&knownActs.indexOf(l.label)<0)knownActs.push(l.label);});
+  M.activities.forEach(function(a){if(a.name!=="(no activity)"&&!knownActs.some(function(x){return mpActKey(x)===a.key;}))knownActs.push(a.name);});
 
   function openWeek(w){
     var e=weeks.find(function(x){return _flowMonday(x.week)===w;});
     if(e)setEdit(Object.assign({},e,{real:(e.real||[]).map(function(r){return Object.assign({},r);})}));
     else{
       var prev=weeks.slice().sort(function(a,b){return b.week.localeCompare(a.week);})[0];
-      setEdit(newManpowerWeek({week:w,real:prev?(prev.real||[]).map(function(r){return {company:r.company,hours:""};}):[]}));
+      setEdit(newManpowerWeek({week:w,real:prev?(prev.real||[]).map(function(r){return {company:r.company,activity:r.activity||"",hours:""};}):[]}));
     }
   }
   function openNew(){
@@ -186,7 +205,10 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
     var clash=weeks.find(function(x){return _flowMonday(x.week)===w.week&&x.id!==w.id;});
     if(clash){safeAlert("The week of "+fmtDate(w.week)+" is already entered. Open it in the list to change it.");return;}
     var doc=Object.assign({},w,{approved:mpHas(w.approved)?Number(w.approved):"",real:(w.real||[]).filter(function(r){return String(r.company||"").trim()||mpHas(r.hours);})
-      .map(function(r){return {company:String(r.company||"").trim(),hours:mpHas(r.hours)?Number(r.hours):0};}),
+      .map(function(r){
+        // an activity matching a plan line (case, accents aside) takes the plan line's exact name
+        var act=String(r.activity||"").trim(),hit=act?plan.find(function(l){return l.label&&mpActKey(l.label)===mpActKey(act);}):null;
+        return {company:String(r.company||"").trim(),activity:hit?hit.label:act,hours:mpHas(r.hours)?Number(r.hours):0};}),
       updatedBy:currentUser||"",updatedAt:today()});
     _invUpsert(weeks,saveWeeks,doc);setEdit(null);
   }
@@ -202,6 +224,8 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
       rows.push(["W"+mpIsoWeek(r.week),r.week,r.workers,Math.round(r.budget),r.hasR?r.real:"",r.diff===null?"":Math.round(r.diff),r.pct===null?"":r.pct,Math.round(r.cumB),r.hasR?r.cumR:""]
         .concat(M.companies.map(function(c){return byC[c.key]||"";})));
     });
+    rows.push([]);rows.push(["Activity","","","Budget h","Budget to date h","Real h","Variance h (vs budget to date)"]);
+    M.activities.forEach(function(a){rows.push([a.name,"","",Math.round(a.budget),Math.round(a.budgetToDate),a.real,a.real-a.budgetToDate]);});
     rows.push([]);rows.push(["Month","","","Budget h","Real h","Variance h (vs budget to date)","Variance %"]);
     M.months.forEach(function(m){rows.push([mpMonthLabel(m.month),"","",Math.round(m.budget),m.hasR?Math.round(m.real):"",m.diff===null?"":Math.round(m.diff),m.pct===null?"":m.pct]);});
     var csv=rows.map(function(r){return r.map(function(v){v=String(v===undefined||v===null?"":v);return /[",;\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(";");}).join("\n");
@@ -210,7 +234,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
     a.download="manpower_"+today()+".csv";document.body.appendChild(a);a.click();a.remove();
   }
 
-  var TABS=[["overview","📊 Overview"],["plan","🧮 Plan"],["weeks","🗓 Weeks"],["months","📅 Months"],["companies","🏢 Companies"]];
+  var TABS=[["overview","📊 Overview"],["plan","🧮 Plan"],["weeks","🗓 Weeks"],["months","📅 Months"],["companies","🏢 Companies"],["activities","🛠 Activities"]];
   var empty=!plan.length&&!weeks.length;
   return <div>
     <div className="page-hdr">
@@ -236,7 +260,8 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
     {!empty&&tab==="weeks"&&<MpWeeks M={M} onOpen={openWeek} can={can}/>}
     {!empty&&tab==="months"&&<MpMonths M={M}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
-    {edit&&<MpWeekEditor w={edit} known={known} can={can} M={M} isNew={!weeks.some(function(x){return x.id===edit.id;})}
+    {!empty&&tab==="activities"&&<MpActivities M={M}/>}
+    {edit&&<MpWeekEditor w={edit} known={known} knownActs={knownActs} can={can} M={M} isNew={!weeks.some(function(x){return x.id===edit.id;})}
       onSave={saveWeek} onDelete={function(){delWeek(edit);}} onClose={function(){setEdit(null);}}/>}
   </div>;
 }
@@ -592,14 +617,58 @@ function MpCompanies({M}){
   </div>;
 }
 
+// ---------------------------------------------------------------- activities
+// Budget per activity = the plan lines with that name; real = the real lines tagged with it.
+// ▸ shows which companies spent the hours of an activity.
+function MpActivities({M}){
+  const [open,setOpen]=useState({});
+  var tot=M.tot.real||0;
+  var list=M.activities;
+  if(!list.length)return <div className="empty"><div className="empty-txt">No activity yet: name the plan lines, and pick the activity on each line of real hours.</div></div>;
+  var untagged=list.find(function(a){return a.key==="(no activity)";});
+  return <div className="card" style={{padding:0,overflowX:"auto"}}>
+    <table className="tbl tbl-cards" style={{fontSize:12,margin:0}}>
+      <thead><tr><th>Activity</th><th style={{textAlign:"right"}}>Budget (plan)</th><th style={{textAlign:"right"}}>Budget to date</th>
+        <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − budget to date">Variance</th><th style={{textAlign:"right"}}>Share of real</th>
+        <th>Companies</th></tr></thead>
+      <tbody>{list.map(function(a){
+        var d=a.budgetToDate||a.real?a.real-a.budgetToDate:null;
+        var pct=a.budgetToDate?Math.round(d/a.budgetToDate*100):null;
+        var cos=Object.keys(a.byCompany).sort(function(x,y){return a.byCompany[y]-a.byCompany[x];});
+        var isOpen=!!open[a.key];
+        return <React.Fragment key={a.key}>
+          <tr onClick={function(){if(cos.length)setOpen(function(o){var n=Object.assign({},o);n[a.key]=!o[a.key];return n;});}} style={{cursor:cos.length?"pointer":"default"}}>
+            <td className="card-main" style={{fontWeight:600,fontStyle:a.key==="(no activity)"?"italic":"normal"}}>{cos.length?<span style={{color:"#8b8578",fontSize:10,marginRight:4}}>{isOpen?"▾":"▸"}</span>:null}{a.name}</td>
+            <td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{a.budget?invFmt(a.budget,0):"—"}</td>
+            <td data-l="Budget to date" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{a.budgetToDate?invFmt(a.budgetToDate,0):"—"}</td>
+            <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL}}>{a.real?invFmt(a.real,0):"—"}</td>
+            <td data-l="Variance" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:600,color:a.budgetToDate?mpVarCol(pct):"#888"}}
+              title={a.budgetToDate?"":"No plan line with this name: everything spent counts as variance"}>{d===null?"—":mpSigned(d)}{pct!==null?<span style={{fontSize:10,marginLeft:4}}>{(pct>0?"+":"")+pct}%</span>:null}</td>
+            <td data-l="Share" style={{textAlign:"right"}}>{tot&&a.real?Math.round(a.real/tot*100)+" %":"—"}</td>
+            <td data-l="Companies" style={{fontSize:11,color:"#555"}}>{cos.slice(0,3).join(" · ")}{cos.length>3?" · +"+(cos.length-3):""}</td>
+          </tr>
+          {isOpen&&cos.map(function(cn){
+            return <tr key={a.key+"|"+cn} style={{background:"#faf9f6"}}>
+              <td className="card-main" style={{paddingLeft:28,color:"#555"}}>{cn}</td><td/><td/>
+              <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_REAL}}>{invFmt(a.byCompany[cn],0)}</td><td/>
+              <td data-l="Share of activity" style={{textAlign:"right",color:"#888"}}>{a.real?Math.round(a.byCompany[cn]/a.real*100)+" %":""}</td><td/>
+            </tr>;
+          })}
+        </React.Fragment>;
+      })}</tbody>
+    </table>
+    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Budget per activity comes from the plan lines of the same name.{untagged&&untagged.real?" "+invFmt(untagged.real,0)+" h of real hours have no activity yet: open the weeks to tag them.":""}</div>
+  </div>;
+}
+
 // ---------------------------------------------------------------- week editor (real hours)
-function MpWeekEditor({w,known,can,isNew,M,onSave,onDelete,onClose}){
+function MpWeekEditor({w,known,knownActs,can,isNew,M,onSave,onDelete,onClose}){
   const [d,setD]=useState(w);
   const [paste,setPaste]=useState("");
   const [showPaste,setShowPaste]=useState(false);
   function set(k,v){setD(function(o){var n=Object.assign({},o);n[k]=v;return n;});}
   function setRow(i,k,v){setD(function(o){var rs=(o.real||[]).map(function(r,j){if(j!==i)return r;var u=Object.assign({},r);u[k]=v;return u;});return Object.assign({},o,{real:rs});});}
-  function addRow(){setD(function(o){return Object.assign({},o,{real:(o.real||[]).concat([{company:"",hours:""}])});});}
+  function addRow(){setD(function(o){return Object.assign({},o,{real:(o.real||[]).concat([{company:"",activity:"",hours:""}])});});}
   function delRow(i){setD(function(o){return Object.assign({},o,{real:(o.real||[]).filter(function(_,j){return j!==i;})});});}
   function applyPaste(replace){
     var res=mpParseCompanyPaste(paste);
@@ -607,8 +676,8 @@ function MpWeekEditor({w,known,can,isNew,M,onSave,onDelete,onClose}){
     setD(function(o){
       var rs=replace?[]:(o.real||[]).filter(function(r){return String(r.company||"").trim();}).map(function(r){return Object.assign({},r);});
       res.rows.forEach(function(p){
-        var hit=rs.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(p.company);});
-        if(hit)hit.hours=p.hours;else rs.push({company:p.company,hours:p.hours});
+        var hit=rs.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(p.company)&&mpActKey(r.activity)===mpActKey(p.activity);});
+        if(hit)hit.hours=p.hours;else rs.push({company:p.company,activity:p.activity,hours:p.hours});
       });
       return Object.assign({},o,{real:rs});
     });
@@ -638,28 +707,30 @@ function MpWeekEditor({w,known,can,isNew,M,onSave,onDelete,onClose}){
           <input type="number" min="0" value={d.approved} disabled={!can} onChange={function(e){set("approved",e.target.value);}} style={inp}/></div>}
     </div>
     <div style={{display:"flex",alignItems:"baseline",gap:8,margin:"6px 0 6px"}}>
-      <div style={{fontWeight:700,fontSize:13}}>Real hours by company</div>
+      <div style={{fontWeight:700,fontSize:13}}>Real hours by company and activity</div>
       <span style={{fontSize:12,color:MP_COL_REAL,fontWeight:700,fontFamily:"var(--font-mono)"}}>{invFmt(real,0)} h</span>
       {budget!==null&&real>0&&<span style={{fontSize:11,color:real>budget?"#b3302a":"#1e6b3a"}}>{mpSigned(real-budget)} h vs budget{budget?" ("+(real>=budget?"+":"")+Math.round((real-budget)/budget*100)+" %)":""}</span>}
       {can&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setShowPaste(!showPaste);}}>📋 Paste from Excel</button>}
     </div>
     {showPaste&&<div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:10,marginBottom:10}}>
-      <div style={{fontSize:11,color:"#6f6b62",marginBottom:6}}>One line per company: name, then hours (copied from Excel or the time-keeping export). The same company twice is added up.</div>
-      <textarea value={paste} onChange={function(e){setPaste(e.target.value);}} rows={6} placeholder={"Glassco\t1 240\nSteelworks Ltd\t860"}
+      <div style={{fontSize:11,color:"#6f6b62",marginBottom:6}}>One line per company: name, then hours — or name, activity, hours (copied from Excel or the time-keeping export). The same company and activity twice are added up.</div>
+      <textarea value={paste} onChange={function(e){setPaste(e.target.value);}} rows={6} placeholder={"Glassco\tFormwork carpenters\t1 240\nSteelworks Ltd\tSteel fixers\t860\nCleanco\t120"}
         style={{width:"100%",fontFamily:"var(--font-mono)",fontSize:12,padding:6}}/>
       <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
         <button className="btn btn-sm" onClick={function(){applyPaste(false);}} title="Companies already listed get the pasted hours; the others are added">Merge</button>
         <button className="btn btn-sm" onClick={function(){applyPaste(true);}} title="The pasted list replaces the lines below">Replace</button>
       </div>
     </div>}
+    <datalist id="mp-activities">{(knownActs||[]).map(function(n){return <option key={n} value={n}/>;})}</datalist>
     <datalist id="mp-companies">{known.map(function(n){return <option key={n} value={n}/>;})}</datalist>
     <table className="tbl" style={{fontSize:12}}>
-      <thead><tr><th>Company</th><th style={{textAlign:"right",width:130}}>Hours</th><th style={{width:34}}></th></tr></thead>
+      <thead><tr><th>Company</th><th>Activity</th><th style={{textAlign:"right",width:110}}>Hours</th><th style={{width:34}}></th></tr></thead>
       <tbody>
-        {(d.real||[]).length===0&&<tr><td colSpan={3} style={{color:"#9b968b"}}>No company yet.</td></tr>}
+        {(d.real||[]).length===0&&<tr><td colSpan={4} style={{color:"#9b968b"}}>No company yet.</td></tr>}
         {(d.real||[]).map(function(r,i){
           return <tr key={i}>
             <td><input type="text" list="mp-companies" value={r.company||""} disabled={!can} onChange={function(e){setRow(i,"company",e.target.value);}} placeholder="Company of the workers" style={{width:"100%",padding:"4px 6px"}}/></td>
+            <td><input type="text" list="mp-activities" value={r.activity||""} disabled={!can} onChange={function(e){setRow(i,"activity",e.target.value);}} placeholder="Activity (plan line)" style={{width:"100%",padding:"4px 6px"}}/></td>
             <td><input type="number" min="0" value={r.hours} disabled={!can} onChange={function(e){setRow(i,"hours",e.target.value);}} style={{width:"100%",padding:"4px 6px",textAlign:"right"}}/></td>
             <td>{can&&<button onClick={function(){delRow(i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc"}}>✕</button>}</td>
           </tr>;
