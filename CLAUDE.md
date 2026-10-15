@@ -24,7 +24,7 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
 | Fichier | Contenu |
 |---|---|
 | `app-core.js` | Constantes, clés de stockage, helpers dates/permissions, composants partagés, `App` |
-| `app-tenders.js` | Tender sheet, chaîne de soumission, matériaux, shop drawings, contrats, packages. **Interface renommée** : onglet « Tenders » = **Package**, anciens « Packages » (`pp_packages`) = **Department** — clés et code inchangés (`tender`, `package`). Fiche en onglets : Submissions (chaque document édité à un seul endroit) / Contract & addendums / Flow & history (lecture seule) / Actions & notes. Référence d'un document demandée à chaque soumission (`recordDocSubmission`, modale `ppPrompt`) |
+| `app-tenders.js` | Tender sheet, chaîne de soumission, matériaux, shop drawings, contrats, packages. **Interface renommée** : onglet « Tenders » = **Package**, anciens « Packages » (`pp_packages`) = **Department** — clés et code inchangés (`tender`, `package`). Fiche en onglets : Submissions (chaque document édité à un seul endroit) / Contract & addendums / Flow & history (lecture seule) / Actions & notes. Référence d'un document demandée à chaque soumission (`recordDocSubmission`, modale `ppPrompt`). Impression de la liste : fenêtre `TenderPrintModal` (sections Finance / Dates / Submission steps / Follow-up / timelines / cartes / légendes, A4 ou A3), `tenderPrint` masque les colonnes et zoome le tableau à la largeur de la page ; choix en localStorage `pp_tender_print` |
 | `app-schedule.js` | Grille de planning par zone, chemin critique, documents, impression, vue mobile |
 | `app-zone.js` | Espace zone : actions, rooms, KPIs |
 | `app-reports.js` | Rapports imprimables, MOM, timeline, dashboard, trackers |

@@ -412,11 +412,15 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
   /* the schedule keeps its own sizing: it is scaled as a whole, not squeezed per cell */
   .sched-wrap table th,.sched-wrap table td{font-size:inherit!important;}
 }
-@media print{
-  /* Packages table: the sheet margin is the only margin, nothing left over from the screen layout */
-  body.printing-tenders .content{padding:0!important;max-width:none!important;}
-  body.printing-tenders .tbl-tenders{width:100%!important;border-radius:0!important;}
-}
+/* Packages print (tenderPrint): also applied on screen while printing, so the width measured
+   to zoom the table is the width that prints. */
+body.printing-tenders .leftnav,body.printing-tenders .rsidebar,body.printing-tenders .tp-noprint,
+body.printing-tenders .page-hdr .btn,body.printing-tenders div[style*="position: fixed"]{display:none!important;}
+body.printing-tenders .content{padding:0!important;max-width:none!important;flex:none!important;overflow:visible!important;}
+body.printing-tenders .tbl-tenders{width:100%!important;border-radius:0!important;}
+body.printing-tenders .tbl-tenders th,body.printing-tenders .tbl-tenders td{font-size:10px!important;padding:3px 5px!important;}
+body.printing-tenders .tbl-tenders th,body.printing-tenders .tbl-tenders td:not([style*="nowrap"]){white-space:normal!important;}
+body.printing-tenders .tbl-tenders td textarea{border:none!important;resize:none!important;font-size:10px!important;}
 /* Full-screen schedule: only the plan, its filter and its toolbar stay on screen */
 .sched-fs .sched-fs-hide{display:none!important;}
 body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .mobile-qa-btn{display:none!important;}
