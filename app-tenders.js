@@ -2019,12 +2019,34 @@ function FlowDocBadge({td,id,mode}){
     {s.text}<OverdueTag o={s.overdue}/></span>;
 }
 
+// The contract next to the documents: green signed by the sub, blue under way
+// (request sent or in circulation), dashed not started.
+function tenderContractPill(td){
+  if(td.cancelled)return {st:"none",tip:"Contract: package cancelled"};
+  if(tenderPhase(td)==="sig"){
+    var c=(td.stepDates||{}).contract||{},d=c.signedAllDone||c.signedDone||"";
+    return {st:"approved",tip:"Contract signed"+(isValidDate(d)?" "+fmtDate(d):"")};
+  }
+  var cs=(function(){try{return circuitState(circuitOf(td));}catch(e){return null;}})();
+  var ct=(td.stepDates||{}).contract||{};
+  if((cs&&cs.started)||ct.requestDone||ct.circulateDone){
+    var at=cs&&cs.current.length?cs.current.map(function(x){return x.stage.label;}).join(" / "):"";
+    return {st:"pending",tip:"Contract under way"+(at?" · "+at:"")+(cs&&cs.started?" · since "+fmtDate(cs.started):"")};
+  }
+  return {st:"none",tip:"Contract: not started"};
+}
 // One pill per kind of document, for the tenders list: colour = where it stands,
 // a/n = approved out of n when there are several, small number = highest revision.
 function FlowDocDots({td}){
   var docs=tenderDocs(td);
-  var KINDS=[["acc","ACC"],["sd","SD"],["mar","MAR"],["mss","MSS"],["wms","WMS"],["itp","ITP"]];
+  var KINDS=[["acc","ACC"],["ctr","Contract"],["sd","SD"],["mar","MAR"],["mss","MSS"],["wms","WMS"],["itp","ITP"]];
+  var PILL={approved:["#e8f5e9","#1e6b3a"],pending:["#e8f0fe","#1a73e8"],returned:["#fff3e0","#b35c00"],none:["#f5f3ee","#9b968b"]};
   return <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{KINDS.map(function(k){
+    if(k[0]==="ctr"){
+      var cp=tenderContractPill(td),cc=PILL[cp.st];
+      return <span key="ctr" title={cp.tip} style={{background:cc[0],color:cc[1],border:cp.st==="none"?"1px dashed #c9c4b8":"1px solid "+cc[1]+"55",
+        borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px",whiteSpace:"nowrap",cursor:"help"}}>Contract</span>;
+    }
     var ds=docs.filter(function(d){return d.kind===k[0];});
     if(!ds.length&&(k[0]==="sd"||k[0]==="mar"||k[0]==="mss"))return null;
     var sm=ds.map(function(d){return docSummary(d);});
@@ -2056,6 +2078,11 @@ function FlowDocLegend(){
         <b style={{fontWeight:600,color:"#16181d"}}>{x[3]}</b>{x[4]&&<span style={{color:"#9b968b"}}>{x[4]}</span>}
       </span>;
     })}
+    <span style={{display:"flex",alignItems:"center",gap:5}}>
+      <span style={{background:"#e8f5e9",color:"#1e6b3a",border:"1px solid #1e6b3a55",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>Contract</span>
+      <span style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #1a73e855",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>Contract</span>
+      <span style={{color:"#9b968b"}}>signed / under way (dashed: not started)</span>
+    </span>
     <span style={{display:"flex",alignItems:"center",gap:5}}>
       <span style={{background:"#e8f5e9",color:"#1e6b3a",border:"1px solid #1e6b3a55",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>SD 1/3</span>
       <span style={{color:"#9b968b"}}>approved / total</span>
@@ -4081,7 +4108,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             <span className="tsort" style={{color:sortCol==="title"?"#f97316":undefined}} onClick={function(){toggleSort("title");}}>Package{sortIcon("title")}</span></th>
           <th className="sortable" onClick={function(){toggleSort("package");}}>Department{sortIcon("package")}</th>
           <th style={{minWidth:130}} title="Subcontractor(s) recorded in the tender's Awards panel">Awarded to</th>
-          <th style={{minWidth:170}} title="Every document sent to the client: green approved, blue with the client, orange returned to resubmit, dashed not submitted. Hover for details.">Submissions</th>
+          <th style={{minWidth:170}} title="Every document sent to the client: green approved, blue with the client, orange returned to resubmit, dashed not submitted. Contract: green signed, blue under way, dashed not started. Hover for details.">Submissions</th>
           <th style={{minWidth:180}} title="Computed from the dates and statuses entered: the step in progress, who holds it (grey us, orange internal, blue client, purple subcontractor), for how long, and the step after it. The free-text Next Step stays in Follow-up.">Stage</th>
           <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
           <th className="tcol-sep" style={{textAlign:"right"}}>Budget</th>
