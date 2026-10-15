@@ -5,11 +5,13 @@
 //   pp_manpower_plan  plan lines — {id, label, company, workers, start, end (Mondays, inclusive),
 //                     hpw (hours per worker per week), byWeek:{monday: workers}, note}
 //                     byWeek overrides the head count for one week (the histogram cells).
-//   pp_manpower       one entry per week — {id, week (Monday), real:[{company, activity, hours}], note,
+//   pp_manpower       one entry per week — {id, week (Monday), real:[{company, activity, src, hours}], note,
 //                     approved, planned, updatedBy, updatedAt}
 //                     real = hours really spent, by company and by activity (activity optional; it
 //                     matches the plan line names, so budget and real meet per activity), typed or pasted
-//                     from the time-keeping app. approved / planned are the older manual figures:
+//                     from the time-keeping app. src (optional) = the activity's name in the imported
+//                     file, kept next to the webapp WBS it was matched to (activity), so both can be
+//                     filtered. approved / planned are the older manual figures:
 //                     approved is still used as the week's budget when no plan line covers it.
 //
 // Budget of a week = Σ plan lines (workers that week × hours per worker per week).
@@ -106,7 +108,8 @@ function mpParseCompanyPaste(text){
 }
 
 // Everything the views show, from the plan and the weekly entries.
-function mpModel(plan,weeks){
+function mpModel(plan,weeks,opt){
+  opt=opt||{};
   plan=(plan||[]).filter(function(l){return isValidDate(l.start)&&isValidDate(l.end);});
   var entries={};(weeks||[]).forEach(function(e){if(isValidDate(e.week))entries[_flowMonday(e.week)]=e;});
   var set={};
@@ -114,6 +117,7 @@ function mpModel(plan,weeks){
   Object.keys(entries).forEach(function(w){set[w]=1;});
   var all=Object.keys(set).sort();
   var cutoff="";all.forEach(function(w){var e=entries[w];if(e&&(e.real||[]).length)cutoff=w;});
+  if(opt.cutoff!==undefined)cutoff=opt.cutoff;     // a filtered view keeps the cut-off of the whole project
   var comp={};
   function C(name){
     var k=mpCompanyKey(name)||"(no company)";
@@ -123,7 +127,13 @@ function mpModel(plan,weeks){
   var acts={};
   function A(name){
     var k=mpActKey(name)||"(no activity)";
-    return acts[k]||(acts[k]={key:k,name:String(name||"").trim()||"(no activity)",budget:0,budgetToDate:0,real:0,weeks:{},byCompany:{}});
+    return acts[k]||(acts[k]={key:k,name:String(name||"").trim()||"(no activity)",budget:0,budgetToDate:0,real:0,weeks:{},byCompany:{},bySrc:{}});
+  }
+  // File activities (name in the imported file): real only, with the WBS they were matched to.
+  var srcs={};
+  function S(name){
+    var k=mpActKey(name)||"(not imported)";
+    return srcs[k]||(srcs[k]={key:k,name:String(name||"").trim()||"(not imported)",real:0,weeks:{},byWbs:{}});
   }
   var rows=[],cB=0,cR=0,cBd=0,peak=0,peakWeek="";
   all.forEach(function(w){
@@ -136,11 +146,14 @@ function mpModel(plan,weeks){
     });
     var src=covered?"plan":"";
     if(!covered&&e&&mpHas(e.approved)){budget=Number(e.approved);src="manual";}
-    var hasR=!!(e&&(e.real||[]).length),real=hasR?mpReal(e):0;
+    var hasR=!!(e&&((e.real||[]).length||e._had)),real=hasR?mpReal(e):0;
     if(hasR)(e.real||[]).forEach(function(r){
       var h=_invNum(r.hours),c=C(r.company);c.real+=h;c.weeks[w]=(c.weeks[w]||0)+h;
       var a=A(r.activity);a.real+=h;a.weeks[w]=(a.weeks[w]||0)+h;
       var cn=String(r.company||"").trim()||"(no company)";a.byCompany[cn]=(a.byCompany[cn]||0)+h;
+      if(r.src)a.bySrc[r.src]=(a.bySrc[r.src]||0)+h;
+      var s_=S(r.src);s_.real+=h;s_.weeks[w]=(s_.weeks[w]||0)+h;
+      var wn=String(r.activity||"").trim()||"(no WBS)";s_.byWbs[wn]=(s_.byWbs[wn]||0)+h;
     });
     cB+=budget;if(hasR)cR+=real;
     var toDate=!!cutoff&&w<=cutoff;if(toDate)cBd+=budget;
@@ -169,7 +182,24 @@ function mpModel(plan,weeks){
   tot.eacDiff=tot.eac-cB;
   var companies=Object.keys(comp).map(function(k){return comp[k];}).sort(function(a,b){return (b.real+b.budget)-(a.real+a.budget);});
   var activities=Object.keys(acts).map(function(k){return acts[k];}).sort(function(a,b){return (b.real+b.budget)-(a.real+a.budget);});
-  return {rows:rows,months:months,tot:tot,companies:companies,activities:activities,plan:plan};
+  var srcList=Object.keys(srcs).map(function(k){return srcs[k];}).sort(function(a,b){return b.real-a.real;});
+  return {rows:rows,months:months,tot:tot,companies:companies,activities:activities,srcs:srcList,plan:plan};
+}
+
+// Plan and weeks narrowed to one webapp WBS and/or one file activity. The budget follows the WBS:
+// the plan lines of the chosen WBS, or — for a file activity alone — of the WBS its hours were
+// matched to.
+function mpFilter(plan,weeks,fWbs,fSrc){
+  if(!fWbs&&!fSrc)return {plan:plan,weeks:weeks};
+  var wk=fWbs?mpActKey(fWbs):"",sk=fSrc?mpActKey(fSrc):"";
+  function ok(r){return (!fWbs||mpActKey(r.activity)===wk)&&(!fSrc||mpActKey(r.src)===sk);}
+  var wbsSet={};if(fWbs)wbsSet[wk]=1;
+  var w2=weeks.map(function(e){
+    var rs=(e.real||[]).filter(ok);
+    if(!fWbs)rs.forEach(function(r){if(r.activity)wbsSet[mpActKey(r.activity)]=1;});
+    return Object.assign({},e,{real:rs,_had:(e.real||[]).length>0,approved:""});
+  });
+  return {plan:plan.filter(function(l){return l.label&&wbsSet[mpActKey(l.label)];}),weeks:w2};
 }
 
 // ---------------------------------------------------------------- view
@@ -178,16 +208,28 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
   const [tab,setTab]=useState(plan.length||weeks.length?"overview":"plan");
   const [edit,setEdit]=useState(null);       // week entry being edited
   const [importing,setImporting]=useState(false);
+  const [fWbs,setFWbs]=useState("");         // filter: webapp WBS (activity / plan line name)
+  const [fSrc,setFSrc]=useState("");         // filter: activity name in the imported file
   var can=canEdit&&!window._ppReadOnly;
-  var M=mpModel(plan,weeks);
+  var M0=mpModel(plan,weeks);
+  var filtered=!!(fWbs||fSrc);
+  var F=mpFilter(plan,weeks,fWbs,fSrc);
+  var M=filtered?mpModel(F.plan,F.weeks,{cutoff:M0.tot.cutoff}):M0;
   // Company names offered while typing: subcontractors first, then every name already used.
   var known=[];
   (contractors||[]).forEach(function(c){if(c.name&&known.indexOf(c.name)<0)known.push(c.name);});
-  M.companies.forEach(function(c){if(c.name!=="(no company)"&&known.indexOf(c.name)<0)known.push(c.name);});
+  M0.companies.forEach(function(c){if(c.name!=="(no company)"&&known.indexOf(c.name)<0)known.push(c.name);});
   // Activities offered while typing: the plan line names first, then every activity already used.
   var knownActs=[];
   plan.forEach(function(l){if(l.label&&knownActs.indexOf(l.label)<0)knownActs.push(l.label);});
-  M.activities.forEach(function(a){if(a.name!=="(no activity)"&&!knownActs.some(function(x){return mpActKey(x)===a.key;}))knownActs.push(a.name);});
+  M0.activities.forEach(function(a){if(a.name!=="(no activity)"&&!knownActs.some(function(x){return mpActKey(x)===a.key;}))knownActs.push(a.name);});
+  // File activities offered in the filter: those met with the chosen WBS, or all of them.
+  var srcOpts=[];
+  weeks.forEach(function(e){(e.real||[]).forEach(function(r){
+    if(!r.src||fWbs&&mpActKey(r.activity)!==mpActKey(fWbs))return;
+    if(!srcOpts.some(function(x){return mpActKey(x)===mpActKey(r.src);}))srcOpts.push(r.src);
+  });});
+  srcOpts.sort(function(a,b){return a.localeCompare(b);});
 
   function openWeek(w){
     var e=weeks.find(function(x){return _flowMonday(x.week)===w;});
@@ -209,7 +251,9 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
       .map(function(r){
         // an activity matching a plan line (case, accents aside) takes the plan line's exact name
         var act=String(r.activity||"").trim(),hit=act?plan.find(function(l){return l.label&&mpActKey(l.label)===mpActKey(act);}):null;
-        return {company:String(r.company||"").trim(),activity:hit?hit.label:act,hours:mpHas(r.hours)?Number(r.hours):0};}),
+        var o={company:String(r.company||"").trim(),activity:hit?hit.label:act,hours:mpHas(r.hours)?Number(r.hours):0};
+        if(String(r.src||"").trim())o.src=String(r.src).trim();
+        return o;}),
       updatedBy:currentUser||"",updatedAt:today()});
     _invUpsert(weeks,saveWeeks,doc);setEdit(null);
   }
@@ -227,12 +271,16 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
     });
     rows.push([]);rows.push(["Activity","","","Budget h","Budget to date h","Real h","Variance h (vs budget to date)"]);
     M.activities.forEach(function(a){rows.push([a.name,"","",Math.round(a.budget),Math.round(a.budgetToDate),a.real,a.real-a.budgetToDate]);});
+    if(M.srcs.some(function(x){return x.key!=="(not imported)";})){
+      rows.push([]);rows.push(["File activity","WBS (webapp)","","","","Real h"]);
+      M.srcs.forEach(function(x){Object.keys(x.byWbs).forEach(function(wn){rows.push([x.name,wn,"","","",x.byWbs[wn]]);});});
+    }
     rows.push([]);rows.push(["Month","","","Budget h","Real h","Variance h (vs budget to date)","Variance %"]);
     M.months.forEach(function(m){rows.push([mpMonthLabel(m.month),"","",Math.round(m.budget),m.hasR?Math.round(m.real):"",m.diff===null?"":Math.round(m.diff),m.pct===null?"":m.pct]);});
     var csv=rows.map(function(r){return r.map(function(v){v=String(v===undefined||v===null?"":v);return /[",;\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(";");}).join("\n");
     var a=document.createElement("a");
     a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}));
-    a.download="manpower_"+today()+".csv";document.body.appendChild(a);a.click();a.remove();
+    a.download="manpower_"+(filtered?mpActKey(fWbs||fSrc).replace(/ /g,"_").slice(0,40)+"_":"")+today()+".csv";document.body.appendChild(a);a.click();a.remove();
   }
 
   var TABS=[["overview","📊 Overview"],["plan","🧮 Plan"],["weeks","🗓 Weeks"],["months","📅 Months"],["companies","🏢 Companies"],["activities","🛠 Activities"]];
@@ -252,19 +300,30 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,contractors,canEdit,current
     </div>
     <div className="filter-bar">
       {TABS.map(function(t){return <button key={t[0]} className={"fchip"+(tab===t[0]?" on":"")} onClick={function(){setTab(t[0]);}}>{t[1]}</button>;})}
+      {(knownActs.length>0||srcOpts.length>0||filtered)&&tab!=="plan"&&<span style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginLeft:8}}>
+        <select value={fWbs} onChange={function(e){setFWbs(e.target.value);setFSrc("");}} title="Webapp WBS (plan line / activity of the real hours)"
+          style={{padding:"3px 6px",fontSize:12,maxWidth:220,background:fWbs?"#fff8e1":"#fff"}}>
+          <option value="">All WBS</option>{knownActs.map(function(a){return <option key={a} value={a}>{a}</option>;})}</select>
+        {(srcOpts.length>0||fSrc)&&<select value={fSrc} onChange={function(e){setFSrc(e.target.value);}} title="Activity as named in the imported Excel file"
+          style={{padding:"3px 6px",fontSize:12,maxWidth:260,background:fSrc?"#fff8e1":"#fff"}}>
+          <option value="">All file activities</option>{srcOpts.map(function(a){return <option key={a} value={a}>{a}</option>;})}</select>}
+        {filtered&&<button className="btn btn-sm" onClick={function(){setFWbs("");setFSrc("");}}>✕ Clear</button>}
+      </span>}
       {M.tot.cutoff&&<span style={{marginLeft:"auto",fontSize:11,color:"#888"}} title="Last week with real hours entered: “to date” figures stop there">Cut-off <b>W{mpIsoWeek(M.tot.cutoff)}</b> · {fmtDate(M.tot.cutoff)}</span>}
     </div>
     {empty&&tab!=="plan"&&<div className="empty"><div className="empty-ico">👷</div>
       <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks. The budget in hours follows.</div>
       {can&&<div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){setTab("plan");}}>Go to the plan</button></div>}</div>}
     {!empty&&tab==="overview"&&<MpOverview M={M} onOpenWeek={openWeek}/>}
-    {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M} can={can} known={known}/>}
+    {filtered&&tab!=="plan"&&!empty&&<div style={{fontSize:11.5,color:"#6f6b62",background:"#fff8e1",border:"1px solid #f0e2b8",borderRadius:8,padding:"5px 10px",marginBottom:10}}>
+      Filtered on {fWbs?<b>WBS “{fWbs}”</b>:null}{fWbs&&fSrc?" · ":""}{fSrc?<b>file activity “{fSrc}”</b>:null} — real hours of these lines only; budget = the plan lines of {fWbs?"this WBS":"the WBS these hours are matched to"}{fSrc?" (shared with the other file activities matched to the same WBS)":""}.</div>}
+    {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M0} can={can} known={known}/>}
     {!empty&&tab==="weeks"&&<MpWeeks M={M} onOpen={openWeek} can={can}/>}
     {!empty&&tab==="months"&&<MpMonths M={M}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
-    {!empty&&tab==="activities"&&<MpActivities M={M}/>}
+    {!empty&&tab==="activities"&&<MpActivities M={M} onPick={function(k,v){if(k==="wbs"){setFWbs(v);setFSrc("");}else setFSrc(v);}}/>}
     {importing&&<MpImportModal weeks={weeks} saveWeeks={saveWeeks} plan={plan} savePlan={savePlan} knownActs={knownActs} currentUser={currentUser} onClose={function(){setImporting(false);}}/>}
-    {edit&&<MpWeekEditor w={edit} known={known} knownActs={knownActs} can={can} M={M} isNew={!weeks.some(function(x){return x.id===edit.id;})}
+    {edit&&<MpWeekEditor w={edit} known={known} knownActs={knownActs} can={can} M={M0} isNew={!weeks.some(function(x){return x.id===edit.id;})}
       onSave={saveWeek} onDelete={function(){delWeek(edit);}} onClose={function(){setEdit(null);}}/>}
   </div>;
 }
@@ -623,25 +682,56 @@ function MpCompanies({M}){
 // ---------------------------------------------------------------- activities
 // Budget per activity = the plan lines with that name; real = the real lines tagged with it.
 // ▸ shows which companies spent the hours of an activity.
-function MpActivities({M}){
+function MpActivities({M,onPick}){
   const [open,setOpen]=useState({});
+  const [by,setBy]=useState("wbs");          // "wbs" = webapp WBS (plan lines) · "src" = activities of the imported file
   var tot=M.tot.real||0;
   var list=M.activities;
+  var hasSrc=M.srcs.some(function(x){return x.key!=="(not imported)";});
   if(!list.length)return <div className="empty"><div className="empty-txt">No activity yet: name the plan lines, and pick the activity on each line of real hours.</div></div>;
   var untagged=list.find(function(a){return a.key==="(no activity)";});
-  return <div className="card" style={{padding:0,overflowX:"auto"}}>
+  function tog(k){setOpen(function(o){var n=Object.assign({},o);n[k]=!o[k];return n;});}
+  var pickBtn=function(kind,name){return onPick&&name.charAt(0)!=="("?<button className="btn btn-sm" style={{padding:"0 6px",fontSize:10,marginLeft:6}} title="Filter the whole manpower view on it"
+    onClick={function(e){e.stopPropagation();onPick(kind,name);}}>⚲ filter</button>:null;};
+  var switcher=hasSrc&&<div style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:"1px solid #ece9e1",alignItems:"center"}}>
+    <span style={{fontSize:11,color:"#888"}}>Group by</span>
+    <button className={"fchip"+(by==="wbs"?" on":"")} onClick={function(){setBy("wbs");}}>WBS (webapp)</button>
+    <button className={"fchip"+(by==="src"?" on":"")} onClick={function(){setBy("src");}}>Activity in the file</button>
+  </div>;
+  if(by==="src"&&hasSrc)return <div className="card" style={{padding:0,overflowX:"auto"}}>
+    {switcher}
     <table className="tbl tbl-cards" style={{fontSize:12,margin:0}}>
-      <thead><tr><th>Activity</th><th style={{textAlign:"right"}}>Budget (plan)</th><th style={{textAlign:"right"}}>Budget to date</th>
+      <thead><tr><th>Activity in the file</th><th>WBS (webapp)</th><th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}}>Share of real</th><th style={{textAlign:"right"}}>Weeks</th></tr></thead>
+      <tbody>{M.srcs.map(function(x){
+        var ws=Object.keys(x.byWbs).sort(function(p,q){return x.byWbs[q]-x.byWbs[p];});
+        return <tr key={x.key}>
+          <td className="card-main" style={{fontWeight:600,fontStyle:x.key==="(not imported)"?"italic":"normal"}}>{x.name}{pickBtn("src",x.name)}</td>
+          <td data-l="WBS" style={{fontSize:11,color:"#555"}}>{ws.map(function(wn){return wn+(ws.length>1?" ("+invFmt(x.byWbs[wn],0)+" h)":"");}).join(" · ")}</td>
+          <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL}}>{x.real?invFmt(x.real,0):"—"}</td>
+          <td data-l="Share" style={{textAlign:"right"}}>{tot&&x.real?Math.round(x.real/tot*100)+" %":"—"}</td>
+          <td data-l="Weeks" style={{textAlign:"right"}}>{Object.keys(x.weeks).length||"—"}</td>
+        </tr>;
+      })}</tbody>
+    </table>
+    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>The activity names of the imported files, as they are in the file, with the webapp WBS they were matched to at the import. The budget lives on the WBS.</div>
+  </div>;
+  return <div className="card" style={{padding:0,overflowX:"auto"}}>
+    {switcher}
+    <table className="tbl tbl-cards" style={{fontSize:12,margin:0}}>
+      <thead><tr><th>{hasSrc?"WBS (webapp)":"Activity"}</th><th style={{textAlign:"right"}}>Budget (plan)</th><th style={{textAlign:"right"}}>Budget to date</th>
         <th style={{textAlign:"right"}}>Real</th><th style={{textAlign:"right"}} title="Real − budget to date">Variance</th><th style={{textAlign:"right"}}>Share of real</th>
         <th>Companies</th></tr></thead>
       <tbody>{list.map(function(a){
         var d=a.budgetToDate||a.real?a.real-a.budgetToDate:null;
         var pct=a.budgetToDate?Math.round(d/a.budgetToDate*100):null;
         var cos=Object.keys(a.byCompany).sort(function(x,y){return a.byCompany[y]-a.byCompany[x];});
+        var srcs=Object.keys(a.bySrc).sort(function(x,y){return a.bySrc[y]-a.bySrc[x];});
+        var more=cos.length+srcs.length;
         var isOpen=!!open[a.key];
         return <React.Fragment key={a.key}>
-          <tr onClick={function(){if(cos.length)setOpen(function(o){var n=Object.assign({},o);n[a.key]=!o[a.key];return n;});}} style={{cursor:cos.length?"pointer":"default"}}>
-            <td className="card-main" style={{fontWeight:600,fontStyle:a.key==="(no activity)"?"italic":"normal"}}>{cos.length?<span style={{color:"#8b8578",fontSize:10,marginRight:4}}>{isOpen?"▾":"▸"}</span>:null}{a.name}</td>
+          <tr onClick={function(){if(more)tog(a.key);}} style={{cursor:more?"pointer":"default"}}>
+            <td className="card-main" style={{fontWeight:600,fontStyle:a.key==="(no activity)"?"italic":"normal"}}>{more?<span style={{color:"#8b8578",fontSize:10,marginRight:4}}>{isOpen?"▾":"▸"}</span>:null}{a.name}
+              {srcs.length>0&&<span style={{fontSize:10,color:"#8b8578",fontWeight:400,marginLeft:6}}>{srcs.length} file activit{srcs.length>1?"ies":"y"}</span>}{pickBtn("wbs",a.name)}</td>
             <td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{a.budget?invFmt(a.budget,0):"—"}</td>
             <td data-l="Budget to date" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{a.budgetToDate?invFmt(a.budgetToDate,0):"—"}</td>
             <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL}}>{a.real?invFmt(a.real,0):"—"}</td>
@@ -650,6 +740,13 @@ function MpActivities({M}){
             <td data-l="Share" style={{textAlign:"right"}}>{tot&&a.real?Math.round(a.real/tot*100)+" %":"—"}</td>
             <td data-l="Companies" style={{fontSize:11,color:"#555"}}>{cos.slice(0,3).join(" · ")}{cos.length>3?" · +"+(cos.length-3):""}</td>
           </tr>
+          {isOpen&&srcs.map(function(sn){
+            return <tr key={a.key+"|s|"+sn} style={{background:"#f6f8fc"}}>
+              <td className="card-main" style={{paddingLeft:28,color:"#2b4c7e"}}><span style={{fontSize:10,color:"#8b8578",marginRight:4}}>file</span>{sn}{pickBtn("src",sn)}</td><td/><td/>
+              <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_REAL}}>{invFmt(a.bySrc[sn],0)}</td><td/>
+              <td data-l="Share of WBS" style={{textAlign:"right",color:"#888"}}>{a.real?Math.round(a.bySrc[sn]/a.real*100)+" %":""}</td><td/>
+            </tr>;
+          })}
           {isOpen&&cos.map(function(cn){
             return <tr key={a.key+"|"+cn} style={{background:"#faf9f6"}}>
               <td className="card-main" style={{paddingLeft:28,color:"#555"}}>{cn}</td><td/><td/>
@@ -660,22 +757,26 @@ function MpActivities({M}){
         </React.Fragment>;
       })}</tbody>
     </table>
-    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Budget per activity comes from the plan lines of the same name.{untagged&&untagged.real?" "+invFmt(untagged.real,0)+" h of real hours have no activity yet: open the weeks to tag them.":""}</div>
+    <div style={{fontSize:11,color:"#9b968b",padding:"8px 12px"}}>Budget per activity comes from the plan lines of the same name.{hasSrc?" Open a WBS to see the file activities matched to it.":""}{untagged&&untagged.real?" "+invFmt(untagged.real,0)+" h of real hours have no activity yet: open the weeks to tag them.":""}</div>
   </div>;
 }
 
 // ---------------------------------------------------------------- import (Excel / CSV / paste)
-// Two layouts are understood:
+// Three layouts are understood:
 //   long  one row per week × company × activity — columns Week (or Monday / Date), Company,
 //         Activity, Hours (any order, header names in English or French)
 //   wide  one row per week, then one column per company (or per activity) holding the hours —
 //         e.g. the CSV exported by this view; its Budget / Real / Variance / Cumulative columns
 //         are recognised and ignored
+//   matrix one row per activity, one column per week (e.g. the time-keeping export "Week · 2026-13 ·
+//         2026-14 …" with "Zoning / Activity" rows): the label columns before the first week give
+//         the zoning (carried down) and the activity; "Total" rows and columns are ignored
 // Weeks may be ISO week numbers (W42, S42, 42, 2026-W42) — the year is chosen in the dialog and
 // rolls over when the numbers go back to 1 — or dates (any day, taken as its Monday).
 // Activities from the file are matched to the webapp's activities; the dialog asks for every
 // one it cannot match: map to an existing activity, create it (a new plan line), import
 // without activity, or skip. The choices are remembered on this browser for the next import.
+// The file's own activity name is kept on each line (src) next to the webapp WBS it went to.
 var MP_IMP_IGNORE=/^(monday|lundi|date|planned workers|workers|budget( h)?|real( h)?|variance( h| %)?|cumulative.*|total.*|month|year|week start|semaine du)$/i;
 var MP_IMP_COLS={
   week:/^(week|wk|week ?(no|n°|#|number)|semaine|sem|s|n° ?semaine|week nr)$/i,
@@ -717,6 +818,7 @@ function mpImpWeekCell(v){
   if(v instanceof Date&&!isNaN(v))return {date:toISO(v)};
   var s=String(v).trim();
   var m=/^(\d{4})\s*[-_ ]?\s*[WwSs]\s*(\d{1,2})$/.exec(s);if(m)return {week:+m[2],year:+m[1]};
+  m=/^(\d{4})\s*[-_\/.]\s*(\d{1,2})$/.exec(s);if(m&&+m[2]>=1&&+m[2]<=53)return {week:+m[2],year:+m[1]};   // 2026-13
   m=/^(?:w|wk|week|s|sem|semaine)?\s*\.?\s*(\d{1,2})(?:\s*[-\/]\s*(\d{4}))?$/i.exec(s);if(m&&+m[1]>=1&&+m[1]<=53)return {week:+m[1],year:m[2]?+m[2]:null};
   m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);if(m)return {date:m[0].slice(0,10)};
   m=/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/.exec(s);
@@ -733,6 +835,10 @@ function mpImpAnalyse(rows){
   function col(re){return head.findIndex(function(h){return re.test(h);});}
   var cW=col(MP_IMP_COLS.week),cD=col(MP_IMP_COLS.date),cC=col(MP_IMP_COLS.company),cA=col(MP_IMP_COLS.activity),cH=col(MP_IMP_COLS.hours);
   var layout=(cH>=0&&(cC>=0||cA>=0))?"long":"wide";
+  // weeks along the heading row → matrix (one row per activity)
+  var weekCols=[];
+  rows[hi].forEach(function(c,j){if(j===cW||j===cD||norm(c)==="")return;var wc=mpImpWeekCell(c);if(wc)weekCols.push({j:j,cell:wc});});
+  if(weekCols.length>=2)layout="matrix";else weekCols=[];
   var body=[];
   for(var i=hi+1;i<rows.length;i++){
     var r=rows[i];
@@ -741,12 +847,34 @@ function mpImpAnalyse(rows){
   }
   var valueCols=[];
   if(layout==="wide")head.forEach(function(h,j){if(j!==cW&&j!==cD&&h&&!MP_IMP_IGNORE.test(h)&&!MP_IMP_COLS.week.test(h))valueCols.push({j:j,name:h});});
-  return {layout:layout,head:head,body:body,cW:cW,cD:cD,cC:cC,cA:cA,cH:cH,valueCols:valueCols};
+  return {layout:layout,head:head,body:body,cW:cW,cD:cD,cC:cC,cA:cA,cH:cH,valueCols:valueCols,weekCols:weekCols,
+    labelCols:weekCols.length?weekCols[0].j:0};
 }
 // Analysis + options → items with their Monday. Week numbers get a year: the chosen one, +1 each
 // time the numbers wrap back (52 → 1).
+var MP_IMP_TOTAL=/^(sub[- ]?)?total\b|^grand total|^sous[- ]?total/i;
 function mpImpItems(an,opts){
   var items=[],skipped=0,year=opts.year,prevW=null;
+  if(an.layout==="matrix"){
+    var mons=an.weekCols.map(function(wc){
+      var c=wc.cell;if(c.date)return _flowMonday(c.date);
+      var y=c.year;if(!y){if(prevW!==null&&c.week<prevW-26)year++;y=year;}
+      prevW=c.week;return mpIsoMonday(y,c.week);
+    });
+    var zone="";
+    an.body.forEach(function(r){
+      var labels=[];for(var j=0;j<an.labelCols;j++)labels.push(String(r[j]===undefined||r[j]===null?"":r[j]).trim());
+      if(labels.length>1&&labels[0]&&!MP_IMP_TOTAL.test(labels[0]))zone=labels[0];
+      if(labels.some(function(l){return MP_IMP_TOTAL.test(l);}))return;      // sub-totals and grand total
+      var act="";for(var k=labels.length-1;k>=(labels.length>1?1:0);k--)if(labels[k]){act=labels[k];break;}
+      if(!act)return;                                                        // a zoning heading
+      an.weekCols.forEach(function(wc,i){
+        var h=mpImpNum(r[wc.j]);if(h===null||!h)return;
+        items.push({week:mons[i],company:opts.fixed||"",activity:act,zone:labels.length>1?zone:"",hours:h});
+      });
+    });
+    return {items:items,skipped:skipped};
+  }
   an.body.forEach(function(r){
     var wk=null;
     if(an.cD>=0){var dc=mpImpWeekCell(r[an.cD]);if(dc&&dc.date)wk=_flowMonday(dc.date);}
@@ -806,7 +934,9 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
     if(a.error){setErr(a.error);setAn(null);return;}
     setErr("");setAn(a);setFileName(name||"");
     // the year of the first week: the current year, unless the file names one
-    var y=null;a.body.some(function(r){var c=a.cW>=0?mpImpWeekCell(r[a.cW]):null;if(c&&c.year){y=c.year;return true;}return false;});
+    var y=null;
+    if(a.layout==="matrix")a.weekCols.some(function(wc){if(wc.cell.year){y=wc.cell.year;return true;}return false;});
+    else a.body.some(function(r){var c=a.cW>=0?mpImpWeekCell(r[a.cW]):null;if(c&&c.year){y=c.year;return true;}return false;});
     if(y)setYear(y);
   }
   function onFile(e){
@@ -828,14 +958,23 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
   }
   var res=an?mpImpItems(an,{year:year,colsAre:colsAre,fixed:fixed}):{items:[],skipped:0};
   // activities met in the file, and their default choice
-  var fileActs={};res.items.forEach(function(it){if(it.activity){var k=mpActKey(it.activity);var o=fileActs[k]||(fileActs[k]={name:it.activity,hours:0,rows:0});o.hours+=it.hours;o.rows++;}});
+  var fileActs={};res.items.forEach(function(it){if(it.activity){var k=mpActKey(it.activity);var o=fileActs[k]||(fileActs[k]={name:it.activity,zone:it.zone||"",hours:0,rows:0});o.hours+=it.hours;o.rows++;}});
   var remembered=mpImpMapLoad();
   function choice(k){
     if(map[k]!==undefined)return map[k];
     var r=remembered[k];if(r&&(r==="none"||r==="skip"||knownActs.indexOf(r)>=0))return r;
     return mpImpGuess(fileActs[k].name,knownActs)||"new";
   }
-  var actKeys=Object.keys(fileActs).sort(function(a,b){return fileActs[b].hours-fileActs[a].hours;});
+  // how each file activity meets the webapp: same name, a remembered choice, a guess, or nothing
+  function status(k,noPick){
+    if(!noPick&&map[k]!==undefined)return "chosen";
+    if(knownActs.some(function(a){return mpActKey(a)===k;}))return "same";
+    var r=remembered[k];if(r&&(r==="none"||r==="skip"||knownActs.indexOf(r)>=0))return "remembered";
+    return mpImpGuess(fileActs[k].name,knownActs)?"guess":"none";
+  }
+  var ST_ORDER={none:0,guess:1,chosen:2,remembered:3,same:4};
+  var actKeys=Object.keys(fileActs).sort(function(a,b){return ST_ORDER[status(a,true)]-ST_ORDER[status(b,true)]||fileActs[b].hours-fileActs[a].hours;});
+  var unmatched=actKeys.filter(function(k){var st=status(k,true);return st==="none"||st==="guess";}).length;
   var wkSet={};res.items.forEach(function(it){wkSet[it.week]=1;});
   var wkList=Object.keys(wkSet).sort();
   var existing=wkList.filter(function(w){return weeks.some(function(x){return _flowMonday(x.week)===w&&(x.real||[]).length;});});
@@ -856,23 +995,23 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
     // 2. the hours, week by week
     var byWeek={};
     res.items.forEach(function(it){
-      var act="";
-      if(it.activity){var c=choice(mpActKey(it.activity));if(c==="skip")return;act=c==="none"?"":c==="new"?fileActs[mpActKey(it.activity)].name:c;}
+      var act="",src="";
+      if(it.activity){var c=choice(mpActKey(it.activity));if(c==="skip")return;act=c==="none"?"":c==="new"?fileActs[mpActKey(it.activity)].name:c;src=fileActs[mpActKey(it.activity)].name;}
       var l=byWeek[it.week]||(byWeek[it.week]=[]);
-      var hit=l.find(function(x){return mpCompanyKey(x.company)===mpCompanyKey(it.company)&&mpActKey(x.activity)===mpActKey(act);});
-      if(hit)hit.hours+=it.hours;else l.push({company:it.company,activity:act,hours:it.hours});
+      var hit=l.find(function(x){return mpCompanyKey(x.company)===mpCompanyKey(it.company)&&mpActKey(x.activity)===mpActKey(act)&&mpActKey(x.src)===mpActKey(src);});
+      if(hit)hit.hours+=it.hours;else l.push({company:it.company,activity:act,src:src,hours:it.hours});
     });
     var next=weeks.slice();
     Object.keys(byWeek).forEach(function(w){
       var i=next.findIndex(function(x){return _flowMonday(x.week)===w;});
-      var lines=byWeek[w].map(function(x){return {company:x.company,activity:x.activity,hours:Math.round(x.hours*100)/100};});
+      var lines=byWeek[w].map(function(x){var o={company:x.company,activity:x.activity,hours:Math.round(x.hours*100)/100};if(x.src)o.src=x.src;return o;});
       if(i<0){next.push(newManpowerWeek({week:w,real:lines,note:"Imported"+(fileName?" from "+fileName:""),updatedBy:currentUser||"",updatedAt:today()}));return;}
       var cur=next[i],real;
       if(mode==="replace")real=lines;
       else{
         real=(cur.real||[]).map(function(r){return Object.assign({},r);});
         lines.forEach(function(x){
-          var h=real.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(x.company)&&mpActKey(r.activity)===mpActKey(x.activity);});
+          var h=real.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(x.company)&&mpActKey(r.activity)===mpActKey(x.activity)&&mpActKey(r.src)===mpActKey(x.src);});
           if(h)h.hours=x.hours;else real.push(x);
         });
       }
@@ -882,7 +1021,7 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
     var mem=mpImpMapLoad();actKeys.forEach(function(k){var c=choice(k);mem[k]=c==="new"?fileActs[k].name:c;});mpImpMapSave(mem);
     if(created.length)savePlan(newPlan);
     saveWeeks(next);
-    safeAlert(invFmt(total-skipH,0)+" h imported over "+Object.keys(byWeek).length+" week(s)."+(created.length?"\n\nNew activities added to the plan (0 workers — give them workers to get a budget):\n• "+created.join("\n• "):""));
+    safeAlert(invFmt(total-skipH,0)+" h imported over "+Object.keys(byWeek).length+" week(s)."+(created.length?"\n\nNew WBS added to the plan (0 workers — give them workers to get a budget):\n• "+created.join("\n• "):""));
     onClose();
   }
 
@@ -894,7 +1033,8 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
   return <InvModal title="⬆ Import real hours" width={820} onClose={onClose} footer={footer}>
     <div style={{fontSize:12,color:"#6f6b62",marginBottom:10}}>
       Excel or CSV. Either <b>one row per week</b> with a <b>Week</b> column and one column per company (or per activity) — like the CSV exported here —
-      or <b>one row per week × company × activity</b> with columns <b>Week · Company · Activity · Hours</b>. Weeks as numbers (W42, S42, 42) or dates.
+      or <b>one row per week × company × activity</b> with columns <b>Week · Company · Activity · Hours</b>,
+      or <b>one row per activity and one column per week</b> (time-keeping export: Week · 2026-13 · 2026-14 …, Zoning / Activity rows). Weeks as numbers (W42, S42, 42, 2026-42) or dates.
     </div>
     <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
       <input type="file" accept=".xlsx,.xls,.xlsm,.csv,.txt" onChange={onFile}/>
@@ -906,15 +1046,15 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
     {err&&<div style={{color:"#b3302a",fontSize:12.5,margin:"6px 0"}}>{err}</div>}
     {an&&<div>
       <div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",marginBottom:10,display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:12.5}}>
-        <span><b>{fileName}</b> · {an.layout==="long"?"one row per week × company × activity":"one row per week, "+an.valueCols.length+" value column"+(an.valueCols.length!==1?"s":"")}</span>
-        {an.cW>=0&&an.cD<0&&<label style={{display:"flex",alignItems:"center",gap:5,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}>Year of the first week
+        <span><b>{fileName}</b> · {an.layout==="long"?"one row per week × company × activity":an.layout==="matrix"?"one row per activity, "+an.weekCols.length+" week columns":"one row per week, "+an.valueCols.length+" value column"+(an.valueCols.length!==1?"s":"")}</span>
+        {(an.layout==="matrix"?an.weekCols.some(function(wc){return !wc.cell.year&&!wc.cell.date;}):an.cW>=0&&an.cD<0)&&<label style={{display:"flex",alignItems:"center",gap:5,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}>Year of the first week
           <input type="number" value={year} onChange={function(e){setYear(Number(e.target.value)||year);}} style={Object.assign({},inp,{width:80})}/></label>}
         {an.layout==="wide"&&<span style={{display:"flex",alignItems:"center",gap:6}}>Columns {an.valueCols.map(function(c){return c.name;}).slice(0,4).join(", ")}{an.valueCols.length>4?"…":""} are
           <select value={colsAre} onChange={function(e){setColsAre(e.target.value);setFixed("");setMap({});}} style={inp}>
             <option value="company">companies</option><option value="activity">activities</option></select></span>}
         {(an.layout==="wide"||(an.cC<0)||(an.cA<0))&&<span style={{display:"flex",alignItems:"center",gap:6}}>
-          {(an.layout==="wide"?colsAre==="company":an.cA<0)?"Activity for all these hours":"Company for all these hours"}
-          {(an.layout==="wide"?colsAre==="company":an.cA<0)
+          {(an.layout==="wide"?colsAre==="company":an.layout!=="matrix"&&an.cA<0)?"Activity for all these hours":"Company for all these hours"}
+          {(an.layout==="wide"?colsAre==="company":an.layout!=="matrix"&&an.cA<0)
             ?<select value={fixed} onChange={function(e){setFixed(e.target.value);}} style={inp}><option value="">— none —</option>{knownActs.map(function(a){return <option key={a} value={a}>{a}</option>;})}</select>
             :<input type="text" value={fixed} onChange={function(e){setFixed(e.target.value);}} placeholder="optional" style={Object.assign({},inp,{width:140})}/>}
         </span>}
@@ -931,25 +1071,30 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
         <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}><input type="radio" checked={mode==="merge"} onChange={function(){setMode("merge");}}/>keep them, update the same company + activity</label>
       </div>}
       {actKeys.length>0&&<div>
-        <div style={{fontWeight:700,fontSize:13,margin:"4px 0 6px"}}>Activities in the file → activities in the webapp</div>
+        <div style={{display:"flex",alignItems:"baseline",gap:8,margin:"4px 0 6px",flexWrap:"wrap"}}>
+          <div style={{fontWeight:700,fontSize:13}}>Activities in the file → WBS in the webapp</div>
+          <span style={{fontSize:11.5,color:unmatched?"#b35c00":"#1e6b3a"}}>{unmatched?unmatched+" of "+actKeys.length+" without a WBS of the same name — check the proposals":"all matched"}</span>
+        </div>
         <table className="tbl" style={{fontSize:12}}>
-          <thead><tr><th>In the file</th><th style={{textAlign:"right"}}>Hours</th><th>In the webapp</th></tr></thead>
+          <thead><tr><th>In the file</th><th style={{textAlign:"right"}}>Hours</th><th>WBS in the webapp</th></tr></thead>
           <tbody>{actKeys.map(function(k){
-            var c=choice(k),isNew=c==="new";
+            var c=choice(k),isNew=c==="new",st=status(k);
+            var badge={same:["✓ same name","#1e6b3a"],remembered:["↺ last choice","#555"],chosen:["✎ your choice","#2b6cb0"],guess:["? proposal","#b35c00"],none:["no match","#b3302a"]}[st];
             return <tr key={k}>
-              <td style={{fontWeight:600}}>{fileActs[k].name}</td>
+              <td style={{fontWeight:600}}>{fileActs[k].name}
+                <div style={{fontSize:10,fontWeight:400,color:badge[1]}}>{badge[0]}{fileActs[k].zone?<span style={{color:"#9b968b"}}> · {fileActs[k].zone}</span>:null}</div></td>
               <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(fileActs[k].hours,0)}</td>
               <td><select value={c} onChange={function(e){var v=e.target.value;setMap(function(m){var n=Object.assign({},m);n[k]=v;return n;});}}
                 style={Object.assign({},inp,{width:"100%",maxWidth:360,background:isNew?"#e8f5e9":c==="skip"?"#fce4ec":"#fff"})}>
-                <option value="new">➕ Create the activity “{fileActs[k].name}”</option>
-                {knownActs.length>0&&<optgroup label="Same as">{knownActs.map(function(a){return <option key={a} value={a}>= {a}</option>;})}</optgroup>}
-                <option value="none">Import without activity</option>
+                <option value="new">➕ Add the WBS “{fileActs[k].name}” to the webapp</option>
+                {knownActs.length>0&&<optgroup label="Match to the WBS">{knownActs.map(function(a){return <option key={a} value={a}>= {a}</option>;})}</optgroup>}
+                <option value="none">Import without WBS</option>
                 <option value="skip">Do not import these hours</option>
               </select></td>
             </tr>;
           })}</tbody>
         </table>
-        <div style={{fontSize:11,color:"#9b968b",marginTop:4}}>Suggestions come from the names; your choices are remembered on this browser for the next import. A created activity becomes a plan line with 0 workers over the weeks it appears in — give it workers in the Plan tab to get its budget.</div>
+        <div style={{fontSize:11,color:"#9b968b",marginTop:4}}>Proposals come from the names; your choices are remembered on this browser for the next import. Whatever the choice, the file's activity name is kept on each line, so the views can be filtered by WBS and by file activity. An added WBS becomes a plan line with 0 workers over the weeks it appears in — give it workers in the Plan tab to get its budget.</div>
       </div>}
     </div>}
   </InvModal>;
@@ -1024,7 +1169,8 @@ function MpWeekEditor({w,known,knownActs,can,isNew,M,onSave,onDelete,onClose}){
         {(d.real||[]).map(function(r,i){
           return <tr key={i}>
             <td><input type="text" list="mp-companies" value={r.company||""} disabled={!can} onChange={function(e){setRow(i,"company",e.target.value);}} placeholder="Company of the workers" style={{width:"100%",padding:"4px 6px"}}/></td>
-            <td><input type="text" list="mp-activities" value={r.activity||""} disabled={!can} onChange={function(e){setRow(i,"activity",e.target.value);}} placeholder="Activity (plan line)" style={{width:"100%",padding:"4px 6px"}}/></td>
+            <td><input type="text" list="mp-activities" value={r.activity||""} disabled={!can} onChange={function(e){setRow(i,"activity",e.target.value);}} placeholder="Activity (plan line)" style={{width:"100%",padding:"4px 6px"}}/>
+              {r.src&&<div style={{fontSize:10,color:"#8b8578",marginTop:2}} title="Activity as named in the imported file">file: {r.src}</div>}</td>
             <td><input type="number" min="0" value={r.hours} disabled={!can} onChange={function(e){setRow(i,"hours",e.target.value);}} style={{width:"100%",padding:"4px 6px",textAlign:"right"}}/></td>
             <td>{can&&<button onClick={function(){delRow(i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc"}}>✕</button>}</td>
           </tr>;
