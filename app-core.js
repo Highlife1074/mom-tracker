@@ -202,7 +202,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-15-g";
+var APP_BUILD="2026-10-15-i";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -473,6 +473,16 @@ function _noteDocSize(key,s){
     var u=window._currentUser;
     if(u&&isAppAdmin(u.name))alert("Storage warning: "+key+" is "+Math.round(n/1024)+" KB out of a 1024 KB limit.\nBeyond the limit, saving to this list will fail. Export a backup and plan the split of this key.");
   }
+}
+// True when the last read of key failed (network, offline, quota): its null is not "missing".
+function _dbReadFailed(key){return !!(window._dbGetFailed&&window._dbGetFailed[key]);}
+// Keys whose real content could not be read at start-up: saving them would write the defaults
+// held in memory over the real list. Cleared as soon as a retry reads them.
+var _ppUnloaded={};
+function _ppBlockUnloaded(key,what){
+  if(!_ppUnloaded[key])return false;
+  safeAlert("The "+what+" list could not be loaded from the server yet, so it cannot be saved (that would erase it).\n\nCheck the connection and reload the page.");
+  return true;
 }
 const cloudStore={
   get:async(key)=>{if(!window._db)return null;var raw=await window._db.get(key);_noteDocSize(key,raw);return _parseFirebaseVal(raw);},
@@ -3823,24 +3833,33 @@ function UserLogin({people,onLogin}){
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
   const [pins,setPins]=useState({});
+  const [pinsOk,setPinsOk]=useState(false);   // the PIN list was really read (not a failed read)
 
   useEffect(function(){
 
     if(window._db){
       window._db.get(KEYS_PINS).then(function(data){
         if(data)setPins(data);
+        if(!_dbReadFailed(KEYS_PINS))setPinsOk(true);
       }).catch(function(){});
     }
   },[]);
 
-  function savePinToDb(name,pinVal){
-    var updated=Object.assign({},pins);
-    updated[name]=simpleHash(name+pinVal);
-    setPins(updated);
-    if(window._db)window._db.set(KEYS_PINS,updated);
+  // The PIN list is one document: read it again and add this PIN to the server copy, so a list
+  // that failed to load is never written back with a single PIN in it.
+  function savePinToDb(name,pinVal,done){
+    if(!window._db){done(false);return;}
+    window._db.get(KEYS_PINS).then(function(cur){
+      if(_dbReadFailed(KEYS_PINS)){done(false);return;}
+      var updated=Object.assign({},cur||{});
+      updated[name]=simpleHash(name+pinVal);
+      setPins(updated);
+      return window._db.set(KEYS_PINS,updated).then(function(){done(true);});
+    }).catch(function(){done(false);});
   }
 
   function pickPerson(name){
+    if(!pinsOk){safeAlert("The PINs are not loaded yet (or the server cannot be reached). Wait a second and try again; if it persists, check the connection and reload.");return;}
     setSelName(name);setError("");setPin("");
     if(pins[name]){setStep("pin");}
     else{setStep("newpin");}
@@ -3870,10 +3889,13 @@ function UserLogin({people,onLogin}){
     if(newPin.length!==4||!/^[0-9]{4}$/.test(newPin)){setError("PIN must be 4 digits.");return;}
     if(newPin!==newPin2){setError("PINs do not match.");return;}
     setLoading(true);
-    savePinToDb(selName,newPin);
-    window._currentUser={name:selName};
-    try{localStorage.setItem("pp_current_user",selName);}catch(e){}
-    onLogin(selName);
+    savePinToDb(selName,newPin,function(ok){
+      setLoading(false);
+      if(!ok){setError("The PIN could not be saved (no connection to the server). Check the connection and try again.");return;}
+      window._currentUser={name:selName};
+      try{localStorage.setItem("pp_current_user",selName);}catch(e){}
+      onLogin(selName);
+    });
   }
 
   return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#1c1c1e"}}>
@@ -3886,7 +3908,11 @@ function UserLogin({people,onLogin}){
         <div style={{fontWeight:700,fontFamily:"var(--font-display)",fontSize:18,marginBottom:4}}>Who are you?</div>
         <div style={{fontSize:12,color:"#888",marginBottom:18}}>Select your name to continue</div>
         <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
-          {(people||[]).slice().sort().map(function(p){var shortName=p.split(",")[0];return <button key={p} onClick={function(){pickPerson(p);}} style={{padding:"10px 14px",borderRadius:8,border:"1.5px solid #e8e6df",background:"#fafaf8",fontFamily:"inherit",fontSize:13,fontWeight:500,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:8}} onMouseEnter={function(e){e.currentTarget.style.borderColor="#c9a84c";e.currentTarget.style.background="#fffbf0";}} onMouseLeave={function(e){e.currentTarget.style.borderColor="#e8e6df";e.currentTarget.style.background="#fafaf8";}}>
+          {(function(){
+            // everyone with a PIN is listed too, so nobody is locked out if the people list is damaged
+            var list=(people||[]).slice();
+            Object.keys(pins||{}).forEach(function(n){if(!list.some(function(x){return _normName(x)===_normName(n);}))list.push(n);});
+            return list;})().sort().map(function(p){var shortName=p.split(",")[0];return <button key={p} onClick={function(){pickPerson(p);}} style={{padding:"10px 14px",borderRadius:8,border:"1.5px solid #e8e6df",background:"#fafaf8",fontFamily:"inherit",fontSize:13,fontWeight:500,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:8}} onMouseEnter={function(e){e.currentTarget.style.borderColor="#c9a84c";e.currentTarget.style.background="#fffbf0";}} onMouseLeave={function(e){e.currentTarget.style.borderColor="#e8e6df";e.currentTarget.style.background="#fafaf8";}}>
             <span style={{width:28,height:28,borderRadius:"50%",background:"#f0ede6",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,flexShrink:0}}>{shortName[0]}</span>
             {shortName}
             {pins[p]?<span style={{marginLeft:"auto",fontSize:10,color:"#aaa"}}>🔒 PIN set</span>:<span style={{marginLeft:"auto",fontSize:10,color:"#c9a84c",fontWeight:600}}>new</span>}
@@ -4312,7 +4338,7 @@ function App(){
   const [durations,setDurations]=useState({});
   function saveDurations(d){setDurations(d);window._ppDurations=d;sync(KEYS.durations,d);}
   const [zones,setZones]=useState(SEED_ZONES);
-  function saveZones(d){setZones(d);sync(KEYS.zones,d);}
+  function saveZones(d){if(_ppBlockUnloaded(KEYS.zones,"zones"))return;setZones(d);sync(KEYS.zones,d);}
   const [zoneOwners,setZoneOwners]=useState({});
   function saveZoneOwners(d){setZoneOwners(d);sync(KEYS.zoneowners,d);}
   // {list:[department names], members:{person:department}} — one object, one write
@@ -4547,9 +4573,24 @@ function App(){
     if(changed)saveTenders(next);
   },[schedules,tenders]);
   const saveContractors=d=>{setContractors(d);queuedListSave(KEYS.contractors,contractorsRef,contractorsQueue,d);};
-  const savePeople=d=>{setPeople(d);sync(KEYS.people,d);};
+  const savePeople=d=>{if(_ppBlockUnloaded(KEYS.people,"people"))return;setPeople(d);sync(KEYS.people,d);};
+  // A start-up read failed: keep the defaults on screen, block saving that key, read it again
+  // every 5 s (up to 5 min) and take the real list as soon as it comes.
+  function _ppRetryRead(key,what,set){
+    _ppUnloaded[key]=true;
+    console.warn("Could not read "+key+" — retrying; saving "+what+" is blocked meanwhile.");
+    var n=0;
+    (function again(){
+      setTimeout(function(){
+        cloudStore.get(key).then(function(v){
+          if(!_dbReadFailed(key)){delete _ppUnloaded[key];if(v)set(v);return;}
+          if(++n<60)again();
+        }).catch(function(){if(++n<60)again();});
+      },5000);
+    })();
+  }
   const savePackages=d=>{setPackages(d);sync(KEYS.packages,d);};
-  const saveTags=d=>{setTags(d);sync(KEYS.tags,d);};
+  const saveTags=d=>{if(_ppBlockUnloaded(KEYS.tags,"tags"))return;setTags(d);sync(KEYS.tags,d);};
   const saveTagrules=d=>{setTagrules(d);sync(KEYS.tagrules,d);};
   const savePkgrules=d=>{setPkgrules(d);sync(KEYS.pkgrules,d);};
 
@@ -4596,10 +4637,11 @@ function App(){
         if(td)setTenders(td);
         if(ct)setContractors(ct);
         if(p){setPeople(p);}
+        else if(_dbReadFailed(KEYS.people))_ppRetryRead(KEYS.people,"people",function(v){if(Array.isArray(v)&&v.length)setPeople(v);});
         else{
           const op=await cloudStore.get("people");
-          const finalP=op||SEED_PEOPLE;
-          setPeople(finalP);sync(KEYS.people,finalP);
+          // seed only a project that really has no list (both reads succeeded and found nothing)
+          if(!_dbReadFailed("people")){const finalP=op||SEED_PEOPLE;setPeople(finalP);sync(KEYS.people,finalP);}
         }
         if(pk)setPackages(pk);
         if(g){
@@ -4609,10 +4651,10 @@ function App(){
           setTags(gg);
           if(gg.length!==g.length)sync(KEYS.tags,gg);
         }
+        else if(_dbReadFailed(KEYS.tags))_ppRetryRead(KEYS.tags,"tags",function(v){if(Array.isArray(v)&&v.length)setTags(v);});
         else{
           const og=await cloudStore.get("tags");
-          const finalG=og&&og.length?og:SEED_TAGS;
-          setTags(finalG);sync(KEYS.tags,finalG);
+          if(!_dbReadFailed("tags")){const finalG=og&&og.length?og:SEED_TAGS;setTags(finalG);sync(KEYS.tags,finalG);}
         }
         if(imp)setImprovements(imp);
         if(corr)setCorrespondences(corr);
@@ -4637,6 +4679,8 @@ function App(){
         if(zn&&zn.length&&zn.indexOf("External Works")===-1){
           var zn2=[...zn,"External Works"];
           setZones(zn2);sync(KEYS.zones,zn2);
+        }else if(_dbReadFailed(KEYS.zones)){
+          _ppRetryRead(KEYS.zones,"zones",function(v){if(Array.isArray(v)&&v.length)setZones(v);});
         }else if(!zn||!zn.length){
           var seedZ=[...SEED_ZONES,"External Works"];
           setZones(seedZ);sync(KEYS.zones,seedZ);

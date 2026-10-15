@@ -34,13 +34,18 @@
     return val;
   }
 
+  // null = the document does not exist OR the read failed. The keys whose last read failed are
+  // listed here, so the app never takes a failed read for a missing document (and never writes
+  // its default list over the real one — that is how pp_people / pp_tags were lost once).
+  window._dbGetFailed = {};
   window._db = {
     get: async (key) => {
       try {
         const snap = await getDoc(doc(db,"mom_data",key));
+        delete window._dbGetFailed[key];
         return snap.exists() ? parseVal(snap.data().value) : null;
       }
-      catch(e){ console.error("FB get",e); return null; }
+      catch(e){ console.error("FB get",e); window._dbGetFailed[key] = true; return null; }
     },
     set: async (key, value) => {
       try {

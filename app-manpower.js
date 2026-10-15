@@ -14,12 +14,13 @@
 //                     filtered. approved / planned are the older manual figures:
 //                     approved is still used as the week's budget when no plan line covers it.
 //
-//   pp_manpower_meta  {id:"budget", kind:"budget", amount (€), rate (€/h), start, end, byWeek:{monday: h},
+//   pp_manpower_meta  {id:"budget", kind:"budget", lines:[{id, wbs, amount (€), note}], amount (= Σ lines,
+//                     the only figure of the first version), rate (€/h), start, end, byWeek:{monday: h},
 //                     alignedTo, updatedBy, updatedAt} — the global budget, set by the admin only — and the
 //                     overview notes {id, kind:"note", date, at, author, text}.
 //
 // Three series:
-//   Budget   = amount ÷ hourly rate, spread evenly over the working days (Mon–Sat) from start to end;
+//   Budget   = Σ budget lines (€, one per budget WBS the money comes from) ÷ hourly rate, spread evenly over the working days (Mon–Sat) from start to end;
 //              byWeek holds the weeks the admin aligned on the real hours ("budget = real" on the past).
 //   Planned  = Σ plan lines of a week (workers that week × hours per worker per week).
 //   Real     = the hours entered or imported.
@@ -118,18 +119,30 @@ function mpParseCompanyPaste(text){
 
 // ---------------------------------------------------------------- € budget
 function mpBudgetRec(meta){return (meta||[]).find(function(x){return x&&x.kind==="budget";})||null;}
-function mpBudgetHours(b){return b&&mpHas(b.amount)&&mpHas(b.rate)&&Number(b.rate)>0?Number(b.amount)/Number(b.rate):0;}
+// Budget lines: the money comes from several budget WBS. A budget saved before the lines existed
+// is read as one line without WBS.
+function mpBudgetLines(b){
+  if(!b)return [];
+  if(Array.isArray(b.lines)&&b.lines.length)return b.lines;
+  return mpHas(b.amount)&&Number(b.amount)?[{id:"l0",wbs:"",amount:Number(b.amount),note:""}]:[];
+}
+function mpBudgetAmount(b,wbs){
+  return mpBudgetLines(b).filter(function(l){return !wbs||mpActKey(l.wbs)===mpActKey(wbs);})
+    .reduce(function(s,l){return s+_invNum(l.amount);},0);
+}
+function mpBudgetHours(b,wbs){return b&&mpHas(b.rate)&&Number(b.rate)>0?mpBudgetAmount(b,wbs)/Number(b.rate):0;}
 function mpBudgetRate(b){return b&&mpHas(b.rate)&&Number(b.rate)>0?Number(b.rate):0;}
 // Budget hours per week (Monday → h): amount ÷ rate spread over the working days between start
-// and end, then the weeks aligned on the real (byWeek) take their own figure.
-function mpBudgetWeeks(b){
+// and end, then the weeks aligned on the real (byWeek) take their own figure. With wbs: the
+// budget lines of that WBS only (the alignment on the real is the whole project's: left out).
+function mpBudgetWeeks(b,wbs){
   var out={};if(!b)return out;
   if(isValidDate(b.start)&&isValidDate(b.end)&&b.end>=b.start){
-    var H=mpBudgetHours(b),ws=mpWeeksBetween(b.start,b.end),days={},D=0;
+    var H=mpBudgetHours(b,wbs),ws=mpWeeksBetween(b.start,b.end),days={},D=0;
     ws.forEach(function(w){var n=0;for(var d=0;d<MP_WORK_DAYS;d++){var x=addCalDays(w,d);if(x>=b.start&&x<=b.end)n++;}days[w]=n;D+=n;});
     ws.forEach(function(w){out[w]=D?H*days[w]/D:0;});
   }
-  Object.keys(b.byWeek||{}).forEach(function(w){if(mpHas(b.byWeek[w]))out[w]=Number(b.byWeek[w]);});
+  if(!wbs)Object.keys(b.byWeek||{}).forEach(function(w){if(mpHas(b.byWeek[w]))out[w]=Number(b.byWeek[w]);});
   return out;
 }
 
@@ -253,7 +266,9 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
   var filtered=!!(fWbs||fSrc);
   var F=mpFilter(plan,weeks,fWbs,fSrc);
   // the € budget is the whole project's: a filtered view compares real to planned only
-  var M=filtered?mpModel(F.plan,F.weeks,{cutoff:M0.tot.cutoff}):M0;
+  // a WBS filter keeps the budget lines of that WBS, when there are some
+  var fBgt=fWbs&&!fSrc&&bRec&&mpBudgetAmount(bRec,fWbs)>0?mpBudgetWeeks(bRec,fWbs):null;
+  var M=filtered?mpModel(F.plan,F.weeks,{cutoff:M0.tot.cutoff,bgt:fBgt}):M0;
   var notes=meta.filter(function(x){return x&&x.kind==="note";}).sort(function(a,b){return String(b.at||b.date||"").localeCompare(String(a.at||a.date||""));});
   var filterLabel=filtered?[fWbs?"WBS “"+fWbs+"”":"",fSrc?"file activity “"+fSrc+"”":""].filter(Boolean).join(" · "):"";
   // Company names offered while typing: subcontractors first, then every name already used.
@@ -334,7 +349,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {!can&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Manpower editor”"}</span>}
-        {!empty&&<button className="btn btn-sm" onClick={function(){mpOpenReport(M,bRec,notes,filterLabel);}} title="Printable report of the hours: budget, planned, real, months, weeks, activities, notes">🖨 Report</button>}
+        {!empty&&<button className="btn btn-sm" onClick={function(){mpOpenReport(M,bRec,notes,filterLabel,fBgt?fWbs:"");}} title="Printable report of the hours: budget, planned, real, months, weeks, activities, notes">🖨 Report</button>}
         {!empty&&<button className="btn btn-sm" onClick={exportCsv} title="Weeks and months, budget, planned, real and variances, one column per company (Excel opens it)">⬇ CSV</button>}
         {can&&<button className="btn btn-sm" onClick={function(){setImporting(true);}} title="Real hours from an Excel or CSV file: weeks as numbers or dates, activities matched to the webapp's">⬆ Import Excel</button>}
         {can&&<button className="btn btn-pri btn-sm" onClick={openNew} title="Real hours of a week, by company">＋ Real hours</button>}
@@ -356,7 +371,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
     {empty&&tab!=="plan"&&tab!=="overview"&&<div className="empty"><div className="empty-ico">👷</div>
       <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks. The budget in hours follows.</div>
       {can&&<div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){setTab("plan");}}>Go to the plan</button></div>}</div>}
-    {(tab==="overview"&&(!empty||bRec||isAdmin))&&<MpOverview M={M} M0={M0} filtered={filtered} onOpenWeek={openWeek} bRec={bRec} meta={meta} saveMeta={saveMeta}
+    {(tab==="overview"&&(!empty||bRec||isAdmin))&&<MpOverview M={M} M0={M0} filtered={filtered} fWbs={fWbs} knownActs={knownActs} onOpenWeek={openWeek} bRec={bRec} meta={meta} saveMeta={saveMeta}
       notes={notes} isAdmin={!!isAdmin&&!window._ppReadOnly} can={can} currentUser={currentUser}/>}
     {filtered&&tab!=="plan"&&!empty&&<div style={{fontSize:11.5,color:"#6f6b62",background:"#fff8e1",border:"1px solid #f0e2b8",borderRadius:8,padding:"5px 10px",marginBottom:10}}>
       Filtered on {fWbs?<b>WBS “{fWbs}”</b>:null}{fWbs&&fSrc?" · ":""}{fSrc?<b>file activity “{fSrc}”</b>:null} — real hours of these lines only; planned = the plan lines of {fWbs?"this WBS":"the WBS these hours are matched to"}{fSrc?" (shared with the other file activities matched to the same WBS)":""}.</div>}
@@ -374,7 +389,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
 }
 
 // ---------------------------------------------------------------- overview
-function MpOverview({M,M0,filtered,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,can,currentUser}){
+function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,can,currentUser}){
   const [mode,setMode]=useState("cumul");
   const [editB,setEditB]=useState(null);
   var t=M.tot,rate=mpBudgetRate(bRec);
@@ -385,9 +400,13 @@ function MpOverview({M,M0,filtered,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,c
   function saveBudget(b){
     if(!isAdmin){safeAlert("Only the admin may change the budget.");return;}
     if(blockIfReadOnly())return;
-    if(!(Number(b.amount)>0)||!(Number(b.rate)>0)){safeAlert("Give the budget in € and the hourly rate.");return;}
+    var lines=(b.lines||[]).filter(function(l){return String(l.wbs||"").trim()||mpHas(l.amount);})
+      .map(function(l){return {id:l.id||uuid(),wbs:String(l.wbs||"").trim(),amount:mpHas(l.amount)?Number(l.amount):0,note:String(l.note||"").trim()};});
+    var amount=lines.reduce(function(s,l){return s+l.amount;},0);
+    if(!(amount>0)||!(Number(b.rate)>0)){safeAlert("Give at least one budget line in € and the hourly rate.");return;}
+    if(lines.some(function(l){return !(l.amount>0);})){safeAlert("Every budget line needs an amount in € (remove the empty ones).");return;}
     if(!isValidDate(b.start)||!isValidDate(b.end)||b.end<b.start){safeAlert("Give the start and the end of the budget (the end after the start).");return;}
-    _invUpsert(meta,saveMeta,Object.assign({},b,{id:"budget",kind:"budget",amount:Number(b.amount),rate:Number(b.rate),
+    _invUpsert(meta,saveMeta,Object.assign({},b,{id:"budget",kind:"budget",lines:lines,amount:amount,rate:Number(b.rate),
       updatedBy:currentUser||"",updatedAt:today()}));
     setEditB(null);
   }
@@ -427,7 +446,7 @@ function MpOverview({M,M0,filtered,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,c
   var nAligned=bRec?Object.keys(bRec.byWeek||{}).length:0;
   return <div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-      <InvBig label="Budget · whole duration" value={hasB?t.bgt:null} unit="h" colour={MP_COL_BGT} sub={hasB?(bRec?invFmt(_invNum(bRec.amount),0)+" € · "+invFmt(rate,2)+" €/h":""):filtered&&bRec?"whole project only — clear the filter":"not set"+(isAdmin?" — set it below":" (admin)")}/>
+      <InvBig label="Budget · whole duration" value={hasB?t.bgt:null} unit="h" colour={MP_COL_BGT} sub={hasB?(bRec?invFmt(mpBudgetAmount(bRec,filtered?fWbs:""),0)+" € · "+invFmt(rate,2)+" €/h"+(filtered?" · budget lines of this WBS":""):""):filtered&&bRec?"no budget line for this filter":"not set"+(isAdmin?" — set it below":" (admin)")}/>
       <InvBig label="Budget to date" value={hasB&&t.cutoff?t.bgtToDate:null} unit="h" colour={MP_COL_BGT} sub={hasB&&t.cutoff?"to W"+mpIsoWeek(t.cutoff)+(rate?" · "+eur(t.bgtToDate):""):""}/>
       <InvBig label="Planned · whole duration" value={t.budget} unit="h" colour={MP_COL_BUDGET} sub={t.planStart?fmtDate(t.planStart)+" → "+fmtDate(addCalDays(t.planEnd,6))+" · "+t.planWeeks+" weeks":""}/>
       <InvBig label="Planned to date" value={t.cutoff?t.budgetToDate:null} unit="h" colour={MP_COL_BUDGET} sub={t.cutoff?"to W"+mpIsoWeek(t.cutoff):"no real hours yet"}/>
@@ -442,16 +461,33 @@ function MpOverview({M,M0,filtered,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,c
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <div style={{fontWeight:700,fontSize:14}}>💶 Budget</div>
         {bRec?<span style={{fontSize:12.5,color:"#444"}}>
-          <b>{invFmt(_invNum(bRec.amount),0)} €</b> ÷ <b>{invFmt(rate,2)} €/h</b> = <b style={{color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)} h</b>
+          <b>{invFmt(mpBudgetAmount(bRec),0)} €</b> ÷ <b>{invFmt(rate,2)} €/h</b> = <b style={{color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)} h</b>
           {" "}spread from {fmtDate(bRec.start)} to {fmtDate(bRec.end)}
           {nAligned>0&&<span style={{color:"#b35c00"}}> · aligned on the real up to W{mpIsoWeek(bRec.alignedTo)} ({nAligned} week{nAligned!==1?"s":""}) → total {invFmt(M0.tot.bgt,0)} h{rate?" = "+invFmt(M0.tot.bgt*rate,0)+" €":""}</span>}
         </span>:<span style={{fontSize:12,color:"#888"}}>No budget yet: give the amount in €, the hourly rate and the duration — the hours are spread evenly over the working days.</span>}
         <span style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}}>
-          {isAdmin&&<button className="btn btn-sm" onClick={function(){var m=_flowMonday(today());setEditB(Object.assign({amount:"",rate:"",start:M0.tot.start||m,end:M0.tot.end?addCalDays(M0.tot.end,5):addCalDays(m,365)},bRec||{}));}}>{bRec?"✎ Edit budget":"＋ Set the budget"}</button>}
+          {isAdmin&&<button className="btn btn-sm" onClick={function(){var m=_flowMonday(today());var init=Object.assign({rate:"",start:M0.tot.start||m,end:M0.tot.end?addCalDays(M0.tot.end,5):addCalDays(m,365)},bRec||{});
+            init.lines=mpBudgetLines(bRec).map(function(l){return Object.assign({},l);});if(!init.lines.length)init.lines=[{id:uuid(),wbs:"",amount:"",note:""}];
+            setEditB(init);}}>{bRec?"✎ Edit budget":"＋ Set the budget"}</button>}
           {isAdmin&&bRec&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={alignOnReal} title="The real hours become the budget of every week up to the cut-off">⇆ Budget = real on the past</button>}
           {isAdmin&&nAligned>0&&<button className="btn btn-sm" onClick={resetAlign} title="Spread the budget evenly again">↺ Reset adjustments</button>}
         </span>
       </div>
+      {bRec&&<table className="tbl" style={{fontSize:12,marginTop:8}}>
+        <thead><tr><th>Budget WBS</th><th style={{textAlign:"right"}}>€</th><th style={{textAlign:"right"}}>Hours</th><th style={{textAlign:"right"}}>Share</th><th>Note</th></tr></thead>
+        <tbody>{mpBudgetLines(bRec).map(function(l){
+          var tot=mpBudgetAmount(bRec);
+          return <tr key={l.id}>
+            <td style={{fontWeight:600}}>{l.wbs||<span style={{color:"#999",fontStyle:"italic"}}>(no WBS)</span>}</td>
+            <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(_invNum(l.amount),0)}</td>
+            <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{rate?invFmt(_invNum(l.amount)/rate,0):"—"}</td>
+            <td style={{textAlign:"right",color:"#888"}}>{tot?Math.round(_invNum(l.amount)/tot*100)+" %":"—"}</td>
+            <td style={{fontSize:11,color:"#666"}}>{l.note||""}</td>
+          </tr>;
+        })}
+        <tr style={{background:"#f3f8f4",fontWeight:700}}><td>Total</td><td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(mpBudgetAmount(bRec),0)}</td>
+          <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)}</td><td/><td/></tr></tbody>
+      </table>}
       {!isAdmin&&<div style={{fontSize:11,color:"#9b968b",marginTop:4}}>Only the admin may change the budget.</div>}
     </div>}
     <div className="card" style={{marginBottom:14}}>
@@ -494,23 +530,41 @@ function MpOverview({M,M0,filtered,onOpenWeek,bRec,meta,saveMeta,notes,isAdmin,c
         </div>;
       })}
     </div>}
-    {editB&&<MpBudgetEditor b={editB} onSave={saveBudget} onClose={function(){setEditB(null);}}/>}
+    {editB&&<MpBudgetEditor b={editB} knownActs={knownActs} onSave={saveBudget} onClose={function(){setEditB(null);}}/>}
   </div>;
 }
 
-function MpBudgetEditor({b,onSave,onClose}){
+function MpBudgetEditor({b,knownActs,onSave,onClose}){
   const [d,setD]=useState(b);
   function set(k,v){setD(function(o){var n=Object.assign({},o);n[k]=v;return n;});}
-  var H=mpBudgetHours(d),ws=isValidDate(d.start)&&isValidDate(d.end)&&d.end>=d.start?mpWeeksBetween(d.start,d.end).length:0;
+  function setLine(i,k,v){setD(function(o){return Object.assign({},o,{lines:(o.lines||[]).map(function(l,j){if(j!==i)return l;var u=Object.assign({},l);u[k]=v;return u;})});});}
+  function addLine(){setD(function(o){return Object.assign({},o,{lines:(o.lines||[]).concat([{id:uuid(),wbs:"",amount:"",note:""}])});});}
+  function delLine(i){setD(function(o){return Object.assign({},o,{lines:(o.lines||[]).filter(function(_,j){return j!==i;})});});}
+  var total=(d.lines||[]).reduce(function(s,l){return s+_invNum(l.amount);},0);
+  var H=mpHas(d.rate)&&Number(d.rate)>0?total/Number(d.rate):0,ws=isValidDate(d.start)&&isValidDate(d.end)&&d.end>=d.start?mpWeeksBetween(d.start,d.end).length:0;
   var months=ws?Math.max(1,Math.round(ws/4.345)):0;
   var inp={padding:"6px 8px",fontSize:13};
   var footer=<React.Fragment>
     <button className="btn" onClick={onClose}>Cancel</button>
     <button className="btn btn-pri" onClick={function(){onSave(d);}}>Save</button>
   </React.Fragment>;
-  return <InvModal title="💶 Manpower budget" width={560} onClose={onClose} footer={footer}>
+  return <InvModal title="💶 Manpower budget" width={700} onClose={onClose} footer={footer}>
+    <div style={{fontWeight:700,fontSize:13,marginBottom:6}}>Budget lines <span style={{fontWeight:400,fontSize:11,color:"#888"}}>— one per budget WBS the money comes from</span></div>
+    <datalist id="mp-bgt-wbs">{(knownActs||[]).map(function(n){return <option key={n} value={n}/>;})}</datalist>
+    <table className="tbl" style={{fontSize:12,marginBottom:6}}>
+      <thead><tr><th>Budget WBS</th><th style={{textAlign:"right",width:130}}>€</th><th>Note</th><th style={{width:30}}></th></tr></thead>
+      <tbody>{(d.lines||[]).map(function(l,i){
+        return <tr key={l.id||i}>
+          <td><input type="text" list="mp-bgt-wbs" value={l.wbs||""} onChange={function(e){setLine(i,"wbs",e.target.value);}} placeholder="e.g. 3.2 External works — labour" style={{width:"100%",padding:"4px 6px"}}/></td>
+          <td><input type="number" min="0" value={l.amount} onChange={function(e){setLine(i,"amount",e.target.value);}} style={{width:"100%",padding:"4px 6px",textAlign:"right"}}/></td>
+          <td><input type="text" value={l.note||""} onChange={function(e){setLine(i,"note",e.target.value);}} placeholder="optional" style={{width:"100%",padding:"4px 6px"}}/></td>
+          <td><button onClick={function(){delLine(i);}} title="Remove the line" style={{background:"none",border:"none",cursor:"pointer",color:"#bbb"}}>✕</button></td>
+        </tr>;
+      })}
+      <tr style={{background:"#f3f8f4",fontWeight:700}}><td>Total</td><td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(total,0)} €</td><td/><td/></tr></tbody>
+    </table>
+    <button className="btn btn-sm" onClick={addLine} style={{marginBottom:12}}>＋ Budget line</button>
     <div className="frow">
-      <div className="fg"><label>Budget (€)</label><input type="number" min="0" value={d.amount} onChange={function(e){set("amount",e.target.value);}} style={inp}/></div>
       <div className="fg"><label>Hourly rate (€/h)</label><input type="number" min="0" step="0.01" value={d.rate} onChange={function(e){set("rate",e.target.value);}} style={inp}/></div>
     </div>
     <div className="frow">
@@ -610,14 +664,14 @@ function mpReportChart(M){
   var leg=(hasB?'<span><i style="border-top:2px dashed '+MP_COL_BGT+'"></i>Budget</span>':'')+'<span><i style="border-top:2px solid '+MP_COL_BUDGET+'"></i>Planned</span><span><i style="border-top:2px solid '+MP_COL_REAL+'"></i>Real</span>';
   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;font-family:IBM Plex Mono,monospace">'+g+'</svg><div class="mp-leg">'+leg+'</div>';
 }
-function mpOpenReport(M,bRec,notes,filterLabel){
+function mpOpenReport(M,bRec,notes,filterLabel,bWbs){
   var t=M.tot,hasB=t.hasBgt,rate=mpBudgetRate(bRec);
   function h(v){return v===null||v===undefined||!isFinite(v)?"—":invFmt(v,0);}
   function sg(v){return v===null||v===undefined||!isFinite(v)?"—":mpSigned(v);}
   function eur(v){return rate&&v!==null&&isFinite(v)?invFmt(v*rate,0)+" €":"";}
   function vc(v,base){if(v===null||!isFinite(v))return "";var p=base?v/base*100:null;return ' style="color:'+mpVarCol(p)+';font-weight:600"';}
   var kpi=[];
-  if(hasB)kpi.push(["Budget",h(t.bgt)+" h",bRec?invFmt(_invNum(bRec.amount),0)+" € · "+invFmt(rate,2)+" €/h":""],["Budget to date",h(t.bgtToDate)+" h",eur(t.bgtToDate)]);
+  if(hasB)kpi.push(["Budget",h(t.bgt)+" h",bRec?invFmt(mpBudgetAmount(bRec,bWbs||""),0)+" € · "+invFmt(rate,2)+" €/h":""],["Budget to date",h(t.bgtToDate)+" h",eur(t.bgtToDate)]);
   kpi.push(["Planned",h(t.budget)+" h",t.planStart?fmtDate(t.planStart)+" → "+fmtDate(addCalDays(t.planEnd,6)):""],["Planned to date",h(t.budgetToDate)+" h",""],
     ["Spent to date",h(t.real)+" h",eur(t.real)]);
   if(hasB)kpi.push(["Variance vs budget",sg(t.bgtDiff)+" h",(t.bgtPct!==null?(t.bgtPct>0?"+":"")+t.bgtPct+" % · ":"")+eur(t.bgtDiff)]);
@@ -632,8 +686,14 @@ function mpOpenReport(M,bRec,notes,filterLabel){
     '.mp .tot td{font-weight:800;background:#fffaf0}.mp .note{border-bottom:1px solid #eee;padding:4px 0;font-size:11px}.mp .note em{color:#777;font-style:normal;margin-right:8px}'+
     '@media print{.mp h2{break-after:avoid}.mp tr{break-inside:avoid}}</style><div class="mp">';
   html+='<h1>Riviera Tower — Manpower hours report</h1><div class="sub">Printed '+fmtDate(today())+(t.cutoff?' · cut-off W'+mpIsoWeek(t.cutoff)+' ('+fmtDate(t.cutoff)+')':' · no real hours yet')+
-    (filterLabel?' · filtered on '+esc(filterLabel)+' (budget not shown)':'')+'</div>';
+    (filterLabel?' · filtered on '+esc(filterLabel)+(hasB?' (budget lines of this WBS)':' (no budget line for it)'):'')+'</div>';
   html+='<div class="kpis">'+kpi.map(function(k){return '<div class="k"><span>'+esc(k[0])+'</span><b>'+k[1]+'</b><i>'+esc(k[2])+'</i></div>';}).join("")+'</div>';
+  var bl=mpBudgetLines(bRec);
+  if(bl.length&&!filterLabel){
+    html+='<h2>Budget lines</h2><table><thead><tr><th>Budget WBS</th><th>€</th><th>Hours</th><th style="text-align:left">Note</th></tr></thead><tbody>'+
+      bl.map(function(l){return '<tr><td>'+esc(l.wbs||"(no WBS)")+'</td><td>'+invFmt(_invNum(l.amount),0)+'</td><td>'+(rate?invFmt(_invNum(l.amount)/rate,0):"—")+'</td><td style="text-align:left">'+esc(l.note||"")+'</td></tr>';}).join("")+
+      '<tr class="tot"><td>Total</td><td>'+invFmt(mpBudgetAmount(bRec),0)+'</td><td>'+(rate?invFmt(mpBudgetAmount(bRec)/rate,0):"—")+'</td><td></td></tr></tbody></table>';
+  }
   html+='<h2>Cumulative hours</h2>'+mpReportChart(M);
   // months
   html+='<h2>Months</h2><table><thead><tr><th>Month</th>'+(hasB?'<th>Budget</th>':'')+'<th>Planned</th><th>Planned to date</th><th>Real</th><th>Variance vs planned</th>'+(hasB?'<th>Cumul. budget</th>':'')+'<th>Cumul. planned</th><th>Cumul. real</th></tr></thead><tbody>';
