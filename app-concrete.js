@@ -1784,14 +1784,15 @@ function ConSchedLinks({w,ix,edit,schedules,onChange}){
 // ---------------------------------------------------------------- import pours from the site follow-up workbook
 // Reads a delivery-note register (one row per truck: Zone, Level, Description, Supplier, Date,
 // N° delivery note, Type of concrete, Real Qty, Theo Qty, Month, Year — e.g. the sheet
-// SUPERSTRUCTURE of "RT - Superstructure Concrete FOLLOW UP"), keeps the rows of one value of a
-// filter column (Zone = EXTERNAL by default), and books them as pours.
+// SUPERSTRUCTURE of "RT - Superstructure Concrete FOLLOW UP"), keeps ONLY the rows whose Zone is
+// EXTERNAL (TOWER, PODIUM, DWALL are never imported), and books them as pours.
 // The workbook's "Description" is not our WBS: every description is matched by hand to an
 // existing WBS, or to a new WBS created on the spot (several descriptions may share one new WBS
 // by giving it the same name), or skipped. The matches are remembered on this browser.
 // Concrete types and suppliers are matched by name; an unknown type can be created.
 // The workbook's Theo Qty is NEVER read: the theoretical m³ are typed in the app only.
 // A delivery note already imported (supplier + note + date) is never booked twice.
+var CON_IMP_ZONE="EXTERNAL";      // the only zone of the workbook imported here
 var CON_IMP_COLS={
   desc:/^(description|désignation|designation)$/i,
   supplier:/^(supplier|fournisseur|plant)$/i,
@@ -1833,8 +1834,6 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
   const [sheet,setSheet]=useState("");
   const [busy,setBusy]=useState("");
   const [err,setErr]=useState("");
-  const [fCol,setFCol]=useState(-1);
-  const [fVal,setFVal]=useState("EXTERNAL");
   const [group,setGroup]=useState(true);
   const [choice,setChoice]=useState({});       // desc key → {to:"wbs id"|"new"|"skip", name, code}
   const [tChoice,setTChoice]=useState({});     // type key → type id | "new" | "skip"
@@ -1876,18 +1875,16 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
     var col={};Object.keys(CON_IMP_COLS).forEach(function(k){col[k]=head.findIndex(function(h){return CON_IMP_COLS[k].test(h);});});
     return {hi:hi,head:head,col:col,body:rows.slice(hi+1)};
   })();
-  var filterCol=parsed&&!parsed.error?(fCol>=0?fCol:Math.max(0,parsed.head.findIndex(function(h){return /^zone$/i.test(h);}))):-1;
-  var filterVals=[];
-  if(parsed&&!parsed.error&&filterCol>=0){
-    var cnt={};parsed.body.forEach(function(r){var v=String(r[filterCol]===undefined?"":r[filterCol]).trim();if(v)cnt[v]=(cnt[v]||0)+1;});
-    filterVals=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];}).map(function(v){return {v:v,n:cnt[v]};});
-  }
+  // Zone column: the one headed "Zone" (column B in the workbook)
+  var filterCol=parsed&&!parsed.error?parsed.head.findIndex(function(h){return /^zone$/i.test(h);}):-1;
+  var fVal=CON_IMP_ZONE;
+  if(parsed&&!parsed.error&&filterCol<0)parsed={error:"No “Zone” column in this sheet: the import keeps only the rows whose Zone is "+CON_IMP_ZONE+"."};
   // the rows kept, read into {desc, date, note, supplier, type, qty, theo}
   var items=[],issues={noQty:0,dateFixed:0,noDate:0};
   if(parsed&&!parsed.error){
     var c=parsed.col,lastDate="";
     parsed.body.forEach(function(r){
-      if(filterCol>=0&&String(r[filterCol]).trim().toUpperCase()!==String(fVal).trim().toUpperCase())return;
+      if(String(r[filterCol]).trim().toUpperCase()!==fVal)return;
       var qty=c.qty>=0?conParseNum(r[c.qty]):0;
       if(!(qty>0)){if(String(r[c.desc]||"").trim())issues.noQty++;return;}
       var d=c.date>=0?conImpDate(r[c.date]):"";
@@ -1988,15 +1985,13 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
     <button className="btn btn-pri" disabled={!fresh.length} onClick={apply}>Import {fresh.length?conFmt(keptQty)+" "+CON_UNIT:""}</button>
   </React.Fragment>;
   return <InvModal title="⬆ Import pours from the follow-up workbook" width={980} onClose={onClose} footer={footer}>
-    <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>One row per delivery note (Description · Supplier · Date · N° delivery note · Type of concrete · Real Qty). Choose the sheet and the rows to keep, then match each <b>Description</b> of the workbook to one of your WBS — or create the WBS here.</div>
+    <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>One row per delivery note (Description · Supplier · Date · N° delivery note · Type of concrete · Real Qty). Only the rows whose <b>Zone is {CON_IMP_ZONE}</b> are imported. Match each <b>Description</b> of the workbook to one of your WBS — or create the WBS here.</div>
     <input type="file" accept=".xlsx,.xlsm,.xls" onChange={onFile}/>
     {busy&&<div style={{fontSize:12.5,color:"#1a73e8",marginTop:6}}>⏳ {busy}</div>}
     {err&&<div style={{fontSize:12.5,color:"#b3302a",marginTop:6}}>{err}</div>}
     {book&&<div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",margin:"10px 0",fontSize:12.5}}>
-      <span>Sheet <select value={sheet} onChange={function(e){setSheet(e.target.value);setFCol(-1);setChoice({});setTChoice({});}} style={inp}>{book.names.map(function(n){return <option key={n} value={n}>{n}</option>;})}</select></span>
-      {parsed&&!parsed.error&&<span>Keep rows where <select value={filterCol} onChange={function(e){setFCol(Number(e.target.value));setFVal("");setChoice({});}} style={inp}>
-          {parsed.head.map(function(h,i){return h?<option key={i} value={i}>{String.fromCharCode(65+i)} · {h}</option>:null;})}</select>
-        {" = "}<select value={fVal} onChange={function(e){setFVal(e.target.value);setChoice({});}} style={inp}><option value="">— choose —</option>{filterVals.map(function(x){return <option key={x.v} value={x.v}>{x.v} ({x.n})</option>;})}</select></span>}
+      <span>Sheet <select value={sheet} onChange={function(e){setSheet(e.target.value);setChoice({});setTChoice({});}} style={inp}>{book.names.map(function(n){return <option key={n} value={n}>{n}</option>;})}</select></span>
+      {parsed&&!parsed.error&&<span title="Only the external works are imported; TOWER, PODIUM and DWALL rows are left out">Rows kept: <b>{String.fromCharCode(65+filterCol)} · Zone = {CON_IMP_ZONE}</b> only</span>}
       <label style={{display:"flex",alignItems:"center",gap:4,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}} title="One pour per day and WBS, each type × supplier a line; the delivery notes are kept in the reference. Unticked: one pour per delivery note (much heavier).">
         <input type="checkbox" checked={group} onChange={function(e){setGroup(e.target.checked);}}/>one pour per day × WBS</label>
     </div>}
