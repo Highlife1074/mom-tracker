@@ -847,11 +847,17 @@ function mpImpAnalyse(rows){
   }
   var valueCols=[];
   if(layout==="wide")head.forEach(function(h,j){if(j!==cW&&j!==cD&&h&&!MP_IMP_IGNORE.test(h)&&!MP_IMP_COLS.week.test(h))valueCols.push({j:j,name:h});});
-  return {layout:layout,head:head,body:body,cW:cW,cD:cD,cC:cC,cA:cA,cH:cH,valueCols:valueCols,weekCols:weekCols,
+  return {layout:layout,hi:hi,head:head,body:body,cW:cW,cD:cD,cC:cC,cA:cA,cH:cH,valueCols:valueCols,weekCols:weekCols,
     labelCols:weekCols.length?weekCols[0].j:0};
 }
 // Analysis + options → items with their Monday. Week numbers get a year: the chosen one, +1 each
 // time the numbers wrap back (52 → 1).
+// The first non-empty rows of a sheet, shown when nothing could be read from it.
+function mpImpPeek(rows){
+  var out=(rows||[]).filter(function(r){return (r||[]).some(function(c){return String(c===undefined||c===null?"":c).trim();});}).slice(0,3)
+    .map(function(r){return r.slice(0,5).map(function(c){return String(c);}).join(" | ");});
+  return out.length?"\nFirst rows read: "+out.join("  /  "):"\nThe sheet is empty.";
+}
 var MP_IMP_TOTAL=/^(sub[- ]?)?total\b|^grand total|^sous[- ]?total/i;
 function mpImpItems(an,opts){
   var items=[],skipped=0,year=opts.year,prevW=null;
@@ -929,9 +935,11 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
   const [fixed,setFixed]=useState("");
   const [mode,setMode]=useState("replace");
   const [map,setMap]=useState({});            // file activity → "new" | "none" | "skip" | existing name
+  const [book,setBook]=useState(null);        // {name, sheets:{name: rows}} of an Excel file, to switch sheet
+  const [sheet,setSheet]=useState("");
   function load(rows,name){
     var a=mpImpAnalyse(rows);
-    if(a.error){setErr(a.error);setAn(null);return;}
+    if(a.error){setErr(a.error+mpImpPeek(rows));setAn(null);return;}
     setErr("");setAn(a);setFileName(name||"");
     // the year of the first week: the current year, unless the file names one
     var y=null;
@@ -941,6 +949,8 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
   }
   function onFile(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
+    e.target.value="";                         // the same file can be picked again after a change
+    setBook(null);setSheet("");setMap({});
     var rd=new FileReader();
     if(/\.(csv|txt)$/i.test(f.name)){
       rd.onload=function(){load(mpImpParseText(rd.result),f.name);};rd.readAsText(f);
@@ -949,8 +959,15 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
       rd.onload=function(){
         try{
           var wb=window.XLSX.read(new Uint8Array(rd.result),{type:"array",cellDates:true});
-          var sh=wb.Sheets[wb.SheetNames[0]];
-          load(window.XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:true}),f.name+" · "+wb.SheetNames[0]);
+          // every sheet is read; the first one holding hours is shown (not always the first sheet)
+          var sheets={},pick="";
+          wb.SheetNames.forEach(function(n){
+            var rows=window.XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:"",raw:true});sheets[n]=rows;
+            if(!pick){var a=mpImpAnalyse(rows);if(!a.error&&mpImpItems(a,{year:Number(today().slice(0,4)),colsAre:"company",fixed:""}).items.length)pick=n;}
+          });
+          pick=pick||wb.SheetNames[0];
+          setBook({name:f.name,sheets:sheets,order:wb.SheetNames});setSheet(pick);
+          load(sheets[pick],f.name+" · "+pick);
         }catch(x){setErr("This file could not be read: "+x.message);}
       };
       rd.readAsArrayBuffer(f);
@@ -1030,7 +1047,7 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
     <button className="btn" onClick={onClose}>Cancel</button>
     <button className="btn btn-pri" disabled={!res.items.length} onClick={apply}>Import {res.items.length?invFmt(total-skipH,0)+" h":""}</button>
   </React.Fragment>;
-  return <InvModal title="⬆ Import real hours" width={820} onClose={onClose} footer={footer}>
+  return <InvModal title={"⬆ Import real hours · build "+(window._appBuild||"")} width={820} onClose={onClose} footer={footer}>
     <div style={{fontSize:12,color:"#6f6b62",marginBottom:10}}>
       Excel or CSV. Either <b>one row per week</b> with a <b>Week</b> column and one column per company (or per activity) — like the CSV exported here —
       or <b>one row per week × company × activity</b> with columns <b>Week · Company · Activity · Hours</b>,
@@ -1043,9 +1060,12 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
         style={{flex:"1 1 220px",fontFamily:"var(--font-mono)",fontSize:11,padding:4}}/>
       <button className="btn btn-sm" disabled={!paste.trim()} onClick={function(){load(mpImpParseText(paste),"pasted cells");}}>Read</button>
     </div>
-    {err&&<div style={{color:"#b3302a",fontSize:12.5,margin:"6px 0"}}>{err}</div>}
+    {err&&<div style={{color:"#b3302a",fontSize:12.5,margin:"6px 0",whiteSpace:"pre-wrap"}}>{err}</div>}
     {an&&<div>
       <div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",marginBottom:10,display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:12.5}}>
+        {book&&book.order.length>1&&<span style={{display:"flex",alignItems:"center",gap:5}}>Sheet
+          <select value={sheet} onChange={function(e){var n=e.target.value;setSheet(n);setMap({});load(book.sheets[n],book.name+" · "+n);}} style={inp}>
+            {book.order.map(function(n){return <option key={n} value={n}>{n}</option>;})}</select></span>}
         <span><b>{fileName}</b> · {an.layout==="long"?"one row per week × company × activity":an.layout==="matrix"?"one row per activity, "+an.weekCols.length+" week columns":"one row per week, "+an.valueCols.length+" value column"+(an.valueCols.length!==1?"s":"")}</span>
         {(an.layout==="matrix"?an.weekCols.some(function(wc){return !wc.cell.year&&!wc.cell.date;}):an.cW>=0&&an.cD<0)&&<label style={{display:"flex",alignItems:"center",gap:5,margin:0,textTransform:"none",letterSpacing:"normal",fontSize:12.5,fontFamily:"inherit"}}>Year of the first week
           <input type="number" value={year} onChange={function(e){setYear(Number(e.target.value)||year);}} style={Object.assign({},inp,{width:80})}/></label>}
@@ -1059,7 +1079,8 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
             :<input type="text" value={fixed} onChange={function(e){setFixed(e.target.value);}} placeholder="optional" style={Object.assign({},inp,{width:140})}/>}
         </span>}
       </div>
-      {!res.items.length&&<div style={{color:"#b3302a",fontSize:12.5}}>No hours found under the headings{res.skipped?" ("+res.skipped+" row(s) without a readable week)":""}.</div>}
+      {!res.items.length&&<div style={{color:"#b3302a",fontSize:12.5}}>No hours found under the headings{res.skipped?" ("+res.skipped+" row(s) without a readable week)":""}.
+        <div style={{color:"#6f6b62",fontSize:11.5,marginTop:4,whiteSpace:"pre-wrap"}}>Read: heading row {an.hi+1} = {an.head.filter(function(h){return h;}).slice(0,6).join(" | ")||"(empty)"}{an.layout==="matrix"?" · "+an.weekCols.length+" week columns, label columns "+an.labelCols:""} · {an.body.length} row(s) under it{an.body[0]?" — first: "+an.body[0].slice(0,4).map(function(c){return String(c);}).join(" | "):""}</div></div>}
       {res.items.length>0&&<div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:12.5,marginBottom:10}}>
         <span><b>{invFmt(total,0)} h</b> in {res.items.length} line{res.items.length!==1?"s":""}</span>
         <span>{wkList.length} week{wkList.length!==1?"s":""}: W{mpIsoWeek(wkList[0])} {fmtDate(wkList[0])} → W{mpIsoWeek(wkList[wkList.length-1])} {fmtDate(wkList[wkList.length-1])}</span>
