@@ -3753,6 +3753,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #c8e6c9",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#2e7d32"}}/>
               <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
             </div>
+            <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}}>
+              <span style={{fontSize:10,color:"#2e7d32",whiteSpace:"nowrap"}}>Instruction no.</span>
+              <input type="text" value={td.instructionNumber||""} onChange={function(e){updTd("instructionNumber",e.target.value);}} placeholder="—" title="Instruction number. As soon as it is filled in the package counts as instructed." style={{fontSize:12,fontFamily:"var(--font-mono)",border:"1px solid #c8e6c9",borderRadius:5,background:"#fff",width:"100%",minWidth:0,padding:"2px 6px",outline:"none"}}/>
+            </div>
           </div>
           <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f3e5f5"}}>
             <div style={{fontSize:10,color:"#7b1fa2",marginBottom:2}}>Budget treated</div>
