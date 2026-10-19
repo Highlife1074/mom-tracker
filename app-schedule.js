@@ -220,6 +220,8 @@ function printWeeksOf(all,o){
   if(!f||!o.to)return[];
   return all.filter(function(w){return w>=f&&w<=o.to;});
 }
+// Day number of an ISO date (UTC, so summer time never shifts the progress line).
+function plDay(iso){var p=String(iso||"").split("-");return Date.UTC(+p[0],(+p[1])-1,+p[2])/864e5;}
 
 // ---- Baselines ---------------------------------------------------------------
 // A baseline is a frozen copy of the PLANNED weeks of every task, kept in the schedule
@@ -908,6 +910,25 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     });
     if(plan===0&&act===0)return null;
     if(plan===0)return 100;
+    return Math.min(100,Math.round(act/plan*100));
+  }
+  // Progress reached by a given date: weekly entries up to that week, else the manual %,
+  // else actual weeks up to that date vs planned weeks. Used by the printed progress line.
+  function rowProgressAt(row,iso){
+    var wp=row.weekProgress||{};
+    var keys=Object.keys(wp).filter(function(k){return wp[k]!==""&&wp[k]!==null&&wp[k]!==undefined;}).sort();
+    if(keys.length){
+      var past=keys.filter(function(k){return k<=iso;});
+      return past.length?Math.max(0,Math.min(100,Number(wp[past[past.length-1]]))):0;
+    }
+    if(isManualProgress(row))return Math.max(0,Math.min(100,Number(row.progress)));
+    var cells=row.cells||{},plan=0,act=0;
+    Object.keys(cells).forEach(function(w){
+      var v=cells[w];
+      if(v==="plan"||v==="both")plan++;
+      if((v==="actual"||v==="both")&&w<=iso)act++;
+    });
+    if(plan===0)return null;
     return Math.min(100,Math.round(act/plan*100));
   }
   function isManualProgress(row){return row.progress!==undefined&&row.progress!==null&&row.progress!=="";}
@@ -1846,7 +1867,48 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   function openPrint(){
     var all=sc?scheduleWeeks(sc):[];
     // sheets:0 = automatic (one sheet up to 26 weeks, then as many as needed)
-    setPrintOpts({risks:true,progress:false,range:"all",from:all[0]||"",to:all.length?printAddDays(all[all.length-1],6):"",size:"A4",sheets:0});
+    setPrintOpts({risks:true,progress:false,range:"all",from:all[0]||"",to:all.length?printAddDays(all[all.length-1],6):"",size:"A4",sheets:0,
+      pline:true,plDate:today(),plLbl:true,plShade:true,plCols:true,plSum:true});
+  }
+  // Progress line (as in Primavera): a vertical line at the data date that bends, on each
+  // activity, to the point the work has reached = planned start + % × planned duration.
+  // Bends left = behind, right = ahead. Finished activities and 0 % activities not due yet
+  // stay on the line. Variance in weeks.
+  function printProgressLine(opts){
+    var iso=opts.plDate||today(),t=plDay(iso),rows={},late=0,ahead=0,on=0;
+    visibleRows.forEach(function(r){
+      if(r.kind==="category"||r.kind==="section"){rows[r.id]={t:t,p:null,v:null,pct:null};return;}
+      var sp=rowSpan(r),pct=sp?rowProgressAt(r,iso):null,pt=null,v=null;
+      if(sp&&pct!==null){
+        var s0=plDay(sp.startWeek),e0=plDay(sp.endWeek)+7;
+        if(pct<100&&!(pct<=0&&s0>=t)){pt=s0+pct/100*(e0-s0);v=Math.round((pt-t)/7*10)/10;}
+      }
+      if(v!==null){if(v<=-0.25)late++;else if(v>=0.25)ahead++;else on++;}
+      rows[r.id]={t:t,p:pt,v:v,pct:pct};
+    });
+    return{iso:iso,t:t,rows:rows,late:late,ahead:ahead,on:on};
+  }
+  function plColor(v){return v===null||v===undefined?"#999":v<=-0.25?"#c62828":v>=0.25?"#2e7d32":"#333";}
+  // The part of the line that crosses one week cell, drawn in that cell's own coordinates
+  // (0..1 across the week, 0..1 down the row), so it lines up whatever the column widths.
+  function plCellArt(g,w,opts){
+    if(!g)return null;
+    var w0=plDay(w),tu=(g.t-w0)/7,pu=g.p===null?tu:(g.p-w0)/7;
+    var lo=Math.min(tu,pu),hi=Math.max(tu,pu);
+    if(hi<0||lo>1)return null;
+    var bend=g.p!==null&&Math.abs(pu-tu)>1e-6,col=pu<tu?"#c62828":"#2e7d32";
+    var d=bend?"M"+tu+" 0 L"+pu+" 0.5 L"+tu+" 1":"M"+tu+" 0 L"+tu+" 1";
+    var here=bend&&pu>=0&&pu<1;
+    return [
+      <svg key="l" viewBox="0 0 1 1" preserveAspectRatio="none" style={{position:"absolute",left:0,top:-1,width:"100%",height:"calc(100% + 2px)",overflow:"hidden",pointerEvents:"none",zIndex:1}}>
+        {bend&&opts.plShade&&<rect x={lo} y={0.1} width={hi-lo} height={0.8} fill={col} fillOpacity={0.2}/>}
+        <path d={d} fill="none" stroke="#d32f2f" strokeWidth={1.3} vectorEffect="non-scaling-stroke" strokeLinejoin="round"/>
+      </svg>,
+      here&&<span key="p" style={{position:"absolute",left:(pu*100)+"%",top:"50%",width:4,height:4,borderRadius:"50%",background:"#fff",border:"1.2px solid "+col,transform:"translate(-50%,-50%)",zIndex:2}}></span>,
+      here&&opts.plLbl&&<span key="t" style={Object.assign({position:"absolute",top:"50%",transform:"translateY(-50%)",fontSize:6,fontWeight:800,lineHeight:1,color:col,whiteSpace:"nowrap",
+          textShadow:"0 0 2px #fff,0 0 2px #fff,0 0 2px #fff",zIndex:3,pointerEvents:"none"},
+          pu<tu?{right:"calc("+((1-pu)*100)+"% + 3px)"}:{left:"calc("+(pu*100)+"% + 3px)"})}>{(g.v>0?"+":"")+g.v.toFixed(1)+" wk"}</span>
+    ];
   }
   function runPrint(opts){
     setPrintOpts(null);
@@ -3144,19 +3206,28 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           var chunks=[];
           for(var i=0;i<pw.length;i+=per)chunks.push(pw.slice(i,i+per));
           var pfs=per>30?6:7;
+          var pl=printPlan.pline?printProgressLine(printPlan):null;
+          var plCols=!!(pl&&printPlan.plCols);
+          var nFix=plCols?6:4;
           return <div className="sched-print-only">
             <style>{"@media print{@page{size:"+(printPlan.size==="A3"?"A3":"A4")+" landscape;margin:8mm}.sched-print-only *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}"}</style>
             {chunks.map(function(ck,ci){
               return <div key={ci} style={{pageBreakAfter:ci<chunks.length-1?"always":"auto",marginBottom:12}}>
                 <table style={{borderCollapse:"collapse",width:"100%",tableLayout:"fixed",fontSize:pfs}}>
-                  <colgroup><col style={{width:150}}/><col style={{width:60}}/><col style={{width:40}}/><col style={{width:48}}/>{ck.map(function(w){return <col key={w}/>;})}</colgroup>
+                  <colgroup><col style={{width:150}}/><col style={{width:60}}/><col style={{width:40}}/><col style={{width:48}}/>{plCols&&<col style={{width:22}}/>}{plCols&&<col style={{width:30}}/>}{ck.map(function(w){return <col key={w}/>;})}</colgroup>
                   <thead style={{display:"table-header-group"}}>
                     <tr>
-                      <th colSpan={4} style={{border:"1px solid #999",padding:"2px 3px",textAlign:"left",fontSize:7,background:"#f0ede6"}}>
+                      <th colSpan={nFix} style={{border:"1px solid #999",padding:"2px 3px",textAlign:"left",fontSize:7,background:"#f0ede6"}}>
                         {sc.title} · {curZone}{fGroup?" · "+fGroup:""} — sheet {ci+1}/{chunks.length}
                       </th>
                       <th colSpan={ck.length} style={{border:"1px solid #999",padding:"2px 3px",textAlign:"left",fontSize:7,background:"#f0ede6"}}>
                         {fmtDate(ck[0])} → {fmtDate(ck[ck.length-1])}
+                        {pl&&<span style={{marginLeft:10,color:"#d32f2f",fontWeight:800}}>│ Progress line at {fmtDate(pl.iso)}</span>}
+                        {pl&&printPlan.plSum&&<span style={{marginLeft:8}}>
+                          <b style={{color:"#c62828"}}>● {pl.late} behind</b>{"  "}
+                          <b style={{color:"#2e7d32",marginLeft:6}}>● {pl.ahead} ahead</b>{"  "}
+                          <span style={{color:"#555",marginLeft:6}}>● {pl.on} on time</span>
+                        </span>}
                       </th>
                     </tr>
                     <tr>
@@ -3164,7 +3235,12 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       <th style={{border:"1px solid #999",padding:"2px 3px",textAlign:"left",width:60}}>Subcont.</th>
                       <th style={{border:"1px solid #999",padding:"2px 3px",textAlign:"right",width:40}}>Qty</th>
                       <th style={{border:"1px solid #999",padding:"2px 3px",textAlign:"right",width:48}}>Rate</th>
-                      {ck.map(function(w){return <th key={w} style={{border:"1px solid #999",padding:"2px 1px",width:16}}>{fmtDate(w).slice(0,5)}</th>;})}
+                      {plCols&&<th style={{border:"1px solid #999",padding:"2px 3px",textAlign:"right"}}>%</th>}
+                      {plCols&&<th style={{border:"1px solid #999",padding:"2px 3px",textAlign:"right"}} title="Progress line variance, in weeks">Var. wk</th>}
+                      {ck.map(function(w){
+                        var isDD=pl&&pl.t>=plDay(w)&&pl.t<plDay(w)+7;
+                        return <th key={w} style={{border:"1px solid #999",padding:"2px 1px",width:16,color:isDD?"#fff":undefined,background:isDD?"#d32f2f":undefined}}>{fmtDate(w).slice(0,5)}</th>;
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -3192,6 +3268,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                             return fmtQty(sp.rate)+"/wk · "+fmtQty(sp.ratePerDay)+"/d";
                           })()}
                         </td>
+                        {plCols&&(function(){
+                          var g=pl.rows[r.id]||{},bgc=cat?"#eee":"#fff",isCat=cat||r.kind==="section";
+                          return [
+                            <td key="pct" style={{border:"1px solid #999",padding:"2px 3px",textAlign:"right",background:bgc}}>{isCat||g.pct===null||g.pct===undefined?"":g.pct}</td>,
+                            <td key="var" style={{border:"1px solid #999",padding:"2px 3px",textAlign:"right",background:bgc,fontWeight:700,color:plColor(g.v)}}>
+                              {isCat?"":g.v===null||g.v===undefined?"—":(g.v>0?"+":"")+g.v.toFixed(1)}
+                            </td>];
+                        })()}
                         {ck.map(function(w){
                           var v=(r.cells||{})[w];
                           var hol=(sc.holidayWeeks||[]).indexOf(w)>=0;
@@ -3201,7 +3285,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                                  :v==="plan"?planColor(r):v==="actual"?"#1a73e8":v==="both"?"linear-gradient(180deg,"+planColor(r)+" 50%,#1a73e8 50%)":"#fff";
                           var wp=printPlan.progress?((r.weekProgress||{})[w]):"";
                           return <td key={w} style={{border:"1px solid #ccc",padding:0,height:11,background:bg,textAlign:"center",fontSize:6,color:"#fff",
-                            boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none"}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}</td>;
+                            boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none",position:pl?"relative":undefined}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}{pl&&plCellArt(pl.rows[r.id],w,printPlan)}</td>;
                         })}
                       </tr>;
                     })}
@@ -3209,6 +3293,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 </table>
               </div>;
             })}
+            {pl&&<div style={{marginTop:6,fontSize:7,color:"#444",display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+              <span><b style={{color:"#d32f2f"}}>│ Progress line at {fmtDate(pl.iso)}</b> — bends left = behind, right = ahead.</span>
+              <span>Point = planned start + % complete × planned duration; Var. = distance to the data date, in weeks.</span>
+              <span>Finished activities and 0 % activities not due yet stay on the line.</span>
+            </div>}
             {scDocs.length>0&&<div style={{marginTop:10,fontSize:7}}>
               <div style={{fontWeight:800,marginBottom:2}}>Reference documents</div>
               {scDocs.map(function(d){
@@ -3274,7 +3363,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         </div>}
         {printOpts&&<div className="sched-noprint" style={{position:"fixed",inset:0,zIndex:960,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center"}}
           onClick={function(){setPrintOpts(null);}}>
-          <div onClick={function(e){e.stopPropagation();}} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:430,boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:430,maxWidth:"94vw",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
             <div style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:18,marginBottom:3}}>Print the schedule</div>
             <div style={{fontSize:11,color:"#aaa",marginBottom:14}}>{wks.length} weeks · {visibleRows.filter(function(r){return r.kind!=="category";}).length} tasks{fGroup?" · filtered on "+fGroup:""}</div>
 
@@ -3321,10 +3410,27 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               <input type="checkbox" checked={printOpts.risks} onChange={function(e){setPrintOpts(Object.assign({},printOpts,{risks:e.target.checked}));}} style={{width:14,height:14,marginTop:2}}/>
               <span style={{fontSize:12,fontWeight:600}}>Procurement impact<br/><span style={{fontSize:10,fontWeight:400,color:"#aaa"}}>delivery arrows, red hatching and the ⇢ week</span></span>
             </label>
-            <label style={{display:"flex",gap:8,alignItems:"flex-start",cursor:"pointer",textTransform:"none",letterSpacing:"normal",marginBottom:16,color:"#333"}}>
+            <label style={{display:"flex",gap:8,alignItems:"flex-start",cursor:"pointer",textTransform:"none",letterSpacing:"normal",marginBottom:10,color:"#333"}}>
               <input type="checkbox" checked={printOpts.progress} onChange={function(e){setPrintOpts(Object.assign({},printOpts,{progress:e.target.checked}));}} style={{width:14,height:14,marginTop:2}}/>
               <span style={{fontSize:12,fontWeight:600}}>Weekly progress figures<br/><span style={{fontSize:10,fontWeight:400,color:"#aaa"}}>the numbers written inside the bars</span></span>
             </label>
+            <label style={{display:"flex",gap:8,alignItems:"flex-start",cursor:"pointer",textTransform:"none",letterSpacing:"normal",marginBottom:printOpts.pline?6:16,color:"#333"}}>
+              <input type="checkbox" checked={!!printOpts.pline} onChange={function(e){setPrintOpts(Object.assign({},printOpts,{pline:e.target.checked}));}} style={{width:14,height:14,marginTop:2}}/>
+              <span style={{fontSize:12,fontWeight:600}}>Progress line at data date<br/><span style={{fontSize:10,fontWeight:400,color:"#aaa"}}>red line that bends left on activities behind, right on activities ahead (weeks)</span></span>
+            </label>
+            {printOpts.pline&&<div style={{margin:"0 0 16px 22px",padding:"8px 10px",background:"#f8f7f4",borderRadius:8,display:"grid",gap:6}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:11,color:"#888"}}>Data date</span>
+                <input type="date" value={printOpts.plDate||""} onChange={function(e){setPrintOpts(Object.assign({},printOpts,{plDate:e.target.value||today()}));}}
+                  style={{fontSize:12,padding:"4px 7px",border:"1.5px solid #e0ddd4",borderRadius:7,fontFamily:"inherit",background:"#fff"}}/>
+                {printOpts.plDate!==today()&&<button className="btn btn-sm" onClick={function(){setPrintOpts(Object.assign({},printOpts,{plDate:today()}));}} style={{padding:"2px 8px"}}>Today</button>}
+              </div>
+              {[["plLbl","Variance label at each point (−1.5 wk)"],["plShade","Shade the gap (red behind / green ahead)"],["plCols","Columns % and Var. wk in the table"],["plSum","Behind / ahead / on time count in the header"]].map(function(o){
+                return <label key={o[0]} style={{display:"flex",gap:7,alignItems:"center",cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11.5,color:"#333"}}>
+                  <input type="checkbox" checked={!!printOpts[o[0]]} onChange={function(e){var p={};p[o[0]]=e.target.checked;setPrintOpts(Object.assign({},printOpts,p));}} style={{width:13,height:13}}/>{o[1]}
+                </label>;
+              })}
+            </div>}
 
             <div style={{fontSize:10,color:"#aaa",marginBottom:14}}>Landscape is set automatically; each sheet fits the page width. Task and Subcont. columns are repeated on every sheet. Tick <b>Background graphics</b> if the bars come out white.</div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
