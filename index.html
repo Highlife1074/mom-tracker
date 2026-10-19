@@ -373,6 +373,8 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
   body.printing-schedule th,body.printing-schedule td{white-space:nowrap!important;}
   /* sticky columns/headers must not float over the printed page */
   body.printing-schedule th,body.printing-schedule td{position:static!important;}
+  /* progress line: each week cell holds its own piece of the line, positioned inside it */
+  body.printing-schedule .sched-print-only td.pl-cell{position:relative!important;}
   body.printing-schedule .layout,body.printing-schedule .main-area{display:block!important;overflow:visible!important;}
   body.printing-schedule .sched-print-only{display:block!important;margin-bottom:10px;}
   body.printing-schedule .sched-noprint{display:none!important;}

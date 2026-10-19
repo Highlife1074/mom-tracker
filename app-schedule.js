@@ -3284,7 +3284,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           var bg=hol?"#e8e4da":before?"repeating-linear-gradient(45deg,#ef9a9a,#ef9a9a 2px,#e57373 2px,#e57373 4px)"
                                  :v==="plan"?planColor(r):v==="actual"?"#1a73e8":v==="both"?"linear-gradient(180deg,"+planColor(r)+" 50%,#1a73e8 50%)":"#fff";
                           var wp=printPlan.progress?((r.weekProgress||{})[w]):"";
-                          return <td key={w} style={{border:"1px solid #ccc",padding:0,height:11,background:bg,textAlign:"center",fontSize:6,color:"#fff",
+                          return <td key={w} className={pl?"pl-cell":undefined} style={{border:"1px solid #ccc",padding:0,height:11,background:bg,textAlign:"center",fontSize:6,color:"#fff",
                             boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none",position:pl?"relative":undefined}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}{pl&&plCellArt(pl.rows[r.id],w,printPlan)}</td>;
                         })}
                       </tr>;
