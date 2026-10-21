@@ -2332,7 +2332,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       <button className="btn btn-sm" onClick={function(){setBackTo(null);}} title="Stay in the schedule">✕</button>
     </div>}
     {/* Header: which schedule, and the actions on the whole schedule. Print is the main one,
-        styled like the zone's Weekly pack; the rarely used ones sit in Settings and More. */}
+        styled like the zone's Weekly pack; Documents stays visible; the rarely used ones sit in Settings and More. */}
     <div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
       {zoneScheds.map(function(s){
         return <button key={s.id} className={"fchip"+(sc&&sc.id===s.id?" on":"")} onClick={function(){setSelId(s.id);}}>{s.title}</button>;
@@ -2340,17 +2340,18 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       <button className="btn btn-sm btn-gold" onClick={addSchedule}>＋ New schedule</button>
       {sc&&<span style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {sc.updatedAt&&<span style={{fontSize:10,color:"#aaa"}}>Last update {fmtDate(sc.updatedAt)}{sc.updatedBy?" by "+sc.updatedBy.split(",")[0]:""}</span>}
+        <button className="btn btn-sm" onClick={function(){setShowDocs(true);}}
+          title="Reference documents: setting-out plans, sections, details. Attach one to a room and its name becomes clickable in the schedule.">📄 Documents{scDocs.length>0?" ("+scDocs.length+")":""}</button>
         <button className={"btn btn-sm"+(showSettings?" btn-pri":"")} onClick={function(){setShowSettings(!showSettings);}}
           title="Title, start week, number of weeks, subcontractors, copy to another zone">⚙ Settings</button>
         <span style={{position:"relative",display:"inline-block"}}>
           <button className={"btn btn-sm"+(moreMenu?" btn-pri":"")} onClick={function(){setMoreMenu(!moreMenu);}}
-            title="Documents, Primavera export and the other actions on this schedule">⋯ More ▾</button>
+            title="Primavera export and the other actions on this schedule">⋯ More ▾</button>
           {moreMenu&&<React.Fragment>
             <div onClick={function(){setMoreMenu(false);}} style={{position:"fixed",inset:0,zIndex:1290}}></div>
             <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:1300,minWidth:250,background:"#fff",border:"1px solid var(--rule,#ddd9cf)",borderRadius:9,
               boxShadow:"0 10px 32px rgba(0,0,0,.2)",padding:6}}>
               {[
-                {k:"docs",label:"📄 Documents"+(scDocs.length>0?" ("+scDocs.length+")":""),title:"Reference documents: setting-out plans, sections, details. Attach one to a room and its name becomes clickable in the schedule.",run:function(){setShowDocs(true);}},
                 {k:"xer",label:"⬇ Export to Primavera P6 (.xer)",title:"WBS section › room, activities, links, calendar with neutralised weeks, subcontractor and tender codes, progress",run:exportXer},
                 canEdit&&{k:"sort",label:"🔤 Sort rooms A→Z",title:"Sort categories A→Z. Each one keeps its own tasks.",run:sortCategories},
                 canEdit&&{k:"rules",label:"🔗 Apply tender rules",title:"Apply the subcontractor → tender rules (Settings › Tender rules) to every task of this schedule",run:applyTenderRules},
