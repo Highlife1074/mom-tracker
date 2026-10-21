@@ -14,8 +14,19 @@ const TENDER_STEPS=[
   {key:"acc",label:"ACC/Aconex",opts:["—","N/A","Under preparation","Internal review ongoing","Pending client approval","Approved A","Approved B","Not Approved C","Rejected D"]},
   {key:"contract",label:"Contract",opts:["—","N/A","Request sent","In circulation","Signed"]},
   {key:"itp",label:"ITP",opts:["—","N/A","Not done","Pending Approval","Approved A","Approved B","Not Approved C","Rejected D"]},
-  {key:"wms",label:"WMS",opts:["—","N/A","Not done","Pending Approval","Approved A","Approved B","Not Approved C","Rejected D"]}
+  {key:"wms",label:"WMS",opts:["—","N/A","Not done","Pending Approval","Approved A","Approved B","Not Approved C","Rejected D"]},
+  {key:"kickoff",label:"Kick off meeting",opts:["—","N/A","Not done","Scheduled","Held"]}
 ];
+// Kick off meeting of a tender: a meeting, not a document. Held once its date is filled.
+// na | held | planned (date set, not held yet) | none
+function kickoffState(td){
+  var v=((td&&td.steps)||{}).kickoff||"";
+  var sd=(((td&&td.stepDates)||{}).kickoff)||{};
+  if(v==="N/A")return "na";
+  if(v==="Held"||isValidDate(sd.done))return "held";
+  if(v==="Scheduled"||isValidDate(sd.target))return "planned";
+  return "none";
+}
 // ---------------------------------------------------------------------------
 // Theoretical dates.
 //
@@ -407,10 +418,13 @@ function tenderDocs(td){
   var ct=(td.stepDates||{}).contract||{};
   var ctBase=ct.signedDone||ct.signedAllDone||th("contract");
   var sdSub=isValidDate(ctBase)?addWorkingDays(ctBase,getDur("sdAfterContract")):"";
+  // The approval is expected from the submission date actually planned: the transmission's
+  // own target, then the tender's SD target, then the computed one.
   (td.sdTransmissions||[]).forEach(function(t,i){
+    var tSub=t.target||td.sdTarget||sdSub;
     out.push({id:"sd:"+t.id,group:"Shop drawings",kind:"sd",label:t.ref||("SD "+(i+1)),sub:t.description||"",
-      cycles:cyclesOfSD(t),theoSub:t.target||sdSub,
-      theoApproval:isValidDate(sdSub)?addWorkingDays(sdSub,getDur("sdApproval")):"",
+      cycles:cyclesOfSD(t),theoSub:tSub,
+      theoApproval:isValidDate(tSub)?addWorkingDays(tSub,getDur("sdApproval")):"",
       patchFor:function(list){
         var tl=(td.sdTransmissions||[]).map(function(x){return x.id===t.id?sdWithCycles(x,list):x;});
         return Object.assign({sdTransmissions:tl},_sdAggregate(tl));
@@ -421,7 +435,7 @@ function tenderDocs(td){
   if(!(td.sdTransmissions||[]).length&&(td.hasSD||td.sdDone||td.sdApprovalDone||td.sdStatus||(td.sdCycles||[]).length)){
     out.push({id:"sd:_main",group:"Shop drawings",kind:"sd",label:"SD",sub:"whole tender",
       cycles:cyclesOfSdMain(td),theoSub:td.sdTarget||sdSub,
-      theoApproval:isValidDate(sdSub)?addWorkingDays(sdSub,getDur("sdApproval")):"",
+      theoApproval:isValidDate(td.sdTarget||sdSub)?addWorkingDays(td.sdTarget||sdSub,getDur("sdApproval")):"",
       patchFor:function(list){return sdMainWithCycles(td,list);}});
   }
   // materials: the MAR, and the MSS when the material needs one (or already has a history).
@@ -541,7 +555,8 @@ function tenderStepClass(step,val){
   if(val==="N/A")return"s-na";
   var v=val.toLowerCase();
   if(v==="not approved"||v.includes("reject")||v.includes("not done"))return"s-notdone";
-  if(v==="approved a"||v==="approved b"||v==="approved"||v==="signed")return"s-approved-a";
+  if(v==="approved a"||v==="approved b"||v==="approved"||v==="signed"||v==="held")return"s-approved-a";
+  if(v==="scheduled")return"s-pending";
   if(v.includes("pending")||v.includes("ongoing")||v.includes("circulation")||v.includes("sent")||v.includes("preparation")||v.includes("submitted")||v.includes("request")||v.includes("bids"))return"s-pending";
   return"s-default";
 }
@@ -1045,12 +1060,13 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
   // WMS and ITP are quality documents driven by the start on site, not by the tender
   // submission chain — they get their own panel.
   var QA_KEYS=["wms","itp"];
-  var mainSteps=TENDER_STEPS.filter(function(s){return s.key!=="contract"&&QA_KEYS.indexOf(s.key)<0;});
+  var mainSteps=TENDER_STEPS.filter(function(s){return s.key!=="contract"&&s.key!=="kickoff"&&QA_KEYS.indexOf(s.key)<0;});
   // Once the ACC is submitted, the steps before it are history: hidden unless details are asked.
   var hiddenPrev=!detail&&accSent?mainSteps.filter(function(s){return s.key!=="acc";}).length:0;
   if(hiddenPrev)mainSteps=mainSteps.filter(function(s){return s.key==="acc";});
   var qaSteps=TENDER_STEPS.filter(function(s){return QA_KEYS.indexOf(s.key)>=0;});
   var contractStep=TENDER_STEPS.find(function(s){return s.key==="contract";});
+  var kickoffStep=TENDER_STEPS.find(function(s){return s.key==="kickoff";});
 
   return <div>
     {/* Three sibling sections — Submission steps, WMS & ITP, Materials — all built the
@@ -1238,6 +1254,48 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         </React.Fragment>;
       })}</tbody>
     </table>
+
+    {kickoffStep&&(function(){
+      var val=(td.steps||{}).kickoff||"";
+      var dates=(td.stepDates||{}).kickoff||{};
+      var comment=(td.stepComments||{}).kickoff||"";
+      var ks=kickoffState(td);
+      var late=ks==="planned"&&isValidDate(dates.target)&&dates.target<today();
+      return <React.Fragment>
+        <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
+          <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Kick off meeting</h3>
+          <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>a planned date creates the action, the date held closes it</span>
+        </div>
+        <table className="tbl" style={{fontSize:12,marginBottom:16}}>
+          <thead><tr>
+            <th>Meeting</th><th>Status</th>
+            <th style={{textAlign:"center",minWidth:120}}>Planned date</th>
+            <th style={{textAlign:"center",minWidth:110}}>Date held</th>
+            <th style={{minWidth:200}}>Comments</th>
+          </tr></thead>
+          <tbody><tr id="tdoc-kickoff">
+            <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{kickoffStep.label}</td>
+            <td>
+              <select value={val} onChange={function(e){updateStep(td.id,"kickoff","status",e.target.value);}}
+                className={"chip "+(ks==="held"?"s-approved-a":tenderStepClass("kickoff",val))} style={{padding:"3px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5}}>
+                {kickoffStep.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+              </select>
+            </td>
+            <td style={{textAlign:"center"}}>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={dates.target||""} onChange={function(e){updateStep(td.id,"kickoff","target",e.target.value);}} style={{border:"1px solid "+(late?"#f48fb1":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+              {late&&<div style={{fontSize:9,color:"#c62828",fontWeight:700,marginTop:2}}>⚠️ date passed, not held</div>}
+            </td>
+            <td style={{textAlign:"center"}}>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={dates.done||""} onChange={function(e){updateStep(td.id,"kickoff","done",e.target.value);}} style={{border:"1px solid "+(dates.done?"#2e7d32":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+            </td>
+            <td>
+              <textarea value={comment} onChange={function(e){updateStep(td.id,"kickoff","comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto",boxSizing:"border-box"}}/>
+              {linkCell(kickoffStep)}
+            </td>
+          </tr></tbody>
+        </table>
+      </React.Fragment>;
+    })()}
 
     </React.Fragment>}
 
@@ -1854,8 +1912,10 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
       var bars=cycleBars(l,who,d.kind.toUpperCase());
       var approved=last&&(last.code==="A"||last.code==="B");
       if(!approved){
-        var subD=d.kind==="sd"&&isValidDate(fSdS.date)?fSdS.date:d.theoSub;
-        var appD=d.kind==="sd"&&isValidDate(fSdA.date)?fSdA.date:d.theoApproval;
+        // The main SD follows the delivery cascade; a transmission keeps its own target.
+        var sdMain=d.id==="sd:_main";
+        var subD=sdMain&&isValidDate(fSdS.date)?fSdS.date:d.theoSub;
+        var appD=sdMain&&isValidDate(fSdA.date)?fSdA.date:d.theoApproval;
         if(!last){
           if(d.kind==="sd"&&isValidDate(ctEnd)&&isValidDate(subD)&&ctEnd<subD)
             bars.push(seg(ctEnd,subD,FLOW_COL.sub,"Forecast: sub prepares the shop drawings, submission "+fmtDate(subD),true,key+"fp"));
@@ -2039,9 +2099,20 @@ function tenderContractPill(td){
 // a/n = approved out of n when there are several, small number = highest revision.
 function FlowDocDots({td}){
   var docs=tenderDocs(td);
-  var KINDS=[["acc","ACC"],["ctr","Contract"],["sd","SD"],["mar","MAR"],["mss","MSS"],["wms","WMS"],["itp","ITP"]];
+  var KINDS=[["acc","ACC"],["ctr","Contract"],["sd","SD"],["mar","MAR"],["mss","MSS"],["wms","WMS"],["itp","ITP"],["kom","Kick off"]];
   var PILL={approved:["#e8f5e9","#1e6b3a"],pending:["#e8f0fe","#1a73e8"],returned:["#fff3e0","#b35c00"],none:["#f5f3ee","#9b968b"]};
+  var pillStyle=function(st){var cc=PILL[st];return {background:cc[0],color:cc[1],border:st==="none"?"1px dashed #c9c4b8":"1px solid "+cc[1]+"55",
+    borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px",whiteSpace:"nowrap",cursor:"help"};};
   return <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{KINDS.map(function(k){
+    if(k[0]==="kom"){
+      var ks=kickoffState(td),ksd=((td.stepDates||{}).kickoff)||{};
+      var ktip=ks==="na"?"Kick off meeting: N/A":ks==="held"?"Kick off meeting held"+(ksd.done?" "+fmtDate(ksd.done):""):
+        ks==="planned"?"Kick off meeting planned"+(ksd.target?" "+fmtDate(ksd.target):""):"Kick off meeting: not planned";
+      return <span key="kom" title={ktip} style={pillStyle(ks==="na"||ks==="held"?"approved":ks==="planned"?"pending":"none")}>{ks==="na"?"Kick off N/A":"Kick off"}</span>;
+    }
+    // A WMS or ITP set to N/A has nothing left to do: green, like an approved one.
+    if((k[0]==="wms"||k[0]==="itp")&&((td.steps||{})[k[0]]||"")==="N/A")
+      return <span key={k[0]} title={k[1]+": N/A"} style={pillStyle("approved")}>{k[1]} N/A</span>;
     if(k[0]==="ctr"){
       var cp=tenderContractPill(td),cc=PILL[cp.st];
       return <span key="ctr" title={cp.tip} style={{background:cc[0],color:cc[1],border:cp.st==="none"?"1px dashed #c9c4b8":"1px solid "+cc[1]+"55",
@@ -3315,7 +3386,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   var SUBMIT_RESULT_STEPS={
     acc:{text:function(t){return"Submit the Tender Result — "+t.title;},tag:function(){return"Procurement";}},
     itp:{text:function(t){return"Submit the ITP — "+t.title;},tag:function(t){return qualityTag(t.package||"");}},
-    wms:{text:function(t){return"Submit the WMS — "+t.title;},tag:function(){return null;}}
+    wms:{text:function(t){return"Submit the WMS — "+t.title;},tag:function(){return null;}},
+    kickoff:{text:function(t){return"Hold the kick off meeting — "+t.title;},tag:function(){return null;}}
   };
   function syncSubmitResultAction(updatedTd,step,targetVal,doneNow){
     var cfg=SUBMIT_RESULT_STEPS[step];
@@ -4241,15 +4313,18 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               var done=dates.done||"";
               var target=dates.target||"";
               var isNA=v==="N/A";
+              // The kick off meeting counts as held as soon as its date is filled, whatever the status.
+              if(s.key==="kickoff"&&!isNA&&done)v="Held";
               var isOverdue=target&&target<today()&&!done&&!v.toLowerCase().includes("approved")&&!isNA;
               var isEmpty=!v||v==="—";
               // A WMS or ITP with no status at all has simply not been done: say it, in red.
               var qualityMissing=(s.key==="wms"||s.key==="itp")&&isEmpty&&!td.cancelled;
+              if(s.key==="kickoff")cls=tenderStepClass(s.key,v);
               return <td key={s.key} className={s.key==="pkg"?"tcol-sep":""} style={{verticalAlign:"top",minWidth:90}}>
                 {qualityMissing
                   ?<span className="chip s-notdone" style={{fontSize:10,whiteSpace:"nowrap",fontWeight:700}}>Not done</span>
                   :isNA
-                  ?<span style={{fontSize:10,color:"#aaa",fontWeight:700,background:"#f5f5f5",padding:"1px 6px",borderRadius:4}}>N/A</span>
+                  ?<span title="Not applicable — nothing to do" style={{fontSize:10,color:"#2e7d32",fontWeight:700,background:"#e8f5e9",border:"1px solid #c8e6c9",padding:"1px 6px",borderRadius:4}}>N/A</span>
                   :!isEmpty
                   ?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>
                   :!target&&!done
@@ -4684,12 +4759,20 @@ function calcProcurement(td){
     var sdSubTargetAuto = addWorkDays(contractDone||contractTarget, getDur("sdAfterContract"));
     // The SD panel's own Target date takes priority over the computed one — a manual entry there
     // is a commitment, so the whole timeline downstream is rebuilt from it.
-    var sdSubTarget = ov.sdSub||td.sdTarget||sdSubTargetAuto;
-    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:td.sdDone||"", duration:14, manual:false, sd:true, autoDate:sdSubTargetAuto,
+    // With transmissions, the shop drawings are approved once the LAST one is: the cascade
+    // waits for the latest planned submission among those not sent yet (each one's own
+    // Target, else the SD panel's, else the computed one), then the latest still with the client.
+    var _trs = td.sdTransmissions||[];
+    var _trNotSent = _trs.filter(function(t){return !cyclesOfSD(t).length;});
+    var _trTarget = _trNotSent.map(function(t){return t.target||td.sdTarget||sdSubTargetAuto;}).filter(isValidDate).sort().pop()||"";
+    var _trLastSent = _trs.map(function(t){var l=cyclesOfSD(t),z=l[l.length-1];return z&&!z.code?z.submitted:"";}).filter(isValidDate).sort().pop()||"";
+    var sdSubTarget = ov.sdSub||_trTarget||td.sdTarget||sdSubTargetAuto;
+    var sdSubDone = _trNotSent.length?"":(_trs.length?(_trLastSent||td.sdDone||""):(td.sdDone||""));
+    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:sdSubDone, duration:14, manual:false, sd:true, autoDate:sdSubTargetAuto,
       overridden:!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
-      fromSdPanel:!ov.sdSub&&!!td.sdTarget});
+      fromSdPanel:!ov.sdSub&&(!!_trTarget||!!td.sdTarget)});
 
-    var sdAppTargetAuto = addWorkDays(td.sdDone||sdSubTarget, getDur("sdApproval"));
+    var sdAppTargetAuto = addWorkDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
     var sdAppTarget = ov.sdApp||sdAppTargetAuto;
     steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
       review:td.sdReview||"", autoDate:sdAppTargetAuto, overridden:!!(ov.sdApp&&ov.sdApp!==sdAppTargetAuto)});
@@ -6682,7 +6765,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,memory,setMem
   }
 
   function statusCell(r){
-    if(r.na)return <span style={{fontSize:10,color:"#aaa",fontWeight:700,background:"#f5f5f5",padding:"1px 6px",borderRadius:4}}>N/A</span>;
+    if(r.na)return <span title="Not applicable — nothing to do" style={{fontSize:10,color:"#2e7d32",fontWeight:700,background:"#e8f5e9",border:"1px solid #c8e6c9",padding:"1px 6px",borderRadius:4}}>N/A</span>;
     if(r.key==="late")return <span style={{fontSize:11,fontWeight:700,color:"#c62828"}}
       title="Not submitted and the due date has passed">⚠ Not submitted · due {fmtDate(r.due)}</span>;
     var col={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"}[r.s.state];
