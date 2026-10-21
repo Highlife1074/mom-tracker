@@ -418,10 +418,13 @@ function tenderDocs(td){
   var ct=(td.stepDates||{}).contract||{};
   var ctBase=ct.signedDone||ct.signedAllDone||th("contract");
   var sdSub=isValidDate(ctBase)?addWorkingDays(ctBase,getDur("sdAfterContract")):"";
+  // The approval is expected from the submission date actually planned: the transmission's
+  // own target, then the tender's SD target, then the computed one.
   (td.sdTransmissions||[]).forEach(function(t,i){
+    var tSub=t.target||td.sdTarget||sdSub;
     out.push({id:"sd:"+t.id,group:"Shop drawings",kind:"sd",label:t.ref||("SD "+(i+1)),sub:t.description||"",
-      cycles:cyclesOfSD(t),theoSub:t.target||sdSub,
-      theoApproval:isValidDate(sdSub)?addWorkingDays(sdSub,getDur("sdApproval")):"",
+      cycles:cyclesOfSD(t),theoSub:tSub,
+      theoApproval:isValidDate(tSub)?addWorkingDays(tSub,getDur("sdApproval")):"",
       patchFor:function(list){
         var tl=(td.sdTransmissions||[]).map(function(x){return x.id===t.id?sdWithCycles(x,list):x;});
         return Object.assign({sdTransmissions:tl},_sdAggregate(tl));
@@ -432,7 +435,7 @@ function tenderDocs(td){
   if(!(td.sdTransmissions||[]).length&&(td.hasSD||td.sdDone||td.sdApprovalDone||td.sdStatus||(td.sdCycles||[]).length)){
     out.push({id:"sd:_main",group:"Shop drawings",kind:"sd",label:"SD",sub:"whole tender",
       cycles:cyclesOfSdMain(td),theoSub:td.sdTarget||sdSub,
-      theoApproval:isValidDate(sdSub)?addWorkingDays(sdSub,getDur("sdApproval")):"",
+      theoApproval:isValidDate(td.sdTarget||sdSub)?addWorkingDays(td.sdTarget||sdSub,getDur("sdApproval")):"",
       patchFor:function(list){return sdMainWithCycles(td,list);}});
   }
   // materials: the MAR, and the MSS when the material needs one (or already has a history).
@@ -1909,8 +1912,10 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
       var bars=cycleBars(l,who,d.kind.toUpperCase());
       var approved=last&&(last.code==="A"||last.code==="B");
       if(!approved){
-        var subD=d.kind==="sd"&&isValidDate(fSdS.date)?fSdS.date:d.theoSub;
-        var appD=d.kind==="sd"&&isValidDate(fSdA.date)?fSdA.date:d.theoApproval;
+        // The main SD follows the delivery cascade; a transmission keeps its own target.
+        var sdMain=d.id==="sd:_main";
+        var subD=sdMain&&isValidDate(fSdS.date)?fSdS.date:d.theoSub;
+        var appD=sdMain&&isValidDate(fSdA.date)?fSdA.date:d.theoApproval;
         if(!last){
           if(d.kind==="sd"&&isValidDate(ctEnd)&&isValidDate(subD)&&ctEnd<subD)
             bars.push(seg(ctEnd,subD,FLOW_COL.sub,"Forecast: sub prepares the shop drawings, submission "+fmtDate(subD),true,key+"fp"));
@@ -4754,12 +4759,20 @@ function calcProcurement(td){
     var sdSubTargetAuto = addWorkDays(contractDone||contractTarget, getDur("sdAfterContract"));
     // The SD panel's own Target date takes priority over the computed one — a manual entry there
     // is a commitment, so the whole timeline downstream is rebuilt from it.
-    var sdSubTarget = ov.sdSub||td.sdTarget||sdSubTargetAuto;
-    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:td.sdDone||"", duration:14, manual:false, sd:true, autoDate:sdSubTargetAuto,
+    // With transmissions, the shop drawings are approved once the LAST one is: the cascade
+    // waits for the latest planned submission among those not sent yet (each one's own
+    // Target, else the SD panel's, else the computed one), then the latest still with the client.
+    var _trs = td.sdTransmissions||[];
+    var _trNotSent = _trs.filter(function(t){return !cyclesOfSD(t).length;});
+    var _trTarget = _trNotSent.map(function(t){return t.target||td.sdTarget||sdSubTargetAuto;}).filter(isValidDate).sort().pop()||"";
+    var _trLastSent = _trs.map(function(t){var l=cyclesOfSD(t),z=l[l.length-1];return z&&!z.code?z.submitted:"";}).filter(isValidDate).sort().pop()||"";
+    var sdSubTarget = ov.sdSub||_trTarget||td.sdTarget||sdSubTargetAuto;
+    var sdSubDone = _trNotSent.length?"":(_trs.length?(_trLastSent||td.sdDone||""):(td.sdDone||""));
+    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:sdSubDone, duration:14, manual:false, sd:true, autoDate:sdSubTargetAuto,
       overridden:!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
-      fromSdPanel:!ov.sdSub&&!!td.sdTarget});
+      fromSdPanel:!ov.sdSub&&(!!_trTarget||!!td.sdTarget)});
 
-    var sdAppTargetAuto = addWorkDays(td.sdDone||sdSubTarget, getDur("sdApproval"));
+    var sdAppTargetAuto = addWorkDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
     var sdAppTarget = ov.sdApp||sdAppTargetAuto;
     steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
       review:td.sdReview||"", autoDate:sdAppTargetAuto, overridden:!!(ov.sdApp&&ov.sdApp!==sdAppTargetAuto)});
