@@ -261,6 +261,192 @@ function baselineVariance(bl,row,wl){
   return{bStart:bStart,bEnd:bEnd,start:weeksBetween(bStart,cur.startWeek),finish:weeksBetween(bEnd,cur.endWeek),cStart:cur.startWeek,cEnd:cur.endWeek};
 }
 
+// ---- Mitigated programme ----------------------------------------------------
+// At a cut-off, the tasks behind on their ENTERED progress are re-planned from the cut-off,
+// and the tasks linked after them follow — but only as far as their own planned start
+// leaves no room: the gap (float) absorbs the delay first. The result is saved as a new
+// schedule next to the original, never over it.
+// A mitigated programme is a what-if: it creates no actions and no readiness checks, and
+// does not move the tenders' start on site (every reader of the schedules skips it).
+function isMitigatedSchedule(sc){return !!(sc&&sc.mitigatedFrom);}
+// Progress entered for a task by the cut-off: the last weekly entry before it, else the
+// manual %. Painted actual weeks do not count. null = nothing entered.
+function mitEnteredProgress(row,cutoff){
+  var wp=row.weekProgress||{};
+  var keys=Object.keys(wp).filter(function(k){return wp[k]!==""&&wp[k]!==null&&wp[k]!==undefined;}).sort();
+  if(keys.length){
+    var past=keys.filter(function(k){return k<cutoff;});
+    return past.length?Math.max(0,Math.min(100,Number(wp[past[past.length-1]])||0)):0;
+  }
+  if(row.progress!==undefined&&row.progress!==null&&row.progress!=="")return Math.max(0,Math.min(100,Number(row.progress)||0));
+  return null;
+}
+// cutoff: a Monday. Weeks before it are the past; the remaining work is placed from it on.
+// Counting is in working weeks (neutralised weeks are skipped), as for the critical path.
+//   late task in progress   planned weeks before the cut-off kept, the work left (duration ×
+//                           (100 − progress) %) painted from the cut-off, links ignored
+//   late task not started   the whole bar moves to the cut-off, or after its predecessor
+//   task after the cut-off  moves only when its predecessor (+ gap) now finishes after its start
+function mitigateSchedule(sc,cutoff){
+  var wl=scheduleWeeks(sc);
+  if(!wl.length)return null;
+  var hol=sc.holidayWeeks||[];
+  var all=[];for(var i=0;i<104;i++)all.push(xerAddDays(wl[0],7*i));   // room to push past the last week shown
+  var work=all.filter(function(w){return hol.indexOf(w)<0;});
+  var wIdx={};work.forEach(function(w,i){wIdx[w]=i;});
+  var c=0;while(c<work.length&&work[c]<cutoff)c++;
+  var rows=sc.rows||[];
+  var byId={},info={},succ={},room={},cat="";
+  rows.forEach(function(r){
+    if(r.kind==="section"){cat="";return;}
+    if(r.kind==="category"){cat=r.label||"";return;}
+    byId[r.id]=r;room[r.id]=cat;
+    var pi=Object.keys(r.cells||{}).filter(function(w){var v=r.cells[w];return (v==="plan"||v==="both")&&wIdx[w]!==undefined;})
+      .map(function(w){return wIdx[w];}).sort(function(a,b){return a-b;});
+    info[r.id]={pi:pi,s:pi.length?pi[0]:-1,f:pi.length?pi[pi.length-1]+1:-1,dur:pi.length?pi[pi.length-1]+1-pi[0]:0,p:mitEnteredProgress(r,cutoff)};
+  });
+  Object.keys(byId).forEach(function(id){var a=byId[id].afterId;if(a&&byId[a])(succ[a]=succ[a]||[]).push(id);});
+  var res={},state={};
+  function predFinish(r){
+    if(!r.afterId||!byId[r.afterId])return -Infinity;
+    return fwd(r.afterId)+(Number(r.lagWeeks)||0);
+  }
+  function fwd(id){
+    if(res[id])return res[id].nf;
+    var x=info[id],r=byId[id];
+    if(state[id]===1)return x.f;                          // cycle guard
+    state[id]=1;
+    var o={mode:"",nf:x.f,delta:0,rem:0,by:""};
+    var p=x.p===null?0:x.p;
+    if(!x.pi.length){o.nf=predFinish(r);}                 // no bar: passes its predecessor's finish on
+    else if(p>=100){o.nf=Math.min(x.f,c);}                // done: holds nothing up
+    else if(x.s<c&&p>0){                                  // in progress
+      var left=x.pi.filter(function(k){return k>=c;}).length;
+      var rem=Math.max(1,Math.ceil(x.dur*(100-p)/100-1e-9));
+      if(left<rem){o.mode="late";o.rem=rem;o.nf=c+rem;}
+    }else{                                                // not started yet
+      var start=x.s;
+      if(x.s<c){start=c;o.mode="late";}
+      var pf=predFinish(r);
+      if(pf>start){start=pf;if(!o.mode){o.mode="pushed";o.by=r.afterId;}}
+      if(start!==x.s){o.delta=start-x.s;o.nf=x.f+o.delta;if(!o.mode)o.mode="pushed";}
+    }
+    state[id]=2;res[id]=o;
+    return o.nf;
+  }
+  Object.keys(byId).forEach(fwd);
+
+  var origEnd=-1,newEnd=-1,lastIdx=-1,changes=[];
+  var outRows=rows.map(function(r){
+    var x=info[r.id],o=res[r.id];
+    if(!x||!x.pi.length)return r;
+    origEnd=Math.max(origEnd,x.f);newEnd=Math.max(newEnd,o.nf);
+    var cells=r.cells||{};
+    if(o.mode){
+      var nc={};
+      Object.keys(cells).forEach(function(w){
+        var v=cells[w],act=(v==="actual"||v==="both"),pl=(v==="plan"||v==="both");
+        if(act)nc[w]=nc[w]==="plan"?"both":"actual";
+        if(!pl)return;
+        if(o.rem){if(w<cutoff)nc[w]=nc[w]==="actual"?"both":"plan";return;}
+        var k=wIdx[w];if(k===undefined)return;            // a planned cell on a neutralised week is dropped
+        var t=work[k+o.delta];
+        if(t)nc[t]=nc[t]==="actual"||nc[t]==="both"?"both":"plan";
+      });
+      if(o.rem)for(var k=c;k<c+o.rem;k++){var t=work[k];nc[t]=nc[t]==="actual"||nc[t]==="both"?"both":"plan";}
+      cells=nc;
+      changes.push({id:r.id,label:r.label||"untitled",room:room[r.id],mode:o.mode,p:x.p,
+        expected:x.dur?Math.min(100,Math.round(Math.max(0,Math.min(c,x.f)-x.s)/x.dur*100)):0,
+        by:o.by?(byId[o.by].label||"untitled"):"",oldEnd:work[x.f-1],newEnd:work[o.nf-1],delay:o.nf-x.f,
+        noSucc:!(succ[r.id]||[]).length});
+    }
+    Object.keys(cells).forEach(function(w){if(cells[w]==="plan"||cells[w]==="both"){var k=all.indexOf(w);if(k>lastIdx)lastIdx=k;}});
+    return o.mode?Object.assign({},r,{cells:cells},spanFromCells(cells,all,r)):r;
+  });
+  changes.sort(function(a,b){return b.delay-a.delay||(a.mode==="late"?-1:1);});
+  var weeksNeeded=lastIdx+1;
+  return{cutoff:cutoff,rows:outRows,changes:changes,
+    origEnd:origEnd>0?work[origEnd-1]:"",newEnd:newEnd>0?work[newEnd-1]:"",slip:Math.max(0,newEnd-origEnd),
+    weeksNeeded:weeksNeeded,tooLong:weeksNeeded>52};
+}
+function MitigateModal({sc,canEdit,onClose,onSave}){
+  var wl=scheduleWeeks(sc).filter(function(w){return (sc.holidayWeeks||[]).indexOf(w)<0;});
+  var t=today();
+  const [cutoff,setCutoff]=useState(function(){
+    var cur=wl.filter(function(w){return w<=t;});
+    return cur.length?cur[cur.length-1]:(wl[0]||"");
+  });
+  var r=cutoff?mitigateSchedule(sc,cutoff):null;
+  var late=r?r.changes.filter(function(x){return x.mode==="late";}):[];
+  var pushed=r?r.changes.filter(function(x){return x.mode==="pushed";}):[];
+  var noProg=late.filter(function(x){return x.p===null;}).length;
+  var dead=late.filter(function(x){return x.noSucc;}).length;
+  var name="Mitigated programme "+fmtDate(cutoff);
+  function card(lbl,val,sub,col){
+    return <div style={{flex:1,minWidth:130,padding:"8px 10px",borderRadius:8,background:"#fafaf8",border:"1px solid #e8e6df"}}>
+      <div style={{fontSize:9,fontWeight:800,color:"#9b968b",textTransform:"uppercase",letterSpacing:".06em"}}>{lbl}</div>
+      <div style={{fontSize:17,fontWeight:700,color:col||"var(--ink,#16181d)"}}>{val}</div>
+      {sub&&<div style={{fontSize:10,color:"#888"}}>{sub}</div>}
+    </div>;
+  }
+  return <div className="overlay" onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:760}}>
+      <div className="modal-hdr">
+        <div className="modal-title">⏩ Reschedule at cut-off — {sc.title}</div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+      </div>
+      <div className="modal-body">
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
+          <span style={{fontSize:12,fontWeight:700}}>Cut-off</span>
+          <select value={cutoff} onChange={function(e){setCutoff(e.target.value);}} style={{width:"auto",padding:"4px 8px",fontSize:12}}>
+            {wl.map(function(w){return <option key={w} value={w}>w/c {fmtDate(w)}</option>;})}
+          </select>
+          <span style={{fontSize:11,color:"#888",flex:1,minWidth:200}}>Progress entered before this week counts. A task behind on it is re-planned from the cut-off; the tasks linked after it follow when their float runs out.</span>
+        </div>
+        {!r?<div style={{color:"#bbb",fontSize:12}}>This schedule has no weeks.</div>:<React.Fragment>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+            {card("Finish",r.newEnd?"w/c "+fmtDate(r.newEnd):"—",r.origEnd?"was w/c "+fmtDate(r.origEnd):"",r.slip>0?"var(--red,#b3302a)":"var(--green,#2e7d32)")}
+            {card("Impact",r.slip>0?"+"+r.slip+" wk"+(r.slip!==1?"s":""):"none","working weeks on the finish",r.slip>0?"var(--red,#b3302a)":"var(--green,#2e7d32)")}
+            {card("Late tasks",late.length,noProg?noProg+" with no progress entered (counted as 0 %)":"")}
+            {card("Pushed by links",pushed.length,"")}
+          </div>
+          {dead>0&&<div style={{fontSize:11,padding:"6px 10px",borderRadius:6,background:"#fff3e0",color:"#b35c00",marginBottom:8}}>
+            ⚠ {dead} late task{dead!==1?"s have":" has"} no task linked after {dead!==1?"them":"it"}: the delay pushes nothing. Check the links, or the impact looks smaller than it is.</div>}
+          {r.tooLong&&<div style={{fontSize:11,padding:"6px 10px",borderRadius:6,background:"var(--red-soft,#fbe6e8)",color:"var(--red,#b3302a)",marginBottom:8}}>
+            ✗ The re-planned schedule needs {r.weeksNeeded} weeks from its start: a schedule holds 52 at most. It cannot be saved as it is.</div>}
+          {r.changes.length===0
+            ?<div style={{fontSize:12,color:"var(--green,#2e7d32)",padding:"12px 0"}}>✓ No task is behind its plan at this cut-off: nothing moves.</div>
+            :<div style={{maxHeight:"42vh",overflowY:"auto",border:"1px solid #e8e6df",borderRadius:8}}>
+              <table className="tbl" style={{width:"100%",fontSize:11}}>
+                <thead><tr><th>Task</th><th>Why</th><th>Finish</th><th style={{textAlign:"right"}}>Delay</th></tr></thead>
+                <tbody>{r.changes.map(function(x){
+                  return <tr key={x.id}>
+                    <td><b>{x.label}</b>{x.room?<span style={{color:"#999"}}> · {x.room}</span>:null}</td>
+                    <td>{x.mode==="late"
+                      ?<span style={{color:"var(--red,#b3302a)"}}>Late: {x.p===null?"no progress entered":x.p+" %"} (expected {x.expected} %)</span>
+                      :<span style={{color:"#b35c00"}}>After “{x.by}”</span>}</td>
+                    <td style={{whiteSpace:"nowrap"}}>{fmtDate(x.oldEnd)} → <b>{fmtDate(x.newEnd)}</b></td>
+                    <td style={{textAlign:"right",fontWeight:700,color:x.delay>0?"var(--red,#b3302a)":"#888"}}>{x.delay>0?"+"+x.delay:x.delay} wk</td>
+                  </tr>;
+                })}</tbody>
+              </table>
+            </div>}
+          <div style={{fontSize:10.5,color:"#888",marginTop:8,lineHeight:1.45}}>
+            Saving creates “{name}” next to “{sc.title}”, which stays as it is. The original is kept in it as a baseline, so every task shows how far it moved. Edit the mitigated programme freely afterwards to recover time.
+            It is a what-if: it creates no actions and no readiness checks, and does not change the tenders’ start on site.
+          </div>
+        </React.Fragment>}
+      </div>
+      <div className="modal-footer">
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-pri" disabled={!r||r.changes.length===0||r.tooLong||canEdit===false}
+          title={canEdit===false?"Only the zone leaders can create a schedule here":""}
+          onClick={function(){onSave(r,name);}}>💾 Save as {name}</button>
+      </div>
+    </div>
+  </div>;
+}
+
 // ---- Primavera P6 export (.xer) ----------------------------------------------
 // One schedule becomes one P6 project:
 //   WBS        project › section › room (category)
@@ -522,6 +708,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     return function(){window.removeEventListener("keydown",onKey);};
   },[fullScreen]);
   const [showDocs,setShowDocs]=useState(false);
+  const [showMit,setShowMit]=useState(false);       // "Reschedule at cut-off" window
   const [newDoc,setNewDoc]=useState({title:"",url:"",kind:"Setting-out plan",roomId:""});
   // Keep the pinned scrollbar and the real one in step, without bouncing between the two.
   function syncScroll(from){
@@ -726,6 +913,28 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   function addSchedule(){
     var ns=newSchedule({zone:curZone,title:curZone+" schedule"});
     saveSchedules([...(schedules||[]),ns]);
+    setSelId(ns.id);
+  }
+  // The re-planned rows become a NEW schedule next to this one, with fresh ids (links kept)
+  // and this schedule frozen in it as its baseline, so each task shows how far it moved.
+  function saveMitigated(res,name){
+    if(!sc||!res)return;
+    if(blockIfReadOnly())return;
+    if(canEdit===false){safeAlert("Only the zone leaders can modify this schedule.");return;}
+    var idMap={};
+    res.rows.forEach(function(r){idMap[r.id]=uuid();});
+    var rows=res.rows.map(function(r){return Object.assign({},r,{id:idMap[r.id],afterId:idMap[r.afterId]||""});});
+    var snap=baselineSnapshot(sc),blRows={};
+    Object.keys(snap.rows).forEach(function(id){if(idMap[id])blRows[idMap[id]]=snap.rows[id];});
+    var by=window._currentUser?window._currentUser.name:"";
+    var bl={id:uuid(),name:"Original — "+(sc.title||"schedule"),date:todayStr,by:by,rows:blRows};
+    var ns=Object.assign({},sc,{id:uuid(),title:name,rows:rows,
+      weeks:Math.max(Number(sc.weeks)||12,res.weeksNeeded),
+      baselines:[bl],activeBaselineId:bl.id,
+      mitigatedFrom:sc.id,mitigatedFromTitle:sc.title||"",cutOff:res.cutoff,
+      createdAt:today(),updatedAt:today(),updatedBy:by});
+    saveSchedules([...(schedules||[]),ns]);
+    setShowMit(false);
     setSelId(ns.id);
   }
   function delSchedule(id){
@@ -1000,10 +1209,12 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   function pushStartOnSiteFromSchedule(tenderRefs,newRows,schedId){
     if(!saveTenders)return;
     schedId=schedId||(sc?sc.id:"");
+    if(isMitigatedSchedule((schedules||[]).find(function(s){return s.id===schedId;})))return;   // a what-if moves no tender
     var ids=(Array.isArray(tenderRefs)?tenderRefs:[tenderRefs]).filter(Boolean);
     if(ids.length===0)return;
     var allRows=[];
     (schedules||[]).forEach(function(s){
+      if(isMitigatedSchedule(s))return;
       var rs=s.id===schedId&&newRows?newRows:(s.rows||[]);
       rs.forEach(function(r){allRows.push(r);});
     });
@@ -1054,7 +1265,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
 
     // 2. open one action per late row, if none exists yet
     var created=0;
-    (sc.rows||[]).forEach(function(r){
+    (isMitigatedSchedule(sc)?[]:(sc.rows||[])).forEach(function(r){   // a what-if opens no action
       var pr=procRisk(r);
       if(!pr||!pr.late)return;
       var key=procRiskKey(r.id,pr.tender.id);
@@ -2374,6 +2585,12 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     {!sc
       ?<div className="empty"><div className="empty-ico">📅</div><div className="empty-txt">No schedule for {curZone} yet. Create one to plan work week by week.</div></div>
       :<div>
+        {isMitigatedSchedule(sc)&&<div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:10,padding:"7px 12px",borderRadius:8,background:"#eceff1",border:"1px solid #cfd8dc",fontSize:11.5,color:"#37474f"}}>
+          <b>⏩ Mitigated programme</b>
+          <span>cut-off w/c {fmtDate(sc.cutOff)}, from “{sc.mitigatedFromTitle||"original schedule"}”{zoneScheds.some(function(s){return s.id===sc.mitigatedFrom;})?"":" (deleted since)"}.</span>
+          <span style={{color:"#78909c"}}>A what-if: no actions, no readiness checks, no change to the tenders’ start on site.</span>
+          {zoneScheds.some(function(s){return s.id===sc.mitigatedFrom;})&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setSelId(sc.mitigatedFrom);}}>↩ Open the original</button>}
+        </div>}
         {showSettings&&<div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginBottom:10,padding:"10px 12px",background:"#fafaf8",borderRadius:8,border:"1px solid #e8e6df"}}>
           <div style={{flex:2,minWidth:170}}>
             <label style={{fontSize:9,fontWeight:700,color:"#888",textTransform:"uppercase"}}>Title</label>
@@ -2640,6 +2857,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               if(!cp){safeAlert("No critical path to show.\n\nTasks need a duration (painted bars or a start/end week) and at least one “starts after” link.");return;}
               critCache.current={sc:sc,cp:cp};setCritOn(true);
             }} style={{padding:"2px 8px",fontSize:10,borderColor:critPath?"":"var(--amber,#b35c00)",color:critPath?"":"var(--amber,#b35c00)",fontWeight:700}}>🎯 Critical path</button>
+          <button className="btn btn-sm" onClick={function(){setShowMit(true);}}
+            title="Late tasks at a cut-off: push them and the tasks linked after them, see the impact on the finish, and save the result as a Mitigated programme next to this schedule"
+            style={{padding:"2px 8px",fontSize:10,fontWeight:700}}>⏩ Reschedule at cut-off</button>
           </span>
           <span style={{display:"flex",gap:6,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
             <span style={{fontSize:9,fontWeight:700,color:"var(--ink-4,#9b968b)",textTransform:"uppercase",letterSpacing:".06em",marginRight:2}}>View</span>
@@ -3308,6 +3528,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             </div>}
           </div>;
         })()}
+        {showMit&&<MitigateModal sc={sc} canEdit={canEdit} onClose={function(){setShowMit(false);}} onSave={saveMitigated}/>}
         {showDocs&&<div className="sched-noprint" style={{position:"fixed",inset:0,zIndex:960,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
           onClick={function(){setShowDocs(false);}}>
           <div onClick={function(e){e.stopPropagation();}} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:640,maxWidth:"100%",maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>

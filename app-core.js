@@ -4558,6 +4558,7 @@ function App(){
     if(!schedules||!tenders||tenders.length===0)return;
     var earliest={};
     schedules.forEach(function(sc){
+      if(isMitigatedSchedule(sc))return;                  // a what-if moves no tender
       (sc.rows||[]).forEach(function(r){
         if(!r.tenderRef||!r.startWeek)return;
         if(!earliest[r.tenderRef]||r.startWeek<earliest[r.tenderRef])earliest[r.tenderRef]=r.startWeek;

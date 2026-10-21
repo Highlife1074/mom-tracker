@@ -3762,6 +3762,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   // Driven by the schedules: earliest start week among the tasks linked to this tender.
                   var linked=[];
                   (window._ppSchedules||[]).forEach(function(sc){
+                    if(isMitigatedSchedule(sc))return;
                     (sc.rows||[]).forEach(function(r){if(r.tenderRef===td.id&&r.startWeek)linked.push({sc:sc,r:r});});
                   });
                   if(linked.length>0){

@@ -254,7 +254,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
 
   // Rooms and schedule categories are kept 1:1 — creating one creates the other.
   function zoneSchedule(){
-    var list=(schedules||[]).filter(function(s){return s.zone===curZone;});
+    var list=(schedules||[]).filter(function(s){return s.zone===curZone&&!isMitigatedSchedule(s);});
     return list.length?list[0]:null;
   }
   function addRoom(){
@@ -277,12 +277,12 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
   }
   // Manual repair: create a room for every category of this zone that has no valid linked room
   function syncRoomsFromCategories(){
-    var zoneScheds=(schedules||[]).filter(function(s){return s.zone===curZone;});
+    var zoneScheds=(schedules||[]).filter(function(s){return s.zone===curZone&&!isMitigatedSchedule(s);});
     if(zoneScheds.length===0){safeAlert("No schedule found for "+curZone+".");return;}
     var allRooms=(rooms||[]).slice();
     var created=0;
     var updatedScheds=(schedules||[]).map(function(s){
-      if(s.zone!==curZone)return s;
+      if(s.zone!==curZone||isMitigatedSchedule(s))return s;
       var changed=false;
       var rows=(s.rows||[]).map(function(r){
         if(r.kind!=="category")return r;
@@ -360,7 +360,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
   // Progress of a room = share of its linked schedule rows that are fully done (actual >= planned)
   function roomProgress(roomId){
     var rows=[];
-    (schedules||[]).filter(function(s){return s.zone===curZone;}).forEach(function(s){
+    (schedules||[]).filter(function(s){return s.zone===curZone&&!isMitigatedSchedule(s);}).forEach(function(s){
       (s.rows||[]).forEach(function(r){if(r.roomId===roomId&&r.kind!=="category")rows.push(r);});
     });
     if(rows.length===0)return null;
@@ -415,7 +415,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
   var zonePackages=(function(){
     var set={};
     zoneTasks.forEach(function(t){if(t.package)set[t.package]=1;});
-    (schedules||[]).filter(function(sc){return sc.zone===curZone;}).forEach(function(sc){
+    (schedules||[]).filter(function(sc){return sc.zone===curZone&&!isMitigatedSchedule(sc);}).forEach(function(sc){
       (sc.rows||[]).forEach(function(r){
         if(!r.tenderRef)return;
         var td=(tenders||[]).find(function(x){return x.id===r.tenderRef;});

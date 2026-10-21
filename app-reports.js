@@ -72,7 +72,7 @@ function readinessWindows(fromDate){
 // the one typed on the task, else the one awarded on its tender (tenders optional).
 function readinessStarting(zone,schedules,win,tenders){
   var out=[];
-  (schedules||[]).filter(function(sc){return sc.zone===zone;}).forEach(function(sc){
+  (schedules||[]).filter(function(sc){return sc.zone===zone&&!isMitigatedSchedule(sc);}).forEach(function(sc){
     var curRoom="",curSection="";
     (sc.rows||[]).forEach(function(r){
       if(r.kind==="section"){curSection=r.label||"";curRoom="";return;}
@@ -148,7 +148,7 @@ function readinessMissingActions(zone,schedules,readiness,tasks,owner,fromDate,t
 }
 function buildZoneWeeklyReport(zone,schedules,rooms,tasks,tenders,opts){
   var t=today();
-  var scs=(schedules||[]).filter(function(x){return x.zone===zone;});
+  var scs=(schedules||[]).filter(function(x){return x.zone===zone&&!isMitigatedSchedule(x);});
   var zTasks=(tasks||[]).filter(function(x){return x.zone===zone;});
   var zRooms=(rooms||[]).filter(function(x){return x.zone===zone;});
 
