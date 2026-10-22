@@ -1009,37 +1009,40 @@ function momFileName(m){
 // accent3 #80ABC6 the section band, dk2 #404140 the ink, lt2 #F1F1F0 the light fill.
 const MOM_CSS=`
 :root{--mom-blue:#00578c;--mom-mid:#4081a9;--mom-light:#80abc6;--mom-ink:#404140;--mom-tint:#f1f1f0;}
-body{color:var(--mom-ink)}
-.mom-head{display:flex;align-items:flex-start;gap:16px;border-bottom:3px solid var(--mom-blue);padding:4px 0 12px;margin-bottom:16px;page-break-inside:avoid;page-break-after:avoid}
+/* Minutes print dense: narrow margins, tight rows, so a meeting fits on as few pages as possible */
+@page{size:A4 portrait;margin:10mm 9mm 11mm}
+body{color:var(--mom-ink);font-size:11px;line-height:1.35}
+.mom-head{display:flex;align-items:flex-start;gap:14px;border-bottom:3px solid var(--mom-blue);padding:2px 0 7px;margin-bottom:8px;page-break-inside:avoid;page-break-after:avoid}
 .mom-head .t{flex:1}
 .mom-head h1{font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;font-weight:700;
-  font-size:26px;color:var(--mom-blue);letter-spacing:-.01em;line-height:1.05}
-.mom-head .sub{font-size:12px;color:var(--mom-ink);opacity:.75;margin-top:3px}
-.mom-head .num{border:2px solid var(--mom-blue);border-radius:6px;padding:8px 14px;text-align:center;min-width:120px}
-.mom-head .num b{display:block;font-family:'IBM Plex Mono',monospace;font-size:17px;color:var(--mom-blue);line-height:1.1}
+  font-size:21px;color:var(--mom-blue);letter-spacing:-.01em;line-height:1.05}
+.mom-head .sub{font-size:11px;color:var(--mom-ink);opacity:.75;margin-top:2px}
+.mom-head .num{border:2px solid var(--mom-blue);border-radius:6px;padding:4px 12px;text-align:center;min-width:110px}
+.mom-head .num b{display:block;font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--mom-blue);line-height:1.1}
 .mom-head .num span{font-size:9px;text-transform:uppercase;letter-spacing:.1em;opacity:.7}
-h2{font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;font-size:14px;font-weight:700;
-  color:#fff;background:var(--mom-blue);padding:5px 11px;border-radius:4px;margin:20px 0 8px;
+h2{font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;
+  color:#fff;background:var(--mom-blue);padding:3px 9px;border-radius:4px;margin:10px 0 5px;
   text-transform:uppercase;letter-spacing:.06em;border:none;page-break-after:avoid;page-break-inside:avoid}
-table{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:11.5px}
-th{background:var(--mom-blue);color:#fff;font-weight:600;text-align:left;padding:6px 9px;
-  border:1px solid var(--mom-blue);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
-td{border:1px solid #ccd6de;padding:6px 9px;vertical-align:top}
+table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:10.5px}
+th{background:var(--mom-blue);color:#fff;font-weight:600;text-align:left;padding:3px 6px;
+  border:1px solid var(--mom-blue);font-size:9px;text-transform:uppercase;letter-spacing:.05em}
+td{border:1px solid #ccd6de;padding:3px 6px;vertical-align:top}
 tr:nth-child(even) td{background:#fafbfc}
-table.hdr th{width:130px;background:var(--mom-tint);color:var(--mom-ink);border:1px solid #ccd6de;
-  text-transform:none;letter-spacing:0;font-size:11px}
+table.hdr th{width:92px;background:var(--mom-tint);color:var(--mom-ink);border:1px solid #ccd6de;
+  text-transform:none;letter-spacing:0;font-size:10px}
 table.hdr td{font-weight:600}
 table.hdr tr:nth-child(even) td{background:#fff}
 tr.sec td{background:var(--mom-light)!important;color:#0b2d45;font-weight:700;border-color:var(--mom-mid)}
-tr.sec td b{font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;letter-spacing:.03em;text-transform:uppercase;font-size:12px}
+tr.sec td b{font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;letter-spacing:.03em;text-transform:uppercase;font-size:11px}
+tr.sec td .none{font-weight:400;margin-left:8px;color:#0b2d45;opacity:.65}
 td.no{font-family:'IBM Plex Mono',monospace;color:var(--mom-mid);font-weight:600;white-space:nowrap}
 td.late{color:#b3302a;font-weight:700}
 .st{display:inline-block;padding:1px 8px;border-radius:10px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .st-open{background:#fdf1e0;color:#b35c00}.st-ongoing{background:#e8f0fe;color:#0f5299}.st-closed{background:#e6f2e9;color:#1e6b3a}
 .none{color:#9b968b;font-style:italic}
-.foot{margin-top:24px;border-top:1px solid #ccd6de;padding-top:8px;font-size:9px;color:#9b968b;
+.foot{margin-top:10px;border-top:1px solid #ccd6de;padding-top:5px;font-size:9px;color:#9b968b;
   display:flex;justify-content:space-between}
-td.fin-cell{padding:6px 0 8px!important;background:#fff!important}
+td.fin-cell{padding:3px 0 4px!important;background:#fff!important}
 table.fin{margin:0}
 table.fin td{background:#fff!important}
 table.fin td.l{width:42%}
@@ -1059,7 +1062,8 @@ function buildMomHtml(m){
   var body="",openCount=0;
   (m.sections||[]).forEach(function(sec){
     var items=(sec.items||[]).filter(function(it){return (it.notes||"").trim()||(it.actionWith||"").trim();});
-    body+='<tr class="sec"><td class="no">'+esc(sec.index)+'</td><td colspan="4"><b>'+esc(sec.title)+'</b></td></tr>';
+    var empty=sec.kind!=="finance"&&items.length===0;
+    body+='<tr class="sec"><td class="no">'+esc(sec.index)+'</td><td colspan="4"><b>'+esc(sec.title)+'</b>'+(empty?'<span class="none">— nothing raised</span>':'')+'</td></tr>';
     if(sec.kind==="finance"){
       body+='<tr><td></td><td colspan="4" class="fin-cell"><table class="fin">'+
         momFinRows(sec.fin).map(function(r){
@@ -1068,7 +1072,7 @@ function buildMomHtml(m){
         }).join("")+'</table></td></tr>';
       if(items.length===0)return;
     }
-    if(items.length===0){body+='<tr><td></td><td colspan="4" class="none">Nothing raised</td></tr>';return;}
+    if(items.length===0)return;
     items.forEach(function(it,k){
       var late=it.dueBy&&it.dueBy<today()&&it.status!=="closed";
       if((it.actionWith||"").trim()&&it.status!=="closed")openCount++;
@@ -1080,7 +1084,8 @@ function buildMomHtml(m){
     });
   });
 
-  function hdrRow(k,v){return '<tr><th>'+esc(k)+'</th><td>'+(v?esc(v):'<span class="none">—</span>')+'</td></tr>';}
+  function hdrCell(k,v){return '<th>'+esc(k)+'</th><td>'+(v?esc(v):'<span class="none">—</span>')+'</td>';}
+  function hdrRow(k1,v1,k2,v2){return '<tr>'+hdrCell(k1,v1)+hdrCell(k2,v2)+'</tr>';}
 
   return '<style>'+MOM_CSS+'</style>'+
     '<div class="mom-head">'+
@@ -1091,9 +1096,8 @@ function buildMomHtml(m){
       (m.previousMomNumber?'<span style="font-size:8px;opacity:.6">follows '+esc(m.previousMomNumber)+'</span>':'')+'</div>'+
     '</div>'+
     '<table class="hdr">'+
-      hdrRow("Date",fmtDate(m.date))+hdrRow("MoM Number",m.number)+hdrRow("Project name",m.projectName)+
-      hdrRow("Subcontractor",m.subcontractor)+hdrRow("Package",m.package)+
-      hdrRow("Prepared by",m.preparedBy)+hdrRow("Location",m.location)+hdrRow("Copies to",m.copiesTo)+
+      hdrRow("Date",fmtDate(m.date),"MoM Number",m.number)+hdrRow("Project name",m.projectName,"Subcontractor",m.subcontractor)+
+      hdrRow("Package",m.package,"Prepared by",m.preparedBy)+hdrRow("Location",m.location,"Copies to",m.copiesTo)+
     '</table>'+
     '<h2>Participants</h2>'+
     '<table><tr><th>Name</th><th style="width:70px">Initials</th><th style="width:150px">Company</th><th>Position</th></tr>'+
