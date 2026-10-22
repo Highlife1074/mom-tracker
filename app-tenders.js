@@ -3005,6 +3005,9 @@ function AwardsPanel({td,updTd,contractors}){
 // (amount, ACC / Aconex approval), and see base + addendums against the budget.
 // ============================================================================================
 var AD_STATUS_OPTS=[["","— status —"],["not submitted","Not submitted"],["pending approval","Pending approval"],["rejected","Rejected"],["approved","✅ Approved"]];
+// "Not sent to client": the amount is below the client's threshold, so this ACC / ACONEX
+// never goes to the client (no status, no due date, not in the trackers). Field accNoClient / aconexNoClient.
+function ctNoClient(o,dk){return !!(o&&o[dk+"NoClient"]);}
 // One word per addendum: approved when the client approved it on either channel.
 function addendumState(ad){
   var a=(ad&&ad.accStatus)||"",b=(ad&&ad.aconexStatus)||"";
@@ -3183,10 +3186,13 @@ function TenderContractsPanel({td,contractors,saveContractors,onOpenContracts}){
                 {open&&<tr><td colSpan={7} style={{background:"#faf9f6",padding:"8px 12px"}}>
                   <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",fontSize:11}}>
                     {["acc","aconex"].map(function(dk){
+                      var nc=ctNoClient(ad,dk);
                       return <span key={dk} style={{display:"flex",gap:4,alignItems:"center"}}><b style={{color:dk==="acc"?"#1a73e8":"#7b1fa2"}}>{dk==="acc"?"ACC":"ACONEX"}</b>
-                        <select value={ad[dk+"Status"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Status",e.target.value);}} style={inp}>
-                          {AD_STATUS_OPTS.map(function(o){return <option key={o[0]} value={o[0]}>{o[1]}</option>;})}</select>
-                        <input type="date" value={ad[dk+"Date"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Date",e.target.value);}} style={inp}/></span>;
+                        {!nc&&<select value={ad[dk+"Status"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Status",e.target.value);}} style={inp}>
+                          {AD_STATUS_OPTS.map(function(o){return <option key={o[0]} value={o[0]}>{o[1]}</option>;})}</select>}
+                        {!nc&&<input type="date" value={ad[dk+"Date"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Date",e.target.value);}} style={inp}/>}
+                        <label title="Amount too low: this document does not go to the client" style={{display:"flex",alignItems:"center",gap:3,textTransform:"none",letterSpacing:"normal",fontSize:10.5,fontWeight:500,color:nc?"#1e6b3a":"#6f6b62",cursor:editable?"pointer":"default"}}>
+                          <input type="checkbox" checked={nc} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"NoClient",e.target.checked);}} style={{width:12,height:12}}/>Not sent to client (amount too low)</label></span>;
                     })}
                     <span style={{display:"flex",gap:4,alignItems:"center"}}>INS #
                       <input type="text" value={ad.instructionNumber||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,"instructionNumber",e.target.value);}} style={Object.assign({},inp,{width:90})}/></span>
@@ -5030,7 +5036,8 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
         {key:"aconex",label:"ACONEX",color:"#7b1fa2",bg:"#f3e5f5"}
       ].map(function(doc){
         var signed=ct[doc.key+"Signed"]||false;
-        var subDate=ct[doc.key+"Date"]||"";
+        var nc=ctNoClient(ct,doc.key);
+        var subDate=nc?"":ct[doc.key+"Date"]||"";
         var status=ct[doc.key+"Status"]||"";
         var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
         var overdue=status!=="approved"&&due14&&due14<today();
@@ -5043,7 +5050,11 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
             </label>
           </div>
           <div style={{flex:1}}>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:4}}>
+            <label title="Amount below the client's threshold: this document does not go to the client" style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:500,color:nc?"#1e6b3a":"#555",marginBottom:4}}>
+              <input type="checkbox" checked={nc} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"NoClient",e.target.checked);}} style={{width:13,height:13}}/>
+              Not sent to client (amount too low)
+            </label>
+            {!nc&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:4}}>
               <select value={status} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Status",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5,fontFamily:"inherit",color:status==="approved"?"#2e7d32":status==="rejected"?"#c62828":"#555",fontWeight:status?"600":"400"}}>
                 <option value="">— status —</option>
                 <option value="not submitted">Not submitted</option>
@@ -5058,7 +5069,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               {due14&&<div style={{fontSize:10,color:overdue?"#c62828":"#888",fontWeight:overdue?700:400}}>
                 {overdue?"⚠️ Overdue +"+workingDaysDiff(due14,today())+"d (due "+fmtDate(due14)+")":"Due: "+fmtDate(due14)}
               </div>}
-            </div>
+            </div>}
           </div>
         </div>;
       })}
@@ -5094,19 +5105,21 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {["acc","aconex"].map(function(dk){
                 var dLabel=dk==="acc"?"ACC":"ACONEX";var dColor=dk==="acc"?"#1a73e8":"#7b1fa2";
-                var adStatus=ad[dk+"Status"]||"";var adDate=ad[dk+"Date"]||"";
+                var adStatus=ad[dk+"Status"]||"";var nc=ctNoClient(ad,dk);var adDate=nc?"":ad[dk+"Date"]||"";
                 var due14=adDate?(function(){var d=new Date(adDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
                 var overdue=adStatus!=="approved"&&due14&&due14<today();
                 return <div key={dk} style={{display:"flex",gap:5,alignItems:"center",padding:"4px 7px",borderRadius:6,background:dk==="acc"?"#e8f0fe55":"#f3e5f555",border:"1px solid "+dColor+"33",flex:1,minWidth:180}}>
                   <span style={{fontSize:10,fontWeight:700,color:dColor,flexShrink:0}}>{dLabel}</span>
-                  <select value={adStatus} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Status",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,fontFamily:"inherit",flex:1}}>
+                  <label title="Amount too low: this document does not go to the client" style={{display:"flex",alignItems:"center",gap:3,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:10,fontWeight:500,color:nc?"#1e6b3a":"#6f6b62",flexShrink:0}}>
+                    <input type="checkbox" checked={nc} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"NoClient",e.target.checked);}} style={{width:12,height:12}}/>{nc?"Not sent to client (amount too low)":"No client"}</label>
+                  {!nc&&<select value={adStatus} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Status",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,fontFamily:"inherit",flex:1}}>
                     <option value="">— status —</option>
                     <option value="not submitted">Not submitted</option>
                     <option value="pending approval">Pending approval</option>
                     <option value="rejected">Rejected</option>
                     <option value="approved">✅ Approved</option>
-                  </select>
-                  <input type="date" min="1990-01-01" max="2200-12-31" value={adDate} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Date",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,width:105}}/>
+                  </select>}
+                  {!nc&&<input type="date" min="1990-01-01" max="2200-12-31" value={adDate} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Date",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,width:105}}/>}
                   {overdue&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due14,today())}d</span>}
                 </div>;
               })}
@@ -6186,6 +6199,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
       [{key:"contract_acc",label:"Contract ACC",dk:"acc"},{key:"contract_aconex",label:"Contract ACONEX",dk:"aconex"}].forEach(function(docType){
         var status=ct[docType.dk+"Status"]||"";
         var subDate=ct[docType.dk+"Date"]||"";
+        if(ctNoClient(ct,docType.dk))return;
         if(!subDate&&!status)return;
         var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
         var overdue=status!=="approved"&&!!due14&&due14<todayStr;
@@ -6203,6 +6217,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
         [{key:"contract_acc",label:"Add. ACC",dk:"acc"},{key:"contract_aconex",label:"Add. ACONEX",dk:"aconex"}].forEach(function(docType){
           var status=ad[docType.dk+"Status"]||"";
           var subDate=ad[docType.dk+"Date"]||"";
+          if(ctNoClient(ad,docType.dk))return;
           if(!subDate&&!status)return;
           var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
           var overdue=status!=="approved"&&!!due14&&due14<todayStr;
