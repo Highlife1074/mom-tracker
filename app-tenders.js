@@ -3012,12 +3012,11 @@ function ctNoClient(o,dk){return !!(o&&o[dk+"NoClient"]);}
 function addendumState(ad){
   var a=(ad&&ad.accStatus)||"",b=(ad&&ad.aconexStatus)||"";
   if(a==="approved"||b==="approved")return"approved";
-  if(ctNoClient(ad,"acc")||ctNoClient(ad,"aconex"))return"noclient";
   if(a==="rejected"||b==="rejected")return"rejected";
   if(a==="pending approval"||b==="pending approval")return"pending";
   return"draft";
 }
-var AD_STATE_COL={approved:["#e6f2e9","#1e6b3a","Approved"],pending:["#e8f0fe","#1a73e8","Pending"],rejected:["#fce4ec","#b3302a","Rejected"],draft:["#f2f0eb","#6f6b62","Draft"],noclient:["#e6f2e9","#1e6b3a","No client (low amount)"]};
+var AD_STATE_COL={approved:["#e6f2e9","#1e6b3a","Approved"],pending:["#e8f0fe","#1a73e8","Pending"],rejected:["#fce4ec","#b3302a","Rejected"],draft:["#f2f0eb","#6f6b62","Draft"]};
 function tenderContractTotals(td,contractors){
   var linked=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct:ct,ctr:ctr};});});
   var t={linked:linked,base:0,adApproved:0,adPending:0,adOther:0,adCount:0,certified:0};
@@ -3025,7 +3024,7 @@ function tenderContractTotals(td,contractors){
     t.base+=Number(x.ct.amount||0);
     (x.ct.addendums||[]).forEach(function(ad){
       t.adCount++;var v=Number(ad.amount||0),st=addendumState(ad);
-      if(st==="approved"||st==="noclient")t.adApproved+=v;else if(st==="pending")t.adPending+=v;else if(st!=="rejected")t.adOther+=v;
+      if(st==="approved")t.adApproved+=v;else if(st==="pending")t.adPending+=v;else if(st!=="rejected")t.adOther+=v;
     });
     (x.ct.certifications||[]).forEach(function(c){t.certified+=Number(c.amount||0);});
   });
