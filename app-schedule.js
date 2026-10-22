@@ -3210,7 +3210,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           var plCols=!!(pl&&printPlan.plCols);
           var nFix=plCols?6:4;
           return <div className="sched-print-only">
-            <style>{"@media print{@page{size:"+(printPlan.size==="A3"?"A3":"A4")+" landscape;margin:8mm}.sched-print-only *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}"}</style>
+            <style>{"@media print{@page{size:"+(printPlan.size==="A3"?"A3":"A4")+" landscape;margin:8mm}.sched-print-only *{-webkit-print-color-adjust:exact;print-color-adjust:exact}body.printing-schedule .sched-print-only td.pl-cell{position:relative!important}}"}</style>
             {chunks.map(function(ck,ci){
               return <div key={ci} style={{pageBreakAfter:ci<chunks.length-1?"always":"auto",marginBottom:12}}>
                 <table style={{borderCollapse:"collapse",width:"100%",tableLayout:"fixed",fontSize:pfs}}>
@@ -3285,7 +3285,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                                  :v==="plan"?planColor(r):v==="actual"?"#1a73e8":v==="both"?"linear-gradient(180deg,"+planColor(r)+" 50%,#1a73e8 50%)":"#fff";
                           var wp=printPlan.progress?((r.weekProgress||{})[w]):"";
                           return <td key={w} className={pl?"pl-cell":undefined} style={{border:"1px solid #ccc",padding:0,height:11,background:bg,textAlign:"center",fontSize:6,color:"#fff",
-                            boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none",position:pl?"relative":undefined}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}{pl&&plCellArt(pl.rows[r.id],w,printPlan)}</td>;
+                            boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none",position:pl?"relative":undefined,transform:pl?"translate(0,0)":undefined}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}{pl&&plCellArt(pl.rows[r.id],w,printPlan)}</td>;
                         })}
                       </tr>;
                     })}
