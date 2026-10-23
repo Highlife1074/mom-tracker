@@ -119,7 +119,9 @@ const DEFAULT_DURATIONS={
   contractSigning:28,      // working days: used by the procurement timeline
   wmsBeforeStart:28,       // calendar days: WMS must be submitted this long BEFORE the target start
   marAfterContract:14,     // calendar days: MAR is due this long AFTER the contract is signed
-  itpBeforeStart:28        // calendar days: ITP must be submitted this long BEFORE the target start
+  itpBeforeStart:28,       // calendar days: ITP must be submitted this long BEFORE the target start
+  purchaseAccMin:0,        // €: a direct purchase needs the client's ACC from this amount (0 = always)
+  purchaseAconexMin:0      // €: a direct purchase needs an Aconex submission from this amount (0 = always)
 };
 function getDur(key){
   var d=(window._ppDurations||{});
@@ -2079,6 +2081,10 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
         {group:"Other",items:[
           {k:"sdAfterContract",label:"Contract signed → shop drawing submission (working days)"},
           {k:"clientResponse",label:"Any document with client → response due (calendar days)"}
+        ]},
+        {group:"Direct purchases — client approval from (€, 0 = every purchase)",unit:"€",items:[
+          {k:"purchaseAccMin",label:"ACC required when the retained amount reaches"},
+          {k:"purchaseAconexMin",label:"Aconex submission required when the retained amount reaches"}
         ]}
       ].map(function(sec){
         return <div key={sec.group} style={{marginBottom:16}}>
@@ -2092,8 +2098,8 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
               <input type="number" min="0" value={cur===undefined||cur===null?"":cur}
                 onChange={function(e){var u=Object.assign({},durations||{});if(e.target.value==="")delete u[it.k];else u[it.k]=Number(e.target.value);saveDurations(u);}}
                 placeholder={String(DEFAULT_DURATIONS[it.k])}
-                style={{width:70,padding:"4px 8px",fontSize:12,textAlign:"right",fontWeight:700}}/>
-              <span style={{fontSize:10,color:"#aaa",width:30}}>days</span>
+                style={{width:sec.unit?110:70,padding:"4px 8px",fontSize:12,textAlign:"right",fontWeight:700}}/>
+              <span style={{fontSize:10,color:"#aaa",width:30}}>{sec.unit||"days"}</span>
             </div>;
           })}
         </div>;

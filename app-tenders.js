@@ -447,22 +447,35 @@ function tenderDocs(td){
       if(kinds.indexOf(kd)>=0)out.push(matDoc(td,m,i,kd,marSub));
     });
   });
+  // purchases: the ACC and the Aconex of each purchase, when its amount requires them
+  (td.purchases||[]).forEach(function(p){
+    PURCHASE_DOCS.forEach(function(x){if(purchaseNeeds(p,x.k))out.push(purchaseDoc(td,p,x.k));});
+  });
   return out;
 }
-var DOC_GROUPS=["Client approval","Shop drawings","Materials","Quality"];
+var DOC_GROUPS=["Client approval","Shop drawings","Materials","Purchases","Quality"];
+// ACC-like documents follow the ACC clock (working days); every other the calendar one.
+function docAccClock(kind){return kind==="acc"||kind==="pacc"||kind==="paconex";}
+function isPurchaseDoc(d){return !!d&&(d.kind==="pacc"||d.kind==="paconex");}
+// The short name of a document in actions and the Stage column.
+function docShortName(d){
+  if(d.kind==="mar"||d.kind==="mss"||isPurchaseDoc(d))return d.label+" "+d.sub;
+  if(d.kind==="sd")return d.id==="sd:_main"?"SD":"SD "+d.label;
+  return d.label;
+}
 // When the client's answer is due for a submitted revision, and how late it is.
 // ACC follows accApproval in working days; every other document clientResponse in calendar days.
 // The overdue count uses the same unit as the due date: "wd" (working) or "d" (calendar).
 function docResponseDue(doc,submitted){
   if(!isValidDate(submitted))return"";
-  return doc.kind==="acc"?addWorkingDays(submitted,getDur("accApproval")):addCalDays(submitted,getDur("clientResponse"));
+  return docAccClock(doc.kind)?addWorkingDays(submitted,getDur("accApproval")):addCalDays(submitted,getDur("clientResponse"));
 }
 function docOverdue(doc,submitted,now){
   now=now||today();
   var due=docResponseDue(doc,submitted);
   if(!isValidDate(due)||!(now>due))return null;
-  var n=doc.kind==="acc"?countWorkingDays(due,now):Math.round((parseISODate(now)-parseISODate(due))/86400000);
-  return n>0?{days:n,unit:doc.kind==="acc"?"wd":"d",due:due}:null;
+  var n=docAccClock(doc.kind)?countWorkingDays(due,now):Math.round((parseISODate(now)-parseISODate(due))/86400000);
+  return n>0?{days:n,unit:docAccClock(doc.kind)?"wd":"d",due:due}:null;
 }
 function fmtOverdue(o){return o?o.days+" "+o.unit+" overdue":"";}
 function OverdueTag({o,lead}){
@@ -518,16 +531,17 @@ function flowTaskChanges(prevTd,nextTd,tasks,owner,now){
     list.unshift(newTask(Object.assign({text:text,owner:owner,tenderRef:nextTd.id,package:nextTd.package||"",status:"pending",
       importance:3,note:"Auto — Flow & history",addedBy:"System"},o||{})));changed=true;
   }
-  function tagFor(kind){return kind==="acc"?"Procurement":qualityTag(nextTd.package||"");}
+  function tagFor(kind){return docAccClock(kind)?"Procurement":qualityTag(nextTd.package||"");}
   var before={};tenderDocs(prevTd).forEach(function(d){before[d.id]=docSummary(d,now);});
   tenderDocs(nextTd).forEach(function(d){
     var a=before[d.id]||{state:"none",rev:null},b=docSummary(d,now);
     if(a.state===b.state&&a.rev===b.rev)return;
-    var name=d.kind==="mar"||d.kind==="mss"?d.label+" "+d.sub:d.kind==="sd"?(d.id==="sd:_main"?"SD":"SD "+d.label):d.label;
+    var name=docShortName(d);
     var getAppr=d.kind==="acc"?"Get the approval of the Tender result from the client — "+title:"Get approval for "+name+" — "+title;
     var resub="Resubmit "+name+" — "+title;
     var submitTxt=d.kind==="acc"?"Submit the Tender Result — "+title:d.kind==="wms"?"Submit the WMS — "+title:d.kind==="itp"?"Submit the ITP — "+title:
-      (d.kind==="mar"||d.kind==="mss")?"Prepare the "+d.label+": "+(d.sub||"material")+" — "+title:"Prepare the SD — "+title;
+      (d.kind==="mar"||d.kind==="mss")?"Prepare the "+d.label+": "+(d.sub||"material")+" — "+title:
+      isPurchaseDoc(d)?"Submit the "+name+" — "+title:"Prepare the SD — "+title;
     var last=d.cycles[d.cycles.length-1]||{};
     if(b.state==="pending"){
       close(submitTxt);close(resub);
@@ -789,6 +803,250 @@ function matPrepTasks(td,mat,kind,newStatus,tasks,owner){
       importance:2,urgence:2,tags:[qtag],note:"Auto — "+kind+" under preparation",addedBy:"System"}),...updated];
   }
   return updated;
+}
+// ---------------------------------------------------------------------------
+// Purchases — specific materials bought directly from a supplier, without a subcontract.
+//
+// A tender can carry its subcontract AND one or several purchases (td.purchases):
+//   {id, title, materialIds:[mat.id…], quotes:[{id,supplier,amount,note}], chosen:quoteId,
+//    amount (typed when no quote is retained), need:{acc,aconex}: "auto"|"yes"|"no",
+//    accTarget, aconexTarget, accRef, aconexRef, cycles:{acc:[…],aconex:[…]},
+//    poNumber, poDate, deliveryTarget, deliveryDone, note}
+// Several suppliers can be consulted for the same purchase (quotes); one is retained.
+// "auto": the ACC is required from Settings › Durations › purchaseAccMin, the Aconex from
+// purchaseAconexMin, compared to the retained amount. "yes" / "no" overrides.
+// Both are documents of tenderDocs (kinds pacc / paconex): revisions, overdue, automatic
+// actions, Flow & history. The MAR stays on the material (td.materials), whoever supplies it.
+// ---------------------------------------------------------------------------
+const PURCHASE_DOCS=[{k:"acc",kind:"pacc",label:"ACC",min:"purchaseAccMin"},{k:"aconex",kind:"paconex",label:"Aconex",min:"purchaseAconexMin"}];
+function newPurchase(o){return Object.assign({id:uuid(),title:"",materialIds:[],quotes:[],chosen:"",amount:"",need:{acc:"auto",aconex:"auto"},
+  accTarget:"",aconexTarget:"",accRef:"",aconexRef:"",cycles:{acc:[],aconex:[]},poNumber:"",poDate:"",deliveryTarget:"",deliveryDone:"",note:""},o||{});}
+function newPurchaseQuote(o){return Object.assign({id:uuid(),supplier:"",amount:"",note:""},o||{});}
+function purchaseQuote(p){return ((p&&p.quotes)||[]).find(function(q){return q.id===p.chosen;})||null;}
+function purchaseAmount(p){var q=purchaseQuote(p);var v=momNum(q?q.amount:(p||{}).amount);return isNaN(v)?null:v;}
+function purchaseSupplier(p){var q=purchaseQuote(p);return q?String(q.supplier||"").trim():"";}
+function purchaseName(p,i){return String((p&&p.title)||"").trim()||purchaseSupplier(p)||("Purchase "+((i>=0?i:0)+1));}
+function cyclesOfPurchase(p,k){return _readCycles(((p&&p.cycles)||{})[k],null,null);}
+// Whether a purchase needs the ACC / the Aconex, and why: {need, why}.
+function purchaseNeedInfo(p,k){
+  var x=PURCHASE_DOCS.find(function(d){return d.k===k;});
+  var mode=((p&&p.need)||{})[k]||"auto";
+  if(mode==="yes")return{need:true,why:"Required (set by hand)"};
+  if(mode==="no")return{need:false,why:"Not required (set by hand)"};
+  var min=getDur(x.min),amt=purchaseAmount(p);
+  if(min<=0)return{need:true,why:"Required for every purchase (threshold 0 in Settings › Durations)"};
+  if(amt===null)return{need:false,why:"Amount unknown — required from "+momEur(min)};
+  return amt>=min?{need:true,why:momEur(amt)+" ≥ threshold "+momEur(min)}:{need:false,why:momEur(amt)+" < threshold "+momEur(min)};
+}
+// A document that already went to the client stays listed whatever the amount says.
+function purchaseNeeds(p,k){return purchaseNeedInfo(p,k).need||cyclesOfPurchase(p,k).length>0;}
+function purchaseDoc(td,p,k){
+  var x=PURCHASE_DOCS.find(function(d){return d.k===k;});
+  var sub=p[k+"Target"]||"";
+  return {id:x.kind+":"+p.id,group:"Purchases",kind:x.kind,label:x.label,sub:purchaseName(p,(td.purchases||[]).indexOf(p)),
+    ref:String(p[k+"Ref"]||"").trim(),cycles:cyclesOfPurchase(p,k),theoSub:sub,
+    theoApproval:isValidDate(sub)?addWorkingDays(sub,getDur("accApproval")):"",
+    patchFor:function(list){
+      return {purchases:(td.purchases||[]).map(function(y){
+        if(y.id!==p.id)return y;
+        var c=Object.assign({},y.cycles||{});c[k]=_cyClean(list);
+        return Object.assign({},y,{cycles:c});
+      })};
+    }};
+}
+function PurchasesPanel({td,updTd,afterSave,focus}){
+  const [openRow,setOpenRow]=useState({});
+  const [fold,setFold]=useState({});
+  function toggleRow(id){setOpenRow(function(o){var n=Object.assign({},o);n[id]=!o[id];return n;});}
+  useEffect(function(){
+    if(!focus||!/^(pacc|paconex):/.test(focus.id))return;
+    var pid=focus.id.replace(/^[a-z]+:/,"");
+    setFold(function(o){var n=Object.assign({},o);n[pid]=false;return n;});
+    setOpenRow(function(o){var n=Object.assign({},o);n[focus.id]=true;return n;});
+    scrollToDoc(focus.id);
+  },[focus&&focus.n]);
+  var list=td.purchases||[];
+  var mats=td.materials||[];
+  var ro=isReadOnly();
+
+  function save(ps){if(blockIfReadOnly())return;updTd("purchases",ps);}
+  function updP(id,patch){save(list.map(function(p){return p.id===id?Object.assign({},p,patch):p;}));}
+  function updQ(p,qid,patch){updP(p.id,{quotes:(p.quotes||[]).map(function(q){return q.id===qid?Object.assign({},q,patch):q;})});}
+  function setNeed(p,k,v){var n=Object.assign({acc:"auto",aconex:"auto"},p.need||{});n[k]=v;updP(p.id,{need:n});}
+  function toggleMat(p,mid){
+    var ids=(p.materialIds||[]).slice();var i=ids.indexOf(mid);
+    if(i>=0)ids.splice(i,1);else ids.push(mid);
+    updP(p.id,{materialIds:ids});
+  }
+  function del(p,i){
+    if(!mayDelete()&&!isAppAdmin((window._currentUser||{}).name)){safeAlert("Deleting is not allowed for your account.");return;}
+    if(!safeConfirm("Remove \""+purchaseName(p,i)+"\" and its ACC / Aconex history?"))return;
+    save(list.filter(function(x){return x.id!==p.id;}));
+  }
+  function approval(doc){
+    var l=doc.cycles,last=l[l.length-1];
+    if(!last||(!last.submitted&&!last.code))return <span style={{color:"#ccc",fontSize:11}}>—</span>;
+    if(last.code){
+      var k=FLOW_CODE_COL[last.code]||["#f5f3ee","#6f6b62"];
+      return <span title={((cycleCodeInfo(last.code)||{}).label||"")+(last.comment?" — "+last.comment:"")} style={{display:"inline-flex",gap:5,alignItems:"center",fontSize:11,whiteSpace:"nowrap"}}>
+        <span style={{background:k[0],color:k[1],border:"1px solid "+k[1],borderRadius:3,fontSize:10,fontWeight:700,padding:"0 4px"}}>{last.code}</span>
+        {last.returned?fmtDate(last.returned):""}</span>;
+    }
+    var ov=docOverdue(doc,last.submitted);
+    return <span style={{fontSize:11,whiteSpace:"nowrap",color:ov?"#c62828":"#1a73e8",fontWeight:ov?700:500}}>
+      {ov?"⚠ due ":"expected "}{fmtDate(docResponseDue(doc,last.submitted))}</span>;
+  }
+  var inp={fontSize:11,padding:"3px 6px"};
+  var lbl={fontSize:10,color:"#888",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"};
+
+  return <div style={{marginBottom:10}}>
+    <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"6px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
+      <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Purchases</h3>
+      <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
+        Specific materials bought directly · ACC from {momEur(getDur("purchaseAccMin"))||"€ 0"}, Aconex from {momEur(getDur("purchaseAconexMin"))||"€ 0"} (Settings › Durations){list.length?" · "+list.length+" purchase"+(list.length>1?"s":""):""}</span>
+      {!ro&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){save(list.concat([newPurchase()]));}}>＋ Purchase</button>}
+    </div>
+    {list.length===0&&<div style={{color:"var(--ink-4,#9b968b)",fontSize:12,padding:"6px 0"}}>No purchase on this package. Use ＋ Purchase for materials bought without a subcontract.</div>}
+    {list.map(function(p,i){
+      var folded=!!fold[p.id];
+      var amt=purchaseAmount(p),sup=purchaseSupplier(p);
+      var docs=PURCHASE_DOCS.map(function(x){return {x:x,info:purchaseNeedInfo(p,x.k),doc:purchaseDoc(td,p,x.k),listed:purchaseNeeds(p,x.k)};});
+      var matNames=mats.filter(function(m){return (p.materialIds||[]).indexOf(m.id)>=0;}).map(function(m){return m.name||"material";});
+      return <div key={p.id} style={{border:"1px solid var(--rule,#ddd9cf)",borderRadius:8,marginBottom:8,background:"#fff"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",flexWrap:"wrap",borderBottom:folded?"none":"1px solid #f0ede6"}}>
+          <button type="button" onClick={function(){var n=Object.assign({},fold);n[p.id]=!folded;setFold(n);}}
+            style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#8b8578",padding:0}}>{folded?"▸":"▾"}</button>
+          <input type="text" value={p.title||""} placeholder={"Purchase "+(i+1)+" — what is bought…"} disabled={ro}
+            onChange={function(e){updP(p.id,{title:e.target.value});}}
+            style={{fontSize:13,fontWeight:700,border:"none",background:"transparent",padding:"2px 0",flex:"1 1 200px",minWidth:160}}/>
+          {sup&&<span className="badge" style={{background:"var(--blue-soft,#e8f0fe)",color:"var(--blue,#0f5299)"}}>{sup}</span>}
+          {amt!==null&&<span style={{fontSize:12,fontWeight:700,fontFamily:"var(--font-mono)"}}>{momEur(amt)}</span>}
+          {docs.filter(function(d){return d.listed;}).map(function(d){
+            var st=docSummary(d.doc).state;
+            var col={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"}[st];
+            return <span key={d.x.k} title={d.info.why} style={{fontSize:10,fontWeight:700,color:col,border:"1px solid "+col,borderRadius:9,padding:"0 7px"}}>
+              {d.x.label} · {{approved:"approved",pending:"with client",returned:"to resubmit",none:"to submit"}[st]}</span>;
+          })}
+          {p.deliveryDone&&<span style={{fontSize:10,fontWeight:700,color:"#1e6b3a"}}>✓ delivered {fmtDate(p.deliveryDone)}</span>}
+          {!ro&&<button onClick={function(){del(p,i);}} title="Remove this purchase" style={{background:"none",border:"none",color:"#ccc",cursor:"pointer",fontSize:13}}>🗑</button>}
+        </div>
+        {!folded&&<div style={{padding:"8px 12px 10px"}}>
+          {/* Suppliers consulted: one is retained, its amount drives the ACC / Aconex thresholds. */}
+          <div style={Object.assign({},lbl,{marginBottom:4})}>Suppliers consulted</div>
+          {(p.quotes||[]).length>0&&<table className="tbl" style={{fontSize:12,marginBottom:6}}>
+            <thead><tr><th style={{width:70,textAlign:"center"}}>Retained</th><th>Supplier</th><th style={{width:130}}>Amount €</th><th>Note</th><th style={{width:34}}></th></tr></thead>
+            <tbody>{(p.quotes||[]).map(function(q){
+              var on=p.chosen===q.id;
+              return <tr key={q.id} style={{background:on?"#f1f8f2":"#fff"}}>
+                <td style={{textAlign:"center"}}><input type="radio" checked={on} disabled={ro} onChange={function(){updP(p.id,{chosen:q.id});}}
+                  onClick={function(){if(on)updP(p.id,{chosen:""});}} title={on?"Click again to un-retain":"Retain this supplier"} style={{width:14,height:14,cursor:"pointer"}}/></td>
+                <td><input type="text" value={q.supplier||""} placeholder="Supplier…" disabled={ro} onChange={function(e){updQ(p,q.id,{supplier:e.target.value});}}
+                  style={Object.assign({},inp,{width:"100%",fontWeight:on?700:400})}/></td>
+                <td><input type="text" inputMode="decimal" value={q.amount||""} placeholder="0" disabled={ro} onChange={function(e){updQ(p,q.id,{amount:e.target.value});}}
+                  style={Object.assign({},inp,{width:"100%",textAlign:"right",fontFamily:"var(--font-mono)"})}/></td>
+                <td><input type="text" value={q.note||""} placeholder="lead time, conditions…" disabled={ro} onChange={function(e){updQ(p,q.id,{note:e.target.value});}}
+                  style={Object.assign({},inp,{width:"100%"})}/></td>
+                <td style={{textAlign:"center"}}>{!ro&&<button onClick={function(){
+                    updP(p.id,{quotes:(p.quotes||[]).filter(function(x){return x.id!==q.id;}),chosen:on?"":p.chosen});
+                  }} style={{background:"none",border:"none",color:"#ccc",cursor:"pointer",fontSize:12}}>✕</button>}</td>
+              </tr>;
+            })}</tbody>
+          </table>}
+          <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
+            {!ro&&<button className="btn btn-sm" onClick={function(){updP(p.id,{quotes:(p.quotes||[]).concat([newPurchaseQuote()])});}}>＋ Supplier</button>}
+            {!purchaseQuote(p)&&<span style={{display:"flex",gap:5,alignItems:"center"}}><span style={lbl}>Amount €</span>
+              <input type="text" inputMode="decimal" value={p.amount||""} placeholder="no supplier retained" disabled={ro}
+                onChange={function(e){updP(p.id,{amount:e.target.value});}} style={Object.assign({},inp,{width:150,textAlign:"right",fontFamily:"var(--font-mono)"})}/></span>}
+          </div>
+
+          {/* Materials of the package bought here; their MAR is followed in Materials above. */}
+          <div style={Object.assign({},lbl,{marginBottom:4})}>Materials</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
+            {mats.length===0&&<span style={{fontSize:11,color:"#9b968b"}}>Add the material in Materials above: its MAR is followed there.</span>}
+            {mats.map(function(m,mi){
+              var on=(p.materialIds||[]).indexOf(m.id)>=0;
+              if(!m.id)return null;
+              return <button key={m.id} type="button" disabled={ro} onClick={function(){toggleMat(p,m.id);}}
+                style={{fontSize:11,padding:"2px 9px",borderRadius:11,cursor:ro?"default":"pointer",fontFamily:"inherit",
+                  border:"1px solid "+(on?"var(--gold-ink,#8a6a1e)":"var(--rule,#ddd9cf)"),background:on?"var(--gold-soft,#faf3e0)":"#fff",
+                  color:on?"var(--gold-ink,#8a6a1e)":"#9b968b",fontWeight:on?700:400}}>{on?"✓ ":""}{m.name||("material "+(mi+1))}</button>;
+            })}
+          </div>
+
+          {/* Client approval: ACC and Aconex, each required from its own amount. */}
+          <div style={Object.assign({},lbl,{marginBottom:4})}>Client approval</div>
+          <table className="tbl" style={{fontSize:12,marginBottom:10}}>
+            <thead><tr>
+              <th style={{width:80}}>Doc</th><th style={{minWidth:150}}>Required</th><th style={{textAlign:"center",minWidth:112}}>Target</th>
+              <th style={{minWidth:100}}>Status</th><th style={{textAlign:"center",minWidth:100}}>Submitted</th><th style={{minWidth:110}}>Approval</th><th style={{minWidth:104}}>Reference</th>
+            </tr></thead>
+            <tbody>{docs.map(function(d){
+              var doc=d.doc,sum=docSummary(doc),last=doc.cycles[doc.cycles.length-1],isOpen=!!openRow[doc.id];
+              var mode=((p.need||{})[d.x.k])||"auto";
+              var auto=purchaseNeedInfo(Object.assign({},p,{need:{}}),d.x.k);
+              var tgt=p[d.x.k+"Target"]||"";
+              var late=d.listed&&tgt&&tgt<today()&&sum.state==="none";
+              return <React.Fragment key={d.x.k}>
+                <tr id={"tdoc-"+doc.id} style={{opacity:d.listed?1:.55}}>
+                  <td style={{whiteSpace:"nowrap"}}>
+                    {d.listed&&<button type="button" onClick={function(){toggleRow(doc.id);}} title="Show or edit the revisions"
+                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{isOpen?"▾":"▸"}</button>}
+                    <span className="badge" style={{background:"var(--blue-soft,#e8f0fe)",color:"var(--blue,#0f5299)"}}>{d.x.label}</span>
+                  </td>
+                  <td>
+                    <select value={mode} disabled={ro} onChange={function(e){setNeed(p,d.x.k,e.target.value);}} style={Object.assign({},inp,{fontWeight:600})}>
+                      <option value="auto">Auto ({auto.need?"required":"not required"})</option>
+                      <option value="yes">Required</option>
+                      <option value="no">Not required</option>
+                    </select>
+                    <div style={{fontSize:10,color:"#9b968b",marginTop:2}}>{auto.why}</div>
+                  </td>
+                  <td style={{textAlign:"center"}}>{d.listed&&<input type="date" min="1990-01-01" max="2200-12-31" value={tgt} disabled={ro}
+                    onChange={function(e){var u={};u[d.x.k+"Target"]=e.target.value;updP(p.id,u);}}
+                    style={Object.assign({},inp,{border:"1.5px solid "+(late?"#f0cdc9":"var(--rule,#ddd9cf)"),borderRadius:5,background:late?"#fbe6e8":"#fff"})}/>}</td>
+                  <td>{d.listed?<MatDocStatus doc={doc}/>:<span style={{fontSize:11,color:"#9b968b"}}>Not required</span>}</td>
+                  <td style={{textAlign:"center"}}>
+                    {!d.listed?null:last&&last.submitted
+                      ?<span style={{fontSize:11,whiteSpace:"nowrap"}}>{fmtDate(last.submitted)}
+                        {last.rev>0&&<span style={{fontSize:9.5,color:"#b35c00",fontWeight:700,marginLeft:4}}>R{last.rev}</span>}</span>
+                      :sum.state==="none"&&!ro
+                        ?<button type="button" className="btn btn-sm" style={{fontSize:10,padding:"1px 7px"}} onClick={function(){
+                            recordDocSubmission(td,doc,updTd,afterSave).then(function(r){if(r)setOpenRow(function(o){var n=Object.assign({},o);n[doc.id]=true;return n;});});
+                          }}>＋ Record</button>
+                        :<span style={{color:"#ccc",fontSize:11}}>—</span>}
+                  </td>
+                  <td>{d.listed&&approval(doc)}</td>
+                  <td>{d.listed&&<input type="text" value={p[d.x.k+"Ref"]||""} placeholder="Ref…" disabled={ro} title="Transmittal or Aconex number"
+                    onChange={function(e){var u={};u[d.x.k+"Ref"]=e.target.value;updP(p.id,u);}}
+                    style={Object.assign({},inp,{fontFamily:"var(--font-mono)"})}/>}</td>
+                </tr>
+                {d.listed&&isOpen&&<tr><td colSpan={7} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#6f6b62",marginBottom:2}}>{d.x.label} — {purchaseName(p,i)}</div>
+                  <DocRevisionsEditor td={td} d={doc} updTd={updTd} afterSave={afterSave}/>
+                </td></tr>}
+              </React.Fragment>;
+            })}</tbody>
+          </table>
+
+          {/* Order and delivery */}
+          <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{display:"flex",gap:5,alignItems:"center"}}><span style={lbl}>PO n°</span>
+              <input type="text" value={p.poNumber||""} disabled={ro} onChange={function(e){updP(p.id,{poNumber:e.target.value});}} style={Object.assign({},inp,{width:120,fontFamily:"var(--font-mono)"})}/></span>
+            <span style={{display:"flex",gap:5,alignItems:"center"}}><span style={lbl}>PO date</span>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={p.poDate||""} disabled={ro} onChange={function(e){updP(p.id,{poDate:e.target.value});}} style={inp}/></span>
+            <span style={{display:"flex",gap:5,alignItems:"center"}}><span style={lbl}>Delivery target</span>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={p.deliveryTarget||""} disabled={ro} onChange={function(e){updP(p.id,{deliveryTarget:e.target.value});}}
+                style={Object.assign({},inp,p.deliveryTarget&&!p.deliveryDone&&p.deliveryTarget<today()?{background:"#fbe6e8",border:"1.5px solid #f0cdc9"}:{})}/></span>
+            <span style={{display:"flex",gap:5,alignItems:"center"}}><span style={lbl}>Delivered</span>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={p.deliveryDone||""} disabled={ro} onChange={function(e){updP(p.id,{deliveryDone:e.target.value});}} style={inp}/></span>
+            <input type="text" value={p.note||""} placeholder="Note…" disabled={ro} onChange={function(e){updP(p.id,{note:e.target.value});}}
+              style={Object.assign({},inp,{flex:"1 1 200px"})}/>
+          </div>
+          {matNames.length>0&&<div style={{fontSize:10.5,color:"#9b968b",marginTop:6}}>MAR followed on: {matNames.join(", ")}</div>}
+        </div>}
+      </div>;
+    })}
+  </div>;
 }
 function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,pkgOwners,afterSave,focus}){
   const [open,setOpen]=useState(false);
@@ -1568,7 +1826,7 @@ function RefTag({td,k}){
 function docCurRef(td,d){
   if(!d)return"";
   if(d.kind==="acc"||d.kind==="wms"||d.kind==="itp")return String((((td.stepDates||{})[d.kind])||{}).reference||"").trim();
-  if(d.kind==="mar"||d.kind==="mss")return String(d.ref||"").trim();
+  if(d.kind==="mar"||d.kind==="mss"||isPurchaseDoc(d))return String(d.ref||"").trim();
   if(d.kind==="sd"&&d.id!=="sd:_main"){var t=(td.sdTransmissions||[]).find(function(x){return "sd:"+x.id===d.id;});return String((t&&t.ref)||"").trim();}
   return"";
 }
@@ -1583,6 +1841,12 @@ function docRefPatch(td,d,patch,ref){
     var ms=(patch.materials||td.materials||[]).map(function(x,j){
       if(String((x&&x.id)||j)!==mid)return x;var u=Object.assign({},x);u[d.kind+"Ref"]=ref;return u;});
     return Object.assign({},patch,{materials:ms});
+  }
+  if(isPurchaseDoc(d)){
+    var pid=d.id.slice(d.kind.length+1),f=d.kind==="pacc"?"accRef":"aconexRef";
+    var ps=(patch.purchases||td.purchases||[]).map(function(x){
+      if(x.id!==pid)return x;var u=Object.assign({},x);u[f]=ref;return u;});
+    return Object.assign({},patch,{purchases:ps});
   }
   if(d.kind==="sd"&&d.id!=="sd:_main"){
     var tl=(patch.sdTransmissions||td.sdTransmissions||[]).map(function(x){
@@ -1607,7 +1871,7 @@ function recordDocSubmission(td,d,updTd,afterSave){
   var last=d.cycles[d.cycles.length-1];
   var rev=last?last.rev+1:0;
   var cur=docCurRef(td,d);
-  var name=(d.kind==="acc"?"ACC/Aconex":d.kind==="sd"?"Shop drawing":d.label)+(d.group==="Materials"&&d.sub?" — "+d.sub:"")+(d.kind==="sd"&&d.sub?" — "+d.sub:"");
+  var name=(d.kind==="acc"?"ACC/Aconex":d.kind==="sd"?"Shop drawing":d.label)+((d.group==="Materials"||d.group==="Purchases")&&d.sub?" — "+d.sub:"")+(d.kind==="sd"&&d.sub?" — "+d.sub:"");
   return ppPrompt({
     title:(rev?"Resubmission R"+rev:"Submission")+" · "+name,
     message:"Reference of the document sent to the client (Aconex / transmittal number).\nLeave empty if it is not known yet: the row will show “ref. missing” until it is typed.",
@@ -1909,7 +2173,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
     // (calcProcurement), for the others the contractual dates (theo).
     function docLane(d,key,label,sub,who){
       var l=d.cycles,last=l[l.length-1];
-      var bars=cycleBars(l,who,d.kind.toUpperCase());
+      var bars=cycleBars(l,who,isPurchaseDoc(d)?d.label:d.kind.toUpperCase());
       var approved=last&&(last.code==="A"||last.code==="B");
       if(!approved){
         // The main SD follows the delivery cascade; a transmission keeps its own target.
@@ -1922,7 +2186,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
           if(isValidDate(subD)&&isValidDate(appD)&&subD<appD)
             bars.push(seg(subD,appD,FLOW_COL.client,"Forecast: submission "+fmtDate(subD)+" → approval "+fmtDate(appD),true,key+"fa"));
         }else if(last.submitted&&!last.code){
-          var due=d.kind==="sd"?addWorkingDays(last.submitted,getDur("sdApproval")):d.kind==="acc"?addWorkingDays(last.submitted,getDur("accApproval")):addCalDays(last.submitted,getDur("clientResponse"));
+          var due=d.kind==="sd"?addWorkingDays(last.submitted,getDur("sdApproval")):docResponseDue(d,last.submitted);
           if(due>now)bars.push(seg(now,due,FLOW_COL.client,"Forecast: client answer expected "+fmtDate(due),true,key+"fw"));
         }
       }
@@ -1935,6 +2199,8 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
       lanes.push(docLane(d,"m"+i,d.label,d.sub,"sub"));});
     docs.filter(function(d){return d.kind==="wms"||d.kind==="itp";}).forEach(function(d){
       lanes.push(docLane(d,d.kind,d.label,"","sub"));});
+    docs.filter(isPurchaseDoc).forEach(function(d,i){
+      lanes.push(docLane(d,"p"+i,"Purchase "+d.label,d.sub,"us"));});
     lanes.push({k:"fab",label:"Fabrication",sub:(proc.LEAD?proc.LEAD+" d lead":"")+(proc.fabStartSource?" · after "+({contract:"contract",sd:"shop drawings",material:"lead material"}[proc.fabStartSource]||proc.fabStartSource):""),bars:[seg(proc.fabStart,proc.deliveryDate,FLOW_COL.sub,"Fabrication forecast "+fmtDate(proc.fabStart||"")+" → "+fmtDate(proc.deliveryDate||""),true,"f")]});
     var weeks=[];for(var w=0;w<nW;w++)weeks.push(addCalDays(from,w*7));
     var step=nW>40?4:nW>20?2:1;
@@ -2211,13 +2477,16 @@ function tenderNow(td,now){
   var sums=docs.map(function(d){return {d:d,s:docSummary(d,now)};});
   function docLine(x){
     var l=x.d.cycles,last=l[l.length-1];
-    var name=x.d.kind==="mar"||x.d.kind==="mss"?x.d.label+" "+x.d.sub:x.d.kind==="sd"&&x.d.id!=="sd:_main"?"SD "+x.d.label:x.d.label;
+    var name=docShortName(x.d);
     if(x.s.state==="pending")return {text:name+" R"+last.rev+" · with client",who:"client",days:since(last.submitted),overdue:x.s.overdue};
-    return {text:name+" · to resubmit ("+last.code+")",who:x.d.kind==="acc"?"us":"sub",days:since(last.returned)};
+    return {text:name+" · to resubmit ("+last.code+")",who:docAccClock(x.d.kind)?"us":"sub",days:since(last.returned)};
   }
   var acc=sums.find(function(x){return x.d.id==="acc";});
   if(ph==="pre"){
     if(acc&&(acc.s.state==="pending"||acc.s.state==="returned"))return docLine(acc);
+    // A package with purchases and no tender out yet: the purchase waiting on someone.
+    var pOpen=sums.filter(function(x){return isPurchaseDoc(x.d)&&(x.s.state==="pending"||x.s.state==="returned");});
+    if(pOpen.length&&!td.tenderIssued)return docLine(pOpen[0]);
     if(td.tenderIssued&&!td.bidsReceived)return {text:"Tender out · bidders pricing",who:"sub",days:since(td.tenderIssued)};
     if(td.bidsReceived)return {text:"Bid evaluation · ACC to submit",who:"us",days:since(td.bidsReceived)};
     return {text:"Tender preparation",who:"us",days:null};
@@ -2253,7 +2522,7 @@ function tenderStage(td,now){
   var ph=tenderPhase(td);
   if(ph==="can")return Object.assign(cur,{next:""});
   var sums=tenderDocs(td).map(function(d){return {d:d,s:docSummary(d,now)};});
-  function name(d){return d.kind==="mar"||d.kind==="mss"?d.label+" "+d.sub:d.kind==="sd"&&d.id!=="sd:_main"?"SD "+d.label:d.label;}
+  function name(d){return docShortName(d);}
   var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
   function fab(){return "Fabrication"+(isValidDate(proc.fabStart)?" · "+fmtDate(proc.fabStart):"");}
   var next="";
@@ -3993,6 +4262,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         {/* Materials sit under the submission chain: their MAR date is derived from the
             contract, which is itself the end of that chain. */}
         <MaterialsPanel td={td} updTd={updTd} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} saveT={saveTasks} tasks={tasks} pkgOwners={pkgOwners} afterSave={flowAfterSave} focus={docFocus}/>
+      </div>
+
+      {/* Direct purchases of specific materials, next to (or instead of) the subcontract. */}
+      <div className="card" style={{marginBottom:10}}>
+        <PurchasesPanel td={td} updTd={updTd} afterSave={flowAfterSave} focus={docFocus}/>
       </div>
         </React.Fragment>}
 
