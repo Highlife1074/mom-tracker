@@ -551,7 +551,9 @@ function openReport(title,bodyHtml){
   if(!w){safeAlert("Your browser blocked the report window.\n\nAllow pop-ups for this site, then try again.");return;}
   // The document title is what Chrome, Edge and Safari propose as the PDF file name in
   // "Save as PDF", so it has to be exactly the name the user wants on disk.
-  w.document.write("<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><title>"+esc(title)+
+  // Without the viewport tag phones lay the page out 980px wide and shrink it onto the
+  // sheet, which prints the report small with wide margins whatever @page says.
+  w.document.write("<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>"+esc(title)+
     "</title><link href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap\" rel=\"stylesheet\"/><style>"+REPORT_CSS+"</style></head><body>"+
     "<div class=\"noprint\">"+
       "<button onclick=\"window.print()\">🖨 Print / Save as PDF</button>"+
