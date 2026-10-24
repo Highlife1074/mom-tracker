@@ -866,17 +866,22 @@ function purchaseAmount(p){var q=purchaseQuote(p);var v=momNum(q?q.amount:(p||{}
 function purchaseSupplier(p){var q=purchaseQuote(p);return q?String(q.supplier||"").trim():"";}
 function purchaseName(p,i){return String((p&&p.title)||"").trim()||purchaseSupplier(p)||("Purchase "+((i>=0?i:0)+1));}
 function cyclesOfPurchase(p,k){return _readCycles(((p&&p.cycles)||{})[k],null,null);}
-// Whether a purchase needs the ACC / the Aconex, and why: {need, why}.
-function purchaseNeedInfo(p,k){
-  var x=PURCHASE_DOCS.find(function(d){return d.k===k;});
-  var mode=((p&&p.need)||{})[k]||"auto";
-  if(mode==="yes")return{need:true,why:"Required (set by hand)"};
-  if(mode==="no")return{need:false,why:"Not required (set by hand)"};
-  var min=getDur(x.min),amt=purchaseAmount(p);
-  if(min<=0)return{need:true,why:"Required for every purchase (threshold 0 in Settings › Durations)"};
-  if(amt===null)return{need:false,why:"Amount unknown — required from "+momEur(min)};
-  return amt>=min?{need:true,why:momEur(amt)+" ≥ threshold "+momEur(min)}:{need:false,why:momEur(amt)+" < threshold "+momEur(min)};
+// A purchase goes to the client as an ACC OR an Aconex, never both — same rule as the
+// subcontract (tenderApprovalRoute) with its own thresholds: below purchaseAccMin internal
+// approval only, then ACC, from purchaseAconexMin Aconex. p.route forces it; purchases saved
+// before that carry need:{acc|aconex:"yes"}, read as the forced route.
+function purchaseRoute(p){
+  var amt=purchaseAmount(p);
+  var accMin=getDur("purchaseAccMin"),acoMin=getDur("purchaseAconexMin");
+  var auto=amt===null?"":amt>=acoMin?"aconex":amt>=accMin?"acc":"none";
+  var why=amt===null?"Amount unknown: retain a supplier or type the amount"
+    :momEur(amt)+" → "+(auto==="aconex"?"≥ "+momEur(acoMin):auto==="acc"?momEur(accMin)+" – "+momEur(acoMin):"< "+momEur(accMin));
+  var ov=p&&p.route;
+  if(!ov&&p&&p.need)ov=p.need.aconex==="yes"?"aconex":p.need.acc==="yes"?"acc":"";
+  var route=ov==="acc"||ov==="aconex"||ov==="none"?ov:auto;
+  return{route:route,auto:auto,manual:route!==auto,why:why};
 }
+function purchaseNeedInfo(p,k){var r=purchaseRoute(p);return{need:r.route===k,why:r.why};}
 // A document that already went to the client stays listed whatever the amount says.
 function purchaseNeeds(p,k){return purchaseNeedInfo(p,k).need||cyclesOfPurchase(p,k).length>0;}
 function purchaseDoc(td,p,k){
@@ -911,7 +916,7 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
   function save(ps){if(blockIfReadOnly())return;updTd("purchases",ps);}
   function updP(id,patch){save(list.map(function(p){return p.id===id?Object.assign({},p,patch):p;}));}
   function updQ(p,qid,patch){updP(p.id,{quotes:(p.quotes||[]).map(function(q){return q.id===qid?Object.assign({},q,patch):q;})});}
-  function setNeed(p,k,v){var n=Object.assign({acc:"auto",aconex:"auto"},p.need||{});n[k]=v;updP(p.id,{need:n});}
+  function setRoute(p,v){updP(p.id,{route:v,need:{acc:"auto",aconex:"auto"}});}
   function toggleMat(p,mid){
     var ids=(p.materialIds||[]).slice();var i=ids.indexOf(mid);
     if(i>=0)ids.splice(i,1);else ids.push(mid);
@@ -942,7 +947,7 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
     <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"6px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Purchases</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
-        Specific materials bought directly · ACC from {momEur(getDur("purchaseAccMin"))||"€ 0"}, Aconex from {momEur(getDur("purchaseAconexMin"))||"€ 0"} (Settings › Durations){list.length?" · "+list.length+" purchase"+(list.length>1?"s":""):""}</span>
+        Specific materials bought directly · internal below {momEur(getDur("purchaseAccMin"))||"€ 0"}, then ACC, Aconex from {momEur(getDur("purchaseAconexMin"))||"€ 0"} (Settings › Durations){list.length?" · "+list.length+" purchase"+(list.length>1?"s":""):""}</span>
       {!ro&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){save(list.concat([newPurchase()]));}}>＋ Purchase</button>}
     </div>
     {list.length===0&&<div style={{color:"var(--ink-4,#9b968b)",fontSize:12,padding:"6px 0"}}>No purchase on this package. Use ＋ Purchase for materials bought without a subcontract.</div>}
@@ -1012,17 +1017,30 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
             })}
           </div>
 
-          {/* Client approval: ACC and Aconex, each required from its own amount. */}
-          <div style={Object.assign({},lbl,{marginBottom:4})}>Client approval</div>
-          <table className="tbl" style={{fontSize:12,marginBottom:10}}>
+          {/* Client approval: ACC or Aconex (or internal only), from the retained amount. */}
+          {(function(){
+            var r=purchaseRoute(p);
+            return <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4}}>
+              <span style={lbl}>Client approval</span>
+              <select value={r.manual?r.route:""} disabled={ro} onChange={function(e){setRoute(p,e.target.value);}} style={Object.assign({},inp,{fontWeight:600,width:"auto"})}>
+                <option value="">Auto — {r.auto?APPROVAL_ROUTE_LABEL[r.auto]:"amount unknown"}</option>
+                <option value="acc">ACC (forced)</option>
+                <option value="aconex">Aconex (forced)</option>
+                <option value="none">Internal only (forced)</option>
+              </select>
+              <span style={{fontSize:10.5,color:r.manual?"#b35c00":"#9b968b"}}>{r.manual?"Forced · auto would be "+(APPROVAL_ROUTE_LABEL[r.auto]||"unknown"):r.why}</span>
+            </div>;
+          })()}
+          {!docs.some(function(d){return d.listed;})
+            ?<div style={{fontSize:11.5,color:purchaseRoute(p).route==="none"?"#1e6b3a":"#9b968b",marginBottom:10}}>
+              {purchaseRoute(p).route==="none"?"Internal approval only — nothing goes to the client.":"Retain a supplier (or type the amount) to know whether it goes as an ACC or an Aconex."}</div>
+          :<table className="tbl" style={{fontSize:12,marginBottom:10}}>
             <thead><tr>
-              <th style={{width:80}}>Doc</th><th style={{minWidth:150}}>Required</th><th style={{textAlign:"center",minWidth:112}}>Target</th>
+              <th style={{width:80}}>Doc</th><th style={{textAlign:"center",minWidth:112}}>Target</th>
               <th style={{minWidth:100}}>Status</th><th style={{textAlign:"center",minWidth:100}}>Submitted</th><th style={{minWidth:110}}>Approval</th><th style={{minWidth:104}}>Reference</th>
             </tr></thead>
-            <tbody>{docs.map(function(d){
+            <tbody>{docs.filter(function(d){return d.listed;}).map(function(d){
               var doc=d.doc,sum=docSummary(doc),last=doc.cycles[doc.cycles.length-1],isOpen=!!openRow[doc.id];
-              var mode=((p.need||{})[d.x.k])||"auto";
-              var auto=purchaseNeedInfo(Object.assign({},p,{need:{}}),d.x.k);
               var tgt=p[d.x.k+"Target"]||"";
               var late=d.listed&&tgt&&tgt<today()&&sum.state==="none";
               return <React.Fragment key={d.x.k}>
@@ -1031,14 +1049,6 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
                     {d.listed&&<button type="button" onClick={function(){toggleRow(doc.id);}} title="Show or edit the revisions"
                       style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{isOpen?"▾":"▸"}</button>}
                     <span className="badge" style={{background:"var(--blue-soft,#e8f0fe)",color:"var(--blue,#0f5299)"}}>{d.x.label}</span>
-                  </td>
-                  <td>
-                    <select value={mode} disabled={ro} onChange={function(e){setNeed(p,d.x.k,e.target.value);}} style={Object.assign({},inp,{fontWeight:600})}>
-                      <option value="auto">Auto ({auto.need?"required":"not required"})</option>
-                      <option value="yes">Required</option>
-                      <option value="no">Not required</option>
-                    </select>
-                    <div style={{fontSize:10,color:"#9b968b",marginTop:2}}>{auto.why}</div>
                   </td>
                   <td style={{textAlign:"center"}}>{d.listed&&<input type="date" min="1990-01-01" max="2200-12-31" value={tgt} disabled={ro}
                     onChange={function(e){var u={};u[d.x.k+"Target"]=e.target.value;updP(p.id,u);}}
@@ -1059,13 +1069,13 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
                     onChange={function(e){var u={};u[d.x.k+"Ref"]=e.target.value;updP(p.id,u);}}
                     style={Object.assign({},inp,{fontFamily:"var(--font-mono)"})}/>}</td>
                 </tr>
-                {d.listed&&isOpen&&<tr><td colSpan={7} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+                {d.listed&&isOpen&&<tr><td colSpan={6} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
                   <div style={{fontSize:11,fontWeight:700,color:"#6f6b62",marginBottom:2}}>{d.x.label} — {purchaseName(p,i)}</div>
                   <DocRevisionsEditor td={td} d={doc} updTd={updTd} afterSave={afterSave}/>
                 </td></tr>}
               </React.Fragment>;
             })}</tbody>
-          </table>
+          </table>}
 
           {/* Order and delivery */}
           <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
