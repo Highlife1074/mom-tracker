@@ -402,12 +402,51 @@ function sdMainWithCycles(td,list){
     sdApprovalStatus:w==="approved"||w==="pending approval"?w:"",
     sdReview:last&&last.code?(last.code==="D"?"Rejected":last.code):""};
 }
+// ---------------------------------------------------------------------------
+// Client approval route of the subcontract, from its amount (Settings › Durations):
+//   below subAccMin (25 000 €)     → "none": internal approval only, nothing goes to the client
+//   from subAccMin up to subAconexMin (200 000 €) → "acc"
+//   from subAconexMin              → "aconex"
+// The amount is the proposed ACC amount, else the awarded bidder, else the lowest bid, else
+// the budget. td.approvalRoute ("acc" | "aconex" | "none") overrides; missing = automatic.
+// It is still ONE document (td.cycles.acc / stepDates.acc): only its name and whether it goes
+// to the client change, so the existing history and the contract chain are untouched.
+// ---------------------------------------------------------------------------
+var APPROVAL_ROUTE_LABEL={acc:"ACC",aconex:"Aconex",none:"Internal approval"};
+function tenderApprovalAmount(td){
+  var proposed=Number((td&&td.accAmountSubcontract)||0)+Number((td&&td.accAmountOther)||0);
+  if(proposed>0)return{amount:proposed,src:"proposed ACC amount"};
+  var bl=biddersOf(td||{});
+  var aw=bl.find(function(b){return b.result==="awarded"&&Number(b.price)>0;});
+  if(aw)return{amount:Number(aw.price),src:"awarded bid"};
+  var ps=bl.map(function(b){return Number(b.price)||0;}).filter(function(x){return x>0;});
+  if(ps.length)return{amount:Math.min.apply(null,ps),src:"lowest bid"};
+  if(Number((td&&td.budget)||0)>0)return{amount:Number(td.budget),src:"budget"};
+  return{amount:null,src:""};
+}
+function tenderApprovalRoute(td){
+  var a=tenderApprovalAmount(td);
+  var accMin=getDur("subAccMin"),acoMin=getDur("subAconexMin");
+  var auto=a.amount===null?"":a.amount>=acoMin?"aconex":a.amount>=accMin?"acc":"none";
+  var why=a.amount===null?"Amount unknown: fill the budget, the bids or the proposed ACC amount"
+    :momEur(a.amount)+" ("+a.src+") → "+(auto==="aconex"?"≥ "+momEur(acoMin):auto==="acc"?momEur(accMin)+" – "+momEur(acoMin):"< "+momEur(accMin));
+  var ov=td&&td.approvalRoute;
+  var route=ov==="acc"||ov==="aconex"||ov==="none"?ov:auto;
+  return{route:route,auto:auto,manual:route!==auto,amount:a.amount,why:why};
+}
+// "ACC", "Aconex", "Internal approval" — or "ACC/Aconex" while the amount is unknown.
+function tenderRouteLabel(td){var r=tenderApprovalRoute(td).route;return APPROVAL_ROUTE_LABEL[r]||"ACC/Aconex";}
 function tenderDocs(td){
   var T=(function(){try{return theoreticalDates(td);}catch(e){return{};}})();
   function th(k){return ((T[k]||{}).theoretical)||"";}
   var out=[];
   // client approval and quality documents live in stepDates / steps
-  [{k:"acc",group:"Client approval",label:"ACC/Aconex"},{k:"wms",group:"Quality",label:"WMS"},{k:"itp",group:"Quality",label:"ITP"}].forEach(function(d){
+  var route=tenderApprovalRoute(td).route;
+  // A document already sent keeps a client name even if the amount later fell below the ACC threshold.
+  var accLabel=route==="none"&&cyclesOfStep(td,"acc").length?"ACC/Aconex":tenderRouteLabel(td);
+  [{k:"acc",group:"Client approval",label:accLabel},{k:"wms",group:"Quality",label:"WMS"},{k:"itp",group:"Quality",label:"ITP"}].forEach(function(d){
+    // Below the ACC threshold nothing goes to the client: no document, unless one was already sent.
+    if(d.k==="acc"&&route==="none"&&!cyclesOfStep(td,"acc").length)return;
     var sub=th(d.k);
     out.push({id:d.k,group:d.group,kind:d.k,label:d.label,sub:(((td.stepDates||{})[d.k])||{}).reference||"",
       cycles:cyclesOfStep(td,d.k),theoSub:sub,
@@ -827,17 +866,22 @@ function purchaseAmount(p){var q=purchaseQuote(p);var v=momNum(q?q.amount:(p||{}
 function purchaseSupplier(p){var q=purchaseQuote(p);return q?String(q.supplier||"").trim():"";}
 function purchaseName(p,i){return String((p&&p.title)||"").trim()||purchaseSupplier(p)||("Purchase "+((i>=0?i:0)+1));}
 function cyclesOfPurchase(p,k){return _readCycles(((p&&p.cycles)||{})[k],null,null);}
-// Whether a purchase needs the ACC / the Aconex, and why: {need, why}.
-function purchaseNeedInfo(p,k){
-  var x=PURCHASE_DOCS.find(function(d){return d.k===k;});
-  var mode=((p&&p.need)||{})[k]||"auto";
-  if(mode==="yes")return{need:true,why:"Required (set by hand)"};
-  if(mode==="no")return{need:false,why:"Not required (set by hand)"};
-  var min=getDur(x.min),amt=purchaseAmount(p);
-  if(min<=0)return{need:true,why:"Required for every purchase (threshold 0 in Settings › Durations)"};
-  if(amt===null)return{need:false,why:"Amount unknown — required from "+momEur(min)};
-  return amt>=min?{need:true,why:momEur(amt)+" ≥ threshold "+momEur(min)}:{need:false,why:momEur(amt)+" < threshold "+momEur(min)};
+// A purchase goes to the client as an ACC OR an Aconex, never both — same rule as the
+// subcontract (tenderApprovalRoute) with its own thresholds: below purchaseAccMin internal
+// approval only, then ACC, from purchaseAconexMin Aconex. p.route forces it; purchases saved
+// before that carry need:{acc|aconex:"yes"}, read as the forced route.
+function purchaseRoute(p){
+  var amt=purchaseAmount(p);
+  var accMin=getDur("purchaseAccMin"),acoMin=getDur("purchaseAconexMin");
+  var auto=amt===null?"":amt>=acoMin?"aconex":amt>=accMin?"acc":"none";
+  var why=amt===null?"Amount unknown: retain a supplier or type the amount"
+    :momEur(amt)+" → "+(auto==="aconex"?"≥ "+momEur(acoMin):auto==="acc"?momEur(accMin)+" – "+momEur(acoMin):"< "+momEur(accMin));
+  var ov=p&&p.route;
+  if(!ov&&p&&p.need)ov=p.need.aconex==="yes"?"aconex":p.need.acc==="yes"?"acc":"";
+  var route=ov==="acc"||ov==="aconex"||ov==="none"?ov:auto;
+  return{route:route,auto:auto,manual:route!==auto,why:why};
 }
+function purchaseNeedInfo(p,k){var r=purchaseRoute(p);return{need:r.route===k,why:r.why};}
 // A document that already went to the client stays listed whatever the amount says.
 function purchaseNeeds(p,k){return purchaseNeedInfo(p,k).need||cyclesOfPurchase(p,k).length>0;}
 function purchaseDoc(td,p,k){
@@ -872,7 +916,7 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
   function save(ps){if(blockIfReadOnly())return;updTd("purchases",ps);}
   function updP(id,patch){save(list.map(function(p){return p.id===id?Object.assign({},p,patch):p;}));}
   function updQ(p,qid,patch){updP(p.id,{quotes:(p.quotes||[]).map(function(q){return q.id===qid?Object.assign({},q,patch):q;})});}
-  function setNeed(p,k,v){var n=Object.assign({acc:"auto",aconex:"auto"},p.need||{});n[k]=v;updP(p.id,{need:n});}
+  function setRoute(p,v){updP(p.id,{route:v,need:{acc:"auto",aconex:"auto"}});}
   function toggleMat(p,mid){
     var ids=(p.materialIds||[]).slice();var i=ids.indexOf(mid);
     if(i>=0)ids.splice(i,1);else ids.push(mid);
@@ -903,7 +947,7 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
     <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"6px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Purchases</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
-        Specific materials bought directly · ACC from {momEur(getDur("purchaseAccMin"))||"€ 0"}, Aconex from {momEur(getDur("purchaseAconexMin"))||"€ 0"} (Settings › Durations){list.length?" · "+list.length+" purchase"+(list.length>1?"s":""):""}</span>
+        Specific materials bought directly · internal below {momEur(getDur("purchaseAccMin"))||"€ 0"}, then ACC, Aconex from {momEur(getDur("purchaseAconexMin"))||"€ 0"} (Settings › Durations){list.length?" · "+list.length+" purchase"+(list.length>1?"s":""):""}</span>
       {!ro&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){save(list.concat([newPurchase()]));}}>＋ Purchase</button>}
     </div>
     {list.length===0&&<div style={{color:"var(--ink-4,#9b968b)",fontSize:12,padding:"6px 0"}}>No purchase on this package. Use ＋ Purchase for materials bought without a subcontract.</div>}
@@ -973,17 +1017,30 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
             })}
           </div>
 
-          {/* Client approval: ACC and Aconex, each required from its own amount. */}
-          <div style={Object.assign({},lbl,{marginBottom:4})}>Client approval</div>
-          <table className="tbl" style={{fontSize:12,marginBottom:10}}>
+          {/* Client approval: ACC or Aconex (or internal only), from the retained amount. */}
+          {(function(){
+            var r=purchaseRoute(p);
+            return <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4}}>
+              <span style={lbl}>Client approval</span>
+              <select value={r.manual?r.route:""} disabled={ro} onChange={function(e){setRoute(p,e.target.value);}} style={Object.assign({},inp,{fontWeight:600,width:"auto"})}>
+                <option value="">Auto — {r.auto?APPROVAL_ROUTE_LABEL[r.auto]:"amount unknown"}</option>
+                <option value="acc">ACC (forced)</option>
+                <option value="aconex">Aconex (forced)</option>
+                <option value="none">Internal only (forced)</option>
+              </select>
+              <span style={{fontSize:10.5,color:r.manual?"#b35c00":"#9b968b"}}>{r.manual?"Forced · auto would be "+(APPROVAL_ROUTE_LABEL[r.auto]||"unknown"):r.why}</span>
+            </div>;
+          })()}
+          {!docs.some(function(d){return d.listed;})
+            ?<div style={{fontSize:11.5,color:purchaseRoute(p).route==="none"?"#1e6b3a":"#9b968b",marginBottom:10}}>
+              {purchaseRoute(p).route==="none"?"Internal approval only — nothing goes to the client.":"Retain a supplier (or type the amount) to know whether it goes as an ACC or an Aconex."}</div>
+          :<table className="tbl" style={{fontSize:12,marginBottom:10}}>
             <thead><tr>
-              <th style={{width:80}}>Doc</th><th style={{minWidth:150}}>Required</th><th style={{textAlign:"center",minWidth:112}}>Target</th>
+              <th style={{width:80}}>Doc</th><th style={{textAlign:"center",minWidth:112}}>Target</th>
               <th style={{minWidth:100}}>Status</th><th style={{textAlign:"center",minWidth:100}}>Submitted</th><th style={{minWidth:110}}>Approval</th><th style={{minWidth:104}}>Reference</th>
             </tr></thead>
-            <tbody>{docs.map(function(d){
+            <tbody>{docs.filter(function(d){return d.listed;}).map(function(d){
               var doc=d.doc,sum=docSummary(doc),last=doc.cycles[doc.cycles.length-1],isOpen=!!openRow[doc.id];
-              var mode=((p.need||{})[d.x.k])||"auto";
-              var auto=purchaseNeedInfo(Object.assign({},p,{need:{}}),d.x.k);
               var tgt=p[d.x.k+"Target"]||"";
               var late=d.listed&&tgt&&tgt<today()&&sum.state==="none";
               return <React.Fragment key={d.x.k}>
@@ -992,14 +1049,6 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
                     {d.listed&&<button type="button" onClick={function(){toggleRow(doc.id);}} title="Show or edit the revisions"
                       style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{isOpen?"▾":"▸"}</button>}
                     <span className="badge" style={{background:"var(--blue-soft,#e8f0fe)",color:"var(--blue,#0f5299)"}}>{d.x.label}</span>
-                  </td>
-                  <td>
-                    <select value={mode} disabled={ro} onChange={function(e){setNeed(p,d.x.k,e.target.value);}} style={Object.assign({},inp,{fontWeight:600})}>
-                      <option value="auto">Auto ({auto.need?"required":"not required"})</option>
-                      <option value="yes">Required</option>
-                      <option value="no">Not required</option>
-                    </select>
-                    <div style={{fontSize:10,color:"#9b968b",marginTop:2}}>{auto.why}</div>
                   </td>
                   <td style={{textAlign:"center"}}>{d.listed&&<input type="date" min="1990-01-01" max="2200-12-31" value={tgt} disabled={ro}
                     onChange={function(e){var u={};u[d.x.k+"Target"]=e.target.value;updP(p.id,u);}}
@@ -1020,13 +1069,13 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
                     onChange={function(e){var u={};u[d.x.k+"Ref"]=e.target.value;updP(p.id,u);}}
                     style={Object.assign({},inp,{fontFamily:"var(--font-mono)"})}/>}</td>
                 </tr>
-                {d.listed&&isOpen&&<tr><td colSpan={7} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+                {d.listed&&isOpen&&<tr><td colSpan={6} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
                   <div style={{fontSize:11,fontWeight:700,color:"#6f6b62",marginBottom:2}}>{d.x.label} — {purchaseName(p,i)}</div>
                   <DocRevisionsEditor td={td} d={doc} updTd={updTd} afterSave={afterSave}/>
                 </td></tr>}
               </React.Fragment>;
             })}</tbody>
-          </table>
+          </table>}
 
           {/* Order and delivery */}
           <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
@@ -1211,6 +1260,26 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
 
 // part: "docs" = submission chain + WMS/ITP · "contract" = contract sub-steps only · omitted = both.
 // focus: {id,n} from the tender's document register — opens that row and scrolls to it.
+// Name of the client-approval step with its route: automatic from the amount, or forced.
+function ApprovalRouteCell({td,updTd}){
+  var r=tenderApprovalRoute(td);
+  var ro=isReadOnly()||!updTd;
+  var col={acc:"#1a73e8",aconex:"#7b1fa2",none:"#6f6b62"}[r.route]||"#555";
+  return <span style={{display:"inline-flex",flexDirection:"column",gap:2,verticalAlign:"top"}}>
+    <span style={{color:col}}>{tenderRouteLabel(td)}</span>
+    <select value={td.approvalRoute||""} disabled={ro} title={r.why}
+      onChange={function(e){if(blockIfReadOnly())return;updTd("approvalRoute",e.target.value);}}
+      style={{fontSize:10,padding:"1px 4px",fontWeight:500,color:"#6f6b62",border:"1px solid #e8e6df",borderRadius:4,background:"#fff",maxWidth:170}}>
+      <option value="">Auto{r.auto?" — "+APPROVAL_ROUTE_LABEL[r.auto]:" — amount unknown"}</option>
+      <option value="acc">ACC (forced)</option>
+      <option value="aconex">Aconex (forced)</option>
+      <option value="none">Internal only (forced)</option>
+    </select>
+    <span style={{fontSize:9.5,fontWeight:400,color:r.manual?"#b35c00":"#9b968b",whiteSpace:"normal",maxWidth:190}}>
+      {r.manual?"Forced · auto would be "+(APPROVAL_ROUTE_LABEL[r.auto]||"unknown"):r.why}</span>
+    {r.route==="none"&&<span style={{fontSize:9.5,fontWeight:600,color:"#1e6b3a",whiteSpace:"normal",maxWidth:190}}>Not sent to the client — the contract starts once a bidder is awarded</span>}
+  </span>;
+}
 function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelTender,tasks,saveTasks,pkgOwners,updTd,afterSave,part,focus}){
   // Rows that can be opened: "bidders", "acc", "wms", "itp", "circuit". Hooks stay first.
   const [openRow,setOpenRow]=useState({});
@@ -1290,7 +1359,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
     var lab={fontSize:10,color:"#888",textTransform:"uppercase",letterSpacing:".05em",marginRight:5};
     var proposed=Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0);
     return <React.Fragment key={k}><tr id={"tdoc-"+k} style={{background:ok?"#f2f9f3":"#f4f8ff"}}>
-      <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{chev(k)}{s.label}</td>
+      <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{chev(k)}{k==="acc"?<ApprovalRouteCell td={td} updTd={updTd}/>:s.label}</td>
       <td colSpan={span} style={{padding:"8px 12px"}}>
         <div style={{display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12}}>
           <span><span style={lab}>Doc no.</span>{ref
@@ -1331,7 +1400,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         same way: a flat heading with a rule, then the table. None of them wraps another. */}
     {part!=="contract"&&<div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Submission steps</h3>
-      <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>bidders → tender package → ACC/Aconex</span>
+      <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>bidders → tender package → {tenderRouteLabel(td)}</span>
       {hiddenPrev>0&&<span style={{fontSize:11,color:"#9b968b"}}>· ACC submitted, {hiddenPrev} previous step{hiddenPrev>1?"s":""} hidden</span>}
       <button type="button" className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setDetail(!detail);}}
         title={detail?"Back to the short view: documents submitted or approved on one line":"Every step and every field, including the ones already done"}>{detail?"▴ Synthetic view":"▾ Show all details"}</button>
@@ -1361,7 +1430,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         var showReference=s.key==="acc";
         var expandable=s.special==="bidders"||s.key==="acc";
         return <React.Fragment key={s.key}><tr id={"tdoc-"+s.key}>
-          <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{expandable&&chev(s.key)}{s.label}
+          <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap",padding:"8px 12px"}}>{expandable&&chev(s.key)}{s.key==="acc"?<ApprovalRouteCell td={td} updTd={updTd}/>:s.label}
             {showReference&&<RefTag td={td} k={s.key}/>}</td>
 
           <td style={{minWidth:180}}>
@@ -1871,7 +1940,7 @@ function recordDocSubmission(td,d,updTd,afterSave){
   var last=d.cycles[d.cycles.length-1];
   var rev=last?last.rev+1:0;
   var cur=docCurRef(td,d);
-  var name=(d.kind==="acc"?"ACC/Aconex":d.kind==="sd"?"Shop drawing":d.label)+((d.group==="Materials"||d.group==="Purchases")&&d.sub?" — "+d.sub:"")+(d.kind==="sd"&&d.sub?" — "+d.sub:"");
+  var name=(d.kind==="acc"?d.label:d.kind==="sd"?"Shop drawing":d.label)+((d.group==="Materials"||d.group==="Purchases")&&d.sub?" — "+d.sub:"")+(d.kind==="sd"&&d.sub?" — "+d.sub:"");
   return ppPrompt({
     title:(rev?"Resubmission R"+rev:"Submission")+" · "+name,
     message:"Reference of the document sent to the client (Aconex / transmittal number).\nLeave empty if it is not known yet: the row will show “ref. missing” until it is typed.",
@@ -2150,7 +2219,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
       if(lastAcc&&(lastAcc.code==="C"||lastAcc.code==="D"))fs="";
       if(isValidDate(fs)&&fs<fAcc.date)accBars.push(seg(fs,fAcc.date,FLOW_COL.client,"Forecast: ACC submittal "+fmtDate(fs)+" → approval "+fmtDate(fAcc.date),true,"accf"));
     }
-    lanes.push({k:"acc",label:"ACC/Aconex",sub:cyc.acc.length>1?cyc.acc.length+" submissions":"submission → client",plan:(docs.find(function(d){return d.id==="acc";})||{}).theoApproval,bars:accBars});
+    lanes.push({k:"acc",label:tenderRouteLabel(td),sub:cyc.acc.length>1?cyc.acc.length+" submissions":"submission → client",plan:(docs.find(function(d){return d.id==="acc";})||{}).theoApproval,bars:accBars});
     // Contract: internal on the upper half, sub on the lower half, start/join/end across
     var cbars=[];
     cs.stages.forEach(function(x,si){
@@ -2452,6 +2521,8 @@ function tenderPhase(td){
   if(signed)return"sig";
   var acc=cyclesOfStep(td,"acc");var last=acc[acc.length-1];
   if(last&&(last.code==="A"||last.code==="B"))return"ctr";
+  // Internal approval only (below the ACC threshold): the contract starts once a bidder is awarded.
+  if(!acc.length&&tenderApprovalRoute(td).route==="none"&&(ct.requestDone||biddersOf(td).some(function(b){return b.result==="awarded";})))return"ctr";
   return"pre";
 }
 var TENDER_PHASE_ORDER={pre:0,ctr:1,sig:2,can:3};
@@ -2488,7 +2559,7 @@ function tenderNow(td,now){
     var pOpen=sums.filter(function(x){return isPurchaseDoc(x.d)&&(x.s.state==="pending"||x.s.state==="returned");});
     if(pOpen.length&&!td.tenderIssued)return docLine(pOpen[0]);
     if(td.tenderIssued&&!td.bidsReceived)return {text:"Tender out · bidders pricing",who:"sub",days:since(td.tenderIssued)};
-    if(td.bidsReceived)return {text:"Bid evaluation · ACC to submit",who:"us",days:since(td.bidsReceived)};
+    if(td.bidsReceived)return {text:"Bid evaluation · "+(tenderApprovalRoute(td).route==="none"?"internal approval":tenderRouteLabel(td)+" to submit"),who:"us",days:since(td.bidsReceived)};
     return {text:"Tender preparation",who:"us",days:null};
   }
   if(ph==="ctr"){
@@ -2529,12 +2600,14 @@ function tenderStage(td,now){
   if(ph==="pre"){
     var acc=sums.find(function(x){return x.d.id==="acc";});
     var st=acc?acc.s.state:"none",val=String((td.steps||{}).acc||"");
-    if(st==="pending")next="ACC/Aconex approved → contract request";
-    else if(st==="returned")next="ACC/Aconex · with client";
-    else if(/internal review/i.test(val)){cur={text:"ACC/Aconex · internal review",who:"internal",days:null};next="ACC/Aconex · with client";}
-    else if(/under preparation/i.test(val)){cur={text:"ACC/Aconex · under preparation",who:"us",days:null};next="ACC/Aconex · internal review";}
+    var RL=tenderRouteLabel(td),internal=tenderApprovalRoute(td).route==="none";
+    if(st==="pending")next=RL+" approved → contract request";
+    else if(st==="returned")next=RL+" · with client";
+    else if(internal&&td.bidsReceived)next="Award (internal approval) → contract request";
+    else if(/internal review/i.test(val)){cur={text:RL+" · internal review",who:"internal",days:null};next=RL+" · with client";}
+    else if(/under preparation/i.test(val)){cur={text:RL+" · under preparation",who:"us",days:null};next=RL+" · internal review";}
     else if(td.tenderIssued&&!td.bidsReceived)next="Bid evaluation";
-    else if(td.bidsReceived)next="ACC/Aconex · with client";
+    else if(td.bidsReceived)next=RL+" · with client";
     else next="Tender out to bidders";
   }else if(ph==="ctr"){
     var cs=circuitState(circuitOf(td),now);
