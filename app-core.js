@@ -121,7 +121,9 @@ const DEFAULT_DURATIONS={
   marAfterContract:14,     // calendar days: MAR is due this long AFTER the contract is signed
   itpBeforeStart:28,       // calendar days: ITP must be submitted this long BEFORE the target start
   purchaseAccMin:0,        // €: a direct purchase needs the client's ACC from this amount (0 = always)
-  purchaseAconexMin:0      // €: a direct purchase needs an Aconex submission from this amount (0 = always)
+  purchaseAconexMin:0,     // €: a direct purchase needs an Aconex submission from this amount (0 = always)
+  subAccMin:25000,         // €: a subcontract goes to the client as an ACC from this amount (below: internal only)
+  subAconexMin:200000      // €: from this amount it goes as an Aconex instead of an ACC
 };
 function getDur(key){
   var d=(window._ppDurations||{});
@@ -2081,6 +2083,10 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
         {group:"Other",items:[
           {k:"sdAfterContract",label:"Contract signed → shop drawing submission (working days)"},
           {k:"clientResponse",label:"Any document with client → response due (calendar days)"}
+        ]},
+        {group:"Subcontract — client approval route (€)",unit:"€",items:[
+          {k:"subAccMin",label:"Below this amount: internal approval only. From it: ACC"},
+          {k:"subAconexMin",label:"From this amount: Aconex instead of ACC"}
         ]},
         {group:"Direct purchases — client approval from (€, 0 = every purchase)",unit:"€",items:[
           {k:"purchaseAccMin",label:"ACC required when the retained amount reaches"},
