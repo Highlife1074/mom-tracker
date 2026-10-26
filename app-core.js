@@ -657,7 +657,7 @@ function usePhone(){
 }
 var PHONE_GROUPS=[
   ["Follow-up",["global","moms","notes","timeline","trackers","dashboard","submissions"]],
-  ["Procurement",["myprocurement","tenders","packages","procflow","materials","qadocs"]],
+  ["Procurement",["myprocurement","tenders","packages","procplan","procflow","materials","qadocs"]],
   ["Site",["zone","manpower","steel","inventory","concrete"]],
   ["Contract",["contracts","awn","contractors"]],
   ["Admin",["settings"]]
@@ -2110,6 +2110,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           })}
         </div>;
       })}
+      <ProcPlanTemplatesEditor durations={durations} saveDurations={saveDurations}/>
       {(function(){
         var custom=Array.isArray((durations||{}).contractCircuit)&&durations.contractCircuit.length>0;
         var list=getContractCircuit();
@@ -4925,6 +4926,7 @@ function App(){
     {id:"packages",icon:"🗂️",label:"Department"},
     {id:"zone",icon:"🏢",label:"Zone"},
     {id:"tenders",icon:"📦",label:"Package"},
+    {id:"procplan",icon:"📅",label:"Proc. plan"},
     {id:"procflow",icon:"🧭",label:"Proc. flow"},
     {id:"materials",icon:"🏗️",label:"Materials"},
     {id:"steel",icon:"🔩",label:"Steel"},
@@ -5051,6 +5053,7 @@ function App(){
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules} tasks={tasks} saveTasks={saveT} zones={zones}/>}
         {view==="procflow"&&<ProcFlowView tenders={tenders} onNavTender={navToTender}/>}
+        {view==="procplan"&&<ProcPlanView tenders={hasFullAccess?tenders:myTenders} saveTenders={saveTenders} packages={packages} onNavTender={navToTender}/>}
         {view==="tenders"&&<TendersView tenders={hasFullAccess?tenders:myTenders} saveTenders={saveTenders} packages={hasFullAccess?packages:myPkgs} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} saveContractors={saveContractors} onNavContracts={hasFullAccess?function(){setView("contracts");}:null} pkgOwners={pkgOwners} jumpTender={jumpTender} clearJumpTender={function(){setJumpTender(null);}} jumpFrom={jumpFrom} clearJumpFrom={function(){setJumpFrom(null);}} onBack={jumpFrom?function(){setView(jumpFrom);setJumpTender(null);setJumpFrom(null);}:null} onNavZone={function(){setView("zone");}}/>}
         {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT} onNavTender={navToTender} memory={memoryFor("contractors")} setMemory={function(p){setMemoryFor("contractors",p);}}/>}
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}
