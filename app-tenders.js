@@ -2656,12 +2656,18 @@ function TenderStageCell({td}){
     {s.next&&<div style={{color:"#6f6b62",marginLeft:13}}><span style={{fontSize:9.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b"}}>Next </span>{s.next}</div>}
   </div>;
 }
+// Late delivery that still matters: the forecast delivery is after the start on site AND that
+// start is still to come. A package already started is the past: it is no longer flagged.
+function tenderWillStartLate(td,p,now){
+  now=now||today();
+  return !!p&&isValidDate(p.deliveryDate)&&isValidDate(td.startOnSite)&&td.startOnSite>=now&&p.deliveryDate>td.startOnSite;
+}
 // Quick filters of the tenders list.
 function tenderQuick(td,k){
   if(k==="na")return !(td.awards||[]).some(function(a){return a.subcontractor;});
   if(k==="cl")return tenderDocs(td).some(function(d){return docSummary(d).state==="pending";});
   if(k==="late"){var p=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
-    return isValidDate(p.deliveryDate)&&isValidDate(td.startOnSite)&&p.deliveryDate>td.startOnSite;}
+    return tenderWillStartLate(td,p);}
   return true;
 }
 // Common date range for every mini timeline of the list, so rows compare.
@@ -2901,7 +2907,7 @@ function ProcFlowView({tenders,onNavTender}){
     var p=(function(){try{return calcProcurement(t);}catch(e){return{};}})();
     info[t.id]={col:procFlowCol(t),now:tenderNow(t,now),
       revs:tenderDocs(t).reduce(function(n,d){return n+Math.max(0,d.cycles.length-1);},0),
-      late:isValidDate(p.deliveryDate)&&isValidDate(t.startOnSite)&&p.deliveryDate>t.startOnSite};
+      late:tenderWillStartLate(t,p,now)};
   });
   var pkgs=[...new Set(list.map(function(t){return t.package||"—";}))].sort(function(a,b){return a==="—"?1:b==="—"?-1:a.localeCompare(b);});
   var counts=PF_COLS.map(function(c){return list.filter(function(t){return info[t.id].col===c.k;}).length;});
@@ -4226,6 +4232,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         })()}
 
         {tdTab==="docs"&&<React.Fragment>
+        <ProcPlanCard td={td} updTd={updTd}/>
         <div className="card" style={{marginBottom:10}}>
         <SubmissionSteps part="docs" focus={docFocus} td={td} TENDER_STEPS={TENDER_STEPS} updateStep={updateStep} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} tasks={tasks} saveTasks={saveTasks} pkgOwners={pkgOwners} updTd={updTd} afterSave={flowAfterSave}/>
         </div>
@@ -4469,7 +4476,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     </div>
     <div className="tp-noprint" style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <span style={{fontSize:10,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#9b968b",width:70}}>Show only</span>
-      {[["cl","With client","At least one document waits for the client's answer"],["late","Late delivery","Forecast delivery after the start on site"],["na","Not awarded","No subcontractor recorded in Awards"]].map(function(x){
+      {[["cl","With client","At least one document waits for the client's answer"],["late","Late delivery","Will start late: forecast delivery after a start on site still to come (packages already started are not listed)"],["na","Not awarded","No subcontractor recorded in Awards"]].map(function(x){
         var on=quickF===x[0];
         return <button key={x[0]} className={"fchip"+(on?" on":"")} title={x[2]} onClick={function(){setQuickF(on?"":x[0]);}}>{x[1]}</button>;
       })}
