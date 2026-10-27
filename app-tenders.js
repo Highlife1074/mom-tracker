@@ -5093,7 +5093,9 @@ function calcProcurement(td){
   }
 
   var steps = [];
-  var ov=td.procOverrides||{};
+  // td.procOverrides is legacy: no screen edits it any more, so a value left there would be a
+  // hidden date nobody can see or change. It is ignored; the targets typed in the app rule.
+  var ov={};
 
   steps.push({key:"accSub", label:"ACC Submittal", date:accSubmittal, done:accDoneActual, duration:null, manual:true, note:accDoneActual?"From 'Date done' of ACC step":"Provisional — from ACC target date (not yet submitted)"});
 
@@ -5126,8 +5128,6 @@ function calcProcurement(td){
     var _trNotSent = _trs.filter(function(t){return !cyclesOfSD(t).length;});
     var _trTarget = _trNotSent.map(function(t){return t.target||td.sdTarget||sdSubTargetAuto;}).filter(isValidDate).sort().pop()||"";
     var _trLastSent = _trs.map(function(t){var l=cyclesOfSD(t),z=l[l.length-1];return z&&!z.code?z.submitted:"";}).filter(isValidDate).sort().pop()||"";
-    // An old procOverrides.sdSub (no longer editable anywhere) only fills in when no SD Target
-    // is set: a stale override must never pull the shop drawings before the Target typed today.
     var _sdPanel = _trTarget||td.sdTarget||"";
     var sdSubTarget = _sdPanel||ov.sdSub||sdSubTargetAuto;
     var sdSubDone = _trNotSent.length?"":(_trs.length?(_trLastSent||td.sdDone||""):(td.sdDone||""));
