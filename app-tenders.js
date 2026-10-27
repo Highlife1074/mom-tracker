@@ -5126,11 +5126,14 @@ function calcProcurement(td){
     var _trNotSent = _trs.filter(function(t){return !cyclesOfSD(t).length;});
     var _trTarget = _trNotSent.map(function(t){return t.target||td.sdTarget||sdSubTargetAuto;}).filter(isValidDate).sort().pop()||"";
     var _trLastSent = _trs.map(function(t){var l=cyclesOfSD(t),z=l[l.length-1];return z&&!z.code?z.submitted:"";}).filter(isValidDate).sort().pop()||"";
-    var sdSubTarget = ov.sdSub||_trTarget||td.sdTarget||sdSubTargetAuto;
+    // An old procOverrides.sdSub (no longer editable anywhere) only fills in when no SD Target
+    // is set: a stale override must never pull the shop drawings before the Target typed today.
+    var _sdPanel = _trTarget||td.sdTarget||"";
+    var sdSubTarget = _sdPanel||ov.sdSub||sdSubTargetAuto;
     var sdSubDone = _trNotSent.length?"":(_trs.length?(_trLastSent||td.sdDone||""):(td.sdDone||""));
     steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:sdSubDone, duration:14, manual:false, sd:true, autoDate:sdSubTargetAuto,
-      overridden:!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
-      fromSdPanel:!ov.sdSub&&(!!_trTarget||!!td.sdTarget)});
+      overridden:!_sdPanel&&!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
+      fromSdPanel:!!_sdPanel});
 
     var sdAppTargetAuto = addWorkDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
     var sdAppTarget = ov.sdApp||sdAppTargetAuto;
