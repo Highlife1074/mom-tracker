@@ -269,7 +269,8 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
       if(r.dept)patch.package=r.dept;
       if(r.type)patch.procType=r.type;
       if(r.budget)patch.budget=r.budget;
-      if(r.need)patch.startOnSite=r.need;
+      // A package linked to a schedule task takes its need date from the schedule only.
+      if(r.need&&!(r.existing&&tenderScheduleStart(r.existing)))patch.startOnSite=r.need;
       if(r.existing){
         list=list.map(function(t){return t.id===r.existing.id?Object.assign({},t,patch):t;});nUpd++;
       }else{
@@ -287,7 +288,7 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
         <button className="btn btn-sm" onClick={onClose}>✕</button></div>
       <div className="modal-body">
       <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>Copy the columns from Excel, in this order: <b>Package ⇥ Department ⇥ Type ⇥ Budget ⇥ Need on site</b>.
-        Type: subcontract, supply &amp; install, equipment or material. A package that already exists (same name) is updated with the columns filled.</div>
+        Type: subcontract, supply &amp; install, equipment or material. A package that already exists (same name) is updated with the columns filled. Need on site is ignored for a package linked to a schedule task: the schedule gives it.</div>
       <textarea value={txt} onChange={function(e){setTxt(e.target.value);}} rows={8} placeholder={"Facade curtain wall\tFACADE\tSupply & install\t2 400 000\t15/03/2027\nGenerators\tMEP\tEquipment\t380000\t01/06/2027"}
         style={{width:"100%",fontFamily:"var(--font-mono)",fontSize:12}}/>
       {rows.length>0&&<div style={{maxHeight:300,overflow:"auto",marginTop:8}}>
@@ -301,7 +302,9 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
               <td style={Object.assign({},cell,{color:r.unknownDept?"#b35c00":"inherit"})} title={r.unknownDept?"Not in the department list (Settings) — it is kept as typed":""}>{r.dept||"—"}{r.unknownDept?" ⚠":""}</td>
               <td style={Object.assign({},cell,{color:r.typeRaw&&!r.type?"#b3302a":"inherit"})}>{r.type?ppTypeLabel(r.type):r.typeRaw?r.typeRaw+" ?":"—"}</td>
               <td style={Object.assign({},cell,{textAlign:"right",fontFamily:"var(--font-mono)"})}>{r.budget?Number(r.budget).toLocaleString():"—"}</td>
-              <td style={Object.assign({},cell,{color:r.needRaw&&!r.need?"#b3302a":"inherit"})}>{r.need?fmtDate(r.need):r.needRaw?r.needRaw+" ?":"—"}</td>
+              {r.existing&&tenderScheduleStart(r.existing)
+                ?<td style={Object.assign({},cell,{color:"#00695c"})} title="Linked to a schedule task: the need date comes from the schedule, the pasted date is ignored">🗓 schedule{r.need?" (ignored)":""}</td>
+                :<td style={Object.assign({},cell,{color:r.needRaw&&!r.need?"#b3302a":"inherit"})}>{r.need?fmtDate(r.need):r.needRaw?r.needRaw+" ?":"—"}</td>}
             </tr>;
           })}</tbody>
         </table>
@@ -316,7 +319,53 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
 }
 
 // The plan of the whole project: every package, sorted by its next deadline.
-function ProcPlanView({tenders,saveTenders,packages,onNavTender}){
+// Printable procurement plan: the rows shown on screen (same filters, same order), A4 landscape.
+function ppOpenReport(vis,filterLabel){
+  var MS=["start","issue","approved","contract","submittals","delivered"];
+  var now=today();
+  function ms(p,m){
+    var lat=p.latest[m]||"",a=p.actual[m];
+    if(p.done[m]){
+      var late=a&&a.date&&lat&&a.date>lat;
+      return '<td class="'+(late?"c-soon":"c-ok")+'">✓ '+(a&&a.date?fmtDate(a.date):"done")+'</td>';
+    }
+    if(!lat)return '<td class="c-none">—</td>';
+    var isNext=p.next===m&&p.status!=="past",st=isNext?PP_STATUS[p.status]:null;
+    if(st)return '<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+fmtDate(lat)+'</span></td>';
+    return '<td'+(p.status!=="past"&&lat<now?' class="c-late"':'')+'>'+fmtDate(lat)+'</td>';
+  }
+  var n={late:0,soon:0,ok:0,past:0,none:0};
+  vis.forEach(function(r){if(r.p.status==="late"||r.p.deliveryLate)n.late++;else if(n[r.p.status]!==undefined)n[r.p.status]++;});
+  var html='<style>@page{size:A4 landscape;margin:10mm 9mm 11mm}body{max-width:none}'+
+    '.pp h1{font-size:19px;margin:0 0 2px}.pp .sub{color:#666;font-size:11px;margin-bottom:10px}'+
+    '.pp .kpis{display:flex;gap:6px;margin-bottom:10px}.pp .k{border:1px solid #e6e2d8;border-radius:6px;padding:4px 10px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.04em}'+
+    '.pp .k b{display:block;font-size:15px;color:#14171c;letter-spacing:0}'+
+    '.pp table{border-collapse:collapse;width:100%;font-size:9.5px}.pp th,.pp td{border-bottom:1px solid #e6e2d8;padding:3px 4px;text-align:left;white-space:nowrap;vertical-align:top}'+
+    '.pp th{background:#f5f3ee;font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.03em}.pp td.t{white-space:normal;font-weight:600;min-width:150px}'+
+    '.pp td.r,.pp th.r{text-align:right}.pp .pill{border-radius:4px;padding:0 5px;font-weight:700}.pp .d{font-size:8.5px;font-weight:700}'+
+    '.pp .c-ok{color:#1e6b3a;font-weight:600}.pp .c-soon{color:#b35c00;font-weight:600}.pp .c-late{color:#b3302a}.pp .c-none{color:#ccc}'+
+    '.pp .leg{font-size:9px;color:#777;margin-top:8px}.pp thead{display:table-header-group}@media print{.pp tr{break-inside:avoid}}</style><div class="pp">';
+  html+='<h1>Riviera Tower — Procurement plan</h1><div class="sub">Printed '+fmtDate(now)+' · '+vis.length+' package'+(vis.length>1?"s":"")+
+    (filterLabel?' · '+esc(filterLabel):'')+'</div>';
+  html+='<div class="kpis">'+[["Late",n.late,PP_STATUS.late.fg],["Due soon",n.soon,PP_STATUS.soon.fg],["On track",n.ok,PP_STATUS.ok.fg],["Started",n.past,PP_STATUS.past.fg],["No need date",n.none,PP_STATUS.none.fg]]
+    .map(function(k){return '<div class="k">'+k[0]+'<b style="color:'+k[2]+'">'+k[1]+'</b></div>';}).join("")+'</div>';
+  html+='<table><thead><tr><th>Package</th><th>Department</th><th>Type</th><th class="r">Budget</th><th>Need on site</th><th>Next deadline</th>'+
+    MS.map(function(m){return '<th>'+esc(PP_MS_LABEL[m])+'</th>';}).join("")+'<th>Forecast delivery</th></tr></thead><tbody>';
+  vis.forEach(function(r){
+    var td=r.td,p=r.p,st=PP_STATUS[p.status];
+    html+='<tr><td class="t">'+esc(td.title||"(untitled)")+'</td><td>'+esc(td.package||"—")+'</td><td>'+esc(ppTypeLabel(ppType(td)))+'</td>'+
+      '<td class="r">'+(Number(td.budget)>0?Number(td.budget).toLocaleString():"—")+'</td>'+
+      '<td>'+(p.need?fmtDate(p.need):"—")+'</td>'+
+      '<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label)+'</span>'+
+        (p.daysLeft!==null?'<div class="d" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+'</td>'+
+      MS.map(function(m){return ms(p,m);}).join("")+
+      '<td'+(p.deliveryLate?' class="c-late" style="font-weight:700"':'')+'>'+(p.fcDelivery?fmtDate(p.fcDelivery):"—")+(p.deliveryLate?" ⚠":"")+'</td></tr>';
+  });
+  html+='</tbody></table><div class="leg">Each date is the LATEST date to reach the milestone so the package is on site when needed, worked back from the need date through the lead time of each step. '+
+    '✓ = reached (green on time, orange later than the latest date). Highlighted = next deadline. Red = latest date already past. A package whose need date is past is "Started" and never flagged late.</div></div>';
+  openReport("Procurement plan "+now,html);
+}
+function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
   const [q,setQ]=useState("");
   const [typeF,setTypeF]=useState("all");
   const [deptF,setDeptF]=useState("all");
@@ -355,7 +404,12 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender}){
     <div className="page-hdr">
       <div><div className="page-title">Procurement plan</div>
         <div className="page-sub">Every package with its latest dates, worked back from the need on site through the lead time of each step</div></div>
-      {!ro&&<button className="btn btn-gold" style={{marginLeft:"auto"}} onClick={function(){setPaste(true);}}>📋 Paste list from Excel</button>}
+      <button className="btn" style={{marginLeft:"auto"}} disabled={!vis.length} title="Printable A4 landscape report of the packages shown (current filters)"
+        onClick={function(){
+          var f=[];if(horizon!=="all")f.push((HZ.find(function(h){return h[0]===horizon;})||[0,""])[1].replace(/\s*\(\d+\)$/,""));
+          if(typeF!=="all")f.push(ppTypeLabel(typeF));if(deptF!=="all")f.push(deptF);if(q)f.push('"'+q+'"');
+          ppOpenReport(vis,f.join(" · "));}}>🖨 Print</button>
+      {!ro&&<button className="btn btn-gold" onClick={function(){setPaste(true);}}>📋 Paste list from Excel</button>}
     </div>
     {paste&&<ProcPlanPasteModal tenders={tenders} saveTenders={saveTenders} packages={packages} onClose={function(){setPaste(false);}}/>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
@@ -375,7 +429,7 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender}){
     <table className="tbl" style={{fontSize:12}}>
       <thead><tr>
         <th style={{minWidth:200}}>Package</th><th>Department</th><th style={{minWidth:130}}>Type</th><th style={{textAlign:"right"}}>Budget</th>
-        <th style={{minWidth:120}} title="Target start of the package: typed here or in the sheet, or taken from its linked schedule task">Need on site</th>
+        <th style={{minWidth:120}} title="Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked">Need on site</th>
         <th style={{minWidth:150}}>Next deadline</th>
         {MS.map(function(m){return <th key={m} style={{minWidth:86}} title={"Latest date to reach: "+PP_MS_LABEL[m]}>{PP_MS_LABEL[m]}</th>;})}
         <th style={{minWidth:100}} title="Forecast delivery of the package (fabrication cascade) against the latest delivery date">Forecast delivery</th>
@@ -389,8 +443,17 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender}){
           <td><select value={ppType(td)} disabled={ro} onChange={function(e){upd(td,{procType:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}>
             {PP_TYPES.map(function(t){return <option key={t.k} value={t.k}>{t.label}</option>;})}</select></td>
           <td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11}}>{Number(td.budget)>0?Number(td.budget).toLocaleString():"—"}</td>
-          <td><input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
-            onChange={function(e){upd(td,{startOnSite:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}/></td>
+          <td>{(function(){
+            // From the schedule when a task is linked (read-only); typed by hand only without one.
+            var f=tenderScheduleStart(td);
+            if(f)return <span onClick={function(){openScheduleStart(f,td,onNavZone);}}
+              title={"From the schedule: \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+(f.sc.title||"")+")\nChange it in the schedule. Click to open that task."}
+              style={{fontSize:11,fontWeight:700,color:"#00695c",background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:5,padding:"2px 7px",cursor:"pointer",whiteSpace:"nowrap"}}>
+              🗓 {fmtDate(td.startOnSite||f.r.startWeek)}</span>;
+            return <input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
+              title="No schedule task is linked to this package: set the date by hand. As soon as a task is linked, the schedule takes over."
+              onChange={function(e){upd(td,{startOnSite:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}/>;
+          })()}</td>
           <td><span className="badge" style={{background:st.bg,color:st.fg}}>{p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label}</span>
             {p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}</td>
           {MS.map(function(m){return <td key={m}><PpMsCell p={p} m={m}/></td>;})}
