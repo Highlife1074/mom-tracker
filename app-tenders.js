@@ -1825,6 +1825,28 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
 }
 
 
+// The schedule task that drives a Package's start on site: the earliest task linked to it
+// (r.tenderRef) across every zone schedule, or null. While one exists, td.startOnSite comes
+// from the schedule (App keeps it in sync) and is never typed by hand.
+function tenderScheduleStart(td){
+  var f=null;
+  (window._ppSchedules||[]).forEach(function(sc){
+    (sc.rows||[]).forEach(function(r){
+      if(td&&r.tenderRef===td.id&&r.startWeek&&(!f||r.startWeek<f.r.startWeek))f={sc:sc,r:r};
+    });
+  });
+  return f;
+}
+// Opens that task in its zone schedule, with a way back to the Package.
+function openScheduleStart(f,td,onNavZone){
+  try{
+    lsSet("pp_zone_cur",f.sc.zone||"");lsSet("pp_zone_subtab","schedule");
+    lsSet("pp_sched_selId",f.sc.id);lsSet("pp_sched_focusRow",f.r.id);
+    lsSet("pp_back_tender",td.id);lsSet("pp_back_label",td.title||"the tender");
+  }catch(e){}
+  if(onNavZone)onNavZone();
+}
+
 // ============================================================================================
 // Awards: one tender → one or several subcontractors, each with its own contract conditions.
 // Stored in the tender itself (td.awards). The financial table has exactly the shape of the
@@ -4114,22 +4136,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>TARGET START</span>
                 {(function(){
                   // Driven by the schedules: earliest start week among the tasks linked to this tender.
-                  var linked=[];
-                  (window._ppSchedules||[]).forEach(function(sc){
-                    (sc.rows||[]).forEach(function(r){if(r.tenderRef===td.id&&r.startWeek)linked.push({sc:sc,r:r});});
-                  });
-                  if(linked.length>0){
-                    linked.sort(function(a,b){return a.r.startWeek.localeCompare(b.r.startWeek);});
-                    var f=linked[0];
-                    return <span onClick={function(){
-                        try{
-                          lsSet("pp_zone_cur",f.sc.zone||"");lsSet("pp_zone_subtab","schedule");
-                          lsSet("pp_sched_selId",f.sc.id);lsSet("pp_sched_focusRow",f.r.id);
-                          // breadcrumb so the schedule can send us straight back here
-                          lsSet("pp_back_tender",td.id);lsSet("pp_back_label",td.title||"the tender");
-                        }catch(e){}
-                        if(onNavZone)onNavZone();
-                      }}
+                  var f=tenderScheduleStart(td);
+                  if(f){
+                    return <span onClick={function(){openScheduleStart(f,td,onNavZone);}}
                       title={"Driven by \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+f.sc.title+")\nClick to open that task in the schedule."}
                       style={{fontSize:11,fontWeight:800,color:"#00695c",background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>
                       🗓 {fmtDate(td.startOnSite||f.r.startWeek)} <span style={{fontSize:9,fontWeight:600,color:"#4caf50"}}>· {f.r.label||"task"} ↗</span>

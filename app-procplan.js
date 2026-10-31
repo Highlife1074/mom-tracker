@@ -269,7 +269,8 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
       if(r.dept)patch.package=r.dept;
       if(r.type)patch.procType=r.type;
       if(r.budget)patch.budget=r.budget;
-      if(r.need)patch.startOnSite=r.need;
+      // A package linked to a schedule task takes its need date from the schedule only.
+      if(r.need&&!(r.existing&&tenderScheduleStart(r.existing)))patch.startOnSite=r.need;
       if(r.existing){
         list=list.map(function(t){return t.id===r.existing.id?Object.assign({},t,patch):t;});nUpd++;
       }else{
@@ -287,7 +288,7 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
         <button className="btn btn-sm" onClick={onClose}>✕</button></div>
       <div className="modal-body">
       <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>Copy the columns from Excel, in this order: <b>Package ⇥ Department ⇥ Type ⇥ Budget ⇥ Need on site</b>.
-        Type: subcontract, supply &amp; install, equipment or material. A package that already exists (same name) is updated with the columns filled.</div>
+        Type: subcontract, supply &amp; install, equipment or material. A package that already exists (same name) is updated with the columns filled. Need on site is ignored for a package linked to a schedule task: the schedule gives it.</div>
       <textarea value={txt} onChange={function(e){setTxt(e.target.value);}} rows={8} placeholder={"Facade curtain wall\tFACADE\tSupply & install\t2 400 000\t15/03/2027\nGenerators\tMEP\tEquipment\t380000\t01/06/2027"}
         style={{width:"100%",fontFamily:"var(--font-mono)",fontSize:12}}/>
       {rows.length>0&&<div style={{maxHeight:300,overflow:"auto",marginTop:8}}>
@@ -301,7 +302,9 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
               <td style={Object.assign({},cell,{color:r.unknownDept?"#b35c00":"inherit"})} title={r.unknownDept?"Not in the department list (Settings) — it is kept as typed":""}>{r.dept||"—"}{r.unknownDept?" ⚠":""}</td>
               <td style={Object.assign({},cell,{color:r.typeRaw&&!r.type?"#b3302a":"inherit"})}>{r.type?ppTypeLabel(r.type):r.typeRaw?r.typeRaw+" ?":"—"}</td>
               <td style={Object.assign({},cell,{textAlign:"right",fontFamily:"var(--font-mono)"})}>{r.budget?Number(r.budget).toLocaleString():"—"}</td>
-              <td style={Object.assign({},cell,{color:r.needRaw&&!r.need?"#b3302a":"inherit"})}>{r.need?fmtDate(r.need):r.needRaw?r.needRaw+" ?":"—"}</td>
+              {r.existing&&tenderScheduleStart(r.existing)
+                ?<td style={Object.assign({},cell,{color:"#00695c"})} title="Linked to a schedule task: the need date comes from the schedule, the pasted date is ignored">🗓 schedule{r.need?" (ignored)":""}</td>
+                :<td style={Object.assign({},cell,{color:r.needRaw&&!r.need?"#b3302a":"inherit"})}>{r.need?fmtDate(r.need):r.needRaw?r.needRaw+" ?":"—"}</td>}
             </tr>;
           })}</tbody>
         </table>
@@ -362,7 +365,7 @@ function ppOpenReport(vis,filterLabel){
     '✓ = reached (green on time, orange later than the latest date). Highlighted = next deadline. Red = latest date already past. A package whose need date is past is "Started" and never flagged late.</div></div>';
   openReport("Procurement plan "+now,html);
 }
-function ProcPlanView({tenders,saveTenders,packages,onNavTender}){
+function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
   const [q,setQ]=useState("");
   const [typeF,setTypeF]=useState("all");
   const [deptF,setDeptF]=useState("all");
@@ -426,7 +429,7 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender}){
     <table className="tbl" style={{fontSize:12}}>
       <thead><tr>
         <th style={{minWidth:200}}>Package</th><th>Department</th><th style={{minWidth:130}}>Type</th><th style={{textAlign:"right"}}>Budget</th>
-        <th style={{minWidth:120}} title="Target start of the package: typed here or in the sheet, or taken from its linked schedule task">Need on site</th>
+        <th style={{minWidth:120}} title="Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked">Need on site</th>
         <th style={{minWidth:150}}>Next deadline</th>
         {MS.map(function(m){return <th key={m} style={{minWidth:86}} title={"Latest date to reach: "+PP_MS_LABEL[m]}>{PP_MS_LABEL[m]}</th>;})}
         <th style={{minWidth:100}} title="Forecast delivery of the package (fabrication cascade) against the latest delivery date">Forecast delivery</th>
@@ -440,8 +443,17 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender}){
           <td><select value={ppType(td)} disabled={ro} onChange={function(e){upd(td,{procType:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}>
             {PP_TYPES.map(function(t){return <option key={t.k} value={t.k}>{t.label}</option>;})}</select></td>
           <td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11}}>{Number(td.budget)>0?Number(td.budget).toLocaleString():"—"}</td>
-          <td><input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
-            onChange={function(e){upd(td,{startOnSite:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}/></td>
+          <td>{(function(){
+            // From the schedule when a task is linked (read-only); typed by hand only without one.
+            var f=tenderScheduleStart(td);
+            if(f)return <span onClick={function(){openScheduleStart(f,td,onNavZone);}}
+              title={"From the schedule: \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+(f.sc.title||"")+")\nChange it in the schedule. Click to open that task."}
+              style={{fontSize:11,fontWeight:700,color:"#00695c",background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:5,padding:"2px 7px",cursor:"pointer",whiteSpace:"nowrap"}}>
+              🗓 {fmtDate(td.startOnSite||f.r.startWeek)}</span>;
+            return <input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
+              title="No schedule task is linked to this package: set the date by hand. As soon as a task is linked, the schedule takes over."
+              onChange={function(e){upd(td,{startOnSite:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}/>;
+          })()}</td>
           <td><span className="badge" style={{background:st.bg,color:st.fg}}>{p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label}</span>
             {p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}</td>
           {MS.map(function(m){return <td key={m}><PpMsCell p={p} m={m}/></td>;})}
