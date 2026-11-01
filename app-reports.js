@@ -964,7 +964,13 @@ function momNum(v){
   var n=typeof v==="number"?v:parseFloat(String(v).replace(/\s/g,"").replace(",","."));
   return isFinite(n)?n:NaN;
 }
-function momEur(v){var n=momNum(v);return isNaN(n)?"":"€ "+n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2});}
+// One formatter for every amount: toLocaleString with options builds a new one on each call.
+var _momEurFmt=null;
+function momEur(v){
+  var n=momNum(v);if(isNaN(n))return"";
+  if(!_momEurFmt)_momEurFmt=new Intl.NumberFormat("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2});
+  return "€ "+_momEurFmt.format(n);
+}
 function momPct(part,whole){
   var a=momNum(part),b=momNum(whole);
   if(isNaN(a)||isNaN(b)||b<=0)return"";

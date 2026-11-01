@@ -256,6 +256,12 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 .sched-wrap::-webkit-scrollbar-thumb{background:#c9a84c;border-radius:7px;border:3px solid #f0ede6}
 .sched-wrap::-webkit-scrollbar-thumb:hover{background:#b45309}
 .sched-wrap::-webkit-scrollbar-corner{background:#f0ede6}
+/* Week cell of the zone schedule grid. A class rather than an inline style: thousands of cells
+   then share one computed style, which keeps opening and redrawing a big schedule fast. */
+.sched-wk{position:relative;border-bottom:1px solid #f5f4f0;border-left:1px solid #f0ede6;cursor:pointer;height:22px;padding:0;
+  text-align:center;font-size:8px;font-weight:800;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.5);
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.sched-wk.sched-wk-nc{cursor:default}
 /* Pinned mirror of the schedule scrollbar: same look, always within reach */
 /* Only the pinned bar shows a horizontal scrollbar — the one inside the box is hidden
    so there is never a second, unreachable bar. Vertical scrolling is untouched. */
@@ -479,10 +485,39 @@ body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .
   // fixed order before a single Babel pass. They share one scope, exactly as when it was
   // one file. The mount MUST stay last: it renders App, which needs every view defined.
   var APP_PARTS=["app-core.js","app-tenders.js","app-schedule.js","app-zone.js","app-reports.js","app-steel.js","app-inventory.js","app-concrete.js","app-manpower.js","app-procplan.js","app-mount.js"];
+  // Babel takes ~3 s (much more on a phone) to compile 1.8 MB of JSX. The compiled code is
+  // kept in IndexedDB under a hash of the source: the next loads skip Babel entirely until
+  // a file changes. Any failure (private mode, quota, old browser) falls back to compiling.
+  var CACHE_DB="pp_babel_cache",CACHE_STORE="code";
+  function srcHash(str){
+    var h1=0x811c9dc5,h2=0x01000193^str.length;
+    for(var i=0;i<str.length;i++){var c=str.charCodeAt(i);h1=Math.imul(h1^c,16777619);h2=Math.imul(h2^c,2246822507);}
+    return (h1>>>0).toString(36)+"-"+(h2>>>0).toString(36)+"-"+str.length+"-"+((window.Babel&&Babel.version)||"");
+  }
+  function cacheDb(){
+    return new Promise(function(res,rej){
+      try{
+        var rq=indexedDB.open(CACHE_DB,1);
+        rq.onupgradeneeded=function(){rq.result.createObjectStore(CACHE_STORE);};
+        rq.onsuccess=function(){res(rq.result);};rq.onerror=function(){rej(rq.error);};
+      }catch(e){rej(e);}
+    });
+  }
+  function cacheGet(key){
+    return cacheDb().then(function(db){return new Promise(function(res){
+      var rq=db.transaction(CACHE_STORE,"readonly").objectStore(CACHE_STORE).get("app");
+      rq.onsuccess=function(){var v=rq.result;res(v&&v.key===key?v.code:null);};rq.onerror=function(){res(null);};
+    });}).catch(function(){return null;});
+  }
+  function cachePut(key,code){
+    cacheDb().then(function(db){db.transaction(CACHE_STORE,"readwrite").objectStore(CACHE_STORE).put({key:key,code:code},"app");}).catch(function(){});
+  }
+  function cacheClear(){cacheDb().then(function(db){db.transaction(CACHE_STORE,"readwrite").objectStore(CACHE_STORE).delete("app");}).catch(function(){});}
   function run(){
-    var v="?v="+Date.now();
+    // "no-cache" = always ask the server, which answers "not modified" when a file did not
+    // change: always the latest version, without downloading 1.8 MB on every load.
     Promise.all(APP_PARTS.map(function(f){
-      return fetch(f+v).then(function(r){
+      return fetch(f,{cache:"no-cache"}).then(function(r){
         if(!r.ok)throw new Error(f+" — HTTP "+r.status);
         return r.text();
       }).then(function(t){return{file:f,text:t};});
@@ -496,9 +531,22 @@ body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .
         line+=p.text.split("\n").length;
       });
       window._appParts=offsets;
+      var key=srcHash(src);
+      return cacheGet(key).then(function(cached){
+      if(cached){
+        try{eval(cached);return;}
+        catch(e){
+          // A cached build that no longer runs: drop it and compile once from the source.
+          cacheClear();
+          try{if(!sessionStorage.getItem("pp_babel_retry")){sessionStorage.setItem("pp_babel_retry","1");location.reload();return;}}catch(e2){}
+          showErr("APP ERROR",e.message,e.stack);return;
+        }
+      }
+      try{sessionStorage.removeItem("pp_babel_retry");}catch(e){}
       try{
         var out=Babel.transform(src,{presets:["react"]}).code;
         eval(out);
+        cachePut(key,out);
       }catch(e){
         var m=/\((\d+):/.exec(e.message||"");
         var where="";
@@ -509,6 +557,7 @@ body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .
         }
         showErr("BABEL ERROR",e.message+where,e.stack);
       }
+      });
     })
     .catch(function(e){showErr("FETCH ERROR",e.message,"");});
   }

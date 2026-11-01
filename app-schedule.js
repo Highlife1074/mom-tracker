@@ -643,6 +643,35 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [linkMenu,setLinkMenu]=useState(null);
   const [procOpen,setProcOpenRaw]=useState(function(){try{return localStorage.getItem("pp_sched_procOpen")==="1";}catch(e){return false;}});
   function setProcOpen(v){setProcOpenRaw(v);try{localStorage.setItem("pp_sched_procOpen",v?"1":"0");}catch(e){}}        // {succId, x, y}: the menu of one arrow          // baseline panel open
+  // Sent here from a Package (its start date): make the task visible, open it in the side
+  // panel so it can be checked and edited, and scroll the grid to it. Once, on arrival.
+  useEffect(function(){
+    if(!focusRow)return;
+    var host=(schedules||[]).find(function(x){return (x.rows||[]).some(function(r){return r.id===focusRow;});});
+    if(!host)return;
+    // the section and the room that hold the task, so neither hides it
+    var rows=host.rows||[],sec="",cat="";
+    for(var k=0;k<rows.length&&rows[k].id!==focusRow;k++){
+      if(rows[k].kind==="section"){sec=rows[k].id;cat="";}
+      else if(rows[k].kind==="category")cat=rows[k].id;
+    }
+    setCollapsedCats(function(prev){var o=Object.assign({},prev);delete o[sec];delete o[cat];return o;});
+    setFGroup("");setCritOn(false);
+    setPanelRowId(focusRow);
+    var tries=0,t=null;
+    function go(){
+      // the row in the middle, and the grid scrolled sideways to the task's first week
+      try{
+        var tr=document.querySelector('tr[data-rowid="'+focusRow+'"]');
+        if(!tr){if(++tries<20)t=setTimeout(go,150);return;}   // a big grid draws its last rows a moment later
+        var fr=rows.find(function(r){return r.id===focusRow;})||{};
+        var wk=fr.startWeek&&tr.querySelector('td[data-wk="'+fr.startWeek+'"]');
+        (wk||tr).scrollIntoView({block:"center",inline:wk?"center":"nearest",behavior:"smooth"});
+      }catch(e){}
+    }
+    t=setTimeout(go,250);
+    return function(){clearTimeout(t);};
+  },[]);
   const [blName,setBlName]=useState("");
   const [blDelId,setBlDelId]=useState("");           // baseline waiting for a 2nd click to be deleted
   const justInsertedRef=useRef("");                  // Enter on a new task's name adds the next one
@@ -958,10 +987,30 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     rows.splice(end,0,...copies);
     upd(sc.id,{rows:rows});
   }
+  // Per-render caches. A render asks the same questions about a row several times (risk banner,
+  // grid cell, panel…) and the grid colours every week cell: answer each once per render.
+  // Rebuilt on every render, so they can never be stale.
+  var _rm={risk:{},acts:{},pq:{},color:{},idx:null};
+  function _taskIdx(){
+    if(_rm.idx)return _rm.idx;
+    // Only the tasks that can concern a row: linked to one, or a blocking point of this zone.
+    var linked=[],cand=[],rowById={};
+    (tasks||[]).forEach(function(t){
+      if(t.scheduleRowRef)linked.push(t);
+      if(t.status!=="done"&&(t.scheduleRowRef||(t.zone===curZone&&(t.tags||[]).includes("Blocking Point"))))cand.push(t);
+    });
+    ((sc&&sc.rows)||[]).forEach(function(r){rowById[r.id]=r;});
+    return _rm.idx={linked:linked,cand:cand,rowById:rowById};
+  }
   // ---- Procurement link -----------------------------------------------
   // A row can declare which tender supplies it. We then compare the tender's expected
   // delivery date with the row's planned start week and flag the gap.
   function procRisk(row){
+    if(!row)return null;
+    if(!(row.id in _rm.risk))_rm.risk[row.id]=_procRisk(row);
+    return _rm.risk[row.id];
+  }
+  function _procRisk(row){
     if(!row||row.kind==="category"||row.kind==="section")return null;
     if(!row.tenderRef)return null;
     if(!row.startWeek)return null;
@@ -1464,9 +1513,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // A prerequisite is a real action tagged "Prerequisite": it has an owner, a due date and
   // shows in the zone action list. "Confirmed" = the action is done, or its date was ticked.
   function prereqsOf(rowId){
-    return (tasks||[]).filter(function(t){
+    if(!_rm.pq[rowId])_rm.pq[rowId]=_taskIdx().linked.filter(function(t){
       return t.scheduleRowRef===rowId&&(t.tags||[]).includes("Prerequisite");
     });
+    return _rm.pq[rowId];
   }
   function prereqState(row){
     if(!row)return null;
@@ -1580,9 +1630,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // The link lives on the task (scheduleRowRef), so it stays the same single action
   // that also shows up in the Zone action list, Packages, Global view, etc.
   function rowActions(rowId){
-    var row=(sc&&(sc.rows||[]).find(function(r){return r.id===rowId;}))||null;
+    if(_rm.acts[rowId])return _rm.acts[rowId];
+    var ix=_taskIdx();
+    var row=ix.rowById[rowId]||null;
     var roomId=row?row.roomId:"";
-    return (tasks||[]).filter(function(t){
+    return _rm.acts[rowId]=ix.cand.filter(function(t){
       if(t.status==="done")return false;
       if(t.scheduleRowRef===rowId)return true;                       // linked directly to this row
       // Blocking points raised on the row's room (set from the Rooms tab) also show here
@@ -1841,6 +1893,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // then the default gold. Actual bars stay blue everywhere so "done" is always readable.
   function planColor(row){
     if(!row)return "#c9a84c";
+    if(!_rm.color[row.id])_rm.color[row.id]=_planColor(row);
+    return _rm.color[row.id];
+  }
+  function _planColor(row){
     if(row.color)return row.color;
     var gc=(sc&&sc.groupColors)||{};
     var g=rowGroup(row);
@@ -2073,8 +2129,39 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     window.addEventListener("keydown",onKey);
     return function(){window.removeEventListener("keydown",onKey);};
   },[]);
-  // Link arrows: measured on the real table after each render (rows have different heights),
-  // and stored only when something actually moved.
+  // Link arrows: measured on the real table (rows have different heights), stored only when
+  // something actually moved. Measuring forces the browser to lay the whole grid out, so it is
+  // done only when what is drawn can have changed (schedule, weeks, rows shown, data shown in
+  // the rows) or when the table changes size — not after every render (hover, menus, typing…).
+  const [arrowTick,setArrowTick]=useState(0);
+  useEffect(function(){
+    var box=tableBoxRef.current;
+    if(!box||typeof ResizeObserver==="undefined")return;
+    var t=null,first=true;
+    // the first notice only reports the size the grid was drawn with: already measured
+    var ro=new ResizeObserver(function(){if(first){first=false;return;}clearTimeout(t);t=setTimeout(function(){setArrowTick(function(n){return n+1;});},60);});
+    ro.observe(box);
+    return function(){clearTimeout(t);ro.disconnect();};
+  },[sc?sc.id:"",monthView]);
+  // A big schedule (200+ rows × 45 weeks) takes ~0.5 s to build. On opening one, or switching
+  // zone / schedule, the first rows are drawn at once and the rest right after that first
+  // paint: the grid shows up immediately instead of after the whole table is ready.
+  var GRID_FIRST_ROWS=60;
+  var gridId=sc?sc.id:"";
+  const gridSeenRef=useRef({id:null,full:false});
+  const [,setGridTick]=useState(0);
+  if(gridSeenRef.current.id!==gridId)gridSeenRef.current={id:gridId,full:false};   // every switch starts light
+  var gridFull=gridSeenRef.current.full||visibleRows.length<=GRID_FIRST_ROWS;
+  useEffect(function(){
+    if(gridFull)return;
+    var t=null,raf=window.requestAnimationFrame(function(){t=setTimeout(function(){
+      if(gridSeenRef.current.id!==gridId)return;
+      gridSeenRef.current.full=true;setGridTick(function(n){return n+1;});
+    },0);});
+    return function(){window.cancelAnimationFrame(raf);clearTimeout(t);};
+  },[gridId,gridFull]);
+  var gridRows=gridFull?visibleRows:visibleRows.slice(0,GRID_FIRST_ROWS);
+  var visKey=gridRows.map(function(r){return r.id;}).join(",");
   useEffect(function(){
     var box=tableBoxRef.current;
     var out=[];
@@ -2082,13 +2169,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       var b=box.getBoundingClientRect();
       var wl=wks;
       var byId={};(sc.rows||[]).forEach(function(r){byId[r.id]=r;});
+      var trs={};box.querySelectorAll("tr[data-rowid]").forEach(function(tr){trs[tr.getAttribute("data-rowid")]=tr;});
+      function cell(id,wk){var tr=trs[id];return tr?tr.querySelector('td[data-wk="'+wk+'"]'):null;}
       (sc.rows||[]).forEach(function(r){
         if(!r.afterId||!byId[r.afterId])return;
         var p=byId[r.afterId];
+        if(!trs[p.id]||!trs[r.id])return;
         var ps=spanFromCells(p.cells,wl,null),ss=spanFromCells(r.cells,wl,null);
         if(!ps.endWeek||!ss.startWeek)return;
-        var pc=box.querySelector('tr[data-rowid="'+p.id+'"] td[data-wk="'+ps.endWeek+'"]');
-        var scl=box.querySelector('tr[data-rowid="'+r.id+'"] td[data-wk="'+ss.startWeek+'"]');
+        var pc=cell(p.id,ps.endWeek),scl=cell(r.id,ss.startWeek);
         if(!pc||!scl)return;
         var a=pc.getBoundingClientRect(),c=scl.getBoundingClientRect();
         out.push({id:r.id,x1:Math.round(a.right-b.left),y1:Math.round(a.top+a.height/2-b.top),
@@ -2098,7 +2187,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     }
     var key=JSON.stringify(out);
     if(key!==arrowKeyRef.current){arrowKeyRef.current=key;setArrowGeo(out);}
-  });
+  },[sc,tasks,tenders,wks.length?wks[0]+wks.length:"",showLinks,monthView,visKey,editRowId,arrowTick]);
   // Who does the task: the select used in the grid and in the side panel.
   function subSelect(row,big){
                           var rs=rowSub(row);
@@ -2801,7 +2890,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             </thead>
             <tbody>
               {(sc.rows||[]).length===0&&<tr><td colSpan={wks.length+(advanced?5:3)} style={{padding:"14px",textAlign:"center",color:"#bbb",fontSize:12}}>No rows yet. Add a category or a task below.</td></tr>}
-              {visibleRows.map(function(row){
+              {gridRows.map(function(row){
                 var pqRows=(row.kind==="category")?[]:prereqsOf(row.id);
                 var isSection=row.kind==="section";
                 var isCat=row.kind==="category"||isSection;   // both are headers, not tasks
@@ -3139,7 +3228,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       onPointerCancel={clearLongPress}
                       data-wk={wk}
                       title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(v==="plan"||v==="both")?"Drag along the row to paint or erase · Shift+drag to move the whole task":"Click, or drag along the row to paint several weeks")}
-                      style={Object.assign({position:"relative",borderBottom:"1px solid #f5f4f0",borderLeft:"1px solid #f0ede6",cursor:(isCat||hol)?"default":"pointer",height:22,padding:0,textAlign:"center",fontSize:8,fontWeight:800,color:"#fff",textShadow:"0 0 2px rgba(0,0,0,.5)",userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none"},
+                      className={(isCat||hol)?"sched-wk sched-wk-nc":"sched-wk"}
+                      style={Object.assign({},
                         hol?{background:"repeating-linear-gradient(45deg,#e8e4da,#e8e4da 3px,#dcd8ce 3px,#dcd8ce 6px)"}:cellStyle(v,row),
                         beforeDelivery?{background:"repeating-linear-gradient(45deg,#ef9a9a,#ef9a9a 3px,#e57373 3px,#e57373 6px)"}:null,
                         isFeasible?{boxShadow:"inset 0 0 0 2px "+featCol}:null)}>
