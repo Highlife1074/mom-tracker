@@ -16,7 +16,7 @@ class ErrorBoundary extends React.Component{
   componentDidCatch(err,info){this.setState({err,info});}
   render(){
     if(this.state.err){
-      return React.createElement("div",{style:{padding:24,fontFamily:"monospace",color:"#c62828",whiteSpace:"pre-wrap",fontSize:13,background:"#fff",minHeight:"100vh"}},
+      return React.createElement("div",{style:{padding:24,fontFamily:"monospace",color:"#b3302a",whiteSpace:"pre-wrap",fontSize:13,background:"#fff",minHeight:"100vh"}},
         "REACT RENDER ERROR:\n"+(this.state.err.message||String(this.state.err))+"\n\nComponent stack:\n"+(this.state.info&&this.state.info.componentStack||"no stack"));
     }
     return this.props.children;
@@ -270,18 +270,18 @@ function _simOf(wa,setA,wb){
 }
 function textSimilarity(a,b){var wa=_simWords(a);return _simOf(wa,_simSet(wa),_simWords(b));}
 function scoreStyle(s){
-  if(s>=7)return{bg:"#ffeaea",color:"#c62828",label:"🔥 "+s};
-  if(s>=4)return{bg:"#fff8e1",color:"#f57f17",label:"⚡ "+s};
+  if(s>=7)return{bg:"#ffeaea",color:"#b3302a",label:"🔥 "+s};
+  if(s>=4)return{bg:"#faf3e0",color:"#b35c00",label:"⚡ "+s};
   return{bg:"#f5f4f0",color:"#888",label:s>1?""+s:"—"};
 }
 
-const OWNER_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f3e5f5|#7b1fa2","#e8f5e9|#2e7d32","#fff8e1|#f57f17","#e3f2fd|#1565c0","#fbe9e7|#bf360c","#f9fbe7|#827717"];
+const OWNER_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#f4f6f9|#0f5299","#fbe9e7|#bf360c","#f9fbe7|#827717"];
 function ownerColor(n){let h=0;if(!n)return{bg:"#f5f4f0",accent:"#888"};for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%OWNER_COLORS.length;const p=OWNER_COLORS[h].split("|");return{bg:p[0],accent:p[1]};}
-const TAG_COLORS=["#e8eaf6|#3949ab","#fce4ec|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f3e5f5|#7b1fa2","#e8f5e9|#2e7d32","#fff8e1|#f57f17","#fbe9e7|#bf360c","#e3f2fd|#1565c0","#f9fbe7|#827717"];
+const TAG_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#fbe9e7|#bf360c","#f4f6f9|#0f5299","#f9fbe7|#827717"];
 function tagColor(t){
-  if(t==="Blocking Point")return{bg:"#fce4ec",color:"#c62828"};
+  if(t==="Blocking Point")return{bg:"#fbe6e8",color:"#b3302a"};
   if(t==="Warning")return{bg:"#fff3e0",color:"#ef6c00"};
-  if(t==="Prerequisite")return{bg:"#fff8e1",color:"#f57f17"};
+  if(t==="Prerequisite")return{bg:"#faf3e0",color:"#b35c00"};
   let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%TAG_COLORS.length;const p=TAG_COLORS[h].split("|");return{bg:p[0],color:p[1]};}
 function getCCsForTags(tags,tagrules){return[...new Set((tags||[]).flatMap(t=>tagrules[t]||[]))];}
 function getCCsForPkg(pkg,pkgrules){return pkgrules[pkg]||[];}
@@ -620,14 +620,14 @@ function GlobalPdfModal({contractors,saveContractors,onClose}){
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
     </div>
     <div className="modal-body">
-      {error&&<div style={{padding:"8px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+      {error&&<div style={{padding:"8px 12px",background:"#fbe6e8",borderRadius:8,color:"#b3302a",fontSize:12,marginBottom:12}}>{error}</div>}
       <div className="fg">
         <label>SAP Contract # <span style={{color:"#888",fontWeight:400,textTransform:"none"}}>(auto-matches subcontractor)</span></label>
         <input type="text" value={cert.sap} onChange={function(e){set("sap",e.target.value);}} placeholder="e.g. 9001032541" autoFocus/>
-        {matched&&<div style={{marginTop:5,padding:"5px 8px",background:"#e8f5e9",borderRadius:6,fontSize:11,color:"#2e7d32",fontWeight:600}}>
+        {matched&&<div style={{marginTop:5,padding:"5px 8px",background:"#e6f2e9",borderRadius:6,fontSize:11,color:"#1e6b3a",fontWeight:600}}>
           ✅ {matched.ctr.name} · {matched.ct.number||"(no contract number)"}
         </div>}
-        {cert.sap&&!matched&&<div style={{marginTop:5,fontSize:11,color:"#f57f17"}}>⚠️ No contract found for this SAP number</div>}
+        {cert.sap&&!matched&&<div style={{marginTop:5,fontSize:11,color:"#b35c00"}}>⚠️ No contract found for this SAP number</div>}
       </div>
       <div style={{display:"flex",gap:10}}>
         <div className="fg" style={{flex:1}}>
@@ -797,7 +797,7 @@ function QuickChips({parsed,owner,due,tags,trackedBy,onTrackedBy,people}){
       ?<span style={Object.assign({},chip,{background:isDept(owner)?"#ede7f6":"#e8eaf6",color:isDept(owner)?"#5e35b1":"#3949ab"})}>{isDept(owner)?"🏢 "+owner:"👤 "+owner.split(",")[0]}</span>
       :<span style={Object.assign({},chip,{background:"#f5f4f0",color:"#aaa"})}>👤 no owner</span>}
     {due
-      ?<span style={Object.assign({},chip,{background:"#e3f2fd",color:"#1565c0"})}>📅 {fmtDate(due)}</span>
+      ?<span style={Object.assign({},chip,{background:"#f4f6f9",color:"#0f5299"})}>📅 {fmtDate(due)}</span>
       :<span style={Object.assign({},chip,{background:"#f5f4f0",color:"#aaa"})}>📅 no date</span>}
     {(tags||[]).map(function(t){return <TagChip key={t} tag={t}/>;})}
     {pick
@@ -805,7 +805,7 @@ function QuickChips({parsed,owner,due,tags,trackedBy,onTrackedBy,people}){
           <option value="">— nobody —</option>
           {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
         </select>
-      :<button onClick={function(){setPick(true);}} title="Who follows this subject. Click to change." style={Object.assign({},chip,{background:"#fff8e1",color:"#8d6e00",border:"1px dashed #c9a84c",cursor:"pointer",fontFamily:"inherit"})}>📌 Tracked by {trackedBy?trackedBy.split(",")[0]:"—"}</button>}
+      :<button onClick={function(){setPick(true);}} title="Who follows this subject. Click to change." style={Object.assign({},chip,{background:"#faf3e0",color:"#8d6e00",border:"1px dashed #c9a84c",cursor:"pointer",fontFamily:"inherit"})}>📌 Tracked by {trackedBy?trackedBy.split(",")[0]:"—"}</button>}
     {parsed&&parsed.ambiguous.length>0&&<span style={Object.assign({},chip,{background:"#fff3e0",color:"#e65100"})}>⚠ which one? {parsed.ambiguous.map(function(n){return n.split(",")[0];}).join(" / ")}</span>}
     {parsed&&parsed.unknown.length>0&&<span style={Object.assign({},chip,{background:"#fff3e0",color:"#e65100"})}>⚠ unknown: {parsed.unknown.join(" ")}</span>}
   </div>;
@@ -817,7 +817,7 @@ function BallChip({task,onHandBack}){
   if(!b.holder)return null;
   if(!b.away)return <OwnerChip owner={b.holder}/>;
   var open=task.status!=="done";
-  var col=!open?"#bbb":b.days>14?"#c62828":b.days>7?"#e65100":"#888";
+  var col=!open?"#bbb":b.days>14?"#b3302a":b.days>7?"#e65100":"#888";
   return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11}}>
     <span style={{color:"#999",fontWeight:600}} title="Tracked by">{b.tracker.split(",")[0]}</span>
     <span style={{color:"#bbb"}}>➜</span>
@@ -912,7 +912,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
         {text.trim()&&<QuickChips parsed={parsed} owner={owner} due={due} tags={allTags} trackedBy={trackedBy} onTrackedBy={setTrackedOv} people={people}/>}
       </div>
 
-      {possibleDupes.length>0&&<div style={{marginBottom:10,padding:"8px 10px",background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:8}}>
+      {possibleDupes.length>0&&<div style={{marginBottom:10,padding:"8px 10px",background:"#faf3e0",border:"1.5px solid #e6d9b4",borderRadius:8}}>
         <div style={{fontSize:11,fontWeight:700,color:"#b45309",marginBottom:4}}>⚠️ Similar action{possibleDupes.length!==1?"s":""} already open — check before adding a duplicate:</div>
         {possibleDupes.map(function(x){return <div key={x.t.id} style={{fontSize:11,color:"#555",padding:"3px 0",borderTop:"1px solid #fed7aa"}}>
           <strong>{x.t.text}</strong>{x.t.owner&&" — "+x.t.owner.split(",")[0]}{x.t.package&&" ("+x.t.package+")"}{x.t.zone&&" ["+x.t.zone+"]"}
@@ -941,7 +941,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
           </select>
         </div>
 
-        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:8,color:isInfo?"#1565c0":"#888",background:isInfo?"#e3f2fd":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(isInfo?"#1565c0":"#ddd"),alignSelf:"flex-start"}}>
+        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:8,color:isInfo?"#0f5299":"#888",background:isInfo?"#f4f6f9":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(isInfo?"#0f5299":"#ddd"),alignSelf:"flex-start"}}>
           <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:13,height:13}}/>
           ℹ️ Info only
         </label>
@@ -964,7 +964,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
 
         <div className="fg">
           <label>Zone</label>
-          <select value={zone} onChange={function(e){setZone(e.target.value);}} style={{fontFamily:"inherit",color:zone?"#7b1fa2":"inherit",fontWeight:zone?700:400}}>
+          <select value={zone} onChange={function(e){setZone(e.target.value);}} style={{fontFamily:"inherit",color:zone?"#4a4740":"inherit",fontWeight:zone?700:400}}>
             <option value="">— none —</option>
             {(zones||[]).map(function(z){return <option key={z} value={z}>{z}</option>;})}
           </select>
@@ -1070,7 +1070,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
                 {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
               </select>
             </div>
-            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,color:task.isInfo?"#1565c0":"#888",background:task.isInfo?"#e3f2fd":"transparent",padding:"5px 8px",borderRadius:8,border:"1.5px solid "+(task.isInfo?"#1565c0":"#ddd"),alignSelf:"flex-start"}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,color:task.isInfo?"#0f5299":"#888",background:task.isInfo?"#f4f6f9":"transparent",padding:"5px 8px",borderRadius:8,border:"1.5px solid "+(task.isInfo?"#0f5299":"#ddd"),alignSelf:"flex-start"}}>
               <input type="checkbox" checked={!!task.isInfo} onChange={function(e){upd("isInfo",e.target.checked);}} style={{width:13,height:13,cursor:"pointer"}}/>
               ℹ️ Info only (no action needed)
             </label>
@@ -1089,7 +1089,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               {(task.links||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
                 <input type="text" value={lk.label||""} onChange={function(e){var ls=(task.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});upd("links",ls);}} placeholder="Label" style={{width:100,padding:"5px 6px",fontSize:11,border:"1px solid #e0ddd8",borderRadius:5}}/>
                 <input type="url" value={lk.url||""} onChange={function(e){var ls=(task.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});upd("links",ls);}} placeholder="https://..." style={{flex:1,padding:"5px 6px",fontSize:11,border:"1px solid #e0ddd8",borderRadius:5}}/>
-                <button onClick={function(){var ls=(task.links||[]).filter(function(_,j){return j!==li;});upd("links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
+                <button onClick={function(){var ls=(task.links||[]).filter(function(_,j){return j!==li;});upd("links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
               </div>;})}
               <button className="btn btn-sm" onClick={function(){upd("links",[...(task.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"5px 8px"}}>＋ Add link</button>
             </div>
@@ -1107,18 +1107,18 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
                 <input type="date" min="1990-01-01" max="2200-12-31" value={localRfiDue} onChange={function(e){setLocalRfiDue(e.target.value);upd("rfiDue",e.target.value);}} style={{padding:"5px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
               </div>
             </div>}
-            {localTags.includes("Blocking Point")&&<div style={{padding:"8px",background:"#fff5f7",borderRadius:7,border:"1px solid #f48fb1"}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#c62828",textTransform:"uppercase",letterSpacing:".4px",marginBottom:5}}>🚧 Blocking point — which rooms are affected?</div>
+            {localTags.includes("Blocking Point")&&<div style={{padding:"8px",background:"#fff5f7",borderRadius:7,border:"1px solid #ecc3c7"}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#b3302a",textTransform:"uppercase",letterSpacing:".4px",marginBottom:5}}>🚧 Blocking point — which rooms are affected?</div>
               <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
                 <div style={{flex:1,minWidth:130}}>
                   <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",display:"block",marginBottom:2}}>Zone</label>
-                  <select value={localZone} onChange={function(e){var z=e.target.value;setLocalZone(z);if(onUpdate)onUpdate({zone:z,blockedRooms:[]},null,true);}} style={{padding:"5px 7px",fontSize:11,border:"1px solid #f48fb1",borderRadius:5,width:"100%"}}>
+                  <select value={localZone} onChange={function(e){var z=e.target.value;setLocalZone(z);if(onUpdate)onUpdate({zone:z,blockedRooms:[]},null,true);}} style={{padding:"5px 7px",fontSize:11,border:"1px solid #ecc3c7",borderRadius:5,width:"100%"}}>
                     <option value="">— pick a zone —</option>
                     {(zones||[]).map(function(z){return <option key={z} value={z}>{z}</option>;})}
                   </select>
                 </div>
                 {localZone&&<button className="btn btn-sm" onClick={function(){if(onOpenRooms)onOpenRooms(Object.assign({},task,{zone:localZone}));}}
-                  style={{background:"#fce4ec",color:"#c62828",border:"1px solid #f48fb1"}}>
+                  style={{background:"#fbe6e8",color:"#b3302a",border:"1px solid #ecc3c7"}}>
                   🚪 {task.blockedRooms==="all"?"All rooms":((task.blockedRooms||[]).length||0)+" room"+(((task.blockedRooms||[]).length||0)!==1?"s":"")}
                 </button>}
               </div>
@@ -1128,18 +1128,18 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
           </div>
           :<div onClick={function(){setEditMode(true);}} style={{cursor:"pointer"}}>
             <div className={"ac-text"+(task.status==="done"?" done":"")} style={{fontWeight:500}}>
-              {task.isInfo&&<span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"5px 6px",borderRadius:8,background:"#e3f2fd",color:"#1565c0",fontSize:10,fontWeight:700,marginRight:5}}>ℹ️ INFO</span>}
+              {task.isInfo&&<span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"5px 6px",borderRadius:8,background:"#f4f6f9",color:"#0f5299",fontSize:10,fontWeight:700,marginRight:5}}>ℹ️ INFO</span>}
               {task.text||<span style={{color:"#ccc",fontStyle:"italic"}}>No text</span>}
             </div>
             {task.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{task.note}</div>}
             <div className="ac-meta" style={{marginTop:4,display:"flex",flexWrap:"wrap",alignItems:"center",gap:4}}>
-              {task.due&&<span style={{fontSize:11,color:task.due<today()&&task.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(task.due)}</span>}
+              {task.due&&<span style={{fontSize:11,color:task.due<today()&&task.status!=="done"?"#b3302a":"#bbb"}}>📅 {fmtDate(task.due)}</span>}
               <BallChip task={task} onHandBack={onUpdate?function(tr){onUpdate(ownerChangePatch(task,tr),null,true);}:null}/>
               {task.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{task.package}</span>}
               {!task.isInfo&&sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
               {(task.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;} )}
               {tdr&&(onNavTender?<button onClick={function(e){e.stopPropagation();onNavTender(tdr.id,"global");}} style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10,padding:"5px 8px",borderRadius:20,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📑 {tdr.title}</button>:<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {tdr.title}</span>)}
-              {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
+              {ctr&&<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",border:"1px solid #c5d8fc",fontSize:10}}>🤝 {ctr.name}</span>}
               {(task.noteRef||task.momRef)&&<span className="badge" style={{background:"#f5f4f0",color:"#777",border:"1px solid #e8e6df",fontSize:10}}>{_actionSource(task,window._ppNotes,tenders)}</span>}
             </div>
             {((task.tags||[]).includes("RFI")||(task.tags||[]).includes("FCR"))&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"5px 8px",borderRadius:5,display:"inline-block"}}>
@@ -1184,7 +1184,7 @@ function OwnerChip({owner}){
 }
 
 function TagChip({tag}){
-  if(tag==="Blocking Point")return <span className="tag" style={{background:"#c62828",color:"#fff",fontWeight:800}}>🔴 {tag}</span>;
+  if(tag==="Blocking Point")return <span className="tag" style={{background:"#b3302a",color:"#fff",fontWeight:800}}>🔴 {tag}</span>;
   const c=tagColor(tag);
   return <span className="tag" style={{background:c.bg,color:c.color}}>{tag}</span>;
 }
@@ -1240,7 +1240,7 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
       <div style={{fontWeight:700,fontSize:12,color:"#3949ab",flex:1}}>＋ {label||"Add Task"}
         {prefill.package&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:10,background:"#f0ede6",color:"#555",fontSize:10,fontWeight:600}}>{prefill.package}</span>}
-        {prefill.zone&&<span style={{marginLeft:3,padding:"1px 6px",borderRadius:10,background:"#f3e5f5",color:"#7b1fa2",fontSize:10,fontWeight:600}}>{prefill.zone}</span>}
+        {prefill.zone&&<span style={{marginLeft:3,padding:"1px 6px",borderRadius:10,background:"#f2f0ec",color:"#4a4740",fontSize:10,fontWeight:600}}>{prefill.zone}</span>}
         {prefill.tenderRef&&<span style={{marginLeft:3,fontSize:12}}>📑</span>}
         {prefill.contractorRef&&<span style={{marginLeft:3,fontSize:12}}>🤝</span>}
       </div>
@@ -1264,7 +1264,7 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
         <select value={owner} onChange={function(e){setOwnerOv(e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit"}}>
           <OwnerOptions people={ppl} emptyLabel="No owner"/>
         </select>
-        <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",fontSize:11,fontWeight:600,textTransform:"none",letterSpacing:"normal",color:isInfo?"#1565c0":"#888",background:isInfo?"#e3f2fd":"transparent",padding:"2px 8px",borderRadius:10,border:"1.5px solid "+(isInfo?"#1565c0":"#ddd")}}>
+        <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",fontSize:11,fontWeight:600,textTransform:"none",letterSpacing:"normal",color:isInfo?"#0f5299":"#888",background:isInfo?"#f4f6f9":"transparent",padding:"2px 8px",borderRadius:10,border:"1.5px solid "+(isInfo?"#0f5299":"#ddd")}}>
           <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:12,height:12,cursor:"pointer"}}/>
           ℹ️ Info only
         </label>
@@ -1365,7 +1365,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
       const isEdit=editId===t.id;
       const ccs=getAllCCs(t.tags||[],t.package||"",t.owner||"",tagrules,pkgrules);
       return <div key={t.id} className="ac-item" style={{background:isEdit?"#f8f9ff":t.status==="done"?"#fafaf8":"#fff",borderColor:isEdit?"#3949ab":"#e8e6df"}}>
-        <div className="ac-check" style={{borderColor:t.status==="done"?"#2e7d32":"#ddd",background:t.status==="done"?"#2e7d32":"transparent",flexShrink:0,marginTop:2}}
+        <div className="ac-check" style={{borderColor:t.status==="done"?"#1e6b3a":"#ddd",background:t.status==="done"?"#1e6b3a":"transparent",flexShrink:0,marginTop:2}}
           onClick={()=>toggleDone(t.id)}>
           {t.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
         </div>
@@ -1419,7 +1419,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
               </div>
               {getAllCCs(t.tags||[],t.package||"",t.owner||"",tagrules,pkgrules).length>0&&<div style={{marginTop:6,display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#aaa"}}>CC:</span>
-                {getAllCCs(t.tags||[],t.package||"",t.owner||"",tagrules,pkgrules).map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}
+                {getAllCCs(t.tags||[],t.package||"",t.owner||"",tagrules,pkgrules).map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e6f2e9",color:"#1e6b3a",fontWeight:700,border:"1px solid #cfe3d5"}}>CC{i+1} {p.split(",")[0]}</span>)}
               </div>}
             </div>
 
@@ -1442,14 +1442,14 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
             <div className={"ac-text"+(t.status==="done"?" done":"")} style={{fontWeight:500}}>{t.text||<span style={{color:"#ccc",fontStyle:"italic"}}>Click to edit…</span>}</div>
             {t.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{t.note}</div>}
             <div className="ac-meta">
-              {t.due&&<span style={{fontSize:11,color:t.due<today()&&t.status!=="done"?"#c62828":"#bbb"}}>📅 {fmtDate(t.due)}</span>}
+              {t.due&&<span style={{fontSize:11,color:t.due<today()&&t.status!=="done"?"#b3302a":"#bbb"}}>📅 {fmtDate(t.due)}</span>}
               {t.owner&&<OwnerChip owner={t.owner}/>}
               {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{t.package}</span>}
               {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
               {(t.tags||[]).map(tg=><TagChip key={tg} tag={tg}/>)}
-              {ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}
+              {ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e6f2e9",color:"#1e6b3a",fontWeight:700,border:"1px solid #cfe3d5"}}>CC{i+1} {p.split(",")[0]}</span>)}
               {t.tenderRef&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {(tenders.find(x=>x.id===t.tenderRef)||{}).title||""}</span>}
-              {t.contractorRef&&<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #c5d8fc"}}>🤝 {(contractors.find(x=>x.id===t.contractorRef)||{}).name||""}</span>}
+              {t.contractorRef&&<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",border:"1px solid #c5d8fc"}}>🤝 {(contractors.find(x=>x.id===t.contractorRef)||{}).name||""}</span>}
             </div>
             <div style={{fontSize:9,color:"#ddd",marginTop:3}}>✏️ click to edit</div>
           </div>}
@@ -1564,11 +1564,11 @@ function ExcelImportModal({onImport,onClose,people,packages}){
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
     </div>
     <div className="modal-body">
-      <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"10px 16px",borderRadius:8,border:"1.5px dashed #c9a84c",background:"#fffdf0",cursor:"pointer",fontSize:13,fontWeight:600,color:"#7b1fa2",marginBottom:14,textTransform:"none",letterSpacing:"normal"}}>
+      <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"10px 16px",borderRadius:8,border:"1.5px dashed #c9a84c",background:"#faf9f7",cursor:"pointer",fontSize:13,fontWeight:600,color:"#4a4740",marginBottom:14,textTransform:"none",letterSpacing:"normal"}}>
         📎 {fileName||"Choose .xlsx / .xls file…"}
         <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} style={{display:"none"}}/>
       </label>
-      {error&&<div style={{padding:"8px 12px",background:"#fce4ec",borderRadius:8,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+      {error&&<div style={{padding:"8px 12px",background:"#fbe6e8",borderRadius:8,color:"#b3302a",fontSize:12,marginBottom:12}}>{error}</div>}
 
       {headers.length>0&&<div>
         <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",marginBottom:6}}>Map columns</div>
@@ -1629,16 +1629,16 @@ function LetterRow({letter,tc,correspondences,saveCorrespondences,delLetter}){
         <div style={{fontWeight:700,fontSize:12}}>#{letter.number} <span style={{color:"#888",fontWeight:400}}>· {fmtDate(letter.date)}</span></div>
         {letter.description&&<div style={{fontSize:11,color:"#555",marginTop:1}}>{letter.description}</div>}
         {letter.type==="received"&&<div style={{marginTop:4}}>
-          {!editing&&!letter.replied&&<button onClick={function(){setEditing(true);}} style={{fontSize:10,padding:"1px 8px",borderRadius:8,background:"#fce4ec",color:"#c62828",fontWeight:600,border:"none",cursor:"pointer"}}>⏳ Awaiting reply — click to mark</button>}
+          {!editing&&!letter.replied&&<button onClick={function(){setEditing(true);}} style={{fontSize:10,padding:"1px 8px",borderRadius:8,background:"#fbe6e8",color:"#b3302a",fontWeight:600,border:"none",cursor:"pointer"}}>⏳ Awaiting reply — click to mark</button>}
           {!editing&&letter.replied&&<div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:10,padding:"1px 7px",borderRadius:8,background:"#e8f5e9",color:"#2e7d32",fontWeight:600}}>✅ Replied</span>
-            {letter.replyNumber&&<span style={{fontSize:10,color:"#2e7d32"}}>N° {letter.replyNumber} — {fmtDate(letter.replyDate)}</span>}
+            <span style={{fontSize:10,padding:"1px 7px",borderRadius:8,background:"#e6f2e9",color:"#1e6b3a",fontWeight:600}}>✅ Replied</span>
+            {letter.replyNumber&&<span style={{fontSize:10,color:"#1e6b3a"}}>N° {letter.replyNumber} — {fmtDate(letter.replyDate)}</span>}
             <button onClick={function(){setEditing(true);}} style={{fontSize:10,color:"#888",background:"none",border:"none",cursor:"pointer"}}>✏️</button>
           </div>}
           
         </div>}
       </div>
-      <button onClick={function(){delLetter(letter.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+      <button onClick={function(){delLetter(letter.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:13,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
     </div>
   </div>;
 }
@@ -1679,7 +1679,7 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
 
   function set(f,v){setForm(function(prev){return Object.assign({},prev,{[f]:v});});}
 
-  const TYPE_COLORS={received:{bg:"#e3f2fd",color:"#1565c0",label:"Received"},sent:{bg:"#e8f5e9",color:"#2e7d32",label:"Sent"}};
+  const TYPE_COLORS={received:{bg:"#f4f6f9",color:"#0f5299",label:"Received"},sent:{bg:"#e6f2e9",color:"#1e6b3a",label:"Sent"}};
 
   return <div className="card" style={{marginBottom:12}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
@@ -1725,7 +1725,7 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
           </div>
         </div>}
       </div>
-      {form.type==="received"&&!form.replied&&<div style={{padding:"6px 10px",background:"#fff8e1",borderRadius:6,fontSize:11,color:"#f57f17",marginBottom:8}}>
+      {form.type==="received"&&!form.replied&&<div style={{padding:"6px 10px",background:"#faf3e0",borderRadius:6,fontSize:11,color:"#b35c00",marginBottom:8}}>
         ⚠️ An action "Respond to letter" will be auto-created with due date 7 days from receipt.
       </div>}
       <div style={{display:"flex",gap:6}}>
@@ -1778,7 +1778,7 @@ function ContractorFormModal({data,onChange,onSave,onClose,people,packages,tende
             </button>;
           })}
         </div>
-        {selRefs.length>0&&<div style={{marginTop:6,fontSize:11,color:"#2e7d32",fontWeight:600}}>Linked: {selRefs.map(function(id){var t=(tenders||[]).find(function(x){return x.id===id;});return t?t.title:"?";}).join(", ")}</div>}
+        {selRefs.length>0&&<div style={{marginTop:6,fontSize:11,color:"#1e6b3a",fontWeight:600}}>Linked: {selRefs.map(function(id){var t=(tenders||[]).find(function(x){return x.id===id;});return t?t.title:"?";}).join(", ")}</div>}
       </div>
     </div>
     <div className="modal-footer">
@@ -1803,11 +1803,11 @@ function EmailModal({em,onClose}){
   return <div className="overlay"><div className="modal" style={{maxWidth:640}}>
     <div className="modal-hdr"><div className="modal-title">📧 Action email</div><button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
     <div className="modal-body">
-      <div style={{marginBottom:12,padding:"10px 12px",background:toList.length>0?"#f0f8ff":"#fff8e1",borderRadius:8,border:"1px solid "+(toList.length>0?"#bbdefb":"#ffe082")}}>
+      <div style={{marginBottom:12,padding:"10px 12px",background:toList.length>0?"#f0f8ff":"#faf3e0",borderRadius:8,border:"1px solid "+(toList.length>0?"#bbdefb":"#e6d9b4")}}>
         {toList.length>0&&<div style={{fontSize:12,marginBottom:ccList.length>0?4:0}}><strong>To:</strong> {toList.join("; ")}</div>}
         {ccList.length>0&&<div style={{fontSize:12}}><strong>Cc:</strong> {ccList.join("; ")}</div>}
-        {toList.length===0&&ccList.length===0&&<div style={{fontSize:12,color:"#f57f17"}}><strong>No recipients yet.</strong> Recipients are auto-filled from the owners of the actions in this report, plus anyone set as default Cc.<br/>Set it up once: <strong>Settings → People</strong> (add an email to each person) and optionally <strong>Settings → Report CC</strong> (people always in copy).</div>}
-        {missingCount>0&&<div style={{fontSize:11,color:"#c62828",marginTop:6}}>⚠️ {missingCount} recipient{missingCount!==1?"s have":" has"} no email on file — set it in Settings → People. They're not included above.</div>}
+        {toList.length===0&&ccList.length===0&&<div style={{fontSize:12,color:"#b35c00"}}><strong>No recipients yet.</strong> Recipients are auto-filled from the owners of the actions in this report, plus anyone set as default Cc.<br/>Set it up once: <strong>Settings → People</strong> (add an email to each person) and optionally <strong>Settings → Report CC</strong> (people always in copy).</div>}
+        {missingCount>0&&<div style={{fontSize:11,color:"#b3302a",marginTop:6}}>⚠️ {missingCount} recipient{missingCount!==1?"s have":" has"} no email on file — set it in Settings → People. They're not included above.</div>}
       </div>
       <div className="fg" style={{marginBottom:10}}><label>Subject</label><input type="text" value={em.subject} readOnly style={{fontWeight:600}}/></div>
       <div className="fg"><label>Body</label><textarea value={em.body} readOnly style={{minHeight:320,fontFamily:"monospace",fontSize:12,lineHeight:1.6,background:"#fafaf8"}}/></div>
@@ -1918,7 +1918,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
             {(deps.list||[]).map(function(d){return <option key={d} value={d}>{d}</option>;})}
           </select>
           <input type="email" value={(peopleEmails||{})[p]||""} onChange={function(e){var u=Object.assign({},peopleEmails||{});u[p]=e.target.value;savePeopleEmails(u);}} placeholder="email@company.com" style={{flex:1,padding:"4px 8px",fontSize:12,border:"1px solid #e0ddd6",borderRadius:6}}/>
-          <button onClick={()=>removePerson(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}>🗑</button>
+          <button onClick={()=>removePerson(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14}} onMouseEnter={e=>e.currentTarget.style.color="#b3302a"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}>🗑</button>
         </div>;})}
       </div>
     </div>}
@@ -1932,7 +1932,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
       <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
         {packages.map(p=><div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,background:"#f0ede6",border:"1.5px solid #e0ddd6"}}>
           <span style={{fontSize:12,fontWeight:600,color:"#555"}}>{p}</span>
-          <button onClick={()=>removePackage(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:12,padding:"0 2px"}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#bbb"}>×</button>
+          <button onClick={()=>removePackage(p)} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:12,padding:"0 2px"}} onMouseEnter={e=>e.currentTarget.style.color="#b3302a"} onMouseLeave={e=>e.currentTarget.style.color="#bbb"}>×</button>
         </div>)}
       </div>
     </div>}
@@ -1999,11 +1999,11 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           var fromCtr=!!ctrLower[v.toLowerCase()];
           var manual=(subList||[]).some(function(x){return x.toLowerCase()===v.toLowerCase();});
           var col=(subColors||{})[v]||"";
-          return <div key={v} style={{display:"flex",alignItems:"center",gap:7,padding:"6px 12px",borderRadius:20,background:fromCtr?"#e8f5e9":"#f0ede6",border:"1.5px solid "+(fromCtr?"#c8e6c9":"#e0ddd6")}}>
+          return <div key={v} style={{display:"flex",alignItems:"center",gap:7,padding:"6px 12px",borderRadius:20,background:fromCtr?"#e6f2e9":"#f0ede6",border:"1.5px solid "+(fromCtr?"#cfe3d5":"#e0ddd6")}}>
             <span onClick={function(){setColorPick(colorPick===v?"":v);}} title={col?"Schedule colour: "+paletteName(col)+" — click to change":"No colour yet — click to pick one"}
               style={{width:14,height:14,borderRadius:4,cursor:"pointer",flexShrink:0,background:col||"repeating-linear-gradient(45deg,#ddd,#ddd 2px,#fff 2px,#fff 4px)",border:"1px solid rgba(0,0,0,.2)"}}></span>
-            <span style={{fontSize:12,fontWeight:600,color:fromCtr?"#2e7d32":"#555"}}>{v}</span>
-            {fromCtr&&<span title="Comes from the Subcontractors tab — remove it there" style={{fontSize:9,color:"#2e7d32",fontWeight:700}}>AUTO</span>}
+            <span style={{fontSize:12,fontWeight:600,color:fromCtr?"#1e6b3a":"#555"}}>{v}</span>
+            {fromCtr&&<span title="Comes from the Subcontractors tab — remove it there" style={{fontSize:9,color:"#1e6b3a",fontWeight:700}}>AUTO</span>}
             {manual&&<button onClick={function(){removeSub(v);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:12,padding:"0 2px"}}>×</button>}
           </div>;
         })}
@@ -2052,7 +2052,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
               })}
             </div>
           </div>
-          <button onClick={()=>removeZone(z)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14}} onMouseEnter={e=>e.currentTarget.style.color="#c62828"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}>🗑</button>
+          <button onClick={()=>removeZone(z)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14}} onMouseEnter={e=>e.currentTarget.style.color="#b3302a"} onMouseLeave={e=>e.currentTarget.style.color="#ddd"}>🗑</button>
         </div>)}
       </div>
     </div>}
@@ -2071,7 +2071,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           </button>;
         })}
       </div>
-      {(defaultCC||[]).some(function(p){return !(peopleEmails||{})[p];})&&<div style={{marginTop:10,fontSize:11,color:"#c62828"}}>⚠️ Some selected people have no email set — add one in the People tab or they'll be skipped when opening Outlook.</div>}
+      {(defaultCC||[]).some(function(p){return !(peopleEmails||{})[p];})&&<div style={{marginTop:10,fontSize:11,color:"#b3302a"}}>⚠️ Some selected people have no email set — add one in the People tab or they'll be skipped when opening Outlook.</div>}
     </div>}
 
     {tab==="durations"&&isAdmin&&<div className="card">
@@ -2112,7 +2112,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           {sec.items.map(function(it){
             var cur=(durations||{})[it.k];
             var isCustom=cur!==undefined&&cur!==null&&cur!==""&&Number(cur)!==DEFAULT_DURATIONS[it.k];
-            return <div key={it.k} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",borderRadius:8,background:isCustom?"#fffdf0":"#fafaf8",marginBottom:4,border:"1px solid "+(isCustom?"#f0e2b8":"#f0ede6")}}>
+            return <div key={it.k} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",borderRadius:8,background:isCustom?"#faf9f7":"#fafaf8",marginBottom:4,border:"1px solid "+(isCustom?"#f0e2b8":"#f0ede6")}}>
               <span style={{flex:1,fontSize:12}}>{it.label}</span>
               {isCustom&&<span style={{fontSize:9,color:"#b45309",fontWeight:700}}>default {DEFAULT_DURATIONS[it.k]}</span>}
               <input type="number" min="0" value={cur===undefined||cur===null?"":cur}
@@ -2171,7 +2171,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
               <button className="btn btn-sm" style={{padding:"1px 7px",fontSize:11}} onClick={function(){del(i);}} title="Remove this stage">✕</button>
             </div>;
           })}
-          {probs.length>0&&<div style={{fontSize:11,color:"#c62828",margin:"6px 0"}}>⚠️ {probs.join(" ")}</div>}
+          {probs.length>0&&<div style={{fontSize:11,color:"#b3302a",margin:"6px 0"}}>⚠️ {probs.join(" ")}</div>}
           <div style={{display:"flex",gap:8,marginTop:6}}>
             <button className="btn btn-sm" onClick={add}>+ Add stage</button>
             {custom&&<button className="btn btn-sm" onClick={resetCircuit}>↺ Default circuit</button>}
@@ -2220,10 +2220,10 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
             u[p]=pu;
             savePeopleAccess(u);
           }
-          return <div key={p} style={{padding:"10px 12px",borderRadius:10,border:"1.5px solid "+(isRestricted?"#ffe082":"#e8e6df"),background:isRestricted?"#fffdf5":"#fafaf8"}}>
+          return <div key={p} style={{padding:"10px 12px",borderRadius:10,border:"1.5px solid "+(isRestricted?"#e6d9b4":"#e8e6df"),background:isRestricted?"#fffdf5":"#fafaf8"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:isRestricted?8:0}}>
               <span style={{fontWeight:700,fontSize:13,minWidth:130}}>{p.split(",")[0]}</span>
-              <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:12,background:isRestricted?"#fff3e0":"#e8f5e9",color:isRestricted?"#e65100":"#2e7d32"}}>
+              <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:12,background:isRestricted?"#fff3e0":"#e6f2e9",color:isRestricted?"#e65100":"#1e6b3a"}}>
                 {isRestricted?"Restricted":"Full access"}
               </span>
               {isRestricted
@@ -2259,7 +2259,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
                 <input type="checkbox" checked={!!acc.manpowerEditor} onChange={function(){toggle("manpowerEditor");}} style={{width:14,height:14}}/>
                 👷 Manpower editor
               </label>
-              {isRestricted&&<label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.zonePilot?"#7b1fa2":"#888"}}>
+              {isRestricted&&<label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:600,color:acc.zonePilot?"#4a4740":"#888"}}>
                 <input type="checkbox" checked={!!acc.zonePilot} onChange={function(){toggle("zonePilot");}} style={{width:14,height:14}}/>
                 Zone Pilot
               </label>}
@@ -2269,7 +2269,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
               <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
                 {(packages||[]).map(function(pkgName){
                   var on=(acc.extraPackages||[]).includes(pkgName);
-                  return <button key={pkgName} onClick={function(){toggleExtraPkg(pkgName);}} style={{padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(on?"#1a73e8":"#ddd"),background:on?"#e8f0fe":"#fff",color:on?"#1a73e8":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{on?"✓ ":""}{pkgName}</button>;
+                  return <button key={pkgName} onClick={function(){toggleExtraPkg(pkgName);}} style={{padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(on?"#0f5299":"#ddd"),background:on?"#e8f0fe":"#fff",color:on?"#0f5299":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{on?"✓ ":""}{pkgName}</button>;
                 })}
               </div>
             </div>}
@@ -2285,7 +2285,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
         {tags.map(t=>{const tc=tagColor(t);const ccs=tagrules[t]||[];return <div key={t} style={{marginBottom:12,padding:"10px 12px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <span style={{padding:"3px 10px",borderRadius:20,background:tc.bg,color:tc.color,fontSize:12,fontWeight:700}}>{t}</span>
-            {ccs.length>0&&<span style={{fontSize:11,color:"#2e7d32",fontWeight:600}}>→ CC: {ccs.map(p=>p.split(",")[0]).join(", ")}</span>}
+            {ccs.length>0&&<span style={{fontSize:11,color:"#1e6b3a",fontWeight:600}}>→ CC: {ccs.map(p=>p.split(",")[0]).join(", ")}</span>}
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
             {people.map(p=>{const on=ccs.includes(p);const c=ownerColor(p);return <button key={p} onClick={()=>toggleTagRule(t,p)}
@@ -2301,7 +2301,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
         {packages.map(pkg=>{const ccs=pkgrules[pkg]||[];return <div key={pkg} style={{marginBottom:12,padding:"10px 12px",borderRadius:10,border:"1.5px solid #e8e6df",background:"#fafaf8"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <span style={{padding:"3px 10px",borderRadius:20,background:"#f0ede6",color:"#555",fontSize:12,fontWeight:700}}>📦 {pkg}</span>
-            {ccs.length>0&&<span style={{fontSize:11,color:"#2e7d32",fontWeight:600}}>→ CC: {ccs.map(p=>p.split(",")[0]).join(", ")}</span>}
+            {ccs.length>0&&<span style={{fontSize:11,color:"#1e6b3a",fontWeight:600}}>→ CC: {ccs.map(p=>p.split(",")[0]).join(", ")}</span>}
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
             {people.map(p=>{const on=ccs.includes(p);const c=ownerColor(p);return <button key={p} onClick={()=>togglePkgRule(pkg,p)}
@@ -2365,7 +2365,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
             e.target.value="";
           }}/>
         </label>
-        <div style={{fontSize:11,color:"#c62828",marginTop:8}}>⚠️ Restore overwrites current data. Export first if needed.</div>
+        <div style={{fontSize:11,color:"#b3302a",marginTop:8}}>⚠️ Restore overwrites current data. Export first if needed.</div>
       </div>
     </div>}
     {tab==="my-prefs"&&<div className="card">
@@ -2393,7 +2393,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
             <div style={{fontSize:11,color:"#888",marginTop:3}}>When checked, you will never appear as CC on any action — even if you are assigned as package owner in CC rules. Useful if you manage a package and do not need to be notified of your own tasks.</div>
           </div>
         </label>
-        {((userPrefs||{})[window._currentUser.name]||{}).noPkgCC&&<div style={{marginTop:10,padding:"8px 12px",background:"#e8f5e9",borderRadius:8,fontSize:12,color:"#2e7d32",fontWeight:600}}>✅ You will never appear as CC from package rules.</div>}
+        {((userPrefs||{})[window._currentUser.name]||{}).noPkgCC&&<div style={{marginTop:10,padding:"8px 12px",background:"#e6f2e9",borderRadius:8,fontSize:12,color:"#1e6b3a",fontWeight:600}}>✅ You will never appear as CC from package rules.</div>}
       </div>}
     </div>}
     {tab==="improvements"&&<div className="card">
@@ -2414,7 +2414,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           </div>
           <button onClick={function(){saveImprovements((improvements||[]).filter(function(x){return x.id!==imp.id;}));}}
             style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,flexShrink:0}}
-            onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}}
+            onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}}
             onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
         </div>;})}
     </div>}
@@ -2707,7 +2707,7 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
     <div className="page-hdr">
       <div>
         <div className="page-title">Weekly Report</div>
-        <div className="page-sub">{relevant.length} actions · {isFriday?<span style={{color:"#2e7d32",fontWeight:700}}>Today is Friday — time to send!</span>:<span style={{color:"#888"}}>To be prepared every Friday at 17:00</span>}</div>
+        <div className="page-sub">{relevant.length} actions · {isFriday?<span style={{color:"#1e6b3a",fontWeight:700}}>Today is Friday — time to send!</span>:<span style={{color:"#888"}}>To be prepared every Friday at 17:00</span>}</div>
       </div>
       <div style={{display:"flex",gap:8}}>
         <button className="btn btn-gold" onClick={copyReport}>{copied?"✅ Copied!":"📋 Copy report"}</button>
@@ -2931,7 +2931,7 @@ function NotesConvertPanel({items,people,tasks,onCreate,onClose}){
               <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2,fontSize:10,color:"#999"}}>
                 <span>line {r.line}</span>
                 {r.section&&<span>· {r.section}{r.package?" → "+r.package:""}{r.tenderRef?" 📑":""}</span>}
-                {r.zone&&<span style={{color:"#7b1fa2"}}>· {r.zone}</span>}
+                {r.zone&&<span style={{color:"#4a4740"}}>· {r.zone}</span>}
                 {r.ambiguous.length>0&&<span style={{color:"#e65100"}}>· ⚠ which one? {r.ambiguous.map(function(n){return n.split(",")[0];}).join(" / ")}</span>}
                 {r.unknown.length>0&&<span style={{color:"#e65100"}}>· ⚠ unknown {r.unknown.join(" ")}</span>}
               </div>
@@ -2939,7 +2939,7 @@ function NotesConvertPanel({items,people,tasks,onCreate,onClose}){
             </td>
             <td><select value={r.owner} onChange={function(e){setRow(i,{owner:e.target.value});}} style={Object.assign({},inp,{width:"100%",borderColor:r.owner?"#ddd":"#ffb74d"})}><OwnerOptions people={people} emptyLabel="⚠ no owner"/></select></td>
             <td><input type="date" min="1990-01-01" max="2200-12-31" value={r.due} onChange={function(e){setRow(i,{due:e.target.value});}} style={Object.assign({},inp,{width:"100%"})}/></td>
-            <td><select value={r.type} onChange={function(e){setRow(i,{type:e.target.value});}} style={Object.assign({},inp,{width:"100%",color:r.type==="block"?"#c62828":r.type==="prereq"?"#8d6e00":"inherit"})}>
+            <td><select value={r.type} onChange={function(e){setRow(i,{type:e.target.value});}} style={Object.assign({},inp,{width:"100%",color:r.type==="block"?"#b3302a":r.type==="prereq"?"#8d6e00":"inherit"})}>
               <option value="normal">Normal</option><option value="block">🔴 Blocking</option><option value="prereq">🔒 Prerequisite</option>
             </select></td>
             <td><select value={r.trackedBy} onChange={function(e){setRow(i,{trackedBy:e.target.value});}} style={Object.assign({},inp,{width:"100%"})}>
@@ -3078,7 +3078,7 @@ function NotesView({notes,saveNotes,tasks,saveTasks,people,zones,packages,tender
               <div style={{fontSize:11,color:"#999"}}>{fmtDate(n.date)}{n.zone?" · "+n.zone:""}{(n.attendees||[]).length?" · "+n.attendees.map(function(p){return p.split(",")[0];}).join(", "):""}</div>
             </div>
             <span style={{fontSize:11,color:"#888"}}>{acts.length} action{acts.length!==1?"s":""}{openN?" · "+openN+" open":""}</span>
-            {late>0&&<span className="pill" style={{background:"#fce4ec",color:"#c62828",fontSize:10,fontWeight:700}}>{late} late</span>}
+            {late>0&&<span className="pill" style={{background:"#fbe6e8",color:"#b3302a",fontSize:10,fontWeight:700}}>{late} late</span>}
           </div>;})}
       </div>
     </div>;
@@ -3102,7 +3102,7 @@ function NotesView({notes,saveNotes,tasks,saveTasks,people,zones,packages,tender
         <input value={draft.title} onChange={function(e){edit({title:e.target.value});}} placeholder="Note title — e.g. Facade team point" style={Object.assign({},inp,{width:"100%",fontSize:16,fontWeight:700,border:"none",borderBottom:"1.5px solid #e8e6df",borderRadius:0,padding:"4px 0",marginBottom:8,boxSizing:"border-box"})}/>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
           <input type="date" min="1990-01-01" max="2200-12-31" value={draft.date} onChange={function(e){edit({date:e.target.value});}} style={inp}/>
-          <select value={draft.zone} onChange={function(e){edit({zone:e.target.value});}} style={Object.assign({},inp,{color:draft.zone?"#7b1fa2":"#999"})}>
+          <select value={draft.zone} onChange={function(e){edit({zone:e.target.value});}} style={Object.assign({},inp,{color:draft.zone?"#4a4740":"#999"})}>
             <option value="">— no zone —</option>{(zones||[]).map(function(z){return <option key={z} value={z}>{z}</option>;})}
           </select>
           {(draft.attendees||[]).map(function(p){return <span key={p} className="pill" style={{background:ownerColor(p).bg,color:ownerColor(p).accent,fontSize:11,fontWeight:700,display:"inline-flex",gap:3,alignItems:"center"}}>
@@ -3169,9 +3169,9 @@ function PersonBrief({people,tasks,notes,tenders,peopleEmails,initial,onClose}){
     return {text:t.text,src:_actionSource(t,notes,tenders),who:b.away?b.tracker.split(",")[0]+" ➜ "+(isDept(b.holder)?b.holder:b.holder.split(",")[0])+" · "+b.days+" d":(b.holder?(isDept(b.holder)?b.holder:b.holder.split(",")[0]):"—"),
       due:t.due?fmtDate(t.due):"",late:!!(t.due&&t.due<today()),block:(t.tags||[]).indexOf("Blocking Point")>=0};
   }
-  var blocks=[["Late","#c62828",g.late],["To do — "+short+(deptOf(person)?" / "+deptOf(person):""),"#1c1c1e",g.todo],["Follows — ball with someone else","#8d6e00",g.follow]];
+  var blocks=[["Late","#b3302a",g.late],["To do — "+short+(deptOf(person)?" / "+deptOf(person):""),"#1c1c1e",g.todo],["Follows — ball with someone else","#8d6e00",g.follow]];
   function print(){
-    var html="<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Point with "+_h(short)+" - "+today()+"</title><style>body{font-family:'IBM Plex Sans',Arial,sans-serif;font-size:12px;margin:24px;color:#14171c}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:5px 6px;text-align:left;vertical-align:top}th{font-size:10px;color:#888;text-transform:uppercase}.r{color:#c62828;font-weight:700}.box{width:14px;height:14px;border:1.5px solid #333;display:inline-block}</style></head><body>";
+    var html="<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Point with "+_h(short)+" - "+today()+"</title><style>body{font-family:'IBM Plex Sans',Arial,sans-serif;font-size:12px;margin:24px;color:#14171c}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:5px 6px;text-align:left;vertical-align:top}th{font-size:10px;color:#888;text-transform:uppercase}.r{color:#b3302a;font-weight:700}.box{width:14px;height:14px;border:1.5px solid #333;display:inline-block}</style></head><body>";
     html+="<h1>Point with "+_h(person)+"</h1><div style='color:#888'>"+_h(fmtDate(today()))+"</div>";
     blocks.forEach(function(bk){
       html+="<h2 style='color:"+bk[1]+"'>"+_h(bk[0])+" ("+bk[2].length+")</h2>";
@@ -3203,10 +3203,10 @@ function PersonBrief({people,tasks,notes,tenders,peopleEmails,initial,onClose}){
         <div style={{fontSize:11,fontWeight:800,color:bk[1],textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>{bk[0]} ({bk[2].length})</div>
         {bk[2].length===0&&<div style={{fontSize:12,color:"#ccc"}}>—</div>}
         {bk[2].map(function(t){var l=lineOf(t);return <div key={t.id} style={{display:"flex",gap:8,alignItems:"baseline",padding:"5px 0",borderTop:"1px solid #f3f1ec",fontSize:12,flexWrap:"wrap"}}>
-          <span style={{flex:"1 1 260px"}}>{l.block&&<span style={{color:"#c62828"}}>● </span>}{l.text}</span>
+          <span style={{flex:"1 1 260px"}}>{l.block&&<span style={{color:"#b3302a"}}>● </span>}{l.text}</span>
           <span style={{fontSize:10,color:"#999"}}>{l.src}</span>
           <span style={{fontSize:11,color:"#666"}}>{l.who}</span>
-          <span style={{fontSize:11,fontWeight:700,color:l.late?"#c62828":"#999",minWidth:56,textAlign:"right"}}>{l.due||"no date"}</span>
+          <span style={{fontSize:11,fontWeight:700,color:l.late?"#b3302a":"#999",minWidth:56,textAlign:"right"}}>{l.due||"no date"}</span>
         </div>;})}
       </div>;})}
     </div>
@@ -3533,7 +3533,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     {showWeekly&&<EmailModal em={buildWeeklyReport()} onClose={function(){setShowWeekly(false);}}/>}
     {showPoint&&<PersonBrief people={people} tasks={tasks} notes={notes} tenders={tenders} peopleEmails={peopleEmails} initial={fOwners.length===1?fOwners[0]:""} onClose={function(){setShowPoint(false);}}/>}
 
-    {actionsOnly&&<div style={{marginBottom:10,padding:"8px 12px",background:"#f0f8ff",border:"1px solid #bbdefb",borderRadius:8,fontSize:12,color:"#1565c0",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+    {actionsOnly&&<div style={{marginBottom:10,padding:"8px 12px",background:"#f0f8ff",border:"1px solid #bbdefb",borderRadius:8,fontSize:12,color:"#0f5299",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <span>👤 Showing <strong>your actions</strong> by default.</span>
       {fOwners.length>0&&<button className="btn btn-sm" onClick={function(){setFOwners([]);}}>Show all team actions</button>}
       {fOwners.length===0&&<button className="btn btn-sm" onClick={function(){setFOwners([currentUser]);}}>Back to my actions only</button>}
@@ -3542,7 +3542,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
       <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Quick:</span>
       {[
-        {k:"blocking",label:"🔴 Blocking",activeBg:"#fce4ec",activeColor:"#c62828"},
+        {k:"blocking",label:"🔴 Blocking",activeBg:"#fbe6e8",activeColor:"#b3302a"},
         {k:"topmgmt",label:"👔 Top Mgmt",activeBg:"#ede7f6",activeColor:"#5e35b1"},
         {k:"overdue",label:"⚠️ Overdue",activeBg:"#fff3e0",activeColor:"#e65100"}
       ].map(function(p){
@@ -3603,7 +3603,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       {allOwners.map(function(o){var on=fOwners.includes(o);var col=ownerColor(o);return <button key={o} onClick={function(){setFOwners(function(prev){return prev.includes(o)?prev.filter(function(x){return x!==o;}):[...prev,o];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?col.accent:"#ddd"),background:on?col.bg:"#fff",color:on?col.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{o.split(",")[0]}</button>;})}
       <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginLeft:8}}>Tags:</span>
       {(tags||[]).map(function(tg){var on=fTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){setFTags(function(prev){return prev.includes(tg)?prev.filter(function(x){return x!==tg;}):[...prev,tg];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
-      <button onClick={function(){setShowInfo(!showInfo);}} style={{padding:"3px 10px",borderRadius:10,border:"1.5px solid "+(showInfo?"#1565c0":"#ddd"),background:showInfo?"#e3f2fd":"#fff",color:showInfo?"#1565c0":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>ℹ️ Info</button>
+      <button onClick={function(){setShowInfo(!showInfo);}} style={{padding:"3px 10px",borderRadius:10,border:"1.5px solid "+(showInfo?"#0f5299":"#ddd"),background:showInfo?"#f4f6f9":"#fff",color:showInfo?"#0f5299":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>ℹ️ Info</button>
       {(fStatus!=="all"||fOwners.length>0||fTags.length>0||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||fCC!=="all"||fScore!=="all"||q||preset||fAddedBy!=="all")&&
         <button className="btn btn-sm" style={{marginLeft:8}} onClick={function(){setFStatus("all");setFOwners([]);setFTags([]);setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setFScore("all");setQ("");setPreset("");setFAddedBy("all");}}>✕ Reset all</button>}
     </div>
@@ -3661,7 +3661,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
             var ccs=getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules||{},pkgrules||{});
             var isEdit=editId===a.id;
             var isSel=selIds.includes(a.id);
-            return <tr key={a.id||idx} style={{background:isSel?"#fffdf0":isEdit?"#f8f9ff":"transparent",verticalAlign:"top"}}>
+            return <tr key={a.id||idx} style={{background:isSel?"#faf9f7":isEdit?"#f8f9ff":"transparent",verticalAlign:"top"}}>
               <td style={{width:30,textAlign:"center"}} onClick={function(e){e.stopPropagation();}}>
                 <input type="checkbox" checked={isSel} onChange={function(){toggleSel(a.id);}} style={{width:14,height:14,cursor:"pointer",marginTop:6}}/>
               </td>
@@ -3674,7 +3674,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                       {(a.links||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
                         <input type="text" value={lk.label||""} onChange={function(e){var ls=(a.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});updateField(a,"links",ls);}} placeholder="Label" style={{width:90,padding:"2px 5px",fontSize:10,border:"1px solid #ddd",borderRadius:4}}/>
                         <input type="url" value={lk.url||""} onChange={function(e){var ls=(a.links||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});updateField(a,"links",ls);}} placeholder="https://..." style={{flex:1,padding:"2px 5px",fontSize:10,border:"1px solid #ddd",borderRadius:4}}/>
-                        <button onClick={function(){updateField(a,"links",(a.links||[]).filter(function(_,j){return j!==li;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:11}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
+                        <button onClick={function(){updateField(a,"links",(a.links||[]).filter(function(_,j){return j!==li;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:11}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>✕</button>
                       </div>;})}
                       <button onClick={function(){updateField(a,"links",[...(a.links||[]),{label:"",url:""}]);}} style={{fontSize:10,padding:"1px 7px",border:"1px solid #ddd",borderRadius:4,background:"#fafaf8",fontFamily:"inherit",cursor:"pointer"}}>＋ link</button>
                     </div>
@@ -3687,7 +3687,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                     {(a.note||a.details)&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{a.note||a.details}</div>}
                     {(a.tags||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{(a.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;})}</div>}
                     {(a.links||[]).length>0&&<div style={{marginTop:3,display:"flex",gap:4,flexWrap:"wrap"}}>{(a.links||[]).map(function(lk,li){return lk.url?<a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{fontSize:10,color:"#3949ab",textDecoration:"none",padding:"1px 6px",borderRadius:5,background:"#f0f0ff",border:"1px solid #d0d0f0"}}>🔗 {lk.label||"link"}</a>:null;})}</div>}
-                    {ccs.length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{ccs.map(function(p,i){return <span key={p} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC {p.split(",")[0]}</span>;})}</div>}
+                    {ccs.length>0&&<div style={{marginTop:3,display:"flex",gap:3,flexWrap:"wrap"}}>{ccs.map(function(p,i){return <span key={p} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"#e6f2e9",color:"#1e6b3a",fontWeight:700,border:"1px solid #cfe3d5"}}>CC {p.split(",")[0]}</span>;})}</div>}
                     <div style={{fontSize:9,color:"#ddd",marginTop:2}}>✏️ click to edit</div>
                   </div>}
               </td>
@@ -3709,16 +3709,16 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                     <select value={a.package||""} onChange={function(e){updateField(a,"package",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
                       <option value="">— package —</option>{(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
                     </select>
-                    <select value={a.zone||""} onChange={function(e){updateField(a,"zone",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit",color:a.zone?"#7b1fa2":"inherit",fontWeight:a.zone?700:400}}>
+                    <select value={a.zone||""} onChange={function(e){updateField(a,"zone",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit",color:a.zone?"#4a4740":"inherit",fontWeight:a.zone?700:400}}>
                       <option value="">📍 — zone —</option>{(zones||[]).map(function(z){return <option key={z} value={z}>📍 {z}</option>;})}
                     </select>
                   </div>
-                  :<span>{a.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{a.package}</span>}{a.zone&&<span className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:10,marginLeft:3}}>📍 {a.zone}</span>}</span>}
+                  :<span>{a.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{a.package}</span>}{a.zone&&<span className="badge" style={{background:"#f2f0ec",color:"#4a4740",fontSize:10,marginLeft:3}}>📍 {a.zone}</span>}</span>}
               </td>
               <td data-l="Due" style={{whiteSpace:"nowrap"}}>
                 {isEdit
                   ?<input type="date" min="1990-01-01" max="2200-12-31" value={a.due||""} onChange={function(e){updateField(a,"due",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd"}}/>
-                  :<span style={{fontSize:12,color:a.due&&a.due<today()&&a.status!=="done"?"#c62828":"#888"}}>{fmtDate(a.due)}</span>}
+                  :<span style={{fontSize:12,color:a.due&&a.due<today()&&a.status!=="done"?"#b3302a":"#888"}}>{fmtDate(a.due)}</span>}
               </td>
               <td data-l="Score">
                 {isEdit
@@ -3733,7 +3733,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   :<span>{sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}</span>}
               </td>
               <td data-l="Source"><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
-              <td data-l="Tender" style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#1a73e8",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
+              <td data-l="Tender" style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
               <td>
                 {isEdit
                   ?<select value={a.tenderRef||""} onChange={function(e){updateField(a,"tenderRef",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
@@ -3804,10 +3804,10 @@ function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onCl
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:12,fontWeight:500,color:"#1a1a1a",lineHeight:1.3,marginBottom:2}}>{a.text}</div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-          {showDate&&<span style={{fontSize:10,fontWeight:700,color:isOverdue?"#c62828":"#f57f17"}}>📅 {fmtDate(a.due)}{isOverdue?" ⚠️":""}</span>}
+          {showDate&&<span style={{fontSize:10,fontWeight:700,color:isOverdue?"#b3302a":"#b35c00"}}>📅 {fmtDate(a.due)}{isOverdue?" ⚠️":""}</span>}
           {a.package&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#f0ede6",color:"#666"}}>{a.package}</span>}
           {tdr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#fff8f0",color:"#b45309"}}>📑 {tdr2.title}</span>}
-          {ctr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#e8f0fe",color:"#1a73e8"}}>🤝 {ctr2.name}</span>}
+          {ctr2&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:"#e8f0fe",color:"#0f5299"}}>🤝 {ctr2.name}</span>}
           {sc>1&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:5,background:ss.bg,color:ss.color,fontWeight:700}}>{sc}</span>}
         </div>
       </div>
@@ -3841,8 +3841,8 @@ function WeeklyPopup({tasks,trackers,people,tenders,contractors,saveT,saveX,onCl
             {!currentUserName&&<div style={{fontSize:12,color:"#aaa",marginTop:4}}>Log in to see your personal actions.</div>}
           </div>
           :<div>
-            <Section label="⚠️ Overdue" color="#c62828" items={overdue} showDate={true}/>
-            <Section label={"This week ("+monStr.slice(5).replace("-","/")+"-"+satStr.slice(5).replace("-","/")+")"}color="#f57f17" items={thisWeek} showDate={true}/>
+            <Section label="⚠️ Overdue" color="#b3302a" items={overdue} showDate={true}/>
+            <Section label={"This week ("+monStr.slice(5).replace("-","/")+"-"+satStr.slice(5).replace("-","/")+")"}color="#b35c00" items={thisWeek} showDate={true}/>
             <Section label="Upcoming" color="#aaa" items={upcoming} showDate={true}/>
           </div>}
       </div>
@@ -3958,7 +3958,7 @@ function UserLogin({people,onLogin}){
       {step==="pin"&&<div>
         <div style={{fontWeight:700,fontFamily:"var(--font-display)",fontSize:18,marginBottom:2}}>Hello, {selName.split(",")[0]}</div>
         <div style={{fontSize:12,color:"#888",marginBottom:18}}>Enter your 4-digit PIN</div>
-        {error&&<div style={{padding:"6px 10px",background:"#fce4ec",borderRadius:7,color:"#c62828",fontSize:12,marginBottom:12}}>{error}</div>}
+        {error&&<div style={{padding:"6px 10px",background:"#fbe6e8",borderRadius:7,color:"#b3302a",fontSize:12,marginBottom:12}}>{error}</div>}
         <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:20}}>
           {[0,1,2,3].map(function(i){return <div key={i} style={{width:44,height:52,border:"2px solid "+(pin.length>i?"#c9a84c":"#e8e6df"),borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#1c1c1e"}}>{pin[i]?"●":""}</div>;} )}
         </div>
@@ -3971,8 +3971,8 @@ function UserLogin({people,onLogin}){
       {step==="newpin"&&<div>
         <div style={{fontWeight:700,fontFamily:"var(--font-display)",fontSize:18,marginBottom:2}}>Hi, {selName.split(",")[0]}!</div>
         <div style={{fontSize:12,color:"#888",marginBottom:16}}>First time? Choose your PIN</div>
-        <div style={{padding:"8px 12px",background:"#e8f5e9",borderRadius:7,fontSize:11,color:"#2e7d32",marginBottom:12}}>Your PIN will be stored securely and required next time.</div>
-        {error&&<div style={{padding:"6px 10px",background:"#fce4ec",borderRadius:7,color:"#c62828",fontSize:12,marginBottom:10}}>{error}</div>}
+        <div style={{padding:"8px 12px",background:"#e6f2e9",borderRadius:7,fontSize:11,color:"#1e6b3a",marginBottom:12}}>Your PIN will be stored securely and required next time.</div>
+        {error&&<div style={{padding:"6px 10px",background:"#fbe6e8",borderRadius:7,color:"#b3302a",fontSize:12,marginBottom:10}}>{error}</div>}
         <div className="fg" style={{marginBottom:10}}>
           <label>Choose PIN (4 digits)</label>
           <input type="password" maxLength={4} value={newPin} onChange={function(e){setNewPin(e.target.value.replace(/[^0-9]/g,""));}} placeholder="••••" style={{fontSize:22,letterSpacing:10,textAlign:"center"}}/>
@@ -4052,13 +4052,13 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
   var STAGES=[
     {key:"rfi",label:"RFI",color:"#b45309",bg:"#fff8f0"},
     {key:"fcr",label:"FCR",color:"#8d6e63",bg:"#efebe9"},
-    {key:"contract_acc",label:"Contract ACC",color:"#1a73e8",bg:"#e8f0fe"},
-    {key:"contract_aconex",label:"Contract ACONEX",color:"#7b1fa2",bg:"#f3e5f5"},
-    {key:"acc",label:"Tender ACC",color:"#1a73e8",bg:"#dce8ff"},
-    {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"},
+    {key:"contract_acc",label:"Contract ACC",color:"#0f5299",bg:"#e8f0fe"},
+    {key:"contract_aconex",label:"Contract ACONEX",color:"#4a4740",bg:"#f2f0ec"},
+    {key:"acc",label:"Tender ACC",color:"#0f5299",bg:"#dce8ff"},
+    {key:"itp",label:"ITP",color:"#1e6b3a",bg:"#e6f2e9"},
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"},
-    {key:"mss",label:"MSS",color:"#1565c0",bg:"#e3f2fd"},
-    {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f3e5f5"},
+    {key:"mss",label:"MSS",color:"#0f5299",bg:"#f4f6f9"},
+    {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f2f0ec"},
     {key:"sd_approval",label:"SD",color:"#00695c",bg:"#e0f2f1"}
   ];
 
@@ -4087,13 +4087,13 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
         <div className="page-title">⚠️ Overdue</div>
         <div className="page-sub">Overdue submissions by client — RFI, FCR, ACC/ACONEX, MAR, MSS, ITP, WMS, SD</div>
       </div>
-      {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fce4ec",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#c62828",fontWeight:700,fontSize:13}}>
+      {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fbe6e8",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#b3302a",fontWeight:700,fontSize:13}}>
         ⚠️ {overdueCount} overdue
       </div>}
     </div>
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
-      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1.5px solid "+(fStatus==="overdue"?"#c62828":"#e8e6df"),borderRadius:8,fontFamily:"inherit",color:fStatus==="overdue"?"#c62828":"#555",fontWeight:fStatus==="overdue"?700:400,background:fStatus==="overdue"?"#fce4ec":"#fff"}}>
+      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1.5px solid "+(fStatus==="overdue"?"#b3302a":"#e8e6df"),borderRadius:8,fontFamily:"inherit",color:fStatus==="overdue"?"#b3302a":"#555",fontWeight:fStatus==="overdue"?700:400,background:fStatus==="overdue"?"#fbe6e8":"#fff"}}>
         <option value="overdue">⚠️ Overdue only</option>
         <option value="all">All documents</option>
         <option value="ok">On track</option>
@@ -4161,10 +4161,10 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
                   <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
                   <td style={{whiteSpace:"nowrap"}}>
                     {d.submissionDate&&<div style={{fontSize:11,color:"#888"}}>Submittal: {fmtDate(d.submissionDate)}</div>}
-                    <div style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#2e7d32"}}>+14d: {d.dueDate?fmtDate(d.dueDate):"—"}</div>
+                    <div style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#b3302a":"#1e6b3a"}}>+14d: {d.dueDate?fmtDate(d.dueDate):"—"}</div>
                   </td>
-                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>+{d.daysOverdue}d</span>:<span style={{color:"#2e7d32",fontSize:11}}>✓</span>}</td>
-                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:d.status==="done"?"#e8f5e9":"#f5f5f5",color:d.status==="done"?"#2e7d32":"#888",fontWeight:600}}>{d.stepStatus||d.status}</span></td>
+                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#b3302a",fontSize:12}}>+{d.daysOverdue}d</span>:<span style={{color:"#1e6b3a",fontSize:11}}>✓</span>}</td>
+                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:d.status==="done"?"#e6f2e9":"#f5f5f5",color:d.status==="done"?"#1e6b3a":"#888",fontWeight:600}}>{d.stepStatus||d.status}</span></td>
                 </tr>;
               })}
             </tbody>
@@ -4236,25 +4236,25 @@ function KPICurveChart({kpi,weeks}){
       return <text key={"pv"+w.monday} x={xAt(i)} y={yAt(w.plannedCum)-6} fontSize="8" fill="#c9a84c" textAnchor="middle">{w.plannedCum.toLocaleString()}</text>;
     })}
     <polyline points={plannedPts} fill="none" stroke="#c9a84c" strokeWidth="2" strokeDasharray="5,4"/>
-    {projAvgPts&&<polyline points={projAvgPts} fill="none" stroke="#1a73e8" strokeWidth="1.5" strokeDasharray="6,3" opacity="0.55"/>}
-    {projLast3Pts&&<polyline points={projLast3Pts} fill="none" stroke="#7b1fa2" strokeWidth="1.2" strokeDasharray="2,3" opacity="0.65"/>}
-    {actualPts&&<polyline points={actualPts} fill="none" stroke="#1a73e8" strokeWidth="2.5"/>}
+    {projAvgPts&&<polyline points={projAvgPts} fill="none" stroke="#0f5299" strokeWidth="1.5" strokeDasharray="6,3" opacity="0.55"/>}
+    {projLast3Pts&&<polyline points={projLast3Pts} fill="none" stroke="#4a4740" strokeWidth="1.2" strokeDasharray="2,3" opacity="0.65"/>}
+    {actualPts&&<polyline points={actualPts} fill="none" stroke="#0f5299" strokeWidth="2.5"/>}
     {actualWeeks.map(function(w){return <g key={w.monday}>
-      <circle cx={xAt(w.weekIndex)} cy={yAt(w.actualCum)} r="3" fill="#1a73e8"/>
-      <text x={xAt(w.weekIndex)} y={yAt(w.actualCum)-7} fontSize="8" fontWeight="700" fill="#1a73e8" textAnchor="middle">{w.actualCum.toLocaleString()}</text>
+      <circle cx={xAt(w.weekIndex)} cy={yAt(w.actualCum)} r="3" fill="#0f5299"/>
+      <text x={xAt(w.weekIndex)} y={yAt(w.actualCum)-7} fontSize="8" fontWeight="700" fill="#0f5299" textAnchor="middle">{w.actualCum.toLocaleString()}</text>
     </g>;})}
     <line x1={padL} y1={padT} x2={padL} y2={H-padB} stroke="#ccc" strokeWidth="1"/>
     <line x1={padL} y1={H-padB} x2={W-padR} y2={H-padB} stroke="#ccc" strokeWidth="1"/>
     <g transform={"translate("+(W-160)+",10)"}>
       <line x1="0" y1="4" x2="16" y2="4" stroke="#c9a84c" strokeWidth="2" strokeDasharray="5,4"/>
       <text x="20" y="8" fontSize="9" fill="#888">Planned</text>
-      <line x1="80" y1="4" x2="96" y2="4" stroke="#1a73e8" strokeWidth="2.5"/>
+      <line x1="80" y1="4" x2="96" y2="4" stroke="#0f5299" strokeWidth="2.5"/>
       <text x="100" y="8" fontSize="9" fill="#888">Actual</text>
     </g>
   </svg>
   {(projAvg||projLast3)&&<div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:6,fontSize:10,color:"#888"}}>
-    {projAvg&&<div><span style={{display:"inline-block",width:10,borderTop:"1.5px dashed #1a73e8",marginRight:4,opacity:.7}}>&nbsp;</span>Avg to date → {projAvg.finishLabel}</div>}
-    {projLast3&&<div><span style={{display:"inline-block",width:10,borderTop:"1.2px dotted #7b1fa2",marginRight:4,opacity:.7}}>&nbsp;</span>Last 3 wks → {projLast3.finishLabel}</div>}
+    {projAvg&&<div><span style={{display:"inline-block",width:10,borderTop:"1.5px dashed #0f5299",marginRight:4,opacity:.7}}>&nbsp;</span>Avg to date → {projAvg.finishLabel}</div>}
+    {projLast3&&<div><span style={{display:"inline-block",width:10,borderTop:"1.2px dotted #4a4740",marginRight:4,opacity:.7}}>&nbsp;</span>Last 3 wks → {projLast3.finishLabel}</div>}
   </div>}
   </div>;
 }
@@ -4277,10 +4277,10 @@ function NewTasksPopup({tasks,tenders,contractors,onClose}){
           return <div key={t.id} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #f0ede6",marginBottom:6,background:"#fafaf8"}}>
             <div style={{fontSize:12,fontWeight:500,marginBottom:3}}>{t.text}</div>
             <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
-              {t.due&&<span style={{fontSize:10,color:t.due<today()?"#c62828":"#888"}}>📅 {fmtDate(t.due)}</span>}
+              {t.due&&<span style={{fontSize:10,color:t.due<today()?"#b3302a":"#888"}}>📅 {fmtDate(t.due)}</span>}
               {t.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>{t.package}</span>}
               {tdr&&<span style={{fontSize:10,color:"#b45309"}}>📑 {tdr.title}</span>}
-              {ctr&&<span style={{fontSize:10,color:"#1a73e8"}}>🤝 {ctr.name}</span>}
+              {ctr&&<span style={{fontSize:10,color:"#0f5299"}}>🤝 {ctr.name}</span>}
               {sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}
               {t.addedBy&&<span style={{fontSize:9,color:"#aaa"}}>by {t.addedBy.split(",")[0]}</span>}
             </div>
@@ -5124,7 +5124,7 @@ function App(){
     {mobileQAOpen&&<div className="overlay" style={{zIndex:600}} onClick={function(e){if(e.target===e.currentTarget)setMobileQAOpen(false);}}><div style={{background:"#fff",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",position:"absolute",bottom:0}}><QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} zones={zones} tasks={tasks} onAdd={function(t){addTask(t);setMobileQAOpen(false);}} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/></div></div>}
     <div className="phone-hide" style={{position:"fixed",bottom:16,right:318,zIndex:500}}>
       <button onClick={function(){setPdfGlobal({open:true});}} title="Import certification from PDF"
-        style={{width:36,height:36,borderRadius:"50%",background:"#1a73e8",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"all .15s"}}>
+        style={{width:36,height:36,borderRadius:"50%",background:"#0f5299",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"all .15s"}}>
         📄
       </button>
     </div>

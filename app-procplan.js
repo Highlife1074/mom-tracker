@@ -448,7 +448,7 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
             var f=tenderScheduleStart(td);
             if(f)return <span onClick={function(){openScheduleStart(f,td,onNavZone);}}
               title={"From the schedule: \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+(f.sc.title||"")+")\nChange it in the schedule. Click to open that task."}
-              style={{fontSize:11,fontWeight:700,color:"#00695c",background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:5,padding:"2px 7px",cursor:"pointer",whiteSpace:"nowrap"}}>
+              style={{fontSize:11,fontWeight:700,color:"#00695c",background:"#e6f2e9",border:"1px solid #cfe3d5",borderRadius:5,padding:"2px 7px",cursor:"pointer",whiteSpace:"nowrap"}}>
               🗓 {fmtDate(td.startOnSite||f.r.startWeek)}</span>;
             return <input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
               title="No schedule task is linked to this package: set the date by hand. As soon as a task is linked, the schedule takes over."

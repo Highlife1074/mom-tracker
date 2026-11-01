@@ -40,7 +40,7 @@
 var MP_COL_BUDGET="#a8862e";     // planned series (plan lines) — the name predates the € budget
 var MP_COL_BGT="#1f7a4d";        // budget series (€ budget ÷ hourly rate)
 var MP_COL_REAL="#2b6cb0";       // real series
-var MP_COMPANY_COLS=["#2b6cb0","#c2378a","#2e7d32","#d85a30","#7b1fa2","#00838f","#8d6e63","#5c6bc0"];
+var MP_COMPANY_COLS=["#2b6cb0","#c2378a","#1e6b3a","#d85a30","#4a4740","#00838f","#8d6e63","#5c6bc0"];
 var MP_TOP=7;                    // companies drawn on their own in the chart; the rest = "Others"
 var MP_DEFAULT_HPW=48;           // hours per worker per week offered for a new plan line
 var MP_WORK_DAYS=6;              // Mon–Sat: how a week's hours are split between months
@@ -431,10 +431,10 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
       {TABS.map(function(t){return <button key={t[0]} className={"fchip"+(tab===t[0]?" on":"")} onClick={function(){setTab(t[0]);}}>{t[1]}</button>;})}
       {(knownActs.length>0||srcOpts.length>0||filtered)&&tab!=="plan"&&<span style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginLeft:8}}>
         <select value={fWbs} onChange={function(e){setFWbs(e.target.value);setFSrc("");}} title="Webapp WBS (plan line / activity of the real hours)"
-          style={{padding:"3px 6px",fontSize:12,maxWidth:220,background:fWbs?"#fff8e1":"#fff"}}>
+          style={{padding:"3px 6px",fontSize:12,maxWidth:220,background:fWbs?"#faf3e0":"#fff"}}>
           <option value="">All WBS</option>{knownActs.map(function(a){return <option key={a} value={a}>{a}</option>;})}</select>
         {(srcOpts.length>0||fSrc)&&<select value={fSrc} onChange={function(e){setFSrc(e.target.value);}} title="Activity as named in the imported Excel file"
-          style={{padding:"3px 6px",fontSize:12,maxWidth:260,background:fSrc?"#fff8e1":"#fff"}}>
+          style={{padding:"3px 6px",fontSize:12,maxWidth:260,background:fSrc?"#faf3e0":"#fff"}}>
           <option value="">All file activities</option>{srcOpts.map(function(a){return <option key={a} value={a}>{a}</option>;})}</select>}
         {filtered&&<button className="btn btn-sm" onClick={function(){setFWbs("");setFSrc("");}}>✕ Clear</button>}
       </span>}
@@ -445,7 +445,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
       {can&&<div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){setTab("plan");}}>Go to the plan</button></div>}</div>}
     {(tab==="overview"&&(!empty||bRec||isAdmin))&&<MpOverview M={M} M0={M0} filtered={filtered} fWbs={fWbs} knownActs={knownActs} onOpenWeek={openWeek} onAlignPlan={alignPlanOnReal} bRec={bRec} meta={meta} saveMeta={saveMeta}
       notes={notes} isAdmin={!!isAdmin&&!window._ppReadOnly} can={can} currentUser={currentUser}/>}
-    {filtered&&tab!=="plan"&&!empty&&<div style={{fontSize:11.5,color:"#6f6b62",background:"#fff8e1",border:"1px solid #f0e2b8",borderRadius:8,padding:"5px 10px",marginBottom:10}}>
+    {filtered&&tab!=="plan"&&!empty&&<div style={{fontSize:11.5,color:"#6f6b62",background:"#faf3e0",border:"1px solid #f0e2b8",borderRadius:8,padding:"5px 10px",marginBottom:10}}>
       Filtered on {fWbs?<b>WBS “{fWbs}”</b>:null}{fWbs&&fSrc?" · ":""}{fSrc?<b>file activity “{fSrc}”</b>:null} — real hours of these lines only; planned = the plan lines of {fWbs?"this WBS":"the WBS these hours are matched to"}{fSrc?" (shared with the other file activities matched to the same WBS)":""}.</div>}
     {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M0} can={can} known={known} isAdmin={!!isAdmin&&!window._ppReadOnly}
       onAlign={alignPlanOnReal} onUndoAlign={planAlign?undoPlanAlign:null} planAlign={planAlign}/>}
@@ -1557,7 +1557,7 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
           <tbody>{cChg.map(function(c){
             var p=picks[c.week];
             function set(v){setPicks(function(o){var n=Object.assign({},o);n[c.week]=v;return n;});}
-            return <tr key={c.week} style={{background:p?"#fff":"#fff8e1"}}>
+            return <tr key={c.week} style={{background:p?"#fff":"#faf3e0"}}>
               <td style={{whiteSpace:"nowrap"}}><b>W{mpIsoWeek(c.week)}</b> <span style={{color:"#888"}}>{fmtDate(c.week)}</span></td>
               <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(c.oldH,1)} h</td>
               <td style={{textAlign:"right",fontFamily:"var(--font-mono)",color:c.newH>c.oldH?"#b3302a":c.newH<c.oldH?"#1e6b3a":"#14171c"}}>{invFmt(c.newH,1)} h</td>
@@ -1586,7 +1586,7 @@ function MpImportModal({weeks,saveWeeks,plan,savePlan,knownActs,currentUser,onCl
                 <div style={{fontSize:10,fontWeight:400,color:badge[1]}}>{badge[0]}{fileActs[k].zone?<span style={{color:"#9b968b"}}> · {fileActs[k].zone}</span>:null}</div></td>
               <td style={{textAlign:"right",fontFamily:"var(--font-mono)"}}>{invFmt(fileActs[k].hours,0)}</td>
               <td><select value={c} onChange={function(e){var v=e.target.value;setMap(function(m){var n=Object.assign({},m);n[k]=v;return n;});}}
-                style={Object.assign({},inp,{width:"100%",maxWidth:360,background:isNew?"#e8f5e9":c==="skip"?"#fce4ec":"#fff"})}>
+                style={Object.assign({},inp,{width:"100%",maxWidth:360,background:isNew?"#e6f2e9":c==="skip"?"#fbe6e8":"#fff"})}>
                 <option value="new">➕ Add the WBS “{fileActs[k].name}” to the webapp</option>
                 {knownActs.length>0&&<optgroup label="Match to the WBS">{knownActs.map(function(a){return <option key={a} value={a}>= {a}</option>;})}</optgroup>}
                 <option value="none">Import without WBS</option>

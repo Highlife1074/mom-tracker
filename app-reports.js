@@ -25,9 +25,9 @@ th{background:#f2f0eb;text-align:left;padding:4px 7px;font-size:9px;text-transfo
 td{padding:4px 7px;border:1px solid #e5e1d6;vertical-align:top}
 tr{page-break-inside:avoid}
 .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700;white-space:nowrap}
-.red{background:#fce4ec;color:#c62828}.amb{background:#fff3e0;color:#ef6c00}
-.grn{background:#e8f5e9;color:#2e7d32}.blu{background:#e8f0fe;color:#1a73e8}
-.gry{background:#f2f0eb;color:#8b8578}.yel{background:#fff8e1;color:#f57f17}
+.red{background:#fbe6e8;color:#b3302a}.amb{background:#fff3e0;color:#ef6c00}
+.grn{background:#e6f2e9;color:#1e6b3a}.blu{background:#e8f0fe;color:#0f5299}
+.gry{background:#f2f0eb;color:#8b8578}.yel{background:#faf3e0;color:#b35c00}
 .kpi{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .kpi div{border:1.5px solid #e5e1d6;border-radius:8px;padding:6px 12px;min-width:78px}
 .kpi b{display:block;font-size:17px;line-height:1.1}
@@ -117,9 +117,9 @@ function readinessCell(entry,q,pre){
   return (pre&&pre[q])||{v:"",src:""};
 }
 var READINESS_LOOK={
-  ok:  {sym:"✓",   color:"#2e7d32",bg:"#e8f5e9",pill:"grn"},
+  ok:  {sym:"✓",   color:"#1e6b3a",bg:"#e6f2e9",pill:"grn"},
   warn:{sym:"⚠",   color:"#ef6c00",bg:"#fff3e0",pill:"amb"},
-  ko:  {sym:"✗",   color:"#c62828",bg:"#fce4ec",pill:"red"},
+  ko:  {sym:"✗",   color:"#b3302a",bg:"#fbe6e8",pill:"red"},
   na:  {sym:"n.a.",color:"#8b8578",bg:"#f0ede6",pill:"gry"}
 };
 // Warning actions for a MANUAL ✗ on a task starting next week (pre-filled ✗ already have
@@ -663,7 +663,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
         const sc=calcScore(ac.importance||1,ac.urgence||1);const ss=scoreStyle(sc);
         const ccs=getAllCCs(ac.tags||[],ac.package||"",ac.owner||"",tagrules,pkgrules);
         return <div key={ac.id} className="ac-item">
-          <div className="ac-check" style={{borderColor:ac.status==="done"?"#2e7d32":"#ddd",background:ac.status==="done"?"#2e7d32":"transparent",flexShrink:0}}
+          <div className="ac-check" style={{borderColor:ac.status==="done"?"#1e6b3a":"#ddd",background:ac.status==="done"?"#1e6b3a":"transparent",flexShrink:0}}
             onClick={()=>updAction(ac.id,"status",ac.status==="done"?"pending":"done")}>
             {ac.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
           </div>
@@ -683,7 +683,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
               <select value={ac.package||""} onChange={e=>updAction(ac.id,"package",e.target.value)} style={{flex:1,fontSize:11,padding:"3px 6px"}}>
                 <option value="">— package —</option>{packages.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
-              <select value={ac.zone||""} onChange={e=>updAction(ac.id,"zone",e.target.value)} style={{flex:1,fontSize:11,padding:"3px 6px",color:ac.zone?"#7b1fa2":"inherit",fontWeight:ac.zone?700:400}}>
+              <select value={ac.zone||""} onChange={e=>updAction(ac.id,"zone",e.target.value)} style={{flex:1,fontSize:11,padding:"3px 6px",color:ac.zone?"#4a4740":"inherit",fontWeight:ac.zone?700:400}}>
                 <option value="">📍 — no zone —</option>{(zones||[]).map(z=><option key={z} value={z}>📍 {z}</option>)}
               </select>
             </div>
@@ -705,7 +705,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
 
             {ccs.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
               <span style={{fontSize:10,fontWeight:700,color:"#aaa"}}>CC:</span>
-              {ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e8f5e9",color:"#2e7d32",fontWeight:700,border:"1px solid #c8e6c9"}}>CC{i+1} {p.split(",")[0]}</span>)}
+              {ccs.map((p,i)=><span key={p} style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:"#e6f2e9",color:"#1e6b3a",fontWeight:700,border:"1px solid #cfe3d5"}}>CC{i+1} {p.split(",")[0]}</span>)}
             </div>}
 
             <textarea value={ac.note||""} onChange={e=>updAction(ac.id,"note",e.target.value)} placeholder="Details…"
@@ -804,22 +804,22 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,tags,
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
             <span style={{fontSize:12,fontWeight:700}}>{myTasks.length} actions</span>
-            {myOverdue.length>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#fce4ec",color:"#c62828",fontWeight:700}}>⚠️ {myOverdue.length} overdue</span>}
-            {myHigh>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#ffebee",color:"#c62828"}}>🔴 {myHigh}</span>}
-            {myMid>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#fff8e1",color:"#f57f17"}}>🟠 {myMid}</span>}
+            {myOverdue.length>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#fbe6e8",color:"#b3302a",fontWeight:700}}>⚠️ {myOverdue.length} overdue</span>}
+            {myHigh>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#ffebee",color:"#b3302a"}}>🔴 {myHigh}</span>}
+            {myMid>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#faf3e0",color:"#b35c00"}}>🟠 {myMid}</span>}
             {myLow>0&&<span style={{fontSize:11,padding:"1px 7px",borderRadius:8,background:"#f5f5f5",color:"#888"}}>⚪ {myLow}</span>}
           </div>
           {myOverdue.length>0&&<div style={{marginBottom:6}}>
-            <div style={{fontSize:10,fontWeight:800,color:"#c62828",marginBottom:3}}>OVERDUE</div>
-            {myOverdue.slice(0,3).map(function(a){return <div key={a.id} style={{fontSize:11,color:"#c62828",padding:"2px 0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>• {a.text}</div>;})}
-            {myOverdue.length>3&&<div style={{fontSize:10,color:"#c62828"}}>+{myOverdue.length-3} more</div>}
+            <div style={{fontSize:10,fontWeight:800,color:"#b3302a",marginBottom:3}}>OVERDUE</div>
+            {myOverdue.slice(0,3).map(function(a){return <div key={a.id} style={{fontSize:11,color:"#b3302a",padding:"2px 0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>• {a.text}</div>;})}
+            {myOverdue.length>3&&<div style={{fontSize:10,color:"#b3302a"}}>+{myOverdue.length-3} more</div>}
           </div>}
           {myTasks.filter(function(a){return !a.due||a.due>=today();}).slice(0,3).map(function(a){var sc=calcScore(a.importance||1,a.urgence||1);var ss=scoreStyle(sc);return <div key={a.id} style={{fontSize:11,color:"#555",padding:"2px 0",display:"flex",gap:4,alignItems:"center"}}>
             {sc>1&&<span style={{width:16,height:16,borderRadius:3,background:ss.bg,color:ss.color,fontSize:9,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{sc}</span>}
             <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.text}</span>
           </div>;})}
         </div>
-        <PieChart size={70} data={[{value:myHigh,color:"#c62828"},{value:myMid,color:"#f57f17"},{value:myLow,color:"#bbb"}]}/>
+        <PieChart size={70} data={[{value:myHigh,color:"#b3302a"},{value:myMid,color:"#b35c00"},{value:myLow,color:"#bbb"}]}/>
       </div>
     </div>;
   }
@@ -853,9 +853,9 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,tags,
       <div className="card" style={{flex:1,minWidth:200}}>
         <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Priority Distribution</div>
         <div style={{display:"flex",gap:16,alignItems:"center"}}>
-          <PieChart size={100} data={[{value:high,color:"#c62828"},{value:mid,color:"#f57f17"},{value:low,color:"#bbb"}]}/>
+          <PieChart size={100} data={[{value:high,color:"#b3302a"},{value:mid,color:"#b35c00"},{value:low,color:"#bbb"}]}/>
           <div>
-            {[{label:"High (7-9)",val:high,color:"#c62828"},{label:"Medium (4-6)",val:mid,color:"#f57f17"},{label:"Standard (1-3)",val:low,color:"#bbb"}].map(function(d){return <div key={d.label} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+            {[{label:"High (7-9)",val:high,color:"#b3302a"},{label:"Medium (4-6)",val:mid,color:"#b35c00"},{label:"Standard (1-3)",val:low,color:"#bbb"}].map(function(d){return <div key={d.label} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
               <div style={{width:10,height:10,borderRadius:2,background:d.color,flexShrink:0}}/>
               <span style={{fontSize:11,color:"#555"}}>{d.label}</span>
               <span style={{fontSize:11,fontWeight:700,marginLeft:"auto"}}>{d.val}</span>
@@ -864,13 +864,13 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,tags,
         </div>
       </div>
       <div className="card" style={{flex:1,minWidth:200}}>
-        <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:"#c62828"}}>⚠️ Overdue Actions ({overdue.length})</div>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:"#b3302a"}}>⚠️ Overdue Actions ({overdue.length})</div>
         {overdue.length===0?<div style={{color:"#bbb",fontSize:12}}>No overdue actions 🎉</div>
         :overdue.slice(0,6).sort(function(a,b){return calcScore(b.importance||1,b.urgence||1)-calcScore(a.importance||1,a.urgence||1);}).map(function(a){var sc=calcScore(a.importance||1,a.urgence||1);var ss=scoreStyle(sc);return <div key={a.id} style={{display:"flex",gap:6,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #f5f5f5"}}>
           <span style={{fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:5,background:ss.bg,color:ss.color,flexShrink:0}}>{sc}</span>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.text}</div>
-            <div style={{fontSize:10,color:"#c62828"}}>{a.due?fmtDate(a.due):""} {a.owner&&"· "+a.owner.split(",")[0]}</div>
+            <div style={{fontSize:10,color:"#b3302a"}}>{a.due?fmtDate(a.due):""} {a.owner&&"· "+a.owner.split(",")[0]}</div>
           </div>
         </div>;})}
       </div>
@@ -905,14 +905,14 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,tags,
           <div style={{display:"flex",gap:4,alignItems:"flex-end",minWidth:months.length*52}}>
             {months.map(function(mo,idx){return <div key={mo.key} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
               <div style={{display:"flex",gap:2,alignItems:"flex-end",height:barH}}>
-                <div title={"Submitted: "+submitted[idx]} style={{width:18,height:Math.max(2,submitted[idx]/maxVal*barH),background:"#2e7d32",borderRadius:"3px 3px 0 0",cursor:"default"}}/>
+                <div title={"Submitted: "+submitted[idx]} style={{width:18,height:Math.max(2,submitted[idx]/maxVal*barH),background:"#1e6b3a",borderRadius:"3px 3px 0 0",cursor:"default"}}/>
                 <div title={"Remaining: "+remaining[idx]} style={{width:18,height:Math.max(remaining[idx]>0?2:0,remaining[idx]/maxVal*barH),background:"#f57c00",borderRadius:"3px 3px 0 0",cursor:"default"}}/>
               </div>
               <div style={{fontSize:9,color:"#aaa",textAlign:"center",whiteSpace:"nowrap"}}>{mo.label}</div>
             </div>;})}
           </div>
           <div style={{display:"flex",gap:12,marginTop:8,justifyContent:"center"}}>
-            <span style={{fontSize:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:"#2e7d32",borderRadius:2,display:"inline-block"}}/>Submitted</span>
+            <span style={{fontSize:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:"#1e6b3a",borderRadius:2,display:"inline-block"}}/>Submitted</span>
             <span style={{fontSize:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,background:"#f57c00",borderRadius:2,display:"inline-block"}}/>To submit</span>
           </div>
         </div>;
@@ -1826,7 +1826,7 @@ function TimelineView({tasks,tenders,people,packages,zones,saveTasks,onNavTender
 
   var COL=54, LANE=210;
   function dotColor(a){
-    if(a.status==="done")return{bg:"#e6f2e9",fg:"#1e6b3a",br:"#c8e6c9"};
+    if(a.status==="done")return{bg:"#e6f2e9",fg:"#1e6b3a",br:"#cfe3d5"};
     if((a.tags||[]).indexOf("Blocking Point")>=0)return{bg:"#fbe6e8",fg:"#b3302a",br:"#f0cdc9"};
     if((a.tags||[]).indexOf("Prerequisite")>=0)return{bg:"#faf3e0",fg:"#8a6a1e",br:"#e6c48c"};
     if((a.tags||[]).indexOf("Warning")>=0)return{bg:"#fdf1e0",fg:"#b35c00",br:"#e6c48c"};

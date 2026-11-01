@@ -225,7 +225,7 @@ function conLatestCutoff(cutoffs){
   (cutoffs||[]).forEach(function(c){if(c.date&&isValidDate(c.date)&&(!last||c.date>last.date))last=c;});
   return last;
 }
-function conLossCol(v){return v>CON_EPS?"#c62828":v<-CON_EPS?"#2e7d32":undefined;}
+function conLossCol(v){return v>CON_EPS?"#b3302a":v<-CON_EPS?"#1e6b3a":undefined;}
 function conLossWord(v){return v>CON_EPS?"loss":v<-CON_EPS?"gain":"no difference";}
 
 // ---------------------------------------------------------------- pasting from Excel
@@ -366,7 +366,7 @@ function ConSupplierInput({value,onChange,disabled,suppliers}){
   </>;
 }
 function ConStatus({f}){
-  var s={done:["complete","#e8f5e9","#2e7d32"],progress:["in progress","#e8f0fe","#1a73e8"],todo:["not started","#eceae3","#555"]}[f.status];
+  var s={done:["complete","#e6f2e9","#1e6b3a"],progress:["in progress","#e8f0fe","#0f5299"],todo:["not started","#eceae3","#555"]}[f.status];
   return <span className="pill" style={{background:s[1],color:s[2]}}>{s[0]}</span>;
 }
 function ConTypeQtyInputs({types,map,onChange,ro,realMap}){
@@ -871,7 +871,7 @@ function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onS
   var sd=null;
   if(d.datesFromSched&&(d.schedLinks||[]).length){var ss=conWbsSched(d,schedIx||{},"");if(ss.start||ss.finish)sd=ss;}
   return <InvModal title={"🧱 "+(wbs.some(function(x){return x.id===w.id;})?"WBS "+conWbsLabel(w):"New WBS")} width={760} onClose={onClose} footer={<>
-      {onDelete&&<button className="btn" style={{color:"#c62828",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
+      {onDelete&&<button className="btn" style={{color:"#b3302a",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onSave(Object.assign({},d,{code:String(d.code).trim(),theo:conCleanTheo(d.theo),updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""}));}}>Save</button>}
     </>}>
@@ -895,7 +895,7 @@ function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onS
       Theoretical <b>{conFmt(f.theo)}</b> · poured <b>{conFmt(f.real)}</b> {CON_UNIT} ({nPours} pour{nPours===1?"":"s"}) — the loss / gain is measured at the cut-offs
     </div>
     <div className="fg"><label>Note</label><textarea rows={2} disabled={ro} value={d.note||""} onChange={function(e){set({note:e.target.value});}}/></div>
-    {err&&!ro&&<div style={{fontSize:12,color:"#c62828"}}>{err}</div>}
+    {err&&!ro&&<div style={{fontSize:12,color:"#b3302a"}}>{err}</div>}
   </InvModal>;
 }
 
@@ -948,7 +948,7 @@ function ConPastModal({types,wbs,pours,zones,onApply,onClose}){
       </div>;
     })}
     <button className="btn btn-sm" onClick={function(){set({real:d.real.concat([{key:uuid(),supplier:"",q:{}}])});}}>+ Supplier</button>
-    {err&&<div style={{fontSize:12,color:"#c62828",marginTop:10}}>{err}</div>}
+    {err&&<div style={{fontSize:12,color:"#b3302a",marginTop:10}}>{err}</div>}
   </InvModal>;
 }
 
@@ -1027,17 +1027,17 @@ function ConSplitModal({parent,types,wbs,pours,realIx,zones,onApply,onClose}){
         </tr>;})}
         <tr style={{background:"#f7f6f2",fontWeight:700}}><td colSpan={6}>Left on {parent.code} <span style={{fontWeight:400,color:"#888"}}>(of {tIds.map(function(t){return tById[t].name+" "+conFmt(_invNum((parent.theo||{})[t]))+" / "+conFmt(_invNum(real[t]));}).join(" · ")})</span></td>
           {tIds.map(function(t){return [
-            <td key={t+"t"} style={{textAlign:"right",color:left.theo[t]<-CON_EPS?"#c62828":undefined}}>{conFmt(left.theo[t])}</td>,
-            <td key={t+"r"} style={{textAlign:"right",color:left.real[t]<-CON_EPS?"#c62828":undefined}}>{conFmt(left.real[t])}</td>];})}<td/></tr>
+            <td key={t+"t"} style={{textAlign:"right",color:left.theo[t]<-CON_EPS?"#b3302a":undefined}}>{conFmt(left.theo[t])}</td>,
+            <td key={t+"r"} style={{textAlign:"right",color:left.real[t]<-CON_EPS?"#b3302a":undefined}}>{conFmt(left.real[t])}</td>];})}<td/></tr>
       </tbody></table></div>
     <div style={{display:"flex",gap:8,margin:"8px 0"}}><button className="btn btn-sm" onClick={function(){setRows(rows.concat([blank()]));}}>+ Line</button></div>
     <details style={{fontSize:12}}><summary style={{cursor:"pointer",color:"#555"}}>Paste the lines from Excel</summary>
       <div style={{color:"#555",margin:"6px 0"}}>Header line first: <b>Code · Description · Zone · Start · Finish · Done</b>, then one column per type for the theoretical m³ (header = type name, e.g. <i>C40/50</i>) and <b>Real &lt;type&gt;</b> for the real m³ (e.g. <i>Real C40/50</i>). Only Code is required.</div>
       <textarea rows={6} value={pasteText} onChange={function(e){setPasteText(e.target.value);}} style={{width:"100%",fontFamily:"var(--font-mono)",fontSize:12}}
         placeholder={"Code\tDescription\tStart\tFinish\t"+(tIds[0]?tById[tIds[0]].name+"\tReal "+tById[tIds[0]].name:"C40/50\tReal C40/50")}/>
-      <button className="btn btn-sm" disabled={!pasteText.trim()} onClick={loadPaste}>Add these lines</button> <span style={{color:/added/.test(pasteMsg)?"#2e7d32":"#c62828"}}>{pasteMsg}</span>
+      <button className="btn btn-sm" disabled={!pasteText.trim()} onClick={loadPaste}>Add these lines</button> <span style={{color:/added/.test(pasteMsg)?"#1e6b3a":"#b3302a"}}>{pasteMsg}</span>
     </details>
-    {err&&<div style={{fontSize:12,color:"#c62828",marginTop:8}}>{err}</div>}
+    {err&&<div style={{fontSize:12,color:"#b3302a",marginTop:8}}>{err}</div>}
   </InvModal>;
 }
 
@@ -1075,7 +1075,7 @@ function ConPasteModal({types,wbs,saveTypes,onImport,onClose}){
     {res.rows.length>0&&<div style={{fontSize:12,marginTop:8}}>{nNew} new WBS, {res.rows.length-nNew} updated. Types: {res.typeNames.join(", ")||"none"}.</div>}
     {newTypes.length>0&&<div style={{fontSize:12,color:"#ef6c00",marginTop:4}}>New types will be created: {newTypes.join(", ")}</div>}
     {hasReal&&<div style={{fontSize:12,color:"#ef6c00",marginTop:4}}>“Real” columns are ignored here: real quantities are entered as pours.</div>}
-    {res.errors.length>0&&<div style={{fontSize:12,color:"#c62828",marginTop:4}}>{res.errors.slice(0,6).join(" ")}</div>}
+    {res.errors.length>0&&<div style={{fontSize:12,color:"#b3302a",marginTop:4}}>{res.errors.slice(0,6).join(" ")}</div>}
   </InvModal>;
 }
 
@@ -1115,7 +1115,7 @@ function ConPours({types,wbs,pours,zones,edit,savePours}){
       <tbody>{list.map(function(p){
         return <tr key={p.id} onClick={function(){setEditing(p);}} style={{cursor:"pointer"}}>
           <td style={{whiteSpace:"nowrap"}}>{p.from?<span>{fmtDate(p.from)} → </span>:null}<b>{fmtDate(p.date)}</b>{p.from&&<div style={{fontSize:10,color:"#888"}}>cumulative</div>}</td>
-          <td>{wById[p.wbsId]?<span><b>{wById[p.wbsId].code}</b> {wById[p.wbsId].name}</span>:<span style={{color:"#c62828"}}>(deleted WBS)</span>}</td>
+          <td>{wById[p.wbsId]?<span><b>{wById[p.wbsId].code}</b> {wById[p.wbsId].name}</span>:<span style={{color:"#b3302a"}}>(deleted WBS)</span>}</td>
           <td>{p.ref}</td>
           <td style={{fontSize:12}}>{linesOf(p).map(function(l){return <div key={l.id}>{tById[l.typeId]?tById[l.typeId].name:"?"} <b>{conFmt(_invNum(l.qty))}</b> <span style={{color:l.supplier?"#555":"#aaa"}}>· {l.supplier||"no supplier"}</span></div>;})}</td>
           <td style={{textAlign:"right",fontWeight:700}}>{conFmt(conPourQty({lines:linesOf(p)},allIds))}</td>
@@ -1144,7 +1144,7 @@ function ConPourEditor({p,types,wbs,edit,isNew,suppliers,onSave,onSaveNext,onDel
     updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""});}
   var w=wbs.find(function(x){return x.id===d.wbsId;});
   return <InvModal title={isNew?"🚚 New pour":"🚚 Pour "+(d.ref||fmtDate(d.date))} width={760} onClose={onClose} footer={<>
-      {onDelete&&<button className="btn" style={{color:"#c62828",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
+      {onDelete&&<button className="btn" style={{color:"#b3302a",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&isNew&&<button className="btn" disabled={!!err} title={err} onClick={function(){onSaveNext(clean());}}>Save & next</button>}
       {!ro&&<button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onSave(clean());}}>Save</button>}
@@ -1172,7 +1172,7 @@ function ConPourEditor({p,types,wbs,edit,isNew,suppliers,onSave,onSaveNext,onDel
     })}
     {!ro&&<button className="btn btn-sm" onClick={function(){var last=d.lines[d.lines.length-1]||{};set({lines:d.lines.concat([newConLine({supplier:last.supplier||""})])});}}>+ Line</button>}
     <div className="fg" style={{marginTop:10}}><label>Note</label><textarea rows={2} disabled={ro} value={d.note||""} onChange={function(e){set({note:e.target.value});}}/></div>
-    {err&&!ro&&<div style={{fontSize:12,color:"#c62828"}}>{err}</div>}
+    {err&&!ro&&<div style={{fontSize:12,color:"#b3302a"}}>{err}</div>}
   </InvModal>;
 }
 
@@ -1216,7 +1216,7 @@ function ConTypeEditor({t,types,edit,onSave,onDelete,onClose}){
   var other=conTypeByName(types.filter(function(x){return x.id!==d.id;}),d.name);
   var err=!String(d.name).trim()?"Give the type a name.":other?"“"+d.name+"” already exists.":"";
   return <InvModal title={"🏷 "+(d.name||"New type")} width={520} onClose={onClose} footer={<>
-      {onDelete&&<button className="btn" style={{color:"#c62828",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
+      {onDelete&&<button className="btn" style={{color:"#b3302a",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onSave(Object.assign({},d,{name:String(d.name).trim()}));}}>Save</button>}
     </>}>
@@ -1225,7 +1225,7 @@ function ConTypeEditor({t,types,edit,onSave,onDelete,onClose}){
     <label style={{display:"flex",gap:6,alignItems:"center",fontSize:13,textTransform:"none",letterSpacing:"normal"}}>
       <input type="checkbox" disabled={ro} checked={!!d.archived} onChange={function(){set({archived:!d.archived});}}/> Archived (no longer offered for new entries)
     </label>
-    {err&&!ro&&<div style={{fontSize:12,color:"#c62828",marginTop:8}}>{err}</div>}
+    {err&&!ro&&<div style={{fontSize:12,color:"#b3302a",marginTop:8}}>{err}</div>}
   </InvModal>;
 }
 
@@ -1400,7 +1400,7 @@ function conCutoffTotals(rows){
   t.eacPct=t.theo>CON_EPS?t.eacVar/t.theo*100:null;
   return t;
 }
-function conVarCol(pct){return pct===null||pct===undefined?undefined:pct>CON_WARN_PCT?"#c62828":pct<-CON_WARN_PCT?"#2e7d32":undefined;}
+function conVarCol(pct){return pct===null||pct===undefined?undefined:pct>CON_WARN_PCT?"#b3302a":pct<-CON_WARN_PCT?"#1e6b3a":undefined;}
 // Remaining real m³ entered as one total for a WBS: shared over the types in proportion to
 // their remaining theoretical (or their theoretical when nothing remains).
 function conSplitRts(row,typeIds,total){
@@ -1533,7 +1533,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
         {sorted.map(function(c){return <option key={c.id} value={c.id}>{fmtDate(c.date)}{c.label?" — "+c.label:""}{c.closed?" 🔒":""}</option>;})}
       </select>
       {cur.closed?<span className="pill" style={{background:"#eceae3",color:"#555"}}>🔒 closed{cur.closedBy?" by "+cur.closedBy:""}{cur.closedAt?" "+fmtDate(cur.closedAt.slice(0,10)):""}</span>
-        :<span className="pill" style={{background:"#e8f0fe",color:"#1a73e8"}}>open</span>}
+        :<span className="pill" style={{background:"#e8f0fe",color:"#0f5299"}}>open</span>}
       <ConTypeFilter types={types} value={typeId} onChange={setTypeId}/>
       <ConZoneSelect zones={[...new Set((zones||[]).concat(wbsZones))]} value={zone} onChange={setZone} all/>
       <input type="text" placeholder="Search WBS…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:150}}/>
@@ -1542,7 +1542,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       <button className="btn btn-sm" onClick={function(){conCutoffReport(cur,prev,rows,tot,prevTot,label);}}>Report</button>
       {edit&&!cur.closed&&<button className="btn btn-sm" onClick={close} title="Freeze the progress and the remain to be spent of this cut-off">🔒 Close</button>}
       {cur.closed&&isAdmin&&!window._ppReadOnly&&<button className="btn btn-sm" onClick={reopen}>Reopen</button>}
-      {edit&&invCanDelete()&&<button className="btn btn-sm" style={{color:"#c62828"}} onClick={del}>Delete</button>}
+      {edit&&invCanDelete()&&<button className="btn btn-sm" style={{color:"#b3302a"}} onClick={del}>Delete</button>}
       {newBtn}
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
@@ -1566,7 +1566,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
         var w=r.wbs;
         var mismatch=r.hasPct&&r.realPct!==null&&Math.abs(r.realPct-r.pct)>25;
         return <tr key={w.id}>
-          <td><b>{w.code}</b> {w.name}{w.done&&<span style={{fontSize:10,color:"#2e7d32"}}> · complete</span>}
+          <td><b>{w.code}</b> {w.name}{w.done&&<span style={{fontSize:10,color:"#1e6b3a"}}> · complete</span>}
             {w.done&&r.hasPct&&r.pct<100&&<div style={{fontSize:10,color:"#ef6c00"}}>marked complete but below 100%</div>}</td>
           <td style={R}>{conFmt(r.theo)}</td>
           <td style={Object.assign({whiteSpace:"nowrap"},R)}>{ro?(r.hasPct?r.pct.toFixed(0)+"%":<span style={{color:"#ef6c00"}}>—</span>)
@@ -1619,7 +1619,7 @@ function ConCutoffNew({cutoffs,wbs,onCreate,onClose}){
       <div className="fg" style={{flex:"1 1 200px"}}><label>Label</label><input type="text" value={label} placeholder="e.g. October 2026" onChange={function(e){setLabel(e.target.value);}}/></div>
     </div>
     <div style={{fontSize:12,color:"#555"}}>The cut-off starts empty: type the progress % of each WBS by hand. Nothing is carried over{prev?" from the cut-off of "+fmtDate(prev.date):""} or taken from the schedule. Poured quantities are the pours dated up to the cut-off.</div>
-    {err&&<div style={{fontSize:12,color:"#c62828",marginTop:8}}>{err}</div>}
+    {err&&<div style={{fontSize:12,color:"#b3302a",marginTop:8}}>{err}</div>}
   </InvModal>;
 }
 function conCutoffReport(c,prev,rows,tot,prevTot,label){
@@ -1798,7 +1798,7 @@ function ConSchedLinks({w,ix,edit,schedules,onChange}){
     </div>
     {s.acts.map(function(a,i){
       return <div key={i} style={{fontSize:12,marginTop:4}}>
-        {a.missing?<span style={{color:"#c62828"}}>(activity deleted from the schedule)</span>
+        {a.missing?<span style={{color:"#b3302a"}}>(activity deleted from the schedule)</span>
           :<span><b>{a.row.label}</b> <span style={{color:"#888"}}>· {conSchedName(a.sc)}{a.ctx?" › "+a.ctx:""} · {a.span.start?fmtDate(a.span.start)+" → "+fmtDate(a.span.finish):"no bar"}</span></span>}
         {edit&&<button className="btn btn-sm" style={{marginLeft:6,padding:"0 6px"}} onClick={function(){onChange({schedLinks:(w.schedLinks||[]).filter(function(l){return l!==a.link;})});}}>×</button>}
       </div>;
@@ -2028,7 +2028,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
   return <InvModal title="⬆ Import pours from the follow-up workbook" width={980} onClose={onClose} footer={footer}>
     <div style={{fontSize:12,color:"#6f6b62",marginBottom:8}}>One row per delivery note (Description · Supplier · Date · N° delivery note · Type of concrete · Real Qty). Only the rows whose <b>Zone is {CON_IMP_ZONE}</b> are imported. Match each <b>Description</b> of the workbook to one of your WBS — or create the WBS here.</div>
     <input type="file" accept=".xlsx,.xlsm,.xls" onChange={onFile}/>
-    {busy&&<div style={{fontSize:12.5,color:"#1a73e8",marginTop:6}}>⏳ {busy}</div>}
+    {busy&&<div style={{fontSize:12.5,color:"#0f5299",marginTop:6}}>⏳ {busy}</div>}
     {err&&<div style={{fontSize:12.5,color:"#b3302a",marginTop:6}}>{err}</div>}
     {book&&<div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"8px 12px",margin:"10px 0",fontSize:12.5}}>
       <span>Sheet <select value={sheet} onChange={function(e){setSheet(e.target.value);setChoice({});setTChoice({});}} style={inp}>{book.names.map(function(n){return <option key={n} value={n}>{n}</option>;})}</select></span>
@@ -2058,7 +2058,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
           </div>;
         }
         var newQty=fresh.reduce(function(s,it){return s+it.qty;},0);
-        return <div style={{background:fresh.length?"#f3fbf4":"#fff8e1",border:"1px solid "+(fresh.length?"#c8e6c9":"#f0e2b8"),borderRadius:8,padding:"8px 12px",marginBottom:10}}>
+        return <div style={{background:fresh.length?"#f3fbf4":"#faf3e0",border:"1px solid "+(fresh.length?"#cfe3d5":"#f0e2b8"),borderRadius:8,padding:"8px 12px",marginBottom:10}}>
           <div style={{fontSize:13,fontWeight:700,marginBottom:6,color:fresh.length?"#1e6b3a":"#8a6a1e"}}>
             {fresh.length?fresh.length+" delivery note"+(fresh.length>1?"s":"")+" to import · "+conFmt(newQty)+" "+CON_UNIT
               :"Nothing new to import"+(items.length?": every "+CON_IMP_ZONE+" delivery note of this file is already in the app.":".")}</div>
@@ -2075,7 +2075,7 @@ function ConImportModal({types,saveTypes,wbs,saveWbs,pours,savePours,onClose}){
       {tKeys.length>0&&<div style={{marginBottom:10}}>
         <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Concrete types</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{tKeys.map(function(k){var v=tCho(k);
-          return <span key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,background:v==="new"?"#e8f5e9":"#fff",border:"1px solid #e8e6df",borderRadius:6,padding:"3px 6px"}}>
+          return <span key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,background:v==="new"?"#e6f2e9":"#fff",border:"1px solid #e8e6df",borderRadius:6,padding:"3px 6px"}}>
             <b>{tNames[k].name||"(no type)"}</b> <span style={{color:"#888"}}>{conFmt(tNames[k].qty)}</span> →
             <select value={v} onChange={function(e){var val=e.target.value;setTChoice(function(o){var n=Object.assign({},o);n[k]=val;return n;});}} style={Object.assign({},inp,{fontSize:12})}>
               <option value="new">➕ new type</option>{conSortTypes(types).map(function(t){return <option key={t.id} value={t.id}>{t.name}</option>;})}<option value="skip">skip</option></select>

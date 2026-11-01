@@ -76,10 +76,10 @@ function steelFlow(d){
   return d.dest==="processor"?"to-proc":"straight-site";
 }
 var STEEL_FLOWS={
-  "straight-site":{label:"Straight → site",short:"Straight",bg:"#e8f0fe",fg:"#1a73e8"},
-  "to-proc":{label:"Straight → processor",short:"→ processor",bg:"#f3e5f5",fg:"#7b1fa2"},
-  "cutbend-proc":{label:"Cut & bend from processor",short:"C&B · JV steel",bg:"#e8f5e9",fg:"#2e7d32"},
-  "cutbend":{label:"Cut & bend, supplier's steel",short:"C&B · purchased",bg:"#fff8e1",fg:"#f57f17"}
+  "straight-site":{label:"Straight → site",short:"Straight",bg:"#e8f0fe",fg:"#0f5299"},
+  "to-proc":{label:"Straight → processor",short:"→ processor",bg:"#f2f0ec",fg:"#4a4740"},
+  "cutbend-proc":{label:"Cut & bend from processor",short:"C&B · JV steel",bg:"#e6f2e9",fg:"#1e6b3a"},
+  "cutbend":{label:"Cut & bend, supplier's steel",short:"C&B · purchased",bg:"#faf3e0",fg:"#b35c00"}
 };
 function steelOnSite(d){return steelFlow(d)!=="to-proc";}
 // Bought by the JV: everything except cut & bend made from steel the JV had already issued.
@@ -213,9 +213,9 @@ function steelFmtT(kg){
 function steelFmtPct(v){return v===null||v===undefined?"—":(v>0?"+":"")+v.toFixed(1)+"%";}
 function steelVarColour(pct,limit){
   if(pct===null||pct===undefined)return"#888";
-  if(pct<0)return"#c62828";                         // below theoretical: progress overstated, docket missing or stock miscounted
+  if(pct<0)return"#b3302a";                         // below theoretical: progress overstated, docket missing or stock miscounted
   if(pct>(limit||STEEL_WARN_PCT))return"#ef6c00";
-  return"#2e7d32";
+  return"#1e6b3a";
 }
 
 // pt-docket/1 — what Claude returns when asked to read a delivery docket (PDF or photo).
@@ -367,7 +367,7 @@ function SteelAnalysis({periods,dockets,wbs,edit,savePeriods,allPeriods,raiseAct
       <select value={p.id} onChange={function(e){setPid(e.target.value);}} style={{minWidth:220}}>
         {periods.map(function(q){return <option key={q.id} value={q.id}>{fmtDate(q.date)}{q.label?" · "+q.label:""}{q.status==="validated"?" ✓":" (draft)"}</option>;})}
       </select>
-      <span className="pill" style={{background:p.status==="validated"?"#e8f5e9":"#fff8e1",color:p.status==="validated"?"#2e7d32":"#f57f17"}}>{p.status==="validated"?"✓ validated by "+(p.validatedBy||"").split(",")[0]:"draft"}</span>
+      <span className="pill" style={{background:p.status==="validated"?"#e6f2e9":"#faf3e0",color:p.status==="validated"?"#1e6b3a":"#b35c00"}}>{p.status==="validated"?"✓ validated by "+(p.validatedBy||"").split(",")[0]:"draft"}</span>
       <label style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:600,cursor:"pointer"}}>
         <input type="checkbox" checked={byDia} onChange={function(){setByDia(!byDia);}}/> By diameter
       </label>
@@ -377,22 +377,22 @@ function SteelAnalysis({periods,dockets,wbs,edit,savePeriods,allPeriods,raiseAct
       {p.actionRef&&<span className="pill" style={{background:"#fff3e0",color:"#ef6c00"}}>⚑ action raised</span>}
     </div>
 
-    {late.length>0&&<div className="card" style={{borderColor:"#ffb74d",background:"#fff8e1",fontSize:12}}>
+    {late.length>0&&<div className="card" style={{borderColor:"#ffb74d",background:"#faf3e0",fontSize:12}}>
       ⚠ {late.length} docket{late.length>1?"s":""} ({steelFmtT(late.reduce(function(s,d){return s+steelDocketKg(d);},0))} t) entered <b>after</b> this point was validated but dated on or before {fmtDate(p.date)}: {late.map(function(d){return d.no||"(no number)";}).join(", ")}.
     </div>}
-    {frozenDrift&&<div className="card" style={{borderColor:"#ffb74d",background:"#fff8e1",fontSize:12}}>
+    {frozenDrift&&<div className="card" style={{borderColor:"#ffb74d",background:"#faf3e0",fontSize:12}}>
       ⚠ The register changed since validation: delivered on site was {steelFmtT(p.frozen.delivered)} t and is now {steelFmtT(f.delivered)} t{p.frozen.purchased!==undefined?", purchased was "+steelFmtT(p.frozen.purchased)+" t and is now "+steelFmtT(f.purchased)+" t":""}. The figures below are today's.
     </div>}
 
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
       <SteelBig label="Delivered on site" kg={f.delivered} sub={f.nDockets+" docket"+(f.nDockets===1?"":"s")+" to "+fmtDate(p.date)}/>
       <SteelBig label="Site stock" kg={f.stock} sub="counted"/>
-      <SteelBig label="Consumed" kg={f.consumed} sub="delivered − stock" colour={f.consumed<0?"#c62828":null}/>
+      <SteelBig label="Consumed" kg={f.consumed} sub="delivered − stock" colour={f.consumed<0?"#b3302a":null}/>
       <SteelBig label="Theoretical" kg={f.theo} sub="progress × WBS"/>
       <SteelBig label="Variance" kg={f.variance} colour={col} sub={steelFmtPct(f.variancePct)+" of theoretical"}/>
     </div>
     {f.consumed<0&&<div className="card" style={{borderColor:"#ef9a9a",background:"#fff5f5",fontSize:12}}>Stock above delivered: a docket is missing from the register, or the stock count is wrong.</div>}
-    {flagged&&f.variancePct<0&&<div style={{fontSize:12,color:"#c62828",marginBottom:10}}>Consumed is <b>below</b> theoretical: progress overstated, a docket missing, or stock overcounted.</div>}
+    {flagged&&f.variancePct<0&&<div style={{fontSize:12,color:"#b3302a",marginBottom:10}}>Consumed is <b>below</b> theoretical: progress overstated, a docket missing, or stock overcounted.</div>}
     {flagged&&f.variancePct>STEEL_WARN_PCT&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:10}}>Waste above {STEEL_WARN_PCT}%: off-cuts, losses, or progress under-declared.</div>}
 
     {byDia&&<div style={{marginBottom:16}}>
@@ -425,14 +425,14 @@ function SteelAnalysis({periods,dockets,wbs,edit,savePeriods,allPeriods,raiseAct
             <td style={{textAlign:"right"}}>{steelFmtT(r.issued)}</td>
             <td style={{fontSize:11,color:"#555"}}>{Object.keys(r.issuedCat).sort(function(a,b){return steelCatOrder(a)-steelCatOrder(b);}).map(function(c){return c+" "+steelFmtT(r.issuedCat[c]);}).join(" · ")}</td>
             <td style={{textAlign:"right"}}>{steelFmtT(r.returned)}</td>
-            <td style={{textAlign:"right",fontWeight:700,color:r.balance<0?"#c62828":undefined}}>{steelFmtT(r.balance)}</td>
+            <td style={{textAlign:"right",fontWeight:700,color:r.balance<0?"#b3302a":undefined}}>{steelFmtT(r.balance)}</td>
             <td style={{textAlign:"right"}}>{r.stock===null?<span style={{color:"#ef6c00"}}>not declared</span>:steelFmtT(r.stock)}</td>
             <td style={{textAlign:"right",fontWeight:700,color:steelVarColour(r.lossPct,STEEL_PROC_WARN_PCT)}}>{r.loss===null?"—":steelFmtT(r.loss)+" t · "+steelFmtPct(r.lossPct)}</td>
           </tr>;
         })}</tbody>
       </table></div>
-      {f.procs.some(function(r){return r.balance<0;})&&<div style={{fontSize:12,color:"#c62828",marginTop:6}}>A negative balance means more cut &amp; bend came back than straight bars were issued: an issue docket is missing, or a stockist's cut &amp; bend was marked as made from JV steel.</div>}
-      {procFlagged.some(function(r){return r.lossPct<0;})&&<div style={{fontSize:12,color:"#c62828",marginTop:6}}>A negative loss means the declared stock is higher than what can still be there.</div>}
+      {f.procs.some(function(r){return r.balance<0;})&&<div style={{fontSize:12,color:"#b3302a",marginTop:6}}>A negative balance means more cut &amp; bend came back than straight bars were issued: an issue docket is missing, or a stockist's cut &amp; bend was marked as made from JV steel.</div>}
+      {procFlagged.some(function(r){return r.lossPct<0;})&&<div style={{fontSize:12,color:"#b3302a",marginTop:6}}>A negative loss means the declared stock is higher than what can still be there.</div>}
     </div>}
 
     {f.procs.length>0&&<div className="card" style={{marginBottom:16}}>
@@ -474,7 +474,7 @@ function SteelChart({hist}){
   var x=function(i){return L+(hist.length===1?0:i*(W-L-R)/(hist.length-1));};
   var y=function(v){return T+(H-T-B)*(1-v/max);};
   var line=function(key){return hist.map(function(h,i){return x(i)+","+y(Math.max(0,h.f[key]));}).join(" ");};
-  var S=[["delivered","#1a73e8","Delivered"],["consumed","#14171c","Consumed"],["theo","#c9a84c","Theoretical"]];
+  var S=[["delivered","#0f5299","Delivered"],["consumed","#14171c","Consumed"],["theo","#c9a84c","Theoretical"]];
   return <div className="card" style={{overflowX:"auto"}}>
     <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",minWidth:480,height:"auto"}}>
       {[0,.5,1].map(function(g){return <g key={g}><line x1={L} x2={W-R} y1={y(max*g)} y2={y(max*g)} stroke="#eee"/><text x={L-6} y={y(max*g)+3} fontSize="9" textAnchor="end" fill="#888">{steelFmtT(max*g)}</text></g>;})}
@@ -507,7 +507,7 @@ function SteelPoints({periods,allPeriods,savePeriods,dockets,wbs,edit,isAdmin}){
         var f=steelFigures(p,dockets,wbs);
         return <tr key={p.id} onClick={function(){setOpenId(p.id);}} style={{cursor:"pointer"}}>
           <td><b>{fmtDate(p.date)}</b></td><td>{p.label}</td>
-          <td>{p.status==="validated"?<span className="pill" style={{background:"#e8f5e9",color:"#2e7d32"}}>✓ validated</span>:<span className="pill" style={{background:"#fff8e1",color:"#f57f17"}}>draft</span>}</td>
+          <td>{p.status==="validated"?<span className="pill" style={{background:"#e6f2e9",color:"#1e6b3a"}}>✓ validated</span>:<span className="pill" style={{background:"#faf3e0",color:"#b35c00"}}>draft</span>}</td>
           <td style={{textAlign:"right"}}>{steelFmtT(f.delivered)} t</td>
           <td style={{textAlign:"right"}}>{steelFmtT(f.stock)} t</td>
           <td style={{textAlign:"right",fontWeight:700,color:steelVarColour(f.variancePct)}}>{steelFmtPct(f.variancePct)}</td>
@@ -708,8 +708,8 @@ function SteelDockets({dockets,saveDockets,zones,edit,periods,raiseAction}){
           <td>{d.supplier}</td><td style={{fontSize:11}}>{[d.orderRef,d.bbs].filter(Boolean).join(" · ")}</td><td>{d.zone}</td>
           <td style={{textAlign:"right",fontWeight:700}}>{steelFmtT(steelDocketKg(d))}</td>
           <td style={{fontSize:11,color:"#555"}}>{Object.keys(by).sort(function(a,b){return steelCatOrder(a)-steelCatOrder(b);}).map(function(c){return c+" "+steelFmtT(by[c]);}).join(" · ")}</td>
-          <td>{steelFlow(d)==="cutbend-proc"?<span style={{color:"#888"}} title="Certified on the docket that issued the bars to the processor">via issue</span>:d.cert?<span style={{color:"#2e7d32"}}>✓ {d.cert}</span>:missing?<span style={{color:"#ef6c00",fontWeight:700}}>⚠ missing</span>:<span style={{color:"#888"}}>pending</span>}</td>
-          <td>{d.testResult==="pass"?<span style={{color:"#2e7d32"}}>✓ pass</span>:d.testResult==="fail"?<span style={{color:"#c62828",fontWeight:700}}>✗ fail</span>:d.testResult==="sampled"?"sampled":"—"}</td>
+          <td>{steelFlow(d)==="cutbend-proc"?<span style={{color:"#888"}} title="Certified on the docket that issued the bars to the processor">via issue</span>:d.cert?<span style={{color:"#1e6b3a"}}>✓ {d.cert}</span>:missing?<span style={{color:"#ef6c00",fontWeight:700}}>⚠ missing</span>:<span style={{color:"#888"}}>pending</span>}</td>
+          <td>{d.testResult==="pass"?<span style={{color:"#1e6b3a"}}>✓ pass</span>:d.testResult==="fail"?<span style={{color:"#b3302a",fontWeight:700}}>✗ fail</span>:d.testResult==="sampled"?"sampled":"—"}</td>
           <td onClick={function(e){e.stopPropagation();}}>
             {d.link&&/^https:\/\//.test(d.link)&&<a href={d.link} target="_blank" rel="noopener noreferrer" title="Open the scan">📄</a>}
             {edit&&missing&&!d.actionRef&&<button className="btn btn-sm" style={{marginLeft:4}} onClick={function(){raiseCert(d);}}>⚑</button>}
@@ -766,7 +766,7 @@ function SteelDocketEditor({docket,zones,processors,edit,onSave,onDelete,onClose
         {needProc&&<div className="fg" style={{marginTop:8,marginBottom:0}}><label>Processor</label>
           <input type="text" list="steel-processors" disabled={ro} value={d.processor||""} placeholder="Rebar subcontractor" onChange={function(e){set({processor:e.target.value});}}/>
           <datalist id="steel-processors">{Object.keys(processors||{}).map(function(k){return <option key={k} value={processors[k]}/>;})}</datalist>
-          {procMissing&&<span style={{fontSize:11,color:"#c62828"}}>Name the processor: its balance is computed from it.</span>}</div>}
+          {procMissing&&<span style={{fontSize:11,color:"#b3302a"}}>Name the processor: its balance is computed from it.</span>}</div>}
         <div style={{fontSize:11,color:"#555",marginTop:8}}>{
           flow==="straight-site"?"Counts as delivered on site, and as purchased.":
           flow==="to-proc"?"Not delivered on site: issued to the processor, and counted as purchased.":
@@ -815,7 +815,7 @@ function SteelDocketEditor({docket,zones,processors,edit,onSave,onDelete,onClose
           <option value="">not sampled</option><option value="sampled">sampled, result pending</option><option value="pass">pass</option><option value="fail">fail</option></select></div>
       </div>
       <div className="fg"><label>Scan (SharePoint link)</label><input type="text" disabled={ro} value={d.link} placeholder="https://…" onChange={function(e){set({link:e.target.value.trim()});}}/>
-        {badLink&&<span style={{fontSize:11,color:"#c62828"}}>The link must start with https://</span>}</div>
+        {badLink&&<span style={{fontSize:11,color:"#b3302a"}}>The link must start with https://</span>}</div>
       <div className="fg"><label>Note</label><textarea rows={2} disabled={ro} value={d.note} onChange={function(e){set({note:e.target.value});}}/></div>
     </div>
     <div className="modal-footer">
@@ -835,7 +835,7 @@ function SteelImportModal({dockets,onImport,onClose}){
     <div className="modal-body">
       <div style={{fontSize:12,color:"#555",marginBottom:8}}>Paste the JSON produced from the docket PDF or photo. One docket or an array. A docket already in the register (same supplier and number) is skipped.</div>
       <textarea rows={10} value={text} onChange={function(e){setText(e.target.value);}} style={{width:"100%",fontFamily:"monospace",fontSize:11}} placeholder='{"format":"pt-docket/1","no":"…","date":"2026-10-05","supplier":"…","kind":"straight","dest":"site","lines":[{"dia":"12","kg":1520}]}'/>
-      {res&&res.error&&<div style={{color:"#c62828",fontSize:12}}>{res.error}</div>}
+      {res&&res.error&&<div style={{color:"#b3302a",fontSize:12}}>{res.error}</div>}
       {res&&!res.error&&<div style={{fontSize:12,marginTop:6}}>
         <b>{res.dockets.length}</b> docket{res.dockets.length===1?"":"s"} ready · {steelFmtT(res.dockets.reduce(function(s,d){return s+steelDocketKg(d);},0))} t
         {res.dockets.map(function(d){var fl=STEEL_FLOWS[steelFlow(d)];return <div key={d.id} style={{marginTop:3}}>
