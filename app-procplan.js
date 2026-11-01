@@ -408,8 +408,8 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
         onClick={function(){
           var f=[];if(horizon!=="all")f.push((HZ.find(function(h){return h[0]===horizon;})||[0,""])[1].replace(/\s*\(\d+\)$/,""));
           if(typeF!=="all")f.push(ppTypeLabel(typeF));if(deptF!=="all")f.push(deptF);if(q)f.push('"'+q+'"');
-          ppOpenReport(vis,f.join(" · "));}}>🖨 Print</button>
-      {!ro&&<button className="btn btn-gold" onClick={function(){setPaste(true);}}>📋 Paste list from Excel</button>}
+          ppOpenReport(vis,f.join(" · "));}}>Print</button>
+      {!ro&&<button className="btn btn-gold" onClick={function(){setPaste(true);}}>Paste list from Excel</button>}
     </div>
     {paste&&<ProcPlanPasteModal tenders={tenders} saveTenders={saveTenders} packages={packages} onClose={function(){setPaste(false);}}/>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>

@@ -421,7 +421,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {!can&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Manpower editor”"}</span>}
-        {!empty&&<button className="btn btn-sm" onClick={function(){mpOpenReport(M,bRec,notes,filterLabel,fBgt?fWbs:"");}} title="Printable report of the hours: budget, planned, real, months, weeks, activities, notes">🖨 Report</button>}
+        {!empty&&<button className="btn btn-sm" onClick={function(){mpOpenReport(M,bRec,notes,filterLabel,fBgt?fWbs:"");}} title="Printable report of the hours: budget, planned, real, months, weeks, activities, notes">Report</button>}
         {!empty&&<button className="btn btn-sm" onClick={exportCsv} title="Weeks and months, budget, planned, real and variances, one column per company (Excel opens it)">⬇ CSV</button>}
         {can&&<button className="btn btn-sm" onClick={function(){setImporting(true);}} title="Real hours from an Excel or CSV file: weeks as numbers or dates, activities matched to the webapp's">⬆ Import Excel</button>}
         {can&&<button className="btn btn-pri btn-sm" onClick={openNew} title="Real hours of a week, by company">＋ Real hours</button>}
@@ -959,7 +959,7 @@ function MpPlanEditor({l,known,can,isNew,onSave,onDelete,onClose}){
   var tot=Object.assign({},d,{start:st,end:en});
   var inp={padding:"6px 8px",fontSize:13};
   var footer=<React.Fragment>
-    {can&&!isNew&&<button className="btn btn-danger" style={{marginRight:"auto"}} onClick={onDelete}>🗑 Delete</button>}
+    {can&&!isNew&&<button className="btn btn-danger" style={{marginRight:"auto"}} onClick={onDelete}>Delete</button>}
     {can&&!isNew&&<button className="btn" onClick={function(){onSave(Object.assign({},d,{id:uuid(),label:(d.label||"")+" (copy)"}));}} title="Same line, saved as a new one">⧉ Duplicate</button>}
     <button className="btn" onClick={onClose}>{can?"Cancel":"Close"}</button>
     {can&&<button className="btn btn-pri" disabled={!n} onClick={function(){onSave(d);}}>Save</button>}
@@ -1630,7 +1630,7 @@ function MpWeekEditor({w,known,knownActs,can,isNew,M,onSave,onDelete,onClose}){
   var budget=row&&row.src==="plan"?row.budget:(mpHas(d.approved)?Number(d.approved):null);
   var inp={padding:"6px 8px",fontSize:13};
   var footer=<React.Fragment>
-    {can&&!isNew&&<button className="btn btn-danger" style={{marginRight:"auto"}} onClick={onDelete}>🗑 Delete</button>}
+    {can&&!isNew&&<button className="btn btn-danger" style={{marginRight:"auto"}} onClick={onDelete}>Delete</button>}
     <button className="btn" onClick={onClose}>{can?"Cancel":"Close"}</button>
     {can&&<button className="btn btn-pri" disabled={!monday} onClick={function(){onSave(Object.assign({},d,{week:monday}));}}>Save</button>}
   </React.Fragment>;
@@ -1650,7 +1650,7 @@ function MpWeekEditor({w,known,knownActs,can,isNew,M,onSave,onDelete,onClose}){
       <div style={{fontWeight:700,fontSize:13}}>Real hours by company and activity</div>
       <span style={{fontSize:12,color:MP_COL_REAL,fontWeight:700,fontFamily:"var(--font-mono)"}}>{invFmt(real,0)} h</span>
       {budget!==null&&real>0&&<span style={{fontSize:11,color:real>budget?"#b3302a":"#1e6b3a"}}>{mpSigned(real-budget)} h vs planned{budget?" ("+(real>=budget?"+":"")+Math.round((real-budget)/budget*100)+" %)":""}</span>}
-      {can&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setShowPaste(!showPaste);}}>📋 Paste from Excel</button>}
+      {can&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setShowPaste(!showPaste);}}>Paste from Excel</button>}
     </div>
     {showPaste&&<div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:10,marginBottom:10}}>
       <div style={{fontSize:11,color:"#6f6b62",marginBottom:6}}>One line per company: name, then hours — or name, activity, hours (copied from Excel or the time-keeping export). The same company and activity twice are added up.</div>

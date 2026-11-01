@@ -1815,7 +1815,7 @@ function EmailModal({em,onClose}){
     <div className="modal-footer">
       <button className="btn" onClick={onClose}>Close</button>
       <button className="btn" onClick={()=>navigator.clipboard.writeText("Subject: "+em.subject+"\n\n"+em.body)}>📋 Copy all</button>
-      <button className="btn btn-pri" onClick={openOutlook} disabled={toList.length===0&&ccList.length===0}>📧 Open in Outlook</button>
+      <button className="btn btn-pri" onClick={openOutlook} disabled={toList.length===0&&ccList.length===0}>Open in Outlook</button>
     </div>
   </div></div>;
 }
@@ -2341,7 +2341,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           a.href=url;a.download="riviera-tower-backup-"+stamp+".json";
           document.body.appendChild(a);a.click();document.body.removeChild(a);
           URL.revokeObjectURL(url);
-        }}>📥 Download Backup</button>
+        }}>Download Backup</button>
       </div>
       <div style={{borderTop:"1px solid #f0ede6",paddingTop:16}}>
         <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>Restore</div>
@@ -2403,7 +2403,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           var NL=String.fromCharCode(10);
           var txt=(improvements||[]).map(function(imp){return "["+imp.date+"] ["+imp.page+"] "+imp.text;}).join(NL);
           navigator.clipboard.writeText(txt);
-        }}>📋 Copy all</button>
+        }}>Copy all</button>
       </div>
       {(improvements||[]).length===0
         ?<div style={{color:"#bbb",fontSize:13}}>No improvements recorded yet. Click the 💡 button on any page to add one.</div>
@@ -3092,7 +3092,7 @@ function NotesView({notes,saveNotes,tasks,saveTasks,people,zones,packages,tender
       <button className="btn btn-sm" onClick={back}>← All notes</button>
       <span style={{fontSize:10,color:dirty?"#e65100":"#aaa"}}>{dirty?"● unsaved…":"✓ saved"}</span>
       <div style={{flex:1}}/>
-      <button className="btn btn-gold" disabled={fresh.length===0} onClick={function(){flush();setConvertItems(fresh);}} title="Turn the bullet lines into actions">⚡ Convert {fresh.length} new line{fresh.length!==1?"s":""}</button>
+      <button className="btn btn-gold" disabled={fresh.length===0} onClick={function(){flush();setConvertItems(fresh);}} title="Turn the bullet lines into actions">Convert {fresh.length} new line{fresh.length!==1?"s":""}</button>
       <button className="btn" onClick={function(){flush();setRecap(buildNoteRecap(Object.assign({},sel,draft),tasks,peopleEmails));}}>✉ Recap</button>
       {mayDelete()&&<button className="btn btn-sm btn-danger" onClick={del}>🗑</button>}
     </div>
@@ -3212,8 +3212,8 @@ function PersonBrief({people,tasks,notes,tenders,peopleEmails,initial,onClose}){
     </div>
     <div className="modal-footer">
       <button className="btn" onClick={onClose}>Close</button>
-      <button className="btn" disabled={!person} onClick={print}>🖨 Print</button>
-      <button className="btn btn-pri" disabled={!person} onClick={email}>📧 Email</button>
+      <button className="btn" disabled={!person} onClick={print}>Print</button>
+      <button className="btn btn-pri" disabled={!person} onClick={email}>Email</button>
     </div>
     {mail&&<EmailModal em={mail} onClose={function(){setMail(null);}}/>}
   </div></div>;
@@ -3524,8 +3524,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
             🔍 Duplicates{dupes>0?" ("+dupes+")":""}</button>;
         })()}
         <button className="btn" onClick={function(){setShowPoint(true);}} title="Everything one person has to do, follows, or is late on">👤 Point with…</button>
-        <button className="btn btn-gold" onClick={function(){setShowWeekly(true);}}>📅 Report for the week</button>
-        {filtered.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>📧 Email</button>}
+        <button className="btn btn-gold" onClick={function(){setShowWeekly(true);}}>Report for the week</button>
+        {filtered.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>Email</button>}
       </div>
     </div>
 
@@ -3630,7 +3630,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       {bulkDue&&<button className="btn btn-sm btn-gold" onClick={function(){applyBulk({due:bulkDue},"Set due date to "+fmtDate(bulkDue));}}>Apply</button>}
 
       <span style={{width:1,height:20,background:"#444"}}></span>
-      <button className="btn btn-sm btn-danger" onClick={bulkDelete}>🗑 Delete</button>
+      <button className="btn btn-sm btn-danger" onClick={bulkDelete}>Delete</button>
     </div>}
 
     {filtered.length===0

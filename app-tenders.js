@@ -2200,9 +2200,9 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
   });
 
   function chip(label,val,col,tip){
-    return <div title={tip||""} style={{background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8,padding:"7px 12px",minWidth:110,cursor:tip?"help":"default"}}>
-      <div style={{fontSize:9.5,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"#6f6b62"}}>{label}</div>
-      <div style={{fontSize:18,fontWeight:700,color:col||"#16181d"}}>{val}</div>
+    return <div title={tip||""} className="kpi" style={{background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)",minWidth:110,cursor:tip?"help":"default"}}>
+      <div className="kpi-l">{label}</div>
+      <div className="kpi-v" style={{fontSize:18,color:col||"var(--ink)"}}>{val}</div>
     </div>;
   }
   function head(key,title,extra){
@@ -3387,7 +3387,7 @@ function AwardsPanel({td,updTd,contractors}){
               placeholder="Anything agreed that the table does not cover" style={Object.assign({},inp,{minHeight:44})}/></label>
 
           <div style={{display:"flex"}}>
-            <button className="btn btn-sm" style={{marginLeft:"auto",color:"var(--red,#b3302a)"}} onClick={function(){remove(a);}}>🗑 Remove this award</button>
+            <button className="btn btn-sm" style={{marginLeft:"auto",color:"var(--red,#b3302a)"}} onClick={function(){remove(a);}}>Remove this award</button>
           </div>
         </div>}
       </div>;
@@ -3521,7 +3521,7 @@ function TenderContractsPanel({td,contractors,saveContractors,onOpenContracts}){
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Contract &amp; addendums</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
         {tot.linked.length} contract{tot.linked.length!==1?"s":""} · {tot.adCount} addendum{tot.adCount!==1?"s":""}</span>
-      {onOpenContracts&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={onOpenContracts} title="Certifications, scope, milestones, terms: the full contract sheet">📋 Open in Contracts ↗</button>}
+      {onOpenContracts&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={onOpenContracts} title="Certifications, scope, milestones, terms: the full contract sheet">Open in Contracts ↗</button>}
     </div>
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
@@ -4483,7 +4483,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     <div className="page-hdr">
       <div><div className="page-title">Packages</div><div className="page-sub">Submissions, contracts and addendums — by department</div></div>
       <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
-      <button className="btn btn-sm" onClick={function(){setShowPrint(true);}} title="Choose the sections to print" style={{marginLeft:"auto"}}>🖨️ Print</button>
+      <button className="btn btn-sm" onClick={function(){setShowPrint(true);}} title="Choose the sections to print" style={{marginLeft:"auto"}}>Print</button>
       {(function(){
         var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
         return <button className="btn btn-sm" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
@@ -4937,9 +4937,9 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
             {(ctr.advancePayment||{}).date&&<span style={{padding:"2px 8px",borderRadius:10,background:"#e8f5e9",color:"#2e7d32",fontSize:11,fontWeight:700}}>💰 Advance paid {fmtDate(ctr.advancePayment.date)}</span>}
           </div>
         </div>
-        <button className="btn btn-sm" onClick={function(){openEdit(ctr);}}>✏️ Edit</button>
+        <button className="btn btn-sm" onClick={function(){openEdit(ctr);}}>Edit</button>
         <button className="btn btn-sm btn-danger" onClick={function(){delCtr(ctr.id);}}>🗑</button>
-        <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import</button>
+        <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import</button>
         <button className="btn btn-gold" onClick={function(){addContract(ctr.id);}} style={{marginLeft:"auto"}}>＋ Add Contract</button>
       </div>
       {importUI}
@@ -5010,7 +5010,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     <div className="page-hdr">
       <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts and certifications</div></div>
       <div style={{display:"flex",gap:8}}>
-        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import</button>
+        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import</button>
         <button className="btn btn-gold" onClick={openNew}>+ New Subcontractor</button>
       </div>
     </div>
@@ -6143,7 +6143,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
 
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-          <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import contract / addendum</button>
+          <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import contract / addendum</button>
         </div>
         <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
           updateCtField={updateCtField} updateAdItem={updateAdItem} delAdItem={delAdItem} addAdItem={addAdItem}
@@ -6225,7 +6225,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
         <div className="page-sub">{allContracts.length} contracts · {(contractors||[]).length} subcontractors</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import</button>
+        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import</button>
         <select id="new-contract-ctr" style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
           <option value="">Select subcontractor…</option>
           {(contractors||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
@@ -6947,7 +6947,7 @@ function ClientEmailModal({docs,initialStage,onClose}){
           <button className="btn" disabled={empty||tooLong} onClick={function(){window.location.href=mailto;}}>✉ Open in mail</button>
         </span>
         <button className="btn btn-gold" disabled={empty}
-          onClick={function(){copyClientEmail(mail).then(function(r){setCopied(r||"fail");});}}>📋 Copy for Outlook</button>
+          onClick={function(){copyClientEmail(mail).then(function(r){setCopied(r||"fail");});}}>Copy for Outlook</button>
       </div>
     </div>
   </div>;
@@ -7629,7 +7629,7 @@ function TenderPrintModal({onClose,onPrint}){
       </div>
       <div className="modal-footer">
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-gold" onClick={function(){onPrint(o);}}>🖨️ Print</button>
+        <button className="btn btn-gold" onClick={function(){onPrint(o);}}>Print</button>
       </div>
     </div>
   </div>;

@@ -603,7 +603,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       </div>
     </div>
     <div className="page-hdr" style={{marginBottom:12,justifyContent:"flex-end"}}>
-      {subTab==="actions"&&filteredActions.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>📧 Report</button>}
+      {subTab==="actions"&&filteredActions.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>Report</button>}
       <button className="btn btn-pri" title="Friday pack: programme progress, room by room, procurement delays, the readiness questionnaire for the next 3 weeks and the actions"
         onClick={function(){openReport("Weekly Zone Report — "+curZone,buildZoneWeeklyReport(curZone,schedules,rooms,tasks,tenders,{readiness:readiness}));}}>🗓 Weekly pack</button>
     </div>
@@ -765,8 +765,8 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
           <div style={{fontWeight:700,fontSize:13}}>＋ Add room to {curZone}</div>
           <div style={{display:"flex",gap:6}}>
-            <button className="btn btn-sm" onClick={syncRoomsFromCategories} title="The schedule is the reference: creates missing rooms, renames them to match their category, and reorders the list to follow the schedule">🔄 Sync from schedule</button>
-            <button className="btn btn-sm" onClick={function(){printSection("rooms");}}>🖨 Print / PDF</button>
+            <button className="btn btn-sm" onClick={syncRoomsFromCategories} title="The schedule is the reference: creates missing rooms, renames them to match their category, and reorders the list to follow the schedule">Sync from schedule</button>
+            <button className="btn btn-sm" onClick={function(){printSection("rooms");}}>Print / PDF</button>
           </div>
         </div>
         <div style={{display:"flex",gap:8}}>
@@ -880,7 +880,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showKpiForm?10:0}}>
           <div style={{fontWeight:700,fontSize:13}}>📊 KPI Tracker — {curZone}</div>
           <div style={{display:"flex",gap:6}}>
-            <button className="btn btn-sm" onClick={function(){printSection("kpi");}}>🖨 Print / PDF</button>
+            <button className="btn btn-sm" onClick={function(){printSection("kpi");}}>Print / PDF</button>
             <button className="btn btn-sm btn-gold" onClick={function(){setShowKpiForm(!showKpiForm);}}>{showKpiForm?"✕ Cancel":"＋ Add KPI"}</button>
           </div>
         </div>

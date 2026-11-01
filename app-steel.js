@@ -283,10 +283,10 @@ function steelParseWbsPaste(text){
 // ---------------------------------------------------------------- shared bits
 function _stCan(){return !window._ppReadOnly;}
 function SteelBig({label,kg,colour,sub}){
-  return <div style={{flex:"1 1 130px",background:"#fff",border:"1.5px solid #e8e6df",borderRadius:10,padding:"10px 14px"}}>
-    <div style={{fontSize:10,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".06em"}}>{label}</div>
-    <div style={{fontSize:22,fontWeight:800,color:colour||"#14171c",fontVariantNumeric:"tabular-nums"}}>{kg===null?"—":steelFmtT(kg)}<span style={{fontSize:12,fontWeight:600,color:"#888"}}> t</span></div>
-    {sub&&<div style={{fontSize:11,color:"#888"}}>{sub}</div>}
+  return <div className="kpi" style={{flex:"1 1 130px",background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}>
+    <div className="kpi-l">{label}</div>
+    <div className="kpi-v" style={{color:colour||"var(--ink)"}}>{kg===null?"—":steelFmtT(kg)}<small>t</small></div>
+    {sub&&<div className="kpi-s">{sub}</div>}
   </div>;
 }
 function SteelKgInput({value,onChange,disabled,width}){
@@ -372,7 +372,7 @@ function SteelAnalysis({periods,dockets,wbs,edit,savePeriods,allPeriods,raiseAct
         <input type="checkbox" checked={byDia} onChange={function(){setByDia(!byDia);}}/> By diameter
       </label>
       <div style={{flex:1}}/>
-      <button className="btn btn-sm" onClick={function(){steelOpenReport(p,f,hist);}}>🖨 Report</button>
+      <button className="btn btn-sm" onClick={function(){steelOpenReport(p,f,hist);}}>Report</button>
       {edit&&(flagged||procFlagged.length>0)&&!p.actionRef&&<button className="btn btn-sm" onClick={raise}>⚑ Raise action</button>}
       {p.actionRef&&<span className="pill" style={{background:"#fff3e0",color:"#ef6c00"}}>⚑ action raised</span>}
     </div>
@@ -564,7 +564,7 @@ function SteelPointEditor({period,allPeriods,savePeriods,dockets,wbs,edit,isAdmi
       <button className="btn btn-sm" onClick={close}>← Back</button>
       <div className="card-title" style={{margin:0}}>Financial point</div>
       <div style={{flex:1}}/>
-      {canType&&<button className="btn btn-pri btn-sm" disabled={!dirty} onClick={function(){persist();}}>💾 Save</button>}
+      {canType&&<button className="btn btn-pri btn-sm" disabled={!dirty} onClick={function(){persist();}}>Save</button>}
       {isAdmin&&!locked&&<button className="btn btn-gold btn-sm" disabled={dirty} title={dirty?"Save first":""} onClick={validate}>✓ Validate</button>}
       {isAdmin&&locked&&<button className="btn btn-sm" onClick={reopen}>Reopen</button>}
       {(isAdmin||(edit&&!locked&&window._ppMayDelete))&&<button className="btn btn-danger btn-sm" onClick={remove}>🗑</button>}
@@ -819,7 +819,7 @@ function SteelDocketEditor({docket,zones,processors,edit,onSave,onDelete,onClose
       <div className="fg"><label>Note</label><textarea rows={2} disabled={ro} value={d.note} onChange={function(e){set({note:e.target.value});}}/></div>
     </div>
     <div className="modal-footer">
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!d.date||badLink||procMissing||steelDocketKg(d)<=0} onClick={function(){onSave(Object.assign({},d,{processor:needProc?d.processor.trim():"",dest:d.kind==="cutbend"?"site":d.dest,freeIssue:d.kind==="cutbend"&&!!d.freeIssue}));}}>✓ Save</button>}
     </div>
@@ -871,7 +871,7 @@ function SteelWbs({wbs,saveWbs,zones,edit,latest}){
     <div className="filter-bar">
       <span style={{fontSize:12,color:"#555"}}>{wbs.length} line{wbs.length===1?"":"s"} · theoretical <b>{steelFmtT(total)} t</b>{latest?" · earned at "+fmtDate(latest.date)+": "+steelFmtT(earned)+" t":""}</span>
       <div style={{flex:1}}/>
-      {edit&&<button className="btn btn-sm" onClick={function(){setPaste("");}}>📋 Paste from Excel</button>}
+      {edit&&<button className="btn btn-sm" onClick={function(){setPaste("");}}>Paste from Excel</button>}
       {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newSteelWbs());}}>+ WBS line</button>}
     </div>
     {!wbs.length?<div className="empty"><div className="empty-ico">🧱</div><div className="empty-txt">No steel WBS line yet. Paste them from the BOQ or the BBS summary.</div></div>:
@@ -934,7 +934,7 @@ function SteelWbsEditor({line,zones,edit,onSave,onDelete,onClose}){
           <span style={{fontSize:11,color:"#888"}}>= {steelFmtT(w.theoKg)} t</span></div>}
     </div>
     <div className="modal-footer">
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(w);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(w);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!(w.code||w.description)||steelWbsKg(w)<=0} onClick={function(){onSave(w);}}>✓ Save</button>}
     </div>

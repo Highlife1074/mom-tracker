@@ -1255,7 +1255,7 @@ function MomQuickNotes({mom,people,companies,tags,tasks,saveTasks,onSections}){
       </select>
       <div style={{flex:1}}/>
       <button className="btn btn-sm" onClick={function(){setOpen(false);}}>Hide</button>
-      <button className="btn btn-sm btn-gold" disabled={!text.trim()} onClick={preview}>⚡ Preview items</button>
+      <button className="btn btn-sm btn-gold" disabled={!text.trim()} onClick={preview}>Preview items</button>
     </div>
     <textarea value={text} onChange={function(e){keep(e.target.value);}}
       placeholder={"## Program\n- revised programme for level 12 @sub fri !\n- crane slots to confirm @Methods +7\n## Design\nShop drawings for the canopy are with the architect\n- chase the architect @Ballas 20/10"}
@@ -1438,7 +1438,7 @@ function MomView({moms,saveMoms,tenders,packages,people,contractors,tasks,saveTa
               <td style={{textAlign:"right"}}>
                 <button className="btn btn-sm" onClick={function(){setSelId(m.id);}}>Open</button>
                 <button className="btn btn-sm" style={{marginLeft:4}} onClick={function(){duplicateMom(m);}} title="Start the next meeting from this one">⧉</button>
-                <button className="btn btn-sm" style={{marginLeft:4}} onClick={function(){openReport(momFileName(m),buildMomHtml(m));}}>🖨 PDF</button>
+                <button className="btn btn-sm" style={{marginLeft:4}} onClick={function(){openReport(momFileName(m),buildMomHtml(m));}}>PDF</button>
               </td>
             </tr>;
           })}</tbody>
@@ -1575,12 +1575,12 @@ function MomView({moms,saveMoms,tenders,packages,people,contractors,tasks,saveTa
         {isTenderReview(sel)&&sel.reviewStage==="final"&&<button className="btn" onClick={importFromMid}
           title="Copy the price table and the open items of the Mid review of the same tender">⤓ Import from Mid review</button>}
         <button className="btn" onClick={function(){duplicateMom(sel);}} title="Create the next meeting from this one">⧉ Duplicate</button>
-        <button className="btn" onClick={function(){openReport(momFileName(sel),buildMomHtml(sel));}}>🖨 Print / PDF</button>
+        <button className="btn" onClick={function(){openReport(momFileName(sel),buildMomHtml(sel));}}>Print / PDF</button>
         {mayDelete()&&<button className="btn btn-danger" onClick={function(){
           if(blockIfReadOnly())return;
           if(!safeConfirm("Delete "+(sel.number||"this MoM")+"?\n\nActions already pushed to the action list are kept, and keep their reference to this number.\n\nThis cannot be undone."))return;
           save(list.filter(function(m){return m.id!==sel.id;}));setSelId(null);
-        }}>🗑 Delete MoM</button>}
+        }}>Delete MoM</button>}
       </div>
     </div>
 
@@ -1989,7 +1989,7 @@ function TimelineView({tasks,tenders,people,packages,zones,saveTasks,onNavTender
               if(!safeConfirm("Delete this action?\n\n“"+(sel.text||"")+"”\n\nThis cannot be undone."))return;
               saveTasks((tasks||[]).filter(function(x){return x.id!==sel.id;}));
               setSel(null);
-            }}>🗑 Delete</button>}
+            }}>Delete</button>}
           {sel.tenderRef&&onNavTender&&<button className="btn" onClick={function(){onNavTender(sel.tenderRef);setSel(null);}}>Open its tender →</button>}
           <button className="btn btn-pri" onClick={function(){
             saveTasks((tasks||[]).map(function(x){return x.id!==sel.id?x:stampModified(Object.assign({},x,

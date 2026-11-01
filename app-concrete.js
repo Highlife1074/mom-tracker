@@ -455,7 +455,7 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
         title={pastReal?"On: the planned of the past = what was poured; what each WBS still needs (theoretical − poured) is spread from tomorrow to its finish. Click to go back to the theoretical spread over the WBS dates.":"Set the planned of the past equal to the real pours, and spread what remains of each WBS from tomorrow to its finish."}>
         {pastReal?"✓ ":""}Planned = real (past)</button>
       <button className="btn btn-sm" onClick={function(){conExportXlsx(types,list,pours,realIx,cutoffs,pastReal);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal);}}>🖨 Report</button>
+      <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal);}}>Report</button>
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
       <InvBig label="Theoretical" value={tot.theo} unit={unit} sub={s.unscheduled>CON_EPS?conFmt(s.unscheduled)+" "+unit+" without dates":list.length+" WBS"}/>
@@ -1539,7 +1539,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       <input type="text" placeholder="Search WBS…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:150}}/>
       <div style={{flex:1}}/>
       <button className="btn btn-sm" onClick={function(){conCutoffXlsx(cur,types,wbs,pours);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){conCutoffReport(cur,prev,rows,tot,prevTot,label);}}>🖨 Report</button>
+      <button className="btn btn-sm" onClick={function(){conCutoffReport(cur,prev,rows,tot,prevTot,label);}}>Report</button>
       {edit&&!cur.closed&&<button className="btn btn-sm" onClick={close} title="Freeze the progress and the remain to be spent of this cut-off">🔒 Close</button>}
       {cur.closed&&isAdmin&&!window._ppReadOnly&&<button className="btn btn-sm" onClick={reopen}>Reopen</button>}
       {edit&&invCanDelete()&&<button className="btn btn-sm" style={{color:"#c62828"}} onClick={del}>Delete</button>}

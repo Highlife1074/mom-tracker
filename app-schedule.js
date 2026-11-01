@@ -2411,7 +2411,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       <span style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:17}}>{curZone} — {sc?sc.title:""}</span>
       <span style={{fontSize:11,color:"#aaa"}}>press Esc to leave full screen</span>
       {sc&&<button className="btn btn-pri" onClick={openPrint} style={{marginLeft:"auto"}}
-        title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">🖨 Print / PDF</button>}
+        title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">Print / PDF</button>}
     </div>}
     {backTo&&<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,
       padding:"8px 12px",borderRadius:8,background:"var(--blue-soft,#e8f0fe)",border:"1.5px solid #c6d9f5"}}>
@@ -2455,7 +2455,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           </React.Fragment>}
         </span>
         <button className="btn btn-pri" onClick={openPrint}
-          title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">🖨 Print / PDF</button>
+          title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">Print / PDF</button>
       </span>}
     </div>
 
@@ -2526,7 +2526,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <button className="btn btn-sm" onClick={function(){bulkShift(1);}} title="Shift every selected task 1 week later">1wk ▶</button>
           </span>
 
-          <button className="btn btn-sm btn-danger" onClick={bulkDelete} title="Delete every selected task">🗑 Delete</button>
+          <button className="btn btn-sm btn-danger" onClick={bulkDelete} title="Delete every selected task">Delete</button>
           <span style={{fontSize:10,color:"#5f7fae"}}>Shift+click a box to select a range</span>
           <button className="btn btn-sm" onClick={function(){setSelRows([]);}} style={{marginLeft:"auto"}}>✕ Clear selection</button>
         </div>}
@@ -2670,7 +2670,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               ⓘ Tips</span>
             <button className={"btn btn-sm"+(showTools?" btn-pri":"")} onClick={function(){setShowTools(!showTools);}}
               title="Baseline, critical path, link arrows, advanced columns, collapse / expand the rooms"
-              style={{padding:"2px 10px",fontSize:10}}>🔍 Analyse & view {showTools?"▴":"▾"}{!showTools&&(activeBl||critPath)?" ●":""}</button>
+              style={{padding:"2px 10px",fontSize:10}}>Analyse & view {showTools?"▴":"▾"}{!showTools&&(activeBl||critPath)?" ●":""}</button>
           </span>
         </div>
 
@@ -3525,7 +3525,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <div style={{fontSize:10,color:"#aaa",marginBottom:14}}>Landscape is set automatically; each sheet fits the page width. Task and Subcont. columns are repeated on every sheet. Tick <b>Background graphics</b> if the bars come out white.</div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
               <button className="btn btn-sm" onClick={function(){setPrintOpts(null);}}>Cancel</button>
-              <button className="btn btn-sm btn-pri" disabled={printWeeksOf(wks,printOpts).length===0} onClick={function(){runPrint(printOpts);}}>🖨 Print</button>
+              <button className="btn btn-sm btn-pri" disabled={printWeeksOf(wks,printOpts).length===0} onClick={function(){runPrint(printOpts);}}>Print</button>
             </div>
           </div>
         </div>}
@@ -3954,7 +3954,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             {canEdit&&<div style={{padding:"10px 14px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:6,flexWrap:"wrap",background:"#fafaf8"}}>
               <button className="btn btn-sm btn-gold" onClick={function(){insertTaskAfter(row.id);}}>{isCat?"＋ Task at the top":"＋ Task below"}</button>
               <button className="btn btn-sm" onClick={function(){isCat?duplicateCategoryBlock(row.id):duplicateRow(row.id);}}>{isCat?"⧉ Duplicate with its tasks":"⧉ Duplicate"}</button>
-              <button className="btn btn-sm btn-danger" style={{marginLeft:"auto"}} onClick={function(){delRow(row.id);}}>🗑 Delete</button>
+              <button className="btn btn-sm btn-danger" style={{marginLeft:"auto"}} onClick={function(){delRow(row.id);}}>Delete</button>
             </div>}
           </div>;
         })()}

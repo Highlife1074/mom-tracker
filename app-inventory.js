@@ -195,10 +195,10 @@ function invParseItemsPaste(text,existing){
 
 // ---------------------------------------------------------------- shared bits
 function InvBig({label,value,unit,colour,sub}){
-  return <div style={{flex:"1 1 130px",background:"#fff",border:"1.5px solid #e8e6df",borderRadius:10,padding:"10px 14px"}}>
-    <div style={{fontSize:10,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".06em"}}>{label}</div>
-    <div style={{fontSize:22,fontWeight:800,color:colour||"#14171c",fontVariantNumeric:"tabular-nums"}}>{value===null||value===undefined?"—":invFmt(value,1)}{unit&&<span style={{fontSize:12,fontWeight:600,color:"#888"}}> {unit}</span>}</div>
-    {sub&&<div style={{fontSize:11,color:"#888"}}>{sub}</div>}
+  return <div className="kpi" style={{flex:"1 1 130px",background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}>
+    <div className="kpi-l">{label}</div>
+    <div className="kpi-v" style={{color:colour||"var(--ink)"}}>{value===null||value===undefined?"—":invFmt(value,1)}{unit&&<small>{unit}</small>}</div>
+    {sub&&<div className="kpi-s">{sub}</div>}
   </div>;
 }
 function InvQtyInput({value,onChange,disabled,width,placeholder}){
@@ -333,7 +333,7 @@ function InvOverview({items,counts,figs,onOpenItem,onGoItems,issues}){
       <span style={{fontSize:12,color:"#888"}}>{list.length} item{list.length===1?"":"s"} · last count {lastCount?fmtDate(lastCount.date):"none yet"}</span>
       <div style={{flex:1}}/>
       <button className="btn btn-sm" onClick={function(){invExportXlsx(list,figs,issues);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){invOpenReport(list,figs,issues);}}>🖨 Report</button>
+      <button className="btn btn-sm" onClick={function(){invOpenReport(list,figs,issues);}}>Report</button>
     </div>
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Item</th><th>Unit</th><th style={R}>Ordered</th><th style={R}>Delivered</th><th style={R} title="Ordered on a PO and not delivered yet">Still on PO</th><th style={R}>Issued</th>
@@ -585,7 +585,7 @@ function InvPoEditor({po,items,dockets,pos,edit,onSave,onDelete,onClose}){
   var dupNo=d.no&&pos.some(function(p){return p.id!==d.id&&String(p.no).trim().toUpperCase()===String(d.no).trim().toUpperCase();});
   var suppliers=[...new Set(pos.map(function(p){return p.supplier;}).filter(Boolean))].sort();
   return <InvModal title="🧾 Purchase order" onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!d.no.trim()||!d.date||!invLinesValid(d.lines)||invLinkBad(d.link)} onClick={function(){onSave(Object.assign({},d,{no:d.no.trim(),lines:invCleanLines(d.lines)}));}}>✓ Save</button>}
     </>}>
@@ -667,7 +667,7 @@ function InvDocketEditor({docket,items,pos,dockets,edit,onSave,onDelete,onClose}
     set({lines:ls,supplier:d.supplier||po.supplier});
   }
   return <InvModal title="🚚 Delivery docket" onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!d.date||!invLinesValid(d.lines)||invLinkBad(d.link)} onClick={function(){onSave(Object.assign({},d,{no:(d.no||"").trim(),lines:invCleanLines(d.lines)}));}}>✓ Save</button>}
     </>}>
@@ -754,7 +754,7 @@ function InvIssueEditor({issue,items,issues,figs,zones,contractors,edit,onSave,o
   var valid=d.date&&invLinesValid(d.lines)&&(ret||d.zone||d.location.trim());
   function clean(){return Object.assign({},d,{ref:(d.ref||"").trim(),location:(d.location||"").trim(),use:(d.use||"").trim(),issuedTo:(d.issuedTo||"").trim(),lines:invCleanLines(d.lines)});}
   return <InvModal title={ret?"↩ Return to store":"📤 Issue from store"} onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&isNew&&<button className="btn" disabled={!valid} onClick={function(){onSaveNext(clean());}} title="Save, and start another slip with the same date, zone and receiver">✓ Save &amp; next</button>}
       {!ro&&<button className="btn btn-pri" disabled={!valid} onClick={function(){onSave(clean());}}>✓ Save</button>}
@@ -847,7 +847,7 @@ function InvCountEditor({count,isNew,items,counts,saveCounts,ix,edit,onClose}){
       <button className="btn btn-sm" onClick={close}>← Counts</button>
       <div className="card-title" style={{margin:0}}>Stock count</div>
       <div style={{flex:1}}/>
-      {!ro&&!isNew&&invCanDelete()&&<button className="btn btn-danger btn-sm" onClick={remove}>🗑 Delete</button>}
+      {!ro&&!isNew&&invCanDelete()&&<button className="btn btn-danger btn-sm" onClick={remove}>Delete</button>}
       {!ro&&<button className="btn btn-pri btn-sm" disabled={!d.date||!dirty} onClick={save}>✓ Save</button>}
     </div>
     <div className="frow">
@@ -943,7 +943,7 @@ function InvItemEditor({item,items,cats,edit,onSave,onDelete,onClose}){
   var ro=!edit;
   var dup=d.code.trim()&&items.some(function(it){return it.id!==d.id&&(it.code||"").trim().toUpperCase()===d.code.trim().toUpperCase();});
   return <InvModal title="📦 Item" width={620} onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!d.name.trim()||!d.unit||dup} onClick={function(){onSave(Object.assign({},d,{code:d.code.trim(),name:d.name.trim(),category:(d.category||"").trim(),minStock:_invNum(d.minStock)}));}}>✓ Save</button>}
     </>}>

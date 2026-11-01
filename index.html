@@ -141,18 +141,19 @@ table td,table th{font-variant-numeric:tabular-nums}
 #app-banner{background:var(--surface);color:#c2410c;text-align:center;padding:11px 16px;font-size:var(--fs-small);font-weight:700;letter-spacing:.22em;text-transform:uppercase;font-family:var(--font-display);border-bottom:1.5px solid var(--rule-2);width:100%;box-sizing:border-box;}
 .layout{display:flex;height:calc(100vh - 44px);overflow:hidden}
 .leftnav{width:68px;background:#fff;border-right:1.5px solid #f0ede6;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:2px;flex-shrink:0;z-index:50}
-.leftnav .logo{font-family:var(--font-body);font-weight:700;color:var(--gold-ink);font-size:var(--fs-small);margin-bottom:10px;text-align:center;line-height:1.15;letter-spacing:0}
+.leftnav .logo{font-family:var(--font-body);font-weight:700;color:var(--ink);font-size:var(--fs-small);margin-bottom:10px;text-align:center;line-height:1.15;letter-spacing:0}
 .navbtn{width:44px;height:44px;border-radius:10px;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#888;transition:all .15s;font-size:18px;padding:0}
 .navbtn span.lbl{font-family:var(--font-body);font-size:9.5px;font-weight:600;letter-spacing:.005em;line-height:1.15}
-.navbtn:hover{background:#2a2a2a;color:#fff}
-.navbtn.on{background:var(--gold);color:var(--ink)}
+.navbtn:hover{background:var(--rule-2);color:var(--ink)}
+.navbtn.on{background:var(--rule-2);color:var(--ink);box-shadow:inset 3px 0 0 var(--ink)}
+.navbtn>span:first-child{filter:grayscale(1);opacity:.7}.navbtn.on>span:first-child,.navbtn:hover>span:first-child{opacity:1}
 .navbtn.on span.lbl{color:var(--ink)}
 .navbtn:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
 .nav-sep{width:30px;height:1px;background:#333;margin:4px 0}
 /* Sub-entries of a grouped nav item: indented, smaller, with a hairline spine */
 .navbtn.navsub{width:38px;height:34px;border-radius:8px;position:relative;margin-left:6px}
 .navbtn.navsub::before{content:"";position:absolute;left:-6px;top:4px;bottom:4px;width:1.5px;background:var(--rule);border-radius:1px}
-.navbtn.navsub.on::before{background:var(--gold)}
+.navbtn.navsub.on::before{background:var(--ink)}
 .main-area{flex:1;display:flex;overflow:hidden}
 .content{flex:1;overflow-y:auto;padding:24px;min-width:0;max-width:100%}
 .main-area{min-width:0}
@@ -180,8 +181,9 @@ table td,table th{font-variant-numeric:tabular-nums}
 .btn:disabled:hover{border-color:var(--rule);color:var(--ink-2)}
 .btn-pri{background:var(--ink);color:#fff;border-color:var(--ink)}
 .btn-pri:hover{background:#2b2e36;color:#fff;border-color:#2b2e36}
-.btn-gold{background:var(--gold);color:var(--ink);border-color:var(--gold);font-weight:700}
-.btn-gold:hover{background:var(--gold-dark);border-color:var(--gold-dark);color:var(--ink)}
+/* .btn-gold keeps its name (60+ call sites) but is now the neutral primary button */
+.btn-gold{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+.btn-gold:hover{background:#2b2e36;border-color:#2b2e36;color:#fff}
 .btn-danger{background:var(--surface);color:var(--red);border-color:#f0cdc9}
 .btn-danger:hover{background:var(--red-soft);color:var(--red);border-color:var(--red)}
 .btn-lg{height:40px;padding:0 19px;font-size:var(--fs-large)}
@@ -231,13 +233,11 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700}
 .pbar{height:4px;background:var(--rule-2);border-radius:0;overflow:hidden;margin:6px 0}
 .pfill{height:100%;border-radius:0;transition:width .3s}
-.s-approved-a{background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9}
-.s-approved-b{background:#fff8e1;color:#f57f17;border-color:#ffe082}
-.s-approved-c{background:#fce4ec;color:#c62828;border-color:#f48fb1}
-.s-pending{background:#f3e5f5;color:#7b1fa2;border-color:#ce93d8}
-.s-signed{background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9}
-.s-notdone{background:#fce4ec;color:#c62828;border-color:#f48fb1}
-.s-default{background:#f5f4f0;color:#888;border-color:#e0ddd6}
+.s-approved-a,.s-signed{background:var(--surface);color:var(--green);border-color:var(--rule)}
+.s-approved-b{background:var(--surface);color:var(--amber);border-color:var(--rule)}
+.s-approved-c,.s-notdone{background:var(--surface);color:var(--red);border-color:var(--rule)}
+.s-pending{background:var(--surface);color:var(--blue);border-color:var(--rule)}
+.s-default{background:var(--surface);color:var(--ink-3);border-color:var(--rule)}
 .sform input,.sform select,.sform textarea{font-size:12px;padding:6px 8px}
 .sform label{font-size:10px}
 .sform .fg{margin-bottom:8px}
@@ -282,7 +282,7 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 .fchip{height:26px;padding:0 12px;border-radius:20px;border:1.5px solid var(--rule);background:var(--surface);font-family:var(--font-body);font-size:var(--fs-small);font-weight:600;cursor:pointer;color:var(--ink-3);transition:background .12s,border-color .12s,color .12s;display:inline-flex;align-items:center}
 .fchip:hover{border-color:var(--ink-3);color:var(--ink)}
 .fchip.on{border-color:var(--ink);background:var(--ink);color:#fff}
-.fchip.gold.on{border-color:var(--gold);background:var(--gold);color:var(--ink)}
+.fchip.gold.on{border-color:var(--ink);background:var(--ink);color:#fff}
 .fchip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 /* ---- Sober KPI / tracker layer -------------------------------------------------
    Flat tiles, hairlines, tabular figures. Colour carries STATUS only (a 3px rule on the
