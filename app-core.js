@@ -225,8 +225,21 @@ function parseISODate(d){
   }
   return new Date(d);
 }
+// Called tens of thousands of times per render on the same few hundred date strings:
+// the answer for a string never changes, so it is remembered (bounded).
+var _validDateCache={},_validDateN=0;
 function isValidDate(d){
   if(!d)return false;
+  if(typeof d==="string"){
+    var c=_validDateCache[d];
+    if(c!==undefined)return c;
+    if(_validDateN>20000){_validDateCache={};_validDateN=0;}
+    _validDateN++;
+    return _validDateCache[d]=_isValidDate(d);
+  }
+  return _isValidDate(d);
+}
+function _isValidDate(d){
   var t=parseISODate(d);
   if(isNaN(t.getTime()))return false;
   var y=t.getFullYear();
@@ -247,14 +260,15 @@ function toISO(dt){
 }
 function fmtMonthYear(d){if(!d)return"—";var p=d.split("-");return p.length>=2?p[1]+"/"+p[0].slice(2):d;}
 function calcScore(i,u){return (i||1)*(u||1);}
-function textSimilarity(a,b){
-  var wa=(a||"").toLowerCase().split(/[^a-z0-9]+/).filter(function(w){return w.length>2;});
-  var wb=(b||"").toLowerCase().split(/[^a-z0-9]+/).filter(function(w){return w.length>2;});
+function _simWords(s){return (s||"").toLowerCase().split(/[^a-z0-9]+/).filter(function(w){return w.length>2;});}
+function _simSet(words){var o={};words.forEach(function(w){o[w]=true;});return o;}
+// Share of the words of the longer text that the other one also has (words of 3+ letters).
+function _simOf(wa,setA,wb){
   if(wa.length===0||wb.length===0)return 0;
-  var setA={};wa.forEach(function(w){setA[w]=true;});
-  var common=wb.filter(function(w){return setA[w];}).length;
+  var common=0;for(var i=0;i<wb.length;i++)if(setA[wb[i]])common++;
   return common/Math.max(wa.length,wb.length);
 }
+function textSimilarity(a,b){var wa=_simWords(a);return _simOf(wa,_simSet(wa),_simWords(b));}
 function scoreStyle(s){
   if(s>=7)return{bg:"#ffeaea",color:"#c62828",label:"🔥 "+s};
   if(s>=4)return{bg:"#fff8e1",color:"#f57f17",label:"⚡ "+s};
@@ -2729,13 +2743,19 @@ function WeeklyView({tasks,trackers,people,tags,tagrules,pkgrules,packages,tende
 // again in their own list. Both are real objects, so nothing catches it — until the
 // same job is chased twice and closed once.
 // ---------------------------------------------------------------------------
+// Every pair of open actions is compared: each text is split into words once, not once per
+// pair, and the answer is kept until the actions or the threshold change (the Actions view
+// asks for it on every render, only to show a count).
+var _dupCache={tasks:null,threshold:null,pairs:null};
 function findDuplicateActions(tasks,threshold){
+  if(_dupCache.tasks===tasks&&_dupCache.threshold===threshold&&tasks)return _dupCache.pairs;
   var open=(tasks||[]).filter(function(t){return t.status!=="done"&&(t.text||"").trim().length>6;});
+  var words=open.map(function(t){return _simWords(t.text);}),sets=words.map(_simSet);
   var pairs=[];
   for(var i=0;i<open.length;i++){
     for(var j=i+1;j<open.length;j++){
       var a=open[i],b=open[j];
-      var sim=textSimilarity(a.text,b.text);
+      var sim=_simOf(words[i],sets[i],words[j]);
       if(sim<threshold)continue;
       // Signals that raise confidence: same tender, same package, same zone, close due dates.
       var why=[];
@@ -2749,7 +2769,9 @@ function findDuplicateActions(tasks,threshold){
       pairs.push({a:a,b:b,sim:sim,score:score,why:why});
     }
   }
-  return pairs.sort(function(x,y){return y.score-x.score;});
+  pairs.sort(function(x,y){return y.score-x.score;});
+  _dupCache={tasks:tasks,threshold:threshold,pairs:pairs};
+  return pairs;
 }
 
 function DuplicateFinder({tasks,saveTasks,tenders,onClose,canDelete}){
@@ -5064,7 +5086,7 @@ function App(){
         {view==="zone"&&<ZoneView tasks={tasks} saveTasks={saveT} rooms={rooms} saveRooms={saveRooms} zones={zones} people={people} tags={tags} memory={memoryFor("zone")} setMemory={function(p){setMemoryFor("zone",p);}} peopleEmails={peopleEmails} defaultCC={defaultCC} kpis={kpis} saveKpis={saveKpis} meetings={meetings} saveMeetings={saveMeetings} zoneOwners={zoneOwners} schedules={schedules} saveSchedules={saveSchedules} tenders={tenders} saveTenders={saveTenders} pkgOwners={pkgOwners} onNavTender={navToTender} readiness={readiness} saveReadiness={saveReadiness}/>}
         {view==="moms"&&<MomView moms={moms} saveMoms={saveMoms} tenders={tenders} packages={packages} people={people} contractors={contractors} tasks={tasks} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("moms")} setMemory={function(p){setMemoryFor("moms",p);}}/>}
         {view==="timeline"&&<TimelineView tasks={tasks} tenders={tenders} people={people} packages={packages} zones={zones} saveTasks={saveT} onNavTender={navToTender} memory={memoryFor("timeline")} setMemory={function(p){setMemoryFor("timeline",p);}}/>}
-        {view==="qadocs"&&<QualityDocsView tenders={tenders} packages={packages} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("qadocs")} setMemory={function(p){setMemoryFor("qadocs",p);}}/>}
+        {view==="qadocs"&&<QualityDocsView tenders={tenders} packages={packages} saveTenders={saveTenders} onNavTender={navToTender} onNavZone={function(){setView("zone");}} memory={memoryFor("qadocs")} setMemory={function(p){setMemoryFor("qadocs",p);}}/>}
         {view==="materials"&&<MaterialsView tenders={tenders} packages={packages} people={people} saveTenders={saveTenders} onNavTender={navToTender} memory={memoryFor("materials")} setMemory={function(p){setMemoryFor("materials",p);}} tasks={tasks} saveTasks={saveT} pkgOwners={pkgOwners}/>}
         {view==="steel"&&<SteelView dockets={steelDockets} saveDockets={saveSteelDockets} wbs={steelWbs} saveWbs={saveSteelWbs} periods={steelPeriods} savePeriods={saveSteelPeriods} zones={zones} tasks={tasks} saveTasks={saveT} currentUser={currentUser} isAdmin={isAppAdmin(currentUser)&&!isReadOnly} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.steelEditor))}/>}
         {view==="inventory"&&<InventoryView items={invItems} saveItems={saveInvItems} pos={invPos} savePos={saveInvPos} dockets={invDockets} saveDockets={saveInvDockets} issues={invIssues} saveIssues={saveInvIssues} counts={invCounts} saveCounts={saveInvCounts} zones={zones} contractors={contractors} tasks={tasks} saveTasks={saveT} currentUser={currentUser} canEdit={!isReadOnly&&(isAppAdmin(currentUser)||!!(myAccess&&myAccess.inventoryEditor))}/>}
