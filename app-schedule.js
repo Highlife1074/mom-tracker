@@ -658,15 +658,18 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     setCollapsedCats(function(prev){var o=Object.assign({},prev);delete o[sec];delete o[cat];return o;});
     setFGroup("");setCritOn(false);
     setPanelRowId(focusRow);
-    var t=setTimeout(function(){
+    var tries=0,t=null;
+    function go(){
       // the row in the middle, and the grid scrolled sideways to the task's first week
       try{
-        var tr=document.querySelector('tr[data-rowid="'+focusRow+'"]');if(!tr)return;
+        var tr=document.querySelector('tr[data-rowid="'+focusRow+'"]');
+        if(!tr){if(++tries<20)t=setTimeout(go,150);return;}   // a big grid draws its last rows a moment later
         var fr=rows.find(function(r){return r.id===focusRow;})||{};
         var wk=fr.startWeek&&tr.querySelector('td[data-wk="'+fr.startWeek+'"]');
         (wk||tr).scrollIntoView({block:"center",inline:wk?"center":"nearest",behavior:"smooth"});
       }catch(e){}
-    },250);
+    }
+    t=setTimeout(go,250);
     return function(){clearTimeout(t);};
   },[]);
   const [blName,setBlName]=useState("");
@@ -2140,7 +2143,25 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     ro.observe(box);
     return function(){clearTimeout(t);ro.disconnect();};
   },[sc?sc.id:"",monthView]);
-  var visKey=visibleRows.map(function(r){return r.id;}).join(",");
+  // A big schedule (200+ rows × 45 weeks) takes ~0.5 s to build. On opening one, or switching
+  // zone / schedule, the first rows are drawn at once and the rest right after that first
+  // paint: the grid shows up immediately instead of after the whole table is ready.
+  var GRID_FIRST_ROWS=60;
+  var gridId=sc?sc.id:"";
+  const gridSeenRef=useRef({id:null,full:false});
+  const [,setGridTick]=useState(0);
+  if(gridSeenRef.current.id!==gridId)gridSeenRef.current={id:gridId,full:false};   // every switch starts light
+  var gridFull=gridSeenRef.current.full||visibleRows.length<=GRID_FIRST_ROWS;
+  useEffect(function(){
+    if(gridFull)return;
+    var t=null,raf=window.requestAnimationFrame(function(){t=setTimeout(function(){
+      if(gridSeenRef.current.id!==gridId)return;
+      gridSeenRef.current.full=true;setGridTick(function(n){return n+1;});
+    },0);});
+    return function(){window.cancelAnimationFrame(raf);clearTimeout(t);};
+  },[gridId,gridFull]);
+  var gridRows=gridFull?visibleRows:visibleRows.slice(0,GRID_FIRST_ROWS);
+  var visKey=gridRows.map(function(r){return r.id;}).join(",");
   useEffect(function(){
     var box=tableBoxRef.current;
     var out=[];
@@ -2869,7 +2890,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             </thead>
             <tbody>
               {(sc.rows||[]).length===0&&<tr><td colSpan={wks.length+(advanced?5:3)} style={{padding:"14px",textAlign:"center",color:"#bbb",fontSize:12}}>No rows yet. Add a category or a task below.</td></tr>}
-              {visibleRows.map(function(row){
+              {gridRows.map(function(row){
                 var pqRows=(row.kind==="category")?[]:prereqsOf(row.id);
                 var isSection=row.kind==="section";
                 var isCat=row.kind==="category"||isSection;   // both are headers, not tasks

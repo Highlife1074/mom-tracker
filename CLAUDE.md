@@ -55,6 +55,9 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
   Calculs par ligne (`procRisk`, `rowActions`, `prereqsOf`, `planColor`) mémorisés **pour un rendu** (`_rm`) ;
   style fixe des cellules de semaine en classe CSS `.sched-wk` (pas de style en ligne par cellule) ; flèches de liens
   mesurées seulement quand le planning / les lignes affichées changent ou que la table change de taille.
+  Affichage en deux temps (`GRID_FIRST_ROWS` = 60) : à l'ouverture ou au changement de zone / planning, les 60
+  premières lignes tout de suite, le reste juste après le premier affichage (`gridRows`) ; l'impression a sa propre
+  table complète, le saut vers une tâche attend que sa ligne soit dessinée.
 - `tenderDocs(td)` mémorisé par objet Package (WeakMap, vidé si `pp_durations` ou le jour change) : ne jamais modifier
   un Package en place, toujours un nouvel objet. `isValidDate` mémorise les chaînes ; `findDuplicateActions` gardé
   tant que `tasks` ne change pas.
