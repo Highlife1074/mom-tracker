@@ -637,23 +637,27 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
     const pct=unifiedActions.length?Math.round(done/unifiedActions.length*100):0;
     return <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-        <button className="btn btn-sm" onClick={()=>setView("list")}>← Back</button>
+        <button className="btn btn-sm" onClick={()=>setView("list")}>← Trackers</button>
         <div style={{flex:1}}><div className="page-title">{sel.title}</div>
           {sel.description&&<div className="page-sub">{sel.description}</div>}
         </div>
-        <button className="btn btn-sm" onClick={()=>setShowImport(true)} style={{background:"#fffdf0",color:"#7b1fa2",border:"1.5px solid #c9a84c"}}>📥 Import Excel</button>
-        <button className="btn btn-sm" onClick={()=>openEdit(sel)}>✏️ Edit</button>
-        <button className="btn btn-sm btn-danger" onClick={()=>delTracker(sel.id)}>🗑 Delete</button>
+        <button className="btn btn-sm" onClick={()=>setShowImport(true)}>Import Excel</button>
+        <button className="btn btn-sm" onClick={()=>openEdit(sel)}>Edit</button>
+        <button className="btn btn-sm btn-danger" onClick={()=>delTracker(sel.id)}>Delete</button>
       </div>
-      <div className="pbar"><div className="pfill" style={{width:pct+"%",background:"#2e7d32"}}/></div>
-      <div style={{fontSize:11,color:"#888",marginBottom:14}}>{done}/{unifiedActions.length} done ({pct}%)</div>
+      <div className="kpi-strip" style={{maxWidth:520}}>
+        <div className="kpi"><div className="kpi-l">Actions</div><div className="kpi-v">{unifiedActions.length}</div></div>
+        <div className="kpi"><div className="kpi-l">Done</div><div className="kpi-v">{done}</div></div>
+        <div className="kpi"><div className="kpi-l">Open</div><div className="kpi-v">{unifiedActions.length-done}</div></div>
+        <div className="kpi"><div className="kpi-l">Progress</div><div className="kpi-v">{pct}<small>%</small></div></div>
+      </div>
 
-      {legacyCount>0&&<div style={{padding:"10px 14px",background:"#fff8e1",border:"1px solid #ffe082",borderRadius:8,marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-        <span style={{fontSize:12,color:"#f57f17",flex:1}}>⚠️ This tracker has {legacyCount} older action{legacyCount!==1?"s":""} not yet unified with the shared Actions system — they can't be sent to a Zone or filtered elsewhere yet. Migrate them to unlock full tagging.</span>
-        <button className="btn btn-sm" onClick={()=>migrateLegacy(sel)}>🔄 Migrate now</button>
+      {legacyCount>0&&<div style={{padding:"10px 14px",background:"var(--surface)",border:"1px solid var(--rule)",borderLeft:"3px solid var(--amber)",borderRadius:"var(--r-sm)",marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <span style={{fontSize:12,color:"var(--ink-2)",flex:1}}>This tracker has {legacyCount} older action{legacyCount!==1?"s":""} not yet unified with the shared Actions system — they can't be sent to a Zone or filtered elsewhere yet. Migrate them to unlock full tagging.</span>
+        <button className="btn btn-sm" onClick={()=>migrateLegacy(sel)}>Migrate now</button>
       </div>}
 
-      {unifiedActions.length===0&&legacyCount===0&&<div className="empty" style={{padding:"20px 0"}}><div className="empty-ico">📋</div><div className="empty-txt">No actions yet. Add one manually or import from Excel.</div></div>}
+      {unifiedActions.length===0&&legacyCount===0&&<div className="empty" style={{padding:"20px 0"}}><div className="empty-txt">No actions yet. Add one manually or import from Excel.</div></div>}
 
       {unifiedActions.map(ac=>{
         const sc=calcScore(ac.importance||1,ac.urgence||1);const ss=scoreStyle(sc);
@@ -712,7 +716,7 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
       })}
       <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8}}>
         <button className="btn btn-sm" onClick={function(){addAction(sel.id,false);}}>＋ Add Action</button>
-        <button className="btn btn-sm" onClick={function(){addAction(sel.id,true);}} style={{background:"#e3f2fd",color:"#1565c0",border:"1.5px solid #1565c0"}}>＋ Add Info</button>
+        <button className="btn btn-sm" onClick={function(){addAction(sel.id,true);}}>＋ Add Info</button>
       </div>
       {showForm&&formData&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
       {showImport&&<ExcelImportModal onImport={handleExcelImport} onClose={()=>setShowImport(false)} people={people} packages={packages}/>}
@@ -726,26 +730,23 @@ function TrackersView({trackers,setTrackers,saveX,people,packages,tags,tenders,c
       <button className="btn btn-gold" onClick={openNew}>＋ New Tracker</button>
     </div>
     <div style={{marginBottom:12}}>
-      <input type="text" value={trackerQ} onChange={function(e){setTrackerQ(e.target.value);}} placeholder="🔍 Search tracker..." style={{width:220,padding:"5px 10px",fontSize:12}}/>
+      <input type="text" value={trackerQ} onChange={function(e){setTrackerQ(e.target.value);}} placeholder="Search tracker…" style={{width:220,padding:"5px 10px",fontSize:12}}/>
     </div>
-    {filteredTr.length===0?<div className="empty"><div className="empty-ico">📊</div><div className="empty-txt">{trackerQ?"No tracker matches your search.":"No trackers yet. Create one to track a recurring theme."}</div></div>
-    :filteredTr.map(tr=>{
+    {filteredTr.length===0?<div className="empty"><div className="empty-txt">{trackerQ?"No tracker matches your search.":"No trackers yet. Create one to track a recurring theme."}</div></div>
+    :<div>{filteredTr.map(tr=>{
       var unified=trackerTasks(tr.id);
       var totalCount=unified.length+(tr.actions||[]).length;
       var doneCount=unified.filter(a=>a.status==="done").length+(tr.actions||[]).filter(a=>a.status==="done").length;
       const pct=totalCount?Math.round(doneCount/totalCount*100):0;
-      return <div key={tr.id} className="ctr-card" onClick={()=>{setSel(tr);setView("detail");}}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:14}}>{tr.title}</div>
-            {tr.description&&<div style={{fontSize:12,color:"#888",marginTop:2}}>{tr.description}</div>}
-            <div style={{fontSize:11,color:"#aaa",marginTop:4}}>📅 {fmtDate(tr.createdAt)} · {doneCount}/{totalCount} done</div>
-          </div>
-          <div style={{fontSize:13,fontWeight:700,color:pct===100?"#2e7d32":"#888"}}>{pct}%</div>
+      return <div key={tr.id} className="trk-row" onClick={()=>{setSel(tr);setView("detail");}}>
+        <div style={{minWidth:0}}>
+          <div className="trk-t">{tr.title}</div>
+          <div className="trk-d">{tr.description?tr.description+" · ":""}Created {fmtDate(tr.createdAt)}</div>
         </div>
-        <div className="pbar" style={{marginTop:8}}><div className="pfill" style={{width:pct+"%",background:pct===100?"#2e7d32":"#c9a84c"}}/></div>
+        <div className="meter"><i className={pct===100?"good":""} style={{width:pct+"%"}}/></div>
+        <div className="trk-n">{doneCount}/{totalCount} · {pct}%</div>
       </div>;
-    })}
+    })}</div>}
     {showForm&&formData&&<TrackerFormModal data={formData} onChange={setFormData} onSave={saveTracker} onClose={()=>setShowForm(false)} people={people} packages={packages} tags={tags}/>}
   </div>;
 }
@@ -834,17 +835,17 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,tags,
     {dashTab==="weekly"&&<WeeklyView tasks={tasks} trackers={trackers} people={people} tags={tags||[]} tagrules={tagrules||{}} pkgrules={pkgrules||{}} packages={packages} tenders={tenders} contractors={contractors}/>}
     {dashTab!=="weekly"&&<div>
 
-    <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+    <div className="kpi-strip">
       {[
-        {label:"Total active",val:active.length,color:"#1a1a1a"},
-        {label:"Overdue",val:overdue.length,color:"#c62828"},
-        {label:"High priority",val:high,color:"#c62828"},
-        {label:"Medium",val:mid,color:"#f57f17"},
-        {label:"Standard",val:low,color:"#888"},
-        {label:"Done",val:done.length,color:"#2e7d32"}
-      ].map(function(k){return <div key={k.label} className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 14px",textAlign:"center"}}>
-        <div style={{fontSize:24,fontWeight:900,color:k.color}}>{k.val}</div>
-        <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{k.label}</div>
+        {label:"Total active",val:active.length,cls:""},
+        {label:"Overdue",val:overdue.length,cls:overdue.length?"bad":""},
+        {label:"High priority",val:high,cls:high?"bad":""},
+        {label:"Medium",val:mid,cls:""},
+        {label:"Standard",val:low,cls:""},
+        {label:"Done",val:done.length,cls:"good"}
+      ].map(function(k){return <div key={k.label} className={"kpi "+k.cls}>
+        <div className="kpi-l">{k.label}</div>
+        <div className="kpi-v">{k.val}</div>
       </div>;})}
     </div>
 

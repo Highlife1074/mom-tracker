@@ -914,7 +914,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       </div>
 
       {zoneKpis.length===0
-        ?<div className="empty"><div className="empty-ico">📊</div><div className="empty-txt">No KPIs tracked for {curZone} yet.</div></div>
+        ?<div className="empty"><div className="empty-txt">No KPIs tracked for {curZone} yet.</div></div>
         :zoneKpis.map(function(kpi){
           var weeks=kpiWeeks(kpi);
           var lastWeek=weeks.length?weeks[weeks.length-1]:null;
@@ -924,15 +924,16 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
           var isOpen=expandedKpi===kpi.id;
           var behindSchedule=latestDone&&latestDone.actualCum<latestDone.plannedCum;
           return <div key={kpi.id} className="card" style={{marginBottom:10,padding:0,overflow:"hidden"}}>
-            <div onClick={function(){setExpandedKpi(isOpen?null:kpi.id);}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer",background:isOpen?"#fafaf8":"#fff",flexWrap:"wrap"}}>
-              <span style={{fontSize:12,color:"#aaa"}}>{isOpen?"▾":"▸"}</span>
+            <div onClick={function(){setExpandedKpi(isOpen?null:kpi.id);}} style={{display:"flex",alignItems:"center",gap:16,padding:"12px 16px",cursor:"pointer",background:isOpen?"#fafaf8":"#fff",flexWrap:"wrap",boxShadow:"inset 3px 0 0 "+(pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--ink-4)")}}>
+              <span style={{fontSize:11,color:"var(--ink-3)"}}>{isOpen?"▾":"▸"}</span>
               <div style={{flex:1,minWidth:150}}>
-                <div style={{fontWeight:700,fontSize:13}}>{kpi.name}</div>
-                <div style={{fontSize:10,color:"#888"}}>{fmtDate(kpi.startDate)} → {fmtDate(kpi.endDate)} · target {Number(kpi.totalTarget).toLocaleString()} {kpi.unit}</div>
+                <div style={{fontWeight:600,fontSize:13}}>{kpi.name}</div>
+                <div style={{fontSize:11,color:"var(--ink-3)"}}>{fmtDate(kpi.startDate)} → {fmtDate(kpi.endDate)} · target {Number(kpi.totalTarget).toLocaleString()} {kpi.unit}</div>
               </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:16,fontWeight:900,color:pctDone>=100?"#2e7d32":behindSchedule?"#c62828":"#1a73e8"}}>{pctDone}%</div>
-                <div style={{fontSize:11,color:behindSchedule?"#c62828":"#888",fontWeight:behindSchedule?700:400}}>{behindSchedule?"behind schedule":"on/ahead of schedule"}</div>
+              <div className="meter" style={{width:140}}><i className={pctDone>=100?"good":behindSchedule?"bad":""} style={{width:pctDone+"%"}}/></div>
+              <div style={{textAlign:"right",minWidth:110}}>
+                <div className="num" style={{fontSize:16,fontWeight:500,color:pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--ink)"}}>{pctDone}%</div>
+                <div style={{fontSize:11,color:behindSchedule?"var(--red)":"var(--ink-3)"}}>{behindSchedule?"Behind schedule":"On schedule"}</div>
               </div>
             </div>
 
@@ -958,7 +959,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                   <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase"}}>End</label>
                   <input type="date" min="1990-01-01" max="2200-12-31" value={kpi.endDate||""} onChange={function(e){updateKpi(kpi.id,"endDate",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
                 </div>
-                <button className="btn btn-sm btn-danger" onClick={function(){delKpi(kpi.id);}}>🗑 Delete</button>
+                <button className="btn btn-sm btn-danger" onClick={function(){delKpi(kpi.id);}}>Delete</button>
               </div>
               <KPICurveChart kpi={kpi} weeks={weeks}/>
 
@@ -979,22 +980,23 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                   projFinishLabel="No progress yet";
                 }
                 var isLateVsPlan=avgRate>0&&(function(){var d=new Date(latestDone.monday);d.setDate(d.getDate()+Math.ceil(remaining/avgRate)*7);return toISO(d)>kpi.endDate;})();
-                return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                  <div className="card" style={{flex:1,minWidth:150,marginBottom:0,padding:"8px 12px",background:remaining<=0?"#e8f5e9":"#f8f7f4"}}>
-                    <div style={{fontSize:11,color:"#888",textTransform:"uppercase",fontWeight:700}}>Remaining to do</div>
-                    <div style={{fontSize:14,fontWeight:800,color:remaining<=0?"#2e7d32":"#14171c"}}>{remaining<=0?"Done":remaining.toLocaleString()+" "+kpi.unit}</div>
+                return <div className="kpi-strip">
+                  <div className={"kpi"+(remaining<=0?" good":"")}>
+                    <div className="kpi-l">Remaining to do</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{remaining<=0?"Done":remaining.toLocaleString()}{remaining>0&&<small>{kpi.unit}</small>}</div>
                   </div>
-                  <div className="card" style={{flex:1,minWidth:150,marginBottom:0,padding:"8px 12px",background:"#f8f7f4"}}>
-                    <div style={{fontSize:11,color:"#888",textTransform:"uppercase",fontWeight:700}}>Current avg. pace</div>
-                    <div style={{fontSize:14,fontWeight:800}}>{avgRate.toLocaleString(undefined,{maximumFractionDigits:1})} {kpi.unit}/week</div>
+                  <div className="kpi">
+                    <div className="kpi-l">Current avg. pace</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{avgRate.toLocaleString(undefined,{maximumFractionDigits:1})}<small>{kpi.unit}/week</small></div>
                   </div>
-                  <div className="card" style={{flex:1,minWidth:170,marginBottom:0,padding:"8px 12px",background:weeksLeftInPlan<=0&&remaining>0?"#fce4ec":"#e3f2fd"}}>
-                    <div style={{fontSize:11,color:"#1565c0",textTransform:"uppercase",fontWeight:700}}>Rate needed to finish on time</div>
-                    <div style={{fontSize:14,fontWeight:800,color:weeksLeftInPlan<=0&&remaining>0?"#c62828":"#1565c0"}}>{neededRate===null?"Plan end passed":remaining<=0?"Done":neededRate.toLocaleString(undefined,{maximumFractionDigits:1})+" "+kpi.unit+"/week"}</div>
+                  <div className={"kpi"+(weeksLeftInPlan<=0&&remaining>0?" bad":"")}>
+                    <div className="kpi-l">Rate needed to finish on time</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{neededRate===null?"Plan end passed":remaining<=0?"Done":neededRate.toLocaleString(undefined,{maximumFractionDigits:1})}{neededRate!==null&&remaining>0&&<small>{kpi.unit}/week</small>}</div>
                   </div>
-                  <div className="card" style={{flex:1,minWidth:170,marginBottom:0,padding:"8px 12px",background:isLateVsPlan?"#fce4ec":"#f0fff4"}}>
-                    <div style={{fontSize:11,color:isLateVsPlan?"#c62828":"#2e7d32",textTransform:"uppercase",fontWeight:700}}>Projected finish (current pace)</div>
-                    <div style={{fontSize:14,fontWeight:800,color:isLateVsPlan?"#c62828":"#2e7d32"}}>{projFinishLabel}{isLateVsPlan?" ⚠️":""}</div>
+                  <div className={"kpi"+(isLateVsPlan?" bad":"")}>
+                    <div className="kpi-l">Projected finish (current pace)</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{projFinishLabel}</div>
+                    {isLateVsPlan&&<div className="kpi-s" style={{color:"var(--red)"}}>After planned end</div>}
                   </div>
                 </div>;
               })()}
