@@ -151,8 +151,8 @@ function invPoStatus(po,dockets){
   var state=po.closed?"closed":totR<=0?"open":lines.every(function(l){return l.remaining<=0;})?"delivered":"partial";
   return{lines:lines,pct:totO>0?totR/totO*100:0,over:over,state:state};
 }
-var INV_PO_STATES={open:{label:"open",bg:"#e8f0fe",fg:"#1a73e8"},partial:{label:"partly delivered",bg:"#fff8e1",fg:"#f57f17"},
-  delivered:{label:"delivered",bg:"#e8f5e9",fg:"#2e7d32"},closed:{label:"closed",bg:"#eceae3",fg:"#555"}};
+var INV_PO_STATES={open:{label:"open",bg:"#e8f0fe",fg:"#0f5299"},partial:{label:"partly delivered",bg:"#faf3e0",fg:"#b35c00"},
+  delivered:{label:"delivered",bg:"#e6f2e9",fg:"#1e6b3a"},closed:{label:"closed",bg:"#eceae3",fg:"#555"}};
 
 // Issued quantity per item and per place, between two dates (inclusive). Returns are netted.
 function invWhereUsed(issues,from,to,groupBy){
@@ -195,10 +195,10 @@ function invParseItemsPaste(text,existing){
 
 // ---------------------------------------------------------------- shared bits
 function InvBig({label,value,unit,colour,sub}){
-  return <div style={{flex:"1 1 130px",background:"#fff",border:"1.5px solid #e8e6df",borderRadius:10,padding:"10px 14px"}}>
-    <div style={{fontSize:10,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".06em"}}>{label}</div>
-    <div style={{fontSize:22,fontWeight:800,color:colour||"#14171c",fontVariantNumeric:"tabular-nums"}}>{value===null||value===undefined?"—":invFmt(value,1)}{unit&&<span style={{fontSize:12,fontWeight:600,color:"#888"}}> {unit}</span>}</div>
-    {sub&&<div style={{fontSize:11,color:"#888"}}>{sub}</div>}
+  return <div className="kpi" style={{flex:"1 1 130px",background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}>
+    <div className="kpi-l">{label}</div>
+    <div className="kpi-v" style={{color:colour||"var(--ink)"}}>{value===null||value===undefined?"—":invFmt(value,1)}{unit&&<small>{unit}</small>}</div>
+    {sub&&<div className="kpi-s">{sub}</div>}
   </div>;
 }
 function InvQtyInput({value,onChange,disabled,width,placeholder}){
@@ -241,7 +241,7 @@ function invCleanLines(lines){return(lines||[]).map(function(l){return{id:l.id,i
 function InvLinkField({value,onChange,ro}){
   var bad=value&&!/^https:\/\//.test(value);
   return <div className="fg"><label>Scan / document (SharePoint link)</label><input type="text" disabled={ro} value={value||""} placeholder="https://…" onChange={function(e){onChange(e.target.value.trim());}}/>
-    {bad&&<span style={{fontSize:11,color:"#c62828"}}>The link must start with https://</span>}</div>;
+    {bad&&<span style={{fontSize:11,color:"#b3302a"}}>The link must start with https://</span>}</div>;
 }
 function invLinkBad(v){return !!v&&!/^https:\/\//.test(v);}
 function invCanDelete(){return !!window._ppMayDelete||isAppAdmin(window._currentUser&&window._currentUser.name);}
@@ -333,7 +333,7 @@ function InvOverview({items,counts,figs,onOpenItem,onGoItems,issues}){
       <span style={{fontSize:12,color:"#888"}}>{list.length} item{list.length===1?"":"s"} · last count {lastCount?fmtDate(lastCount.date):"none yet"}</span>
       <div style={{flex:1}}/>
       <button className="btn btn-sm" onClick={function(){invExportXlsx(list,figs,issues);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){invOpenReport(list,figs,issues);}}>🖨 Report</button>
+      <button className="btn btn-sm" onClick={function(){invOpenReport(list,figs,issues);}}>Report</button>
     </div>
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Item</th><th>Unit</th><th style={R}>Ordered</th><th style={R}>Delivered</th><th style={R} title="Ordered on a PO and not delivered yet">Still on PO</th><th style={R}>Issued</th>
@@ -341,7 +341,7 @@ function InvOverview({items,counts,figs,onOpenItem,onGoItems,issues}){
         <th style={R} title="Real consumption − recorded issues">Not traced</th><th style={R}>Avg / month</th><th style={R}>Cover</th></tr></thead>
       <tbody>{list.map(function(it){
         var f=figs[it.id];
-        var utCol=f.untracedPct!==null&&Math.abs(f.untracedPct)>INV_UNTRACED_WARN_PCT?(f.untracedPct<0?"#c62828":"#ef6c00"):undefined;
+        var utCol=f.untracedPct!==null&&Math.abs(f.untracedPct)>INV_UNTRACED_WARN_PCT?(f.untracedPct<0?"#b3302a":"#ef6c00"):undefined;
         return <tr key={it.id} onClick={function(){onOpenItem(it.id);}} style={{cursor:"pointer"}}>
           <td>{it.critical&&<span title="Critical item" style={{color:"var(--gold-ink)"}}>★ </span>}<b>{it.code}</b> {it.name}{it.category&&<div style={{fontSize:10,color:"#888"}}>{it.category}</div>}</td>
           <td>{it.unit}</td>
@@ -350,7 +350,7 @@ function InvOverview({items,counts,figs,onOpenItem,onGoItems,issues}){
           <td style={R}>{f.outstanding?invFmt(f.outstanding):"—"}</td>
           <td style={R}>{invFmt(f.issuedAll)}</td>
           <td style={R}>{f.lastCountDate?<span>{invFmt(f.lastCountQty)}<div style={{fontSize:10,color:"#888"}}>{fmtDate(f.lastCountDate)}</div></span>:"—"}</td>
-          <td style={Object.assign({fontWeight:700,color:f.book<0?"#c62828":f.low?"#ef6c00":undefined},R)}>{invFmt(f.book)}{f.low&&<div style={{fontSize:10}}>⚠ min {invFmt(it.minStock)}</div>}</td>
+          <td style={Object.assign({fontWeight:700,color:f.book<0?"#b3302a":f.low?"#ef6c00":undefined},R)}>{invFmt(f.book)}{f.low&&<div style={{fontSize:10}}>⚠ min {invFmt(it.minStock)}</div>}</td>
           <td style={R}>{f.periods.length?invFmt(f.consumed):"—"}</td>
           <td style={Object.assign({color:utCol,fontWeight:utCol?700:undefined},R)}>{f.periods.length?invFmt(f.untraced)+(f.untracedPct!==null?" · "+f.untracedPct.toFixed(0)+"%":""):"—"}</td>
           <td style={Object.assign({fontWeight:700},R)}>{f.avg===null?"—":invFmt(f.avg,1)}</td>
@@ -399,12 +399,12 @@ function InvItemDetail({item,f,ix,issues,pos,edit,raiseAction,saveItems,items,on
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
       <InvBig label="Ordered" value={f.ordered} unit={u} sub={f.outstanding?invFmt(f.outstanding)+" still on PO":"nothing outstanding"}/>
       <InvBig label="Delivered" value={f.deliveredAll} unit={u} sub={m.del.length+" docket line"+(m.del.length===1?"":"s")}/>
-      <InvBig label="Book stock" value={f.book} unit={u} colour={f.book<0?"#c62828":f.low?"#ef6c00":null} sub={f.lastCountDate?"count "+fmtDate(f.lastCountDate)+" + in − out":"delivered − issued"}/>
+      <InvBig label="Book stock" value={f.book} unit={u} colour={f.book<0?"#b3302a":f.low?"#ef6c00":null} sub={f.lastCountDate?"count "+fmtDate(f.lastCountDate)+" + in − out":"delivered − issued"}/>
       <InvBig label="Real consumption" value={f.periods.length?f.consumed:null} unit={u} sub={f.periods.length?"over "+invFmt(f.days/INV_DAYS_PER_MONTH,1)+" months":"needs a stock count"}/>
       <InvBig label="Average / month" value={f.avg} unit={u} sub={f.cover!==null?"stock covers "+invFmt(f.cover,1)+" months":f.lastPerMonth!==null?"last period "+invFmt(f.lastPerMonth,1):null}/>
-      <InvBig label="Not traced" value={f.periods.length?f.untraced:null} unit={u} colour={flagged?(f.untraced<0?"#c62828":"#ef6c00"):null} sub={f.untracedPct!==null?f.untracedPct.toFixed(0)+"% of consumption":"consumed − issued"}/>
+      <InvBig label="Not traced" value={f.periods.length?f.untraced:null} unit={u} colour={flagged?(f.untraced<0?"#b3302a":"#ef6c00"):null} sub={f.untracedPct!==null?f.untracedPct.toFixed(0)+"% of consumption":"consumed − issued"}/>
     </div>
-    {f.untraced<0&&flagged&&<div style={{fontSize:12,color:"#c62828",marginBottom:10}}>More issued than consumed: an issue slip entered twice, a delivery docket missing, or the stock was over-counted.</div>}
+    {f.untraced<0&&flagged&&<div style={{fontSize:12,color:"#b3302a",marginBottom:10}}>More issued than consumed: an issue slip entered twice, a delivery docket missing, or the stock was over-counted.</div>}
     {f.untraced>0&&flagged&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:10}}>Material is leaving without an issue slip: losses, theft, or exits never written down.</div>}
 
     <div className="card-title" style={{fontSize:15}}>Month by month <span style={{fontSize:12,fontWeight:400,color:"#888"}}>— between two stock counts</span></div>
@@ -416,14 +416,14 @@ function InvItemDetail({item,f,ix,issues,pos,edit,raiseAction,saveItems,items,on
           return <tr key={p.count.id}>
             <td>{p.from?fmtDate(p.from):"start"} → <b>{fmtDate(p.to)}</b> <span style={{fontSize:10,color:"#888"}}>{p.days} d</span></td>
             <td style={R}>{invFmt(p.opening)}</td><td style={R}>{invFmt(p.delivered)}</td><td style={R}>{invFmt(p.closing)}</td>
-            <td style={Object.assign({fontWeight:700,color:p.consumed<0?"#c62828":undefined},R)}>{invFmt(p.consumed)}</td>
+            <td style={Object.assign({fontWeight:700,color:p.consumed<0?"#b3302a":undefined},R)}>{invFmt(p.consumed)}</td>
             <td style={R}>{invFmt(p.issued)}</td>
-            <td style={Object.assign({color:p.untraced<0?"#c62828":p.untraced>0?"#ef6c00":undefined},R)}>{invFmt(p.untraced)}</td>
+            <td style={Object.assign({color:p.untraced<0?"#b3302a":p.untraced>0?"#ef6c00":undefined},R)}>{invFmt(p.untraced)}</td>
             <td style={R}>{p.perMonth===null?"—":invFmt(p.perMonth,1)}</td>
           </tr>;
         })}</tbody>
       </table></div>
-      {f.periods.some(function(p){return p.consumed<0;})&&<div style={{fontSize:12,color:"#c62828",marginBottom:10}}>A negative consumption means the count is higher than what can be there: a delivery docket is missing, or the count is wrong.</div>}
+      {f.periods.some(function(p){return p.consumed<0;})&&<div style={{fontSize:12,color:"#b3302a",marginBottom:10}}>A negative consumption means the count is higher than what can be there: a delivery docket is missing, or the count is wrong.</div>}
     </>}
 
     <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -457,7 +457,7 @@ function InvItemDetail({item,f,ix,issues,pos,edit,raiseAction,saveItems,items,on
           var st=invPoStatus(p,m.del.map(function(x){return x.doc;}).filter(function(d,i,a){return a.indexOf(d)===i;}));
           var l=st.lines.find(function(x){return x.itemId===item.id;})||{ordered:0,received:0,remaining:0};
           return <tr key={p.id}><td><b>{p.no||"—"}</b>{p.closed&&<span className="pill" style={{marginLeft:6,background:"#eceae3",color:"#555"}}>closed</span>}</td><td>{fmtDate(p.date)}</td><td>{p.supplier}</td>
-            <td style={R}>{invFmt(l.ordered)}</td><td style={R}>{invFmt(l.received)}</td><td style={Object.assign({fontWeight:700,color:l.remaining<0?"#c62828":undefined},R)}>{invFmt(l.remaining)}</td></tr>;
+            <td style={R}>{invFmt(l.ordered)}</td><td style={R}>{invFmt(l.received)}</td><td style={Object.assign({fontWeight:700,color:l.remaining<0?"#b3302a":undefined},R)}>{invFmt(l.remaining)}</td></tr>;
         })}</tbody></table>
     </>}
   </InvModal>;
@@ -559,8 +559,8 @@ function InvPos({items,pos,savePos,dockets,edit}){
         var p=x.p,st=x.st,S=INV_PO_STATES[st.state];
         return <tr key={p.id} onClick={function(){setEditing(p);}} style={{cursor:"pointer"}}>
           <td><b>{p.no||"—"}</b></td><td>{fmtDate(p.date)}</td><td>{p.supplier}</td>
-          <td style={{fontSize:11}}>{st.lines.map(function(l){var it=byId[l.itemId];return <div key={l.itemId}>{invItemLabel(it)}: <b>{invFmt(l.received)}</b> / {invFmt(l.ordered)} {it?it.unit:""}{l.remaining<0&&<span style={{color:"#c62828"}}> (over-delivered)</span>}</div>;})}</td>
-          <td style={{minWidth:90}}><div style={{background:"#f2f0eb",borderRadius:4,height:8}}><div style={{width:Math.min(100,st.pct)+"%",background:"#2e7d32",height:8,borderRadius:4}}/></div><span style={{fontSize:10,color:"#888"}}>{st.pct.toFixed(0)}%</span></td>
+          <td style={{fontSize:11}}>{st.lines.map(function(l){var it=byId[l.itemId];return <div key={l.itemId}>{invItemLabel(it)}: <b>{invFmt(l.received)}</b> / {invFmt(l.ordered)} {it?it.unit:""}{l.remaining<0&&<span style={{color:"#b3302a"}}> (over-delivered)</span>}</div>;})}</td>
+          <td style={{minWidth:90}}><div style={{background:"#f2f0eb",borderRadius:4,height:8}}><div style={{width:Math.min(100,st.pct)+"%",background:"#1e6b3a",height:8,borderRadius:4}}/></div><span style={{fontSize:10,color:"#888"}}>{st.pct.toFixed(0)}%</span></td>
           <td><span className="pill" style={{background:S.bg,color:S.fg}}>{S.label}</span></td>
           <td onClick={function(e){e.stopPropagation();}}>{p.link&&/^https:\/\//.test(p.link)&&<a href={p.link} target="_blank" rel="noopener noreferrer" title="Open the PO">📄</a>}</td>
         </tr>;
@@ -585,7 +585,7 @@ function InvPoEditor({po,items,dockets,pos,edit,onSave,onDelete,onClose}){
   var dupNo=d.no&&pos.some(function(p){return p.id!==d.id&&String(p.no).trim().toUpperCase()===String(d.no).trim().toUpperCase();});
   var suppliers=[...new Set(pos.map(function(p){return p.supplier;}).filter(Boolean))].sort();
   return <InvModal title="🧾 Purchase order" onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!d.no.trim()||!d.date||!invLinesValid(d.lines)||invLinkBad(d.link)} onClick={function(){onSave(Object.assign({},d,{no:d.no.trim(),lines:invCleanLines(d.lines)}));}}>✓ Save</button>}
     </>}>
@@ -633,7 +633,7 @@ function InvDockets({items,pos,dockets,saveDockets,edit}){
         var po=poById[d.poId];
         return <tr key={d.id} onClick={function(){setEditing(d);}} style={{cursor:"pointer"}}>
           <td>{fmtDate(d.date)}</td><td><b>{d.no||"—"}</b></td><td>{d.supplier}</td>
-          <td>{po?po.no:d.poId?<span style={{color:"#c62828"}}>deleted PO</span>:<span style={{color:"#888"}}>no PO</span>}</td>
+          <td>{po?po.no:d.poId?<span style={{color:"#b3302a"}}>deleted PO</span>:<span style={{color:"#888"}}>no PO</span>}</td>
           <td style={{fontSize:11}}>{(d.lines||[]).map(function(l){var it=byId[l.itemId];return <div key={l.id}>{invItemLabel(it)}: <b>{invFmt(l.qty)}</b> {it?it.unit:""}</div>;})}</td>
           <td onClick={function(e){e.stopPropagation();}}>{d.link&&/^https:\/\//.test(d.link)&&<a href={d.link} target="_blank" rel="noopener noreferrer" title="Open the scan">📄</a>}</td>
         </tr>;
@@ -667,7 +667,7 @@ function InvDocketEditor({docket,items,pos,dockets,edit,onSave,onDelete,onClose}
     set({lines:ls,supplier:d.supplier||po.supplier});
   }
   return <InvModal title="🚚 Delivery docket" onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!d.date||!invLinesValid(d.lines)||invLinkBad(d.link)} onClick={function(){onSave(Object.assign({},d,{no:(d.no||"").trim(),lines:invCleanLines(d.lines)}));}}>✓ Save</button>}
     </>}>
@@ -729,7 +729,7 @@ function InvIssues({items,issues,saveIssues,figs,zones,contractors,edit}){
         var ret=s.kind==="return";
         return <tr key={s.id} onClick={function(){setEditing(s);}} style={{cursor:"pointer",background:ret?"#f3f8f3":undefined}}>
           <td>{fmtDate(s.date)}</td>
-          <td><b>{s.ref||"—"}</b>{ret&&<span className="pill" style={{marginLeft:6,background:"#e8f5e9",color:"#2e7d32"}}>↩ return</span>}</td>
+          <td><b>{s.ref||"—"}</b>{ret&&<span className="pill" style={{marginLeft:6,background:"#e6f2e9",color:"#1e6b3a"}}>↩ return</span>}</td>
           <td>{s.zone}</td><td>{s.location}</td><td style={{fontSize:11}}>{s.use}</td><td style={{fontSize:11}}>{s.issuedTo}</td>
           <td style={{fontSize:11}}>{(s.lines||[]).map(function(l){var it=byId[l.itemId];return <div key={l.id}>{invItemLabel(it)}: <b>{ret?"+":"−"}{invFmt(l.qty)}</b> {it?it.unit:""}</div>;})}</td>
         </tr>;
@@ -754,7 +754,7 @@ function InvIssueEditor({issue,items,issues,figs,zones,contractors,edit,onSave,o
   var valid=d.date&&invLinesValid(d.lines)&&(ret||d.zone||d.location.trim());
   function clean(){return Object.assign({},d,{ref:(d.ref||"").trim(),location:(d.location||"").trim(),use:(d.use||"").trim(),issuedTo:(d.issuedTo||"").trim(),lines:invCleanLines(d.lines)});}
   return <InvModal title={ret?"↩ Return to store":"📤 Issue from store"} onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&isNew&&<button className="btn" disabled={!valid} onClick={function(){onSaveNext(clean());}} title="Save, and start another slip with the same date, zone and receiver">✓ Save &amp; next</button>}
       {!ro&&<button className="btn btn-pri" disabled={!valid} onClick={function(){onSave(clean());}}>✓ Save</button>}
@@ -778,7 +778,7 @@ function InvIssueEditor({issue,items,issues,figs,zones,contractors,edit,onSave,o
         <div className="fg" style={{marginBottom:0}}><label>{ret?"Returned by":"Issued to"}</label><input type="text" list="inv-takers" disabled={ro} value={d.issuedTo} placeholder="subcontractor or person" onChange={function(e){set({issuedTo:e.target.value});}}/>
           <datalist id="inv-takers">{takers.map(function(s){return <option key={s} value={s}/>;})}</datalist></div>
       </div>
-      {!ret&&!d.zone&&!d.location.trim()&&<div style={{fontSize:11,color:"#c62828",marginTop:6}}>Say where the material goes: zone or location.</div>}
+      {!ret&&!d.zone&&!d.location.trim()&&<div style={{fontSize:11,color:"#b3302a",marginTop:6}}>Say where the material goes: zone or location.</div>}
     </div>
     <InvLinesEditor lines={d.lines||[]} items={items} ro={ro} onChange={function(ls){set({lines:ls});}}
       hint={function(l){
@@ -813,7 +813,7 @@ function InvCounts({items,counts,saveCounts,ix,edit}){
         var n=Object.keys(c.qty||{}).filter(function(k){return _invHas(c.qty[k]);}).length;
         return <tr key={c.id} onClick={function(){setOpenId(c.id);}} style={{cursor:"pointer"}}>
           <td><b>{fmtDate(c.date)}</b></td><td>{c.label}</td>
-          <td>{c.opening?<span className="pill" style={{background:"#e8f0fe",color:"#1a73e8"}}>opening stock</span>:<span className="pill" style={{background:"#eceae3",color:"#555"}}>monthly count</span>}</td>
+          <td>{c.opening?<span className="pill" style={{background:"#e8f0fe",color:"#0f5299"}}>opening stock</span>:<span className="pill" style={{background:"#eceae3",color:"#555"}}>monthly count</span>}</td>
           <td style={{textAlign:"right"}}>{n} / {items.filter(function(it){return !it.archived;}).length}</td>
           <td>{(c.enteredBy||"").split(",")[0]}</td>
         </tr>;
@@ -847,7 +847,7 @@ function InvCountEditor({count,isNew,items,counts,saveCounts,ix,edit,onClose}){
       <button className="btn btn-sm" onClick={close}>← Counts</button>
       <div className="card-title" style={{margin:0}}>Stock count</div>
       <div style={{flex:1}}/>
-      {!ro&&!isNew&&invCanDelete()&&<button className="btn btn-danger btn-sm" onClick={remove}>🗑 Delete</button>}
+      {!ro&&!isNew&&invCanDelete()&&<button className="btn btn-danger btn-sm" onClick={remove}>Delete</button>}
       {!ro&&<button className="btn btn-pri btn-sm" disabled={!d.date||!dirty} onClick={save}>✓ Save</button>}
     </div>
     <div className="frow">
@@ -878,7 +878,7 @@ function InvCountEditor({count,isNew,items,counts,saveCounts,ix,edit,onClose}){
           <td>{it.critical&&<span style={{color:"var(--gold-ink)"}}>★ </span>}<b>{it.code}</b> {it.name}</td><td>{it.unit}</td>
           <td style={Object.assign({color:"#888"},R)}>{invFmt(book)}</td>
           <td style={R}><InvQtyInput disabled={ro} value={v} onChange={function(x){setQty(it.id,x);}}/></td>
-          <td style={Object.assign({fontWeight:700,color:diff===null||Math.abs(diff)<1e-9?"#888":diff<0?"#ef6c00":"#c62828"},R)}>{diff===null?"":(diff>0?"+":"")+invFmt(diff)}</td>
+          <td style={Object.assign({fontWeight:700,color:diff===null||Math.abs(diff)<1e-9?"#888":diff<0?"#ef6c00":"#b3302a"},R)}>{diff===null?"":(diff>0?"+":"")+invFmt(diff)}</td>
         </tr>;
       })}</tbody>
     </table></div>
@@ -943,13 +943,13 @@ function InvItemEditor({item,items,cats,edit,onSave,onDelete,onClose}){
   var ro=!edit;
   var dup=d.code.trim()&&items.some(function(it){return it.id!==d.id&&(it.code||"").trim().toUpperCase()===d.code.trim().toUpperCase();});
   return <InvModal title="📦 Item" width={620} onClose={onClose} footer={<>
-      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>🗑 Delete</button>}
+      {onDelete&&<button className="btn btn-danger" onClick={function(){onDelete(d);}} style={{marginRight:"auto"}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
       {!ro&&<button className="btn btn-pri" disabled={!d.name.trim()||!d.unit||dup} onClick={function(){onSave(Object.assign({},d,{code:d.code.trim(),name:d.name.trim(),category:(d.category||"").trim(),minStock:_invNum(d.minStock)}));}}>✓ Save</button>}
     </>}>
     <div className="frow">
       <div className="fg" style={{flex:"0 0 140px"}}><label>Code</label><input type="text" disabled={ro} value={d.code} onChange={function(e){set({code:e.target.value});}} autoFocus/>
-        {dup&&<span style={{fontSize:11,color:"#c62828"}}>Code already used.</span>}</div>
+        {dup&&<span style={{fontSize:11,color:"#b3302a"}}>Code already used.</span>}</div>
       <div className="fg"><label>Name</label><input type="text" disabled={ro} value={d.name} onChange={function(e){set({name:e.target.value});}}/></div>
     </div>
     <div className="frow">

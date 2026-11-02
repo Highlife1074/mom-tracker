@@ -811,15 +811,15 @@ function matDoc(td,m,i,kd,marSub){
 function MatDocStatus({doc,prep,onPrep}){
   var s=docSummary(doc);var l=doc.cycles;var last=l[l.length-1];
   if(s.state==="none"){
-    if(!onPrep)return <span style={{fontSize:11,color:prep?"#1a73e8":"#9b968b",fontWeight:prep?700:400}}>{prep?"Under preparation":"Not submitted"}</span>;
+    if(!onPrep)return <span style={{fontSize:11,color:prep?"#0f5299":"#9b968b",fontWeight:prep?700:400}}>{prep?"Under preparation":"Not submitted"}</span>;
     return <select value={prep?"under preparation":""} onChange={function(e){onPrep(e.target.value);}}
-      style={{fontSize:11,padding:"3px 6px",fontWeight:700,fontFamily:"inherit",color:prep?"#1a73e8":"#9b968b",width:"100%"}}>
+      style={{fontSize:11,padding:"3px 6px",fontWeight:700,fontFamily:"inherit",color:prep?"#0f5299":"#9b968b",width:"100%"}}>
       <option value="">— Not submitted</option>
       <option value="under preparation">Under preparation</option>
     </select>;
   }
   var lab={pending:"With client"+(last&&last.rev?" · R"+last.rev:""),returned:"To resubmit"+(last&&last.rev?" · R"+last.rev:""),approved:"Approved"+(last&&last.rev?" · R"+last.rev:"")}[s.state];
-  var col={pending:"#1a73e8",returned:"#b35c00",approved:"#1e6b3a"}[s.state];
+  var col={pending:"#0f5299",returned:"#b35c00",approved:"#1e6b3a"}[s.state];
   return <span title="Edit the revisions with the ▸ arrow on this row" style={{fontSize:11,fontWeight:700,color:col,whiteSpace:"nowrap"}}>{lab}</span>;
 }
 // Approval cell: the client's code and its date, or when the answer is expected.
@@ -836,7 +836,7 @@ function MatDocApproval({doc}){
   var due=addCalDays(last.submitted,getDur("clientResponse"));
   var late=isValidDate(due)&&due<today();
   return <span title={"Submitted "+fmtDate(last.submitted)+" + "+getDur("clientResponse")+" days client response"}
-    style={{fontSize:11,whiteSpace:"nowrap",color:late?"#c62828":"#1a73e8",fontWeight:late?700:500}}>{late?"⚠ due ":"expected "}{fmtDate(due)}</span>;
+    style={{fontSize:11,whiteSpace:"nowrap",color:late?"#b3302a":"#0f5299",fontWeight:late?700:500}}>{late?"⚠ due ":"expected "}{fmtDate(due)}</span>;
 }
 
 // Before the submission only: "under preparation" opens the "Prepare the MAR: name — title"
@@ -950,7 +950,7 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
         {last.returned?fmtDate(last.returned):""}</span>;
     }
     var ov=docOverdue(doc,last.submitted);
-    return <span style={{fontSize:11,whiteSpace:"nowrap",color:ov?"#c62828":"#1a73e8",fontWeight:ov?700:500}}>
+    return <span style={{fontSize:11,whiteSpace:"nowrap",color:ov?"#b3302a":"#0f5299",fontWeight:ov?700:500}}>
       {ov?"⚠ due ":"expected "}{fmtDate(docResponseDue(doc,last.submitted))}</span>;
   }
   var inp={fontSize:11,padding:"3px 6px"};
@@ -980,7 +980,7 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
           {amt!==null&&<span style={{fontSize:12,fontWeight:700,fontFamily:"var(--font-mono)"}}>{momEur(amt)}</span>}
           {docs.filter(function(d){return d.listed;}).map(function(d){
             var st=docSummary(d.doc).state;
-            var col={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"}[st];
+            var col={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"}[st];
             return <span key={d.x.k} title={d.info.why} style={{fontSize:10,fontWeight:700,color:col,border:"1px solid "+col,borderRadius:9,padding:"0 7px"}}>
               {d.x.label} · {{approved:"approved",pending:"with client",returned:"to resubmit",none:"to submit"}[st]}</span>;
           })}
@@ -1221,7 +1221,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
                       style={{fontSize:11,fontWeight:matTheo.firm?700:600,padding:"2px 7px",borderRadius:5,cursor:"help",
                         color:matTheo.firm?"var(--green,#1e6b3a)":"var(--ink-3,#6f6b62)",
                         background:matTheo.firm?"var(--green-soft,#e6f2e9)":"#f2f0eb",
-                        border:"1px solid "+(matTheo.firm?"#c8e6c9":"var(--rule,#ddd9cf)")}}>{fmtDate(matTheo.date)}</span>
+                        border:"1px solid "+(matTheo.firm?"#cfe3d5":"var(--rule,#ddd9cf)")}}>{fmtDate(matTheo.date)}</span>
                     :<span style={{color:"#ddd",fontSize:11}} title="No contract date at all yet — fill the ACC step so the chain can compute one">—</span>}
                 </td>
                 <td style={{textAlign:"center"}}>
@@ -1277,7 +1277,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
 function ApprovalRouteCell({td,updTd}){
   var r=tenderApprovalRoute(td);
   var ro=isReadOnly()||!updTd;
-  var col={acc:"#1a73e8",aconex:"#7b1fa2",none:"#6f6b62"}[r.route]||"#555";
+  var col={acc:"#0f5299",aconex:"#4a4740",none:"#6f6b62"}[r.route]||"#555";
   return <span style={{display:"inline-flex",flexDirection:"column",gap:2,verticalAlign:"top"}}>
     <span style={{color:col}}>{tenderRouteLabel(td)}</span>
     <select value={td.approvalRoute||""} disabled={ro} title={r.why}
@@ -1355,7 +1355,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
       {((td.stepLinks||{})[key]||[]).map(function(lk,li){return <div key={li} style={{display:"flex",gap:3,marginBottom:2,alignItems:"center"}}>
         <input type="text" value={lk.label||""} onChange={function(e){var ls=((td.stepLinks||{})[key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{label:e.target.value});});updateStep(td.id,key,"links",ls);}} placeholder="Label" style={{width:70,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
         <input type="url" value={lk.url||""} onChange={function(e){var ls=((td.stepLinks||{})[key]||[]).map(function(x,j){return j!==li?x:Object.assign({},x,{url:e.target.value});});updateStep(td.id,key,"links",ls);}} placeholder="https://..." style={{flex:1,padding:"2px 4px",fontSize:9,border:"1px solid #e0ddd8",borderRadius:4}}/>
-        <button onClick={function(){var ls=((td.stepLinks||{})[key]||[]).filter(function(_,j){return j!==li;});updateStep(td.id,key,"links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:10,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ccc";}}>✕</button>
+        <button onClick={function(){var ls=((td.stepLinks||{})[key]||[]).filter(function(_,j){return j!==li;});updateStep(td.id,key,"links",ls);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:10,flexShrink:0}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ccc";}}>✕</button>
       </div>;})}
       <button onClick={function(){var ls=[...((td.stepLinks||{})[key]||[]),{label:"",url:""}];updateStep(td.id,key,"links",ls);}} style={{fontSize:9,padding:"1px 5px",border:"1px solid #e0ddd8",borderRadius:4,background:"#fafal8",fontFamily:"inherit",cursor:"pointer",color:"#888"}}>＋ link</button>
       {((td.stepLinks||{})[key]||[]).filter(function(lk){return lk.url;}).map(function(lk,li){return <a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,color:"#3949ab",textDecoration:"none",padding:"1px 5px",borderRadius:4,background:"#f0f0ff",border:"1px solid #d0d0f0",marginLeft:3}}>🔗 {lk.label||"link"}</a>;})}
@@ -1376,7 +1376,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
       <td colSpan={span} style={{padding:"8px 12px"}}>
         <div style={{display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12}}>
           <span><span style={lab}>Doc no.</span>{ref
-            ?<b style={{fontFamily:"var(--font-mono)",color:"#1a73e8"}}>{ref}</b>
+            ?<b style={{fontFamily:"var(--font-mono)",color:"#0f5299"}}>{ref}</b>
             :<RefMissingInput onSave={function(v){updateStep(td.id,k,"reference",v);}}/>}</span>
           {ok
             ?<span><span style={lab}>Status</span><FlowDocBadge td={td} id={k}/></span>
@@ -1485,13 +1485,13 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
                   :"Estimated from the previous step. It will move if the dates before it move."}
                 style={{fontSize:11,fontWeight:theo.locked?800:600,cursor:"help",padding:"2px 7px",borderRadius:5,
                   color:theo.locked?"#00695c":"#8b8578",
-                  background:theo.locked?"#e8f5e9":"#f2f0eb",
-                  border:"1px solid "+(theo.locked?"#c8e6c9":"#e0ddd6")}}>{fmtDate(theo.theoretical)}</span>
+                  background:theo.locked?"#e6f2e9":"#f2f0eb",
+                  border:"1px solid "+(theo.locked?"#cfe3d5":"#e0ddd6")}}>{fmtDate(theo.theoretical)}</span>
               :<span style={{color:"#ddd",fontSize:11}}>—</span>}
             {theo.theoretical&&theo.target&&theo.target<theo.theoretical&&
-              <div style={{fontSize:8,color:"#2e7d32",fontWeight:700,marginTop:1}}>target is earlier ✓</div>}
+              <div style={{fontSize:8,color:"#1e6b3a",fontWeight:700,marginTop:1}}>target is earlier ✓</div>}
             {theo.theoretical&&theo.target&&theo.target>theo.theoretical&&
-              <div style={{fontSize:8,color:"#c62828",fontWeight:700,marginTop:1}}>target is later</div>}
+              <div style={{fontSize:8,color:"#b3302a",fontWeight:700,marginTop:1}}>target is later</div>}
           </td>
           <td style={{textAlign:"center"}}>
             <input type="date" min="1990-01-01" max="2200-12-31" value={dates.target||""} onChange={function(e){updateStep(td.id,s.key,"target",e.target.value);}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11}}/>
@@ -1511,7 +1511,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
                 <select value={getApprovalStatus(s.key)} onChange={function(e){var cur=Object.assign({},(td.stepDates||{})[s.key]||{});cur.approvalStatus=e.target.value;updateStep(td.id,s.key,"approvalDateObj",cur);var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},t.stepDates||{});sd[s.key]=Object.assign({},sd[s.key]||{},{approvalStatus:e.target.value});var st=Object.assign({},t.steps||{});
                   // An A or a B IS the approval — nobody should have to set the Status column too.
                   if(isApprovedStatus(e.target.value))st[s.key]=e.target.value;
-                  return Object.assign({},t,{stepDates:sd,steps:st});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 5px",fontSize:10,fontFamily:"inherit",fontWeight:700,color:getApprovalStatus(s.key).includes("Approved")?"#2e7d32":getApprovalStatus(s.key).includes("Rejected")||getApprovalStatus(s.key).includes("Not Approved")?"#c62828":"#888"}}>
+                  return Object.assign({},t,{stepDates:sd,steps:st});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 5px",fontSize:10,fontFamily:"inherit",fontWeight:700,color:getApprovalStatus(s.key).includes("Approved")?"#1e6b3a":getApprovalStatus(s.key).includes("Rejected")||getApprovalStatus(s.key).includes("Not Approved")?"#b3302a":"#888"}}>
                   {APPROVAL_OPTS.map(function(o){return <option key={o} value={o}>{o}</option>;})}
                 </select>
               </div>
@@ -1521,7 +1521,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
           <td style={{minWidth:150}}>
             {showReference
               ?<input type="text" value={getReference(s.key)} onChange={function(e){var d=(tenders||[]).map(function(t){if(t.id!==td.id)return t;var sd=Object.assign({},t.stepDates||{});sd[s.key]=Object.assign({},sd[s.key]||{},{reference:e.target.value});return Object.assign({},t,{stepDates:sd});});saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));}} placeholder={flowDocState(td,s.key)!=="none"?"Ref. missing":"Reference…"} title="Aconex / transmittal number of the document submitted"
-                style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid "+(flowDocState(td,s.key)!=="none"&&!getReference(s.key)?"#f48fb1":"#e8e6df"),background:flowDocState(td,s.key)!=="none"&&!getReference(s.key)?"#fff8f9":"#fff",borderRadius:5,fontFamily:"var(--font-mono)",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid "+(flowDocState(td,s.key)!=="none"&&!getReference(s.key)?"#ecc3c7":"#e8e6df"),background:flowDocState(td,s.key)!=="none"&&!getReference(s.key)?"#fff8f9":"#fff",borderRadius:5,fontFamily:"var(--font-mono)",boxSizing:"border-box"}}/>
               :<span style={{color:"#e0ddd8"}}>—</span>}
           </td>
 
@@ -1622,11 +1622,11 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
               </select>
             </td>
             <td style={{textAlign:"center"}}>
-              <input type="date" min="1990-01-01" max="2200-12-31" value={dates.target||""} onChange={function(e){updateStep(td.id,"kickoff","target",e.target.value);}} style={{border:"1px solid "+(late?"#f48fb1":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
-              {late&&<div style={{fontSize:9,color:"#c62828",fontWeight:700,marginTop:2}}>⚠️ date passed, not held</div>}
+              <input type="date" min="1990-01-01" max="2200-12-31" value={dates.target||""} onChange={function(e){updateStep(td.id,"kickoff","target",e.target.value);}} style={{border:"1px solid "+(late?"#ecc3c7":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+              {late&&<div style={{fontSize:9,color:"#b3302a",fontWeight:700,marginTop:2}}>⚠️ date passed, not held</div>}
             </td>
             <td style={{textAlign:"center"}}>
-              <input type="date" min="1990-01-01" max="2200-12-31" value={dates.done||""} onChange={function(e){updateStep(td.id,"kickoff","done",e.target.value);}} style={{border:"1px solid "+(dates.done?"#2e7d32":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={dates.done||""} onChange={function(e){updateStep(td.id,"kickoff","done",e.target.value);}} style={{border:"1px solid "+(dates.done?"#1e6b3a":"#e8e6df"),borderRadius:5,padding:"3px 6px",fontSize:11}}/>
             </td>
             <td>
               <textarea value={comment} onChange={function(e){updateStep(td.id,"kickoff","comment",e.target.value);}} placeholder="Add comment..." style={{border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11,width:"100%",fontFamily:"inherit",resize:"vertical",minHeight:28,overflowY:"auto",boxSizing:"border-box"}}/>
@@ -1675,8 +1675,8 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         saveTenders(d);setSelTender(d.find(function(t){return t.id===td.id;}));
       }
       var dateStyle={border:"1px solid #e8e6df",borderRadius:5,padding:"3px 6px",fontSize:11};
-      var autoDateStyle={border:"1px dashed #c9a84c",borderRadius:5,padding:"3px 6px",fontSize:11,background:"#fffdf0",color:"#b45309"};
-      var doneStyle={border:"1px solid #2e7d32",borderRadius:5,padding:"3px 6px",fontSize:11};
+      var autoDateStyle={border:"1px dashed #c9a84c",borderRadius:5,padding:"3px 6px",fontSize:11,background:"#faf9f7",color:"#b45309"};
+      var doneStyle={border:"1px solid #1e6b3a",borderRadius:5,padding:"3px 6px",fontSize:11};
       var rowStyle={borderBottom:"1px solid #f5f4f0"};
       var labelStyle={padding:"8px 12px",fontWeight:600,fontSize:12,color:"#555",whiteSpace:"nowrap"};
 
@@ -1720,7 +1720,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)",flexWrap:"wrap"}}>
           <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Contract</h3>
           {accApproval&&<span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
-            ACC/Aconex approval: <strong style={{color:"#2e7d32"}}>{fmtDate(accApproval)}</strong>
+            ACC/Aconex approval: <strong style={{color:"#1e6b3a"}}>{fmtDate(accApproval)}</strong>
             {autoRequestTarget&&<span style={{color:"#c9a84c"}}> · Request target: {fmtDate(autoRequestTarget)}</span>}
             {autoSignedTarget&&<span style={{color:"#c9a84c"}}> · Signed target: {fmtDate(autoSignedTarget)}</span>}
           </span>}
@@ -1786,7 +1786,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
             </tr>
             {/* "Contract to be signed by all" and "Signed contract" were the same event
                 recorded twice: the first row copied its date into the second. One row now. */}
-            <tr style={{background:"#fffdf0"}}>
+            <tr style={{background:"#faf9f7"}}>
               <td style={Object.assign({},labelStyle,{color:"#b45309"})}>
                 🏁 Signed contract
                 <div style={{fontSize:9,color:"#c9a84c",fontWeight:400}}>ACC/Aconex approval +28 working days</div>
@@ -1896,8 +1896,8 @@ function SchedStartDate({td,onNavZone}){
 // (Submission steps table, reports, calcProcurement) stay in step.
 // MAR / MSS / SD cycles are shown on the timeline and edited in the Submissions recap.
 // ---------------------------------------------------------------------------
-const FLOW_COL={us:"#b9b4a8",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30",returned:"#c62828"};
-const FLOW_CODE_COL={A:["#e8f5e9","#1e6b3a"],B:["#e0f2f1","#00695c"],C:["#fff3e0","#b35c00"],D:["#fce4ec","#b3302a"]};
+const FLOW_COL={us:"#b9b4a8",client:"#0f5299",sub:"#4a4740",internal:"#d85a30",returned:"#b3302a"};
+const FLOW_CODE_COL={A:["#e6f2e9","#1e6b3a"],B:["#e0f2f1","#00695c"],C:["#fff3e0","#b35c00"],D:["#fbe6e8","#b3302a"]};
 function _flowWeek(iso){
   var d=new Date(iso+"T00:00:00");var t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
   var day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);
@@ -1927,13 +1927,13 @@ function RefMissingInput({onSave}){
   function commit(){var x=v.trim();if(x)onSave(x);}
   return <input type="text" value={v} placeholder="ref. missing" title="Aconex / transmittal number — saved when you leave the field or press Enter"
     onChange={function(e){setV(e.target.value);}} onBlur={commit} onKeyDown={function(e){if(e.key==="Enter")commit();}}
-    style={{width:150,fontFamily:"var(--font-mono)",fontSize:11,padding:"3px 6px",border:"1px solid #f48fb1",background:"#fff8f9",borderRadius:5}}/>;
+    style={{width:150,fontFamily:"var(--font-mono)",fontSize:11,padding:"3px 6px",border:"1px solid #ecc3c7",background:"#fff8f9",borderRadius:5}}/>;
 }
 function RefTag({td,k}){
   var ref=String((((td.stepDates||{})[k])||{}).reference||"").trim();
   var sent=flowDocState(td,k)!=="none";
-  if(ref)return <div title="Document reference" style={{fontFamily:"var(--font-mono)",fontSize:10.5,fontWeight:600,color:"#1a73e8",marginTop:3,whiteSpace:"nowrap"}}>Ref. {ref}</div>;
-  if(sent)return <div title="Submitted, but no reference recorded: type it in the Reference column" style={{fontSize:10,fontWeight:700,color:"#c62828",marginTop:3}}>⚠ ref. missing</div>;
+  if(ref)return <div title="Document reference" style={{fontFamily:"var(--font-mono)",fontSize:10.5,fontWeight:600,color:"#0f5299",marginTop:3,whiteSpace:"nowrap"}}>Ref. {ref}</div>;
+  if(sent)return <div title="Submitted, but no reference recorded: type it in the Reference column" style={{fontSize:10,fontWeight:700,color:"#b3302a",marginTop:3}}>⚠ ref. missing</div>;
   return null;
 }
 // ---------------------------------------------------------------------------
@@ -2019,7 +2019,7 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
     if(c.id===list[list.length-1].id)patch=docRefPatch(td,d,patch,val);
     updTd(patch);
   }
-  var STATE_COL={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"};
+  var STATE_COL={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"};
   function _docEditor(d){
     var list=d.cycles;var last=list[list.length-1];
     var inp={padding:"3px 6px",fontSize:12,width:"auto"};
@@ -2038,7 +2038,7 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
             <td style={{padding:"4px 6px",fontFamily:"var(--font-mono,monospace)",fontWeight:700}}>R{c.rev}</td>
             <td><input type="text" value={c.ref!==undefined?c.ref:(isLast?docCurRef(td,d):"")} placeholder={c.submitted?"ref. missing":"ref…"}
               title="Aconex / transmittal number this revision went out with"
-              style={Object.assign({},inp,{width:130,fontFamily:"var(--font-mono)",fontSize:11},c.submitted&&!(c.ref||(isLast&&docCurRef(td,d)))?{border:"1px solid #f48fb1",background:"#fff8f9"}:{})}
+              style={Object.assign({},inp,{width:130,fontFamily:"var(--font-mono)",fontSize:11},c.submitted&&!(c.ref||(isLast&&docCurRef(td,d)))?{border:"1px solid #ecc3c7",background:"#fff8f9"}:{})}
               onChange={function(e){saveRef(d,list,c,e.target.value);}}/></td>
             <td><input type="date" value={c.submitted||""} disabled={!isLast} style={inp} onChange={function(e){saveDoc(d,updCycle(list,c.id,{submitted:e.target.value}));}}/></td>
             <td><input type="date" value={c.returned||""} disabled={!isLast} style={inp} onChange={function(e){saveDoc(d,updCycle(list,c.id,{returned:e.target.value}));}}/></td>
@@ -2049,14 +2049,14 @@ function DocRevisionsEditor({td,d,updTd,afterSave}){
             </select></td>
             <td><input type="text" value={c.comment||""} placeholder="client comment" style={Object.assign({},inp,{width:"100%",minWidth:120})}
               onChange={function(e){saveDoc(d,updCycle(list,c.id,{comment:e.target.value}));}}/></td>
-            <td style={{textAlign:"right",color:days!==null&&!c.returned?"#1a73e8":"#6f6b62",whiteSpace:"nowrap"}}>{days===null?"—":days+" d"+(c.returned?"":" …")}<OverdueTag o={ov}/></td>
+            <td style={{textAlign:"right",color:days!==null&&!c.returned?"#0f5299":"#6f6b62",whiteSpace:"nowrap"}}>{days===null?"—":days+" d"+(c.returned?"":" …")}<OverdueTag o={ov}/></td>
           </tr>;
         })}</tbody>
       </table>}
       <div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,flexWrap:"wrap"}}>
         {canAddCycle(list)&&<button className="btn btn-sm" onClick={function(){recordDocSubmission(td,d,updTd,afterSave);}}>
           {list.length?"↻ Resubmit as R"+(last.rev+1):"+ Record the submission"}</button>}
-        {last&&!last.code&&last.submitted&&<span style={{fontSize:11,color:"#1a73e8"}}>Waiting for the client on R{last.rev}. Set the code when it comes back.</span>}
+        {last&&!last.code&&last.submitted&&<span style={{fontSize:11,color:"#0f5299"}}>Waiting for the client on R{last.rev}. Set the code when it comes back.</span>}
         {list.length>0&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){
           if(safeConfirm(list.length>1?"Remove R"+last.rev+"? The previous revision becomes the current one again.":"Remove this submission? The document goes back to not submitted."))saveDoc(d,delLastCycle(list));}}>
           ✕ Remove R{last.rev}</button>}
@@ -2091,11 +2091,11 @@ function ContractCircuitEditor({td,updTd,afterSave}){
     return <div>
       <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,marginBottom:8}}>
         <span>Total <b>{cs.totalDays===null?"—":cs.totalDays+" d"}</b>{cs.signedAll?" · signed by all "+fmtDate(cs.signedAll):""}</span>
-        {cs.current.length>0&&<span style={{color:"#1a73e8"}}>Now: {cs.current.map(function(x){return x.stage.label.replace(/^Circulation to /,"")+" · "+Math.round((new Date(now)-new Date(x.since))/86400000)+" d";}).join(" / ")}</span>}
+        {cs.current.length>0&&<span style={{color:"#0f5299"}}>Now: {cs.current.map(function(x){return x.stage.label.replace(/^Circulation to /,"")+" · "+Math.round((new Date(now)-new Date(x.since))/86400000)+" d";}).join(" / ")}</span>}
       </div>
       {cs.stages.map(function(x,i){
         var s=x.stage,last=x.events[x.events.length-1];
-        var dot={done:["#1e6b3a","✓"],current:["#1a73e8",i+1],returned:["#c62828","↩"],blocked:["#c9c4b8",i+1],todo:["#fff",i+1]}[x.state];
+        var dot={done:["#1e6b3a","✓"],current:["#0f5299",i+1],returned:["#b3302a","↩"],blocked:["#c9c4b8",i+1],todo:["#fff",i+1]}[x.state];
         var prevBranch=i>0?cs.stages[i-1].stage.branch:"";
         return <div key={s.id}>
           {s.branch!==prevBranch&&branchLbl[s.branch]&&<div style={{fontSize:10,fontWeight:700,color:s.branch==="sub"?FLOW_COL.sub:FLOW_COL.internal,textTransform:"uppercase",letterSpacing:".06em",margin:"8px 0 2px 30px"}}>
@@ -2104,7 +2104,7 @@ function ContractCircuitEditor({td,updTd,afterSave}){
             <span style={{width:20,height:20,borderRadius:"50%",flex:"0 0 20px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,
               background:dot[0],color:x.state==="todo"?"#9b968b":"#fff",border:x.state==="todo"?"1px solid #c9c4b8":"none"}}>{dot[1]}</span>
             <span style={{flex:"1 1 200px",fontSize:12,fontWeight:x.state==="current"?700:500,color:x.state==="todo"||x.state==="blocked"?"#9b968b":"#16181d"}}>{s.label}
-              {x.returns>0&&<span className="badge" style={{marginLeft:6,background:"#fce4ec",color:"#b3302a"}}>{x.returns} return{x.returns>1?"s":""}</span>}
+              {x.returns>0&&<span className="badge" style={{marginLeft:6,background:"#fbe6e8",color:"#b3302a"}}>{x.returns} return{x.returns>1?"s":""}</span>}
               {x.state==="blocked"&&<span style={{fontSize:10.5,color:"#9b968b",fontWeight:400,marginLeft:6}}>waits for both branches</span>}
             </span>
             {last&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11}}>
@@ -2159,7 +2159,7 @@ function BiddersEditor({td,updTd}){
               {p>0&&<div style={{fontSize:10,color:"#9b968b"}}>{p===lo?"lowest":"+"+Math.round((p/lo-1)*100)+" %"}</div>}</td>
             <td><input type="number" min="0" max="100" value={b.techScore} style={Object.assign({},inp,{width:60,textAlign:"right"})} onChange={function(e){upd(b.id,"techScore",e.target.value);}}/></td>
             <td><div style={{position:"relative",height:12,background:"#f5f3ee",borderRadius:2}}>
-              {p>0&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:(p/mx*100)+"%",borderRadius:2,background:b.result==="awarded"?"#1e6b3a":budget&&p>budget?"#c62828":"#b9b4a8"}}/>}
+              {p>0&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:(p/mx*100)+"%",borderRadius:2,background:b.result==="awarded"?"#1e6b3a":budget&&p>budget?"#b3302a":"#b9b4a8"}}/>}
               {budget>0&&<div title={"Budget "+budget.toLocaleString()} style={{position:"absolute",top:-2,bottom:-2,left:(budget/mx*100)+"%",borderLeft:"2px solid #16181d"}}/>}
             </div></td>
             <td><select value={b.result||""} style={inp} onChange={function(e){upd(b.id,"result",e.target.value);}}>
@@ -2200,9 +2200,9 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
   });
 
   function chip(label,val,col,tip){
-    return <div title={tip||""} style={{background:"#fafaf8",border:"1px solid #ece9e1",borderRadius:8,padding:"7px 12px",minWidth:110,cursor:tip?"help":"default"}}>
-      <div style={{fontSize:9.5,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"#6f6b62"}}>{label}</div>
-      <div style={{fontSize:18,fontWeight:700,color:col||"#16181d"}}>{val}</div>
+    return <div title={tip||""} className="kpi" style={{background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)",minWidth:110,cursor:tip?"help":"default"}}>
+      <div className="kpi-l">{label}</div>
+      <div className="kpi-v" style={{fontSize:18,color:col||"var(--ink)"}}>{val}</div>
     </div>;
   }
   function head(key,title,extra){
@@ -2367,7 +2367,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
 
   // ---- 3. submissions: one recap line per document, its revisions open underneath ----
   // ACC / WMS / ITP revisions are edited in Submission steps (DocRevisionsEditor); this recap opens the others.
-  var STATE_COL={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"};
+  var STATE_COL={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"};
   function recap(){
     return <div>
       <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,1.6fr) 60px 70px",gap:8,
@@ -2394,14 +2394,14 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
                 gap:8,alignItems:"center",padding:"5px 4px",borderBottom:"1px solid #f0ede6",cursor:onJump?"pointer":"default",fontSize:12}}>
                 <span style={{display:"flex",gap:6,alignItems:"baseline",minWidth:0}}>
                   <span style={{fontSize:10,color:"#9b968b",width:10,flex:"0 0 10px"}}>{onJump?"↗":""}</span>
-                  <span style={{minWidth:0}}><b>{d.label}</b>{s.state!=="none"&&!ref&&d.id!=="sd:_main"&&<span style={{fontSize:10,fontWeight:700,color:"#c62828",marginLeft:6}}>⚠ ref. missing</span>}{d.sub&&<span style={{display:"block",fontSize:10.5,color:"#6f6b62",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.sub}{d.ref&&<span style={{fontFamily:"var(--font-mono,monospace)",marginLeft:6,color:"#9b968b"}}>{d.ref}</span>}</span>}</span>
+                  <span style={{minWidth:0}}><b>{d.label}</b>{s.state!=="none"&&!ref&&d.id!=="sd:_main"&&<span style={{fontSize:10,fontWeight:700,color:"#b3302a",marginLeft:6}}>⚠ ref. missing</span>}{d.sub&&<span style={{display:"block",fontSize:10.5,color:"#6f6b62",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.sub}{d.ref&&<span style={{fontFamily:"var(--font-mono,monospace)",marginLeft:6,color:"#9b968b"}}>{d.ref}</span>}</span>}</span>
                 </span>
                 <span style={{display:"flex",gap:3,alignItems:"center",flexWrap:"wrap"}}>
                   {s.codes.length===0&&<span style={{color:"#ccc"}}>—</span>}
                   {s.codes.map(function(c,i){var k=FLOW_CODE_COL[c];
                     return <React.Fragment key={i}>{i>0&&<span style={{color:"#c9c4b8",fontSize:10}}>→</span>}
                       {k?<span title={"R"+i} style={{background:k[0],color:k[1],border:"1px solid "+k[1],borderRadius:4,fontSize:10,fontWeight:700,padding:"0 4px"}}>{c}</span>
-                        :<span title={"R"+i+" with the client"} style={{background:"#e8f0fe",color:"#1a73e8",borderRadius:8,fontSize:10,fontWeight:700,padding:"0 6px"}}>R{i} …</span>}
+                        :<span title={"R"+i+" with the client"} style={{background:"#e8f0fe",color:"#0f5299",borderRadius:8,fontSize:10,fontWeight:700,padding:"0 6px"}}>R{i} …</span>}
                     </React.Fragment>;})}
                 </span>
                 <span style={{color:STATE_COL[s.state],fontWeight:s.state==="none"?400:600}}>{s.text}<OverdueTag o={s.overdue}/></span>
@@ -2452,7 +2452,7 @@ function FlowDocBadge({td,id,mode}){
   var d=flowDocOf(td,id);
   if(!d)return <span style={{color:"#ddd"}}>—</span>;
   var s=docSummary(d);var l=d.cycles;var last=l[l.length-1];
-  var col={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"}[s.state];
+  var col={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"}[s.state];
   var tip=(id==="acc"||id==="wms"||id==="itp")?"Edit the revisions with the ▸ arrow on this row":"Edit in Flow & history → Submissions, at the top of this tender";
   if(mode==="sent"){
     if(!last||!last.submitted)return <span title={tip} style={{color:"#ccc",fontSize:11}}>—</span>;
@@ -2486,7 +2486,7 @@ function tenderContractPill(td){
 function FlowDocDots({td}){
   var docs=tenderDocs(td);
   var KINDS=[["acc","ACC"],["ctr","Contract"],["sd","SD"],["mar","MAR"],["mss","MSS"],["wms","WMS"],["itp","ITP"],["kom","Kick off"]];
-  var PILL={approved:["#e8f5e9","#1e6b3a"],pending:["#e8f0fe","#1a73e8"],returned:["#fff3e0","#b35c00"],none:["#f5f3ee","#9b968b"]};
+  var PILL={approved:["#e6f2e9","#1e6b3a"],pending:["#e8f0fe","#0f5299"],returned:["#fff3e0","#b35c00"],none:["#f5f3ee","#9b968b"]};
   var pillStyle=function(st){var cc=PILL[st];return {background:cc[0],color:cc[1],border:st==="none"?"1px dashed #c9c4b8":"1px solid "+cc[1]+"55",
     borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px",whiteSpace:"nowrap",cursor:"help"};};
   return <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{KINDS.map(function(k){
@@ -2511,7 +2511,7 @@ function FlowDocDots({td}){
     var st=!sm.length?"none":ok===sm.length?"approved":sm.some(function(x){return x.state==="returned";})?"returned":
       sm.some(function(x){return x.state==="pending";})?"pending":"none";
     var rev=sm.reduce(function(m,x){return x.rev!==null&&x.rev>m?x.rev:m;},0);
-    var c={approved:["#e8f5e9","#1e6b3a"],pending:["#e8f0fe","#1a73e8"],returned:["#fff3e0","#b35c00"],none:["#f5f3ee","#9b968b"]}[st];
+    var c={approved:["#e6f2e9","#1e6b3a"],pending:["#e8f0fe","#0f5299"],returned:["#fff3e0","#b35c00"],none:["#f5f3ee","#9b968b"]}[st];
     var tip=ds.map(function(d,i){return d.label+(d.sub&&d.kind!=="acc"?" "+d.sub:"")+": "+sm[i].text;}).join("\n")||k[1]+": not submitted";
     return <span key={k[0]} title={tip} style={{background:c[0],color:c[1],border:st==="none"?"1px dashed #c9c4b8":"1px solid "+c[1]+"55",
       borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px",whiteSpace:"nowrap",cursor:"help"}}>
@@ -2522,8 +2522,8 @@ function FlowDocDots({td}){
 // Colour key for the Submissions pills of the tenders list.
 function FlowDocLegend(){
   var items=[
-    ["#e8f5e9","#1e6b3a","solid","Approved","code A or B"],
-    ["#e8f0fe","#1a73e8","solid","With the client","submitted, waiting for the answer"],
+    ["#e6f2e9","#1e6b3a","solid","Approved","code A or B"],
+    ["#e8f0fe","#0f5299","solid","With the client","submitted, waiting for the answer"],
     ["#fff3e0","#b35c00","solid","To resubmit","returned C or D"],
     ["#f5f3ee","#9b968b","dashed","Not submitted",""]
   ];
@@ -2536,12 +2536,12 @@ function FlowDocLegend(){
       </span>;
     })}
     <span style={{display:"flex",alignItems:"center",gap:5}}>
-      <span style={{background:"#e8f5e9",color:"#1e6b3a",border:"1px solid #1e6b3a55",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>Contract</span>
-      <span style={{background:"#e8f0fe",color:"#1a73e8",border:"1px solid #1a73e855",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>Contract</span>
+      <span style={{background:"#e6f2e9",color:"#1e6b3a",border:"1px solid #1e6b3a55",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>Contract</span>
+      <span style={{background:"#e8f0fe",color:"#0f5299",border:"1px solid #1a73e855",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>Contract</span>
       <span style={{color:"#9b968b"}}>signed / under way (dashed: not started)</span>
     </span>
     <span style={{display:"flex",alignItems:"center",gap:5}}>
-      <span style={{background:"#e8f5e9",color:"#1e6b3a",border:"1px solid #1e6b3a55",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>SD 1/3</span>
+      <span style={{background:"#e6f2e9",color:"#1e6b3a",border:"1px solid #1e6b3a55",borderRadius:4,fontSize:10,fontWeight:700,padding:"0 5px"}}>SD 1/3</span>
       <span style={{color:"#9b968b"}}>approved / total</span>
     </span>
     <span style={{display:"flex",alignItems:"center",gap:5}}>
@@ -2556,9 +2556,9 @@ function FlowDocLegend(){
 // Tenders list: phase of each tender, what is happening now, and the mini timeline.
 // ---------------------------------------------------------------------------
 var TENDER_PHASES=[
-  {k:"pre",label:"Before client approval",short:"Before approval",bg:"#f3e5f5",fg:"#6a1b9a"},
+  {k:"pre",label:"Before client approval",short:"Before approval",bg:"#f2f0ec",fg:"#6a1b9a"},
   {k:"ctr",label:"Approved · contract phase",short:"Contract phase",bg:"#fff3e0",fg:"#b35c00"},
-  {k:"sig",label:"Contract signed",short:"Signed",bg:"#e8f5e9",fg:"#1e6b3a"},
+  {k:"sig",label:"Contract signed",short:"Signed",bg:"#e6f2e9",fg:"#1e6b3a"},
   {k:"can",label:"Cancelled",short:"Cancelled",bg:"#f5f3ee",fg:"#9b968b"}
 ];
 //   pre = the ACC/Aconex has no A/B yet
@@ -2636,7 +2636,7 @@ function tenderNow(td,now){
 // Stage column of the list: where the package is now (tenderNow) and the step that comes
 // after it. Computed only from the dates and statuses already entered, never typed.
 // The free-text "Next Step" of the Follow-up column stays the team's own comment.
-var STAGE_WHO_COL={us:"#6f6b62",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30"};
+var STAGE_WHO_COL={us:"#6f6b62",client:"#0f5299",sub:"#4a4740",internal:"#d85a30"};
 var STAGE_WHO_LABEL={us:"Us",client:"Client",sub:"Subcontractor",internal:"Internal"};
 function tenderStage(td,now){
   now=now||today();
@@ -2747,7 +2747,7 @@ function tenderListRange(list,now){
 //   start, red truck if after it, grey if there is no target start to compare with.
 //   The gap in days sits next to it, in the same colour.
 // ---------------------------------------------------------------------------
-const TL_COL={today:"#14171c",target:"#6f6b62",early:"#2e7d32",late:"#c62828",unknown:"#9b968b"};
+const TL_COL={today:"#14171c",target:"#6f6b62",early:"#1e6b3a",late:"#b3302a",unknown:"#9b968b"};
 function tlDayGap(a,b){return Math.round((new Date(a+"T00:00:00")-new Date(b+"T00:00:00"))/86400000);}
 function tlDelivery(td,proc){
   var d=proc&&proc.deliveryDate;if(!isValidDate(d))return null;
@@ -2963,14 +2963,14 @@ function ProcFlowView({tenders,onNavTender}){
   var pkgs=[...new Set(list.map(function(t){return t.package||"—";}))].sort(function(a,b){return a==="—"?1:b==="—"?-1:a.localeCompare(b);});
   var counts=PF_COLS.map(function(c){return list.filter(function(t){return info[t.id].col===c.k;}).length;});
   var sel=list.find(function(t){return t.id===selId;})||null;
-  var whoCol={us:"#6f6b62",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30"};
-  var whoBg={us:"#f5f3ee",client:"#e8f0fe",sub:"#f3e5f5",internal:"#fbe9e7"};
+  var whoCol={us:"#6f6b62",client:"#0f5299",sub:"#4a4740",internal:"#d85a30"};
+  var whoBg={us:"#f5f3ee",client:"#e8f0fe",sub:"#f2f0ec",internal:"#fbe9e7"};
 
   function card(t){
     var x=info[t.id];var aw=(t.awards||[]).filter(function(a){return a.subcontractor;});
     var on=t.id===selId;
     return <div key={t.id} onClick={function(){setSelId(on?"":t.id);}} title={t.title}
-      style={{border:on?"2px solid #1a73e8":"1px solid #d9d5ca",borderRadius:8,padding:on?"4px 6px":"5px 7px",marginBottom:5,
+      style={{border:on?"2px solid #0f5299":"1px solid #d9d5ca",borderRadius:8,padding:on?"4px 6px":"5px 7px",marginBottom:5,
         background:"#fff",cursor:"pointer",fontSize:11,lineHeight:1.35}}>
       <div style={{fontWeight:700,fontSize:11.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title||"(untitled)"}</div>
       <div style={{color:aw.length?"#1e6b3a":"#9b968b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -2980,7 +2980,7 @@ function ProcFlowView({tenders,onNavTender}){
           maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={x.now.text}>
           {x.now.text.replace(/ · with client$/,"")}{x.now.days!==null&&x.now.days>=0?" · "+x.now.days+"d":""}<OverdueTag o={x.now.overdue}/></span>
         {x.revs>0&&<span style={{background:"#fff3e0",color:"#b35c00",borderRadius:8,padding:"0 5px",fontSize:10,fontWeight:700}}>R{x.revs}</span>}
-        {x.late&&<span style={{background:"#fce4ec",color:"#b3302a",borderRadius:8,padding:"0 5px",fontSize:10,fontWeight:700}}>late</span>}
+        {x.late&&<span style={{background:"#fbe6e8",color:"#b3302a",borderRadius:8,padding:"0 5px",fontSize:10,fontWeight:700}}>late</span>}
       </div>
       {x.col>=4&&<div style={{marginTop:4}}><FlowDocDots td={t}/></div>}
     </div>;
@@ -3020,7 +3020,7 @@ function ProcFlowView({tenders,onNavTender}){
               <td style={{textAlign:"right",color:"#6f6b62"}}>{p?(p===lo?"lowest":"+"+Math.round((p/lo-1)*100)+" %"):""}</td>
               <td style={{textAlign:"right"}}>{b.techScore||"—"}</td>
               <td style={{paddingLeft:10}}><div style={{position:"relative",height:10,background:"#f5f3ee",borderRadius:2}}>
-                {p>0&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:(p/mx*100)+"%",borderRadius:2,background:won?"#1e6b3a":budget&&p>budget?"#c62828":"#b9b4a8"}}/>}
+                {p>0&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:(p/mx*100)+"%",borderRadius:2,background:won?"#1e6b3a":budget&&p>budget?"#b3302a":"#b9b4a8"}}/>}
                 {budget>0&&<div title={"Budget "+budget.toLocaleString()} style={{position:"absolute",top:-2,bottom:-2,left:(budget/mx*100)+"%",borderLeft:"2px solid #16181d"}}/>}
               </div></td>
               <td style={{color:won?"#1e6b3a":"#9b968b",fontWeight:won?700:400}}>{b.result||"in review"}</td>
@@ -3030,15 +3030,15 @@ function ProcFlowView({tenders,onNavTender}){
       <div style={h3}>Contract circuit {cs.totalDays!==null&&<span style={{textTransform:"none",letterSpacing:0,fontWeight:400,color:"#6f6b62",marginLeft:6}}>{cs.totalDays} d so far{cs.signedAll?" · signed "+fmtDate(cs.signedAll):""}</span>}</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:"6px 12px",alignItems:"center"}}>
         {cs.stages.map(function(x,i){
-          var c={done:["#1e6b3a","#fff","✓"],current:["#1a73e8","#fff",i+1],returned:["#c62828","#fff","↩"],blocked:["#e8e6df","#9b968b",i+1],todo:["#fff","#9b968b",i+1]}[x.state];
+          var c={done:["#1e6b3a","#fff","✓"],current:["#0f5299","#fff",i+1],returned:["#b3302a","#fff","↩"],blocked:["#e8e6df","#9b968b",i+1],todo:["#fff","#9b968b",i+1]}[x.state];
           var prev=i>0?cs.stages[i-1].stage.branch:"";
           return <React.Fragment key={x.stage.id}>
-            {x.stage.branch==="sub"&&prev!=="sub"&&<span style={{flexBasis:"100%",fontSize:10,color:"#7b1fa2",fontWeight:700}}>in parallel, with the sub:</span>}
+            {x.stage.branch==="sub"&&prev!=="sub"&&<span style={{flexBasis:"100%",fontSize:10,color:"#4a4740",fontWeight:700}}>in parallel, with the sub:</span>}
             {x.stage.branch==="join"&&<span style={{flexBasis:"100%",fontSize:10,color:"#6f6b62",fontWeight:700}}>then, once both are complete:</span>}
             <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5}} title={x.days?x.days+" d at this desk (target "+x.stage.days+" d)":""}>
               <span style={{width:18,height:18,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9.5,fontWeight:700,
                 background:c[0],color:c[1],border:x.state==="todo"?"1px solid #c9c4b8":"none"}}>{c[2]}</span>
-              <span style={{fontWeight:x.state==="current"?700:400,color:x.state==="current"?"#1a73e8":x.late?"#b3302a":"#16181d"}}>{x.stage.label.replace(/^Circulation to /,"")}</span>
+              <span style={{fontWeight:x.state==="current"?700:400,color:x.state==="current"?"#0f5299":x.late?"#b3302a":"#16181d"}}>{x.stage.label.replace(/^Circulation to /,"")}</span>
               {x.days>0&&<span style={{fontSize:10,color:x.late?"#b3302a":"#9b968b"}}>{x.days}d</span>}
             </span>
           </React.Fragment>;
@@ -3080,7 +3080,7 @@ function ProcFlowView({tenders,onNavTender}){
       {[["us","With us"],["client","With the client"],["sub","With the sub / bidders"],["internal","Internal contract circuit"]].map(function(x){
         return <span key={x[0]} style={{display:"flex",alignItems:"center",gap:4}}><span style={{background:whoBg[x[0]],color:whoCol[x[0]],borderRadius:8,padding:"0 6px",fontWeight:600}}>step · days</span>{x[1]}</span>;})}
       <span><span style={{background:"#fff3e0",color:"#b35c00",borderRadius:8,padding:"0 5px",fontWeight:700}}>R2</span> resubmissions</span>
-      <span><span style={{background:"#fce4ec",color:"#b3302a",borderRadius:8,padding:"0 5px",fontWeight:700}}>late</span> delivery after the start on site</span>
+      <span><span style={{background:"#fbe6e8",color:"#b3302a",borderRadius:8,padding:"0 5px",fontWeight:700}}>late</span> delivery after the start on site</span>
     </div>
     {sel&&detail(sel)}
   </div>;
@@ -3387,7 +3387,7 @@ function AwardsPanel({td,updTd,contractors}){
               placeholder="Anything agreed that the table does not cover" style={Object.assign({},inp,{minHeight:44})}/></label>
 
           <div style={{display:"flex"}}>
-            <button className="btn btn-sm" style={{marginLeft:"auto",color:"var(--red,#b3302a)"}} onClick={function(){remove(a);}}>🗑 Remove this award</button>
+            <button className="btn btn-sm" style={{marginLeft:"auto",color:"var(--red,#b3302a)"}} onClick={function(){remove(a);}}>Remove this award</button>
           </div>
         </div>}
       </div>;
@@ -3415,7 +3415,7 @@ function addendumState(ad){
   if(a==="pending approval"||b==="pending approval")return"pending";
   return"draft";
 }
-var AD_STATE_COL={approved:["#e6f2e9","#1e6b3a","Approved"],pending:["#e8f0fe","#1a73e8","Pending"],rejected:["#fce4ec","#b3302a","Rejected"],draft:["#f2f0eb","#6f6b62","Draft"]};
+var AD_STATE_COL={approved:["#e6f2e9","#1e6b3a","Approved"],pending:["#e8f0fe","#0f5299","Pending"],rejected:["#fbe6e8","#b3302a","Rejected"],draft:["#f2f0eb","#6f6b62","Draft"]};
 function tenderContractTotals(td,contractors){
   var linked=(contractors||[]).flatMap(function(ctr){return (ctr.contracts||[]).filter(function(ct){return ct.tenderRef===td.id;}).map(function(ct){return{ct:ct,ctr:ctr};});});
   var t={linked:linked,base:0,adApproved:0,adPending:0,adOther:0,adCount:0,certified:0};
@@ -3521,17 +3521,17 @@ function TenderContractsPanel({td,contractors,saveContractors,onOpenContracts}){
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Contract &amp; addendums</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
         {tot.linked.length} contract{tot.linked.length!==1?"s":""} · {tot.adCount} addendum{tot.adCount!==1?"s":""}</span>
-      {onOpenContracts&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={onOpenContracts} title="Certifications, scope, milestones, terms: the full contract sheet">📋 Open in Contracts ↗</button>}
+      {onOpenContracts&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={onOpenContracts} title="Certifications, scope, milestones, terms: the full contract sheet">Open in Contracts ↗</button>}
     </div>
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
       {tile("Budget",budget?fmt(budget)+" "+cur:"—")}
       {tile("Contract base",fmt(tot.base)+" "+cur,null,tot.linked.length?null:"no contract linked")}
       {tile("Addendums approved",fmt(tot.adApproved)+" "+cur,"#1e6b3a")}
-      {tile("Addendums open",fmt(tot.adPending+tot.adOther)+" "+cur,tot.adPending+tot.adOther?"#1a73e8":null,"pending "+fmt(tot.adPending)+" · draft "+fmt(tot.adOther),"Pending = submitted to ACC or Aconex. Draft = not submitted yet. Rejected addendums are not counted.")}
+      {tile("Addendums open",fmt(tot.adPending+tot.adOther)+" "+cur,tot.adPending+tot.adOther?"#0f5299":null,"pending "+fmt(tot.adPending)+" · draft "+fmt(tot.adOther),"Pending = submitted to ACC or Aconex. Draft = not submitted yet. Rejected addendums are not counted.")}
       {tile("Current value",fmt(tot.current)+" "+cur,"#b45309","base + approved")}
       {tile("Forecast",fmt(tot.forecast)+" "+cur,null,vb===null?"":(vb<0?"⚠ ":"")+(vb>=0?"+":"")+fmt(vb)+" vs budget","Base + every addendum not rejected")}
-      {tot.certified>0&&tile("Certified",fmt(tot.certified)+" "+cur,"#7b1fa2",tot.current?Math.round(tot.certified/tot.current*100)+" % of current":"")}
+      {tot.certified>0&&tile("Certified",fmt(tot.certified)+" "+cur,"#4a4740",tot.current?Math.round(tot.certified/tot.current*100)+" % of current":"")}
     </div>
 
     {tot.linked.length===0&&<div style={{fontSize:12,color:"#9b968b",marginBottom:10}}>No contract is linked to this package yet. Link an existing one or create it below.</div>}
@@ -3551,7 +3551,7 @@ function TenderContractsPanel({td,contractors,saveContractors,onOpenContracts}){
             <input type="date" value={ct.startDate||""} disabled={!editable} onChange={function(e){setCt(x,"startDate",e.target.value);}} style={inp}/></span>
           <span style={{display:"flex",gap:4,alignItems:"center",fontSize:11}}>End
             <input type="date" value={ct.endDate||""} disabled={!editable} onChange={function(e){setCt(x,"endDate",e.target.value);}} style={inp}/>
-            {eff.extensionDays?<span className="badge" title={"Changed by "+eff.changedBy.endDate} style={{background:"#f3e5f5",color:"#7b1fa2"}}>→ {fmtDate(eff.endDate)} (+{eff.extensionDays} d)</span>:null}</span>
+            {eff.extensionDays?<span className="badge" title={"Changed by "+eff.changedBy.endDate} style={{background:"#f2f0ec",color:"#4a4740"}}>→ {fmtDate(eff.endDate)} (+{eff.extensionDays} d)</span>:null}</span>
           <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,margin:0}}>
             <input type="checkbox" checked={!!ct.closed} disabled={!editable} onChange={function(e){setCt(x,"closed",e.target.checked);}} style={{width:13,height:13}}/>Closed</label>
           {editable&&<button className="btn btn-sm" style={{marginLeft:"auto",fontSize:10.5}} onClick={function(){unlink(x);}}>Unlink</button>}
@@ -3586,7 +3586,7 @@ function TenderContractsPanel({td,contractors,saveContractors,onOpenContracts}){
                   <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",fontSize:11}}>
                     {["acc","aconex"].map(function(dk){
                       var nc=ctNoClient(ad,dk);
-                      return <span key={dk} style={{display:"flex",gap:4,alignItems:"center"}}><b style={{color:dk==="acc"?"#1a73e8":"#7b1fa2"}}>{dk==="acc"?"ACC":"ACONEX"}</b>
+                      return <span key={dk} style={{display:"flex",gap:4,alignItems:"center"}}><b style={{color:dk==="acc"?"#0f5299":"#4a4740"}}>{dk==="acc"?"ACC":"ACONEX"}</b>
                         {!nc&&<select value={ad[dk+"Status"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Status",e.target.value);}} style={inp}>
                           {AD_STATUS_OPTS.map(function(o){return <option key={o[0]} value={o[0]}>{o[1]}</option>;})}</select>}
                         {!nc&&<input type="date" value={ad[dk+"Date"]||""} disabled={!editable} onChange={function(e){setAd(x,ad.id,dk+"Date",e.target.value);}} style={inp}/>}
@@ -4169,7 +4169,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   if(f){
                     return <span onClick={function(){openScheduleStart(f,td,onNavZone);}}
                       title={"Driven by \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+f.sc.title+")\nClick to open that task in the schedule."}
-                      style={{fontSize:11,fontWeight:800,color:"#00695c",background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>
+                      style={{fontSize:11,fontWeight:800,color:"#00695c",background:"#e6f2e9",border:"1px solid #cfe3d5",borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>
                       🗓 {fmtDate(td.startOnSite||f.r.startWeek)} <span style={{fontSize:9,fontWeight:600,color:"#4caf50"}}>· {f.r.label||"task"} ↗</span>
                     </span>;
                   }
@@ -4184,14 +4184,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   if(!procDelivery)return null;
                   var marginDays=startOnSite?(function(){var d1=new Date(procDelivery);var d2=new Date(startOnSite);return Math.round((d2-d1)/(1000*60*60*24));})():null;
                   return <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    <span style={{fontSize:10,color:"#555"}}>→ Procurement delivers: <strong style={{color:marginDays!==null&&marginDays<0?"#c62828":"#2e7d32"}}>{fmtDate(procDelivery)}</strong></span>
-                    {marginDays!==null&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:6,background:marginDays<0?"#fce4ec":marginDays<7?"#fff8e1":"#e8f5e9",color:marginDays<0?"#c62828":marginDays<7?"#f57f17":"#2e7d32"}}>{marginDays>0?"+":""}{marginDays}d</span>}
+                    <span style={{fontSize:10,color:"#555"}}>→ Procurement delivers: <strong style={{color:marginDays!==null&&marginDays<0?"#b3302a":"#1e6b3a"}}>{fmtDate(procDelivery)}</strong></span>
+                    {marginDays!==null&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:6,background:marginDays<0?"#fbe6e8":marginDays<7?"#faf3e0":"#e6f2e9",color:marginDays<0?"#b3302a":marginDays<7?"#b35c00":"#1e6b3a"}}>{marginDays>0?"+":""}{marginDays}d</span>}
                   </div>;
                 })()}
               </div>
               <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
                 <input type="checkbox" checked={isReleased} onChange={function(e){updTd("released",e.target.checked);}} style={{width:13,height:13}}/>
-                <span style={{color:isReleased?"#2e7d32":"#888"}}>✅ Budget Release</span>
+                <span style={{color:isReleased?"#1e6b3a":"#888"}}>✅ Budget Release</span>
               </label>
             </div>
           </div>
@@ -4207,32 +4207,32 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             </div>
           </div>
           <div className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px",background:"#f0f8ff"}}>
-            <div style={{fontSize:10,color:"#1a73e8",marginBottom:2}}>ACC proposed</div>
-            <div style={{fontSize:16,fontWeight:800,color:"#1a73e8"}}>{accTotal>0?accTotal.toLocaleString():"—"} {cur}</div>
+            <div style={{fontSize:10,color:"#0f5299",marginBottom:2}}>ACC proposed</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#0f5299"}}>{accTotal>0?accTotal.toLocaleString():"—"} {cur}</div>
             <div style={{fontSize:10,color:"#888"}}>Sub {accSub.toLocaleString()} + Other {accOther.toLocaleString()}</div>
           </div>
-          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f0fff4"}}>
-            <div style={{fontSize:10,color:"#2e7d32",marginBottom:2}}>Instructed</div>
+          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#e6f2e9"}}>
+            <div style={{fontSize:10,color:"#1e6b3a",marginBottom:2}}>Instructed</div>
             <div style={{display:"flex",alignItems:"center",gap:4}}>
-              <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #c8e6c9",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#2e7d32"}}/>
+              <input type="number" value={td.instructionAmount||""} onChange={function(e){updTd("instructionAmount",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #cfe3d5",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#1e6b3a"}}/>
               <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}}>
-              <span style={{fontSize:10,color:"#2e7d32",whiteSpace:"nowrap"}}>Instruction no.</span>
-              <input type="text" value={td.instructionNumber||""} onChange={function(e){updTd("instructionNumber",e.target.value);}} placeholder="—" title="Instruction number. As soon as it is filled in the package counts as instructed." style={{fontSize:12,fontFamily:"var(--font-mono)",border:"1px solid #c8e6c9",borderRadius:5,background:"#fff",width:"100%",minWidth:0,padding:"2px 6px",outline:"none"}}/>
+              <span style={{fontSize:10,color:"#1e6b3a",whiteSpace:"nowrap"}}>Instruction no.</span>
+              <input type="text" value={td.instructionNumber||""} onChange={function(e){updTd("instructionNumber",e.target.value);}} placeholder="—" title="Instruction number. As soon as it is filled in the package counts as instructed." style={{fontSize:12,fontFamily:"var(--font-mono)",border:"1px solid #cfe3d5",borderRadius:5,background:"#fff",width:"100%",minWidth:0,padding:"2px 6px",outline:"none"}}/>
             </div>
           </div>
-          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f3e5f5"}}>
-            <div style={{fontSize:10,color:"#7b1fa2",marginBottom:2}}>Budget treated</div>
+          <div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#f2f0ec"}}>
+            <div style={{fontSize:10,color:"#4a4740",marginBottom:2}}>Budget treated</div>
             <div style={{display:"flex",alignItems:"center",gap:4}}>
-              <input type="number" value={td.accAmountTreated||""} onChange={function(e){updTd("accAmountTreated",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #ce93d8",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#7b1fa2"}}/>
+              <input type="number" value={td.accAmountTreated||""} onChange={function(e){updTd("accAmountTreated",e.target.value);}} placeholder="0" style={{fontSize:16,fontWeight:800,border:"1px solid #ddd9cf",borderRadius:5,background:"#fff",width:"100%",padding:"2px 6px",outline:"none",fontFamily:"inherit",color:"#4a4740"}}/>
               <span style={{fontSize:10,color:"#aaa"}}>{cur}</span>
             </div>
             <div style={{fontSize:10,color:"#aaa"}}>Used for the Departments recap (Budget/Cost/Variance treated)</div>
           </div>
-          {budget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:effectiveCost>0&&variance<0?"#fff0f0":effectiveCost>0?"#f0fff4":"#f8f7f4"}}>
-            <div style={{fontSize:10,color:effectiveCost>0?(variance<0?"#c62828":"#2e7d32"):"#888",marginBottom:2}}>{effectiveCost>0?varianceLabel:"Variance"}</div>
-            <div style={{fontSize:16,fontWeight:800,color:effectiveCost>0?(variance<0?"#c62828":"#2e7d32"):"#bbb"}}>{effectiveCost>0?(variance>0?"+":"")+variance.toLocaleString()+" "+cur:"—"}</div>
+          {budget>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:effectiveCost>0&&variance<0?"#fff0f0":effectiveCost>0?"#e6f2e9":"#f8f7f4"}}>
+            <div style={{fontSize:10,color:effectiveCost>0?(variance<0?"#b3302a":"#1e6b3a"):"#888",marginBottom:2}}>{effectiveCost>0?varianceLabel:"Variance"}</div>
+            <div style={{fontSize:16,fontWeight:800,color:effectiveCost>0?(variance<0?"#b3302a":"#1e6b3a"):"#bbb"}}>{effectiveCost>0?(variance>0?"+":"")+variance.toLocaleString()+" "+cur:"—"}</div>
             <div style={{fontSize:10,color:"#aaa"}}>{effectiveCost>0?(variance<0?"⚠️ Over budget":"✅ Under budget"):"No cost entered yet"}{effectiveCost>0&&treated===0?" (est.)":""}</div>
           </div>}
           {contractGrand>0&&<div className="card" style={{flex:1,minWidth:120,marginBottom:0,padding:"10px 14px",background:"#fff8f0"}}>
@@ -4288,10 +4288,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           var CYCLE_OPTS=["","under preparation","submitted","pending approval","approved","rejected"];
           var CYCLE_LABELS={"":"— Status —","under preparation":"Under preparation","submitted":"Submitted","pending approval":"Pending approval","approved":"✅ Approved","rejected":"❌ Rejected"};
           function sdStatusColor(st){
-            if(st==="approved")return"#2e7d32";
-            if(st==="rejected")return"#c62828";
-            if(st==="pending approval"||st==="submitted")return"#f57f17";
-            if(st==="under preparation")return"#1a73e8";
+            if(st==="approved")return"#1e6b3a";
+            if(st==="rejected")return"#b3302a";
+            if(st==="pending approval"||st==="submitted")return"#b35c00";
+            if(st==="under preparation")return"#0f5299";
             return"#888";
           }
           function sdStepAction(newStatus){
@@ -4348,7 +4348,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <input type="checkbox" checked={hasSd} onChange={function(e){updTd("hasSD",e.target.checked);}} style={{width:14,height:14}}/>
               📐 Shop Drawing (SD)
               {!hasSd?null:sdEff&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:8,background:"#e0f2f1",color:sdStatusColor(sdEff),fontWeight:700,marginLeft:4}}>{CYCLE_LABELS[sdEff]||sdEff}</span>}
-              {hasSd&&sdOverdue&&<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️+{workingDaysDiff(sdDue14,today())}d</span>}
+              {hasSd&&sdOverdue&&<span style={{fontSize:10,color:"#b3302a",fontWeight:700}}>⚠️+{workingDaysDiff(sdDue14,today())}d</span>}
             </label>
             {hasSd&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#e0f2f122",borderRadius:7,border:"1px solid #00695c33"}}>
               {(function(){
@@ -4368,7 +4368,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               
               
               
-              {sdOverdue&&<span style={{fontSize:10,color:"#c62828",fontWeight:700}}>⚠️ Overdue +{workingDaysDiff(sdDue14,today())}d</span>}
+              {sdOverdue&&<span style={{fontSize:10,color:"#b3302a",fontWeight:700}}>⚠️ Overdue +{workingDaysDiff(sdDue14,today())}d</span>}
             </div>}
           </div>;
         })()}
@@ -4403,8 +4403,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
         {tdTab==="actions"&&<React.Fragment>
         <div className="card" style={{marginBottom:10}}>
-          <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#7b1fa2"}}>🎯 Next Step</div>
-          <textarea value={td.nextStep||""} onChange={function(e){updTd("nextStep",e.target.value);}} placeholder="Describe the next step or action required for this tender…" style={{width:"100%",minHeight:60,padding:"7px 10px",fontSize:12,border:"1.5px solid #ce93d8",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#4a4740"}}>🎯 Next Step</div>
+          <textarea value={td.nextStep||""} onChange={function(e){updTd("nextStep",e.target.value);}} placeholder="Describe the next step or action required for this tender…" style={{width:"100%",minHeight:60,padding:"7px 10px",fontSize:12,border:"1.5px solid #ddd9cf",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
         </div>
 
         <div className="card" style={{marginBottom:10}}>
@@ -4455,7 +4455,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
                   <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
                   <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-                  <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+                  <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
                 </div>
                 {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
                   <textarea value={note.content||""} onChange={function(e){updNote("content",e.target.value);}} placeholder="Write your note here..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
@@ -4483,11 +4483,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     <div className="page-hdr">
       <div><div className="page-title">Packages</div><div className="page-sub">Submissions, contracts and addendums — by department</div></div>
       <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
-      <button className="btn btn-sm" onClick={function(){setShowPrint(true);}} title="Choose the sections to print" style={{marginLeft:"auto"}}>🖨️ Print</button>
+      <button className="btn btn-sm" onClick={function(){setShowPrint(true);}} title="Choose the sections to print" style={{marginLeft:"auto"}}>Print</button>
       {(function(){
         var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
         return <button className="btn btn-sm" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
-          style={n?{borderColor:"#f48fb1",color:"#c62828"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
+          style={n?{borderColor:"#ecc3c7",color:"#b3302a"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
       })()}
       <button className="btn btn-gold" onClick={openNew}>＋ New Package</button>
     </div>
@@ -4542,9 +4542,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <div style={{fontSize:16,fontWeight:800}}>{totAllBudget.toLocaleString()}</div>
           <div style={{fontSize:9,color:"#aaa"}}>{filtered.length} tenders</div>
         </div>
-        <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px",background:"#e8f5e9"}}>
-          <div style={{fontSize:9,color:"#2e7d32",marginBottom:2,textTransform:"uppercase",fontWeight:600}}>Total Budget Awarded</div>
-          <div style={{fontSize:16,fontWeight:800,color:"#2e7d32"}}>{totBudget.toLocaleString()}</div>
+        <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px",background:"#e6f2e9"}}>
+          <div style={{fontSize:9,color:"#1e6b3a",marginBottom:2,textTransform:"uppercase",fontWeight:600}}>Total Budget Awarded</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#1e6b3a"}}>{totBudget.toLocaleString()}</div>
           <div style={{fontSize:9,color:"#aaa"}}>{releasedTenders.length} released</div>
         </div>
         <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px",background:"#f0f4ff"}}>
@@ -4552,14 +4552,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           <div style={{fontSize:16,fontWeight:800,color:"#3949ab"}}>{totAcc>0?totAcc.toLocaleString():"—"}</div>
           <div style={{fontSize:9,color:"#aaa"}}>ACC/ACONEX (released)</div>
         </div>
-        <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px",background:totVariance<0?"#fff0f0":"#f0fff4",borderLeft:"3px solid "+(totVariance<0?"#c62828":"#2e7d32")}}>
-          <div style={{fontSize:9,color:totVariance<0?"#c62828":"#2e7d32",marginBottom:2,textTransform:"uppercase",fontWeight:600}}>Variance</div>
-          <div style={{fontSize:16,fontWeight:800,color:totVariance<0?"#c62828":"#2e7d32"}}>{(totBudget>0&&totAcc>0)?(totVariance>0?"+":"")+totVariance.toLocaleString():"—"}</div>
+        <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px",background:totVariance<0?"#fff0f0":"#e6f2e9",borderLeft:"3px solid "+(totVariance<0?"#b3302a":"#1e6b3a")}}>
+          <div style={{fontSize:9,color:totVariance<0?"#b3302a":"#1e6b3a",marginBottom:2,textTransform:"uppercase",fontWeight:600}}>Variance</div>
+          <div style={{fontSize:16,fontWeight:800,color:totVariance<0?"#b3302a":"#1e6b3a"}}>{(totBudget>0&&totAcc>0)?(totVariance>0?"+":"")+totVariance.toLocaleString():"—"}</div>
           <div style={{fontSize:9,color:"#aaa"}}>Awarded − Proposed</div>
         </div>
-        <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px",background:totRemainAwarded>0?"#fff8e1":"#f0fff4"}}>
-          <div style={{fontSize:9,color:totRemainAwarded>0?"#f57f17":"#2e7d32",marginBottom:2,textTransform:"uppercase",fontWeight:600}}>Remain to Award</div>
-          <div style={{fontSize:16,fontWeight:800,color:totRemainAwarded>0?"#f57f17":"#2e7d32"}}>{totRemainAwarded.toLocaleString()}</div>
+        <div className="card" style={{flex:1,minWidth:100,marginBottom:0,padding:"10px 12px",background:totRemainAwarded>0?"#faf3e0":"#e6f2e9"}}>
+          <div style={{fontSize:9,color:totRemainAwarded>0?"#b35c00":"#1e6b3a",marginBottom:2,textTransform:"uppercase",fontWeight:600}}>Remain to Award</div>
+          <div style={{fontSize:16,fontWeight:800,color:totRemainAwarded>0?"#b35c00":"#1e6b3a"}}>{totRemainAwarded.toLocaleString()}</div>
           <div style={{fontSize:9,color:"#aaa"}}>Total − Awarded</div>
         </div>
       </div>;
@@ -4595,7 +4595,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           {TENDER_STEPS.filter(function(s){return s.key!=="process"&&s.key!=="bidders";}).map(function(s,i){
             return <th key={s.key} className={"sortable"+(i===0?" tcol-sep":"")} onClick={function(){toggleSort(s.key);}} title="Sort by how far this step went">{s.label}{sortIcon(s.key)}</th>;
           })}
-          <th className="tcol-sep" style={{minWidth:160,color:"#7b1fa2"}}>Next Step</th>
+          <th className="tcol-sep" style={{minWidth:160,color:"#4a4740"}}>Next Step</th>
         </tr></thead>
         {listRange&&<tbody className="tp-tl"><tr style={{background:"#fafaf8"}}><td colSpan={99} style={{padding:"3px 10px"}}>
             <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:12,alignItems:"center"}}>
@@ -4608,7 +4608,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           var rowBg=rowIdx%2?"#f7f5ef":"#fff";
           var _ph=TENDER_PHASES.find(function(p){return p.k===tenderPhase(td);});
           var _now=listRange&&!td.cancelled?tenderNow(td):null;
-          var _whoCol={us:"#6f6b62",client:"#1a73e8",sub:"#7b1fa2",internal:"#d85a30"};
+          var _whoCol={us:"#6f6b62",client:"#0f5299",sub:"#4a4740",internal:"#d85a30"};
           var _prev=rowIdx>0?filtered[rowIdx-1]:null;
           var _phaseHead=sortCol==="status"&&(!_prev||tenderPhase(_prev)!==tenderPhase(td));
           var _phaseN=_phaseHead?filtered.filter(function(t){return tenderPhase(t)===_ph.k;}).length:0;
@@ -4621,7 +4621,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               {/* Fixed-width badge and dot slot: every tender name starts at the same x. */}
               <div style={{display:"flex",alignItems:"center",gap:6,textAlign:"left"}}>
                 <span title={_ph.label} style={{background:_ph.bg,color:_ph.fg,fontSize:9.5,fontWeight:700,borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap",flexShrink:0,width:92,boxSizing:"border-box",textAlign:"center"}}>{_ph.short}</span>
-                <span title={td.released?"Released — included in totals":""} style={{width:7,height:7,borderRadius:"50%",background:td.released?"#2e7d32":"transparent",flexShrink:0,display:"inline-block"}}/>
+                <span title={td.released?"Released — included in totals":""} style={{width:7,height:7,borderRadius:"50%",background:td.released?"#1e6b3a":"transparent",flexShrink:0,display:"inline-block"}}/>
                 <span style={{flex:1,minWidth:0}}>{td.title}</span>
               </div>
             </td>
@@ -4647,11 +4647,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             </td>
             <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
               {(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0))>0
-                ?<span style={{fontSize:11,fontWeight:600,color:"#1a73e8"}}>{(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0)).toLocaleString()}</span>
+                ?<span style={{fontSize:11,fontWeight:600,color:"#0f5299"}}>{(Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0)).toLocaleString()}</span>
                 :<span style={{color:"#ddd"}}>—</span>}
             </td>
             <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
-              {td.instructionAmount?<span style={{fontSize:11,fontWeight:600,color:"#2e7d32"}}>{Number(td.instructionAmount).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
+              {td.instructionAmount?<span style={{fontSize:11,fontWeight:600,color:"#1e6b3a"}}>{Number(td.instructionAmount).toLocaleString()}</span>:<span style={{color:"#ddd"}}>—</span>}
             </td>
             <td style={{textAlign:"center",whiteSpace:"nowrap"}} onClick={function(e){e.stopPropagation();}}>
               <input type="text" value={td.instructionNumber||""}
@@ -4662,7 +4662,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 }}
                 placeholder="—" title="Instruction number. As soon as it is filled in the package counts as instructed."
                 style={{width:88,fontFamily:"var(--font-mono)",fontSize:11,padding:"3px 5px",textAlign:"center",
-                  border:"1.5px solid "+(_instr?"#c8e6c9":"var(--rule,#ddd9cf)"),background:_instr?"#f2f9f3":"#fff"}}/>
+                  border:"1.5px solid "+(_instr?"#cfe3d5":"var(--rule,#ddd9cf)"),background:_instr?"#f2f9f3":"#fff"}}/>
               <div style={{fontSize:10,fontWeight:700,marginTop:2,color:_instr?"var(--green,#1e6b3a)":"var(--ink-4,#9b968b)"}}>
                 {_instr?"✓ instructed":"not instructed"}</div>
             </td>
@@ -4672,7 +4672,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 var proposed=Number(td.accAmountSubcontract||0)+Number(td.accAmountOther||0);
                 if(!budget||!proposed)return <span style={{color:"#ddd"}}>—</span>;
                 var v=budget-proposed;
-                return <span style={{fontSize:11,fontWeight:700,color:v<0?"#c62828":"#2e7d32"}}>{v>0?"+":""}{v.toLocaleString()}</span>;
+                return <span style={{fontSize:11,fontWeight:700,color:v<0?"#b3302a":"#1e6b3a"}}>{v>0?"+":""}{v.toLocaleString()}</span>;
               })()}
             </td>
             <td className="tcol-sep" style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}>
@@ -4701,7 +4701,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 var ctOverdue=stage<4&&nextTarget&&nextTarget<today();
                 return <td key="contract" style={{verticalAlign:"top",minWidth:90}}>
                   <span className={"chip "+CONTRACT_COLORS[stage]} style={{fontSize:10,whiteSpace:"nowrap"}}>{CONTRACT_LABELS_LIST[stage]}</span>
-                  {stage<4&&nextTarget&&<div style={{fontSize:9,marginTop:2,color:ctOverdue?"#c62828":"#bbb",fontWeight:ctOverdue?700:400}}>
+                  {stage<4&&nextTarget&&<div style={{fontSize:9,marginTop:2,color:ctOverdue?"#b3302a":"#bbb",fontWeight:ctOverdue?700:400}}>
                     {ctOverdue?"⚠️ ":""}{fmtDate(nextTarget)}
                   </div>}
                 </td>;
@@ -4722,17 +4722,17 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 {qualityMissing
                   ?<span className="chip s-notdone" style={{fontSize:10,whiteSpace:"nowrap",fontWeight:700}}>Not done</span>
                   :isNA
-                  ?<span title="Not applicable — nothing to do" style={{fontSize:10,color:"#2e7d32",fontWeight:700,background:"#e8f5e9",border:"1px solid #c8e6c9",padding:"1px 6px",borderRadius:4}}>N/A</span>
+                  ?<span title="Not applicable — nothing to do" style={{fontSize:10,color:"#1e6b3a",fontWeight:700,background:"#e6f2e9",border:"1px solid #cfe3d5",padding:"1px 6px",borderRadius:4}}>N/A</span>
                   :!isEmpty
                   ?<span className={"chip "+cls} style={{fontSize:10,whiteSpace:"nowrap"}}>{v}</span>
                   :!target&&!done
                   ?<span style={{color:"#e8e6df",fontSize:11}}>—</span>
                   :null
                 }
-                {!isNA&&target&&<div style={{fontSize:9,marginTop:2,color:isOverdue&&!done?"#c62828":"#bbb",fontWeight:isOverdue&&!done?700:400}}>
+                {!isNA&&target&&<div style={{fontSize:9,marginTop:2,color:isOverdue&&!done?"#b3302a":"#bbb",fontWeight:isOverdue&&!done?700:400}}>
                   {isOverdue&&!done?"⚠️ ":""}{fmtDate(target)}
                 </div>}
-                {!isNA&&done&&<div style={{fontSize:9,marginTop:1,color:"#2e7d32",fontWeight:600}}>✓ {fmtDate(done)}</div>}
+                {!isNA&&done&&<div style={{fontSize:9,marginTop:1,color:"#1e6b3a",fontWeight:600}}>✓ {fmtDate(done)}</div>}
               </td>;
             })}
             <td className="tcol-sep" style={{minWidth:160,verticalAlign:"top"}} onClick={function(e){e.stopPropagation();}}>
@@ -4764,9 +4764,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                   <span style={{fontSize:10,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:".5px",marginRight:4}}>TOTALS ({filtered.length})</span>
                   {totBudget>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#f0ede6",fontSize:11}}><span style={{color:"#888"}}>Budget: </span><strong>{totBudget.toLocaleString()}</strong></div>}
-                  {totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f0fe",fontSize:11}}><span style={{color:"#888"}}>ACC proposed: </span><strong style={{color:"#1a73e8"}}>{totAcc.toLocaleString()}</strong></div>}
-                  {totInstructed>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Instructed: </span><strong style={{color:"#2e7d32"}}>{totInstructed.toLocaleString()}</strong></div>}
-                  {totBudget>0&&totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:variance<0?"#fce4ec":"#e8f5e9",fontSize:11}}><span style={{color:"#888"}}>Variance (B-C): </span><strong style={{color:variance<0?"#c62828":"#2e7d32"}}>{variance>0?"+":""}{variance.toLocaleString()}</strong><span style={{fontSize:10,marginLeft:4}}>{variance<0?"⚠️ over budget":"✅ under budget"}</span></div>}
+                  {totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e8f0fe",fontSize:11}}><span style={{color:"#888"}}>ACC proposed: </span><strong style={{color:"#0f5299"}}>{totAcc.toLocaleString()}</strong></div>}
+                  {totInstructed>0&&<div style={{padding:"3px 10px",borderRadius:7,background:"#e6f2e9",fontSize:11}}><span style={{color:"#888"}}>Instructed: </span><strong style={{color:"#1e6b3a"}}>{totInstructed.toLocaleString()}</strong></div>}
+                  {totBudget>0&&totAcc>0&&<div style={{padding:"3px 10px",borderRadius:7,background:variance<0?"#fbe6e8":"#e6f2e9",fontSize:11}}><span style={{color:"#888"}}>Variance (B-C): </span><strong style={{color:variance<0?"#b3302a":"#1e6b3a"}}>{variance>0?"+":""}{variance.toLocaleString()}</strong><span style={{fontSize:10,marginLeft:4}}>{variance<0?"⚠️ over budget":"✅ under budget"}</span></div>}
                 </div>;
               })()}
             </td>
@@ -4785,14 +4785,14 @@ function CollapsibleContract({ct,fin,children}){
     <div onClick={function(){setOpen(!open);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:open?"#f8f7f4":"#fff",userSelect:"none"}}>
       <span style={{fontSize:13,color:"#aaa",flexShrink:0,transition:"transform .15s",transform:open?"rotate(0deg)":"rotate(-90deg)",display:"inline-block"}}>{open?"▾":"▾"}</span>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontWeight:700,fontSize:13,color:"#1a1a1a"}}>{ct.number||"(no #)"} {ct.sapNumber&&<span style={{fontSize:11,color:"#1a73e8",fontWeight:600,marginLeft:4}}>SAP {ct.sapNumber}</span>}</div>
+        <div style={{fontWeight:700,fontSize:13,color:"#1a1a1a"}}>{ct.number||"(no #)"} {ct.sapNumber&&<span style={{fontSize:11,color:"#0f5299",fontWeight:600,marginLeft:4}}>SAP {ct.sapNumber}</span>}</div>
         {ct.description&&<div style={{fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct.description}</div>}
       </div>
       <div style={{textAlign:"right",flexShrink:0}}>
         {ct.closed
-          ?<span style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#e8f5e9",color:"#2e7d32",fontWeight:700}}>✅ Closed</span>
+          ?<span style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#e6f2e9",color:"#1e6b3a",fontWeight:700}}>✅ Closed</span>
           :<span style={{fontSize:12,fontWeight:700,color:"#1a1a1a"}}>{fin.total.toLocaleString()} {currency}</span>}
-        <div style={{fontSize:10,color:fin.pct>=80?"#2e7d32":"#f57f17"}}>{fin.pct}% certified</div>
+        <div style={{fontSize:10,color:fin.pct>=80?"#1e6b3a":"#b35c00"}}>{fin.pct}% certified</div>
         {(function(){
           var certs=ct.certifications||[];
           if(ct.closed||certs.length===0)return null;
@@ -4800,7 +4800,7 @@ function CollapsibleContract({ct,fin,children}){
           if(!lastDate)return null;
           var d=new Date(lastDate);var now=new Date();
           var months=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
-          if(months>=2)return <div style={{fontSize:9,color:"#c62828",fontWeight:700}}>⚠️ Last cert: {fmtMonthYear(lastDate)}</div>;
+          if(months>=2)return <div style={{fontSize:9,color:"#b3302a",fontWeight:700}}>⚠️ Last cert: {fmtMonthYear(lastDate)}</div>;
           return null;
         })()}
       </div>
@@ -4934,12 +4934,12 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
             {ctr.package&&<span>📦 {ctr.package}</span>}
             {ctr.owner&&<OwnerChip owner={ctr.owner}/>}
             {linkedTenders.map(function(lt){return lt?<span key={lt.id} style={{padding:"2px 8px",borderRadius:10,background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:11,fontWeight:700}}>📑 {lt.title}</span>:null;})}
-            {(ctr.advancePayment||{}).date&&<span style={{padding:"2px 8px",borderRadius:10,background:"#e8f5e9",color:"#2e7d32",fontSize:11,fontWeight:700}}>💰 Advance paid {fmtDate(ctr.advancePayment.date)}</span>}
+            {(ctr.advancePayment||{}).date&&<span style={{padding:"2px 8px",borderRadius:10,background:"#e6f2e9",color:"#1e6b3a",fontSize:11,fontWeight:700}}>💰 Advance paid {fmtDate(ctr.advancePayment.date)}</span>}
           </div>
         </div>
-        <button className="btn btn-sm" onClick={function(){openEdit(ctr);}}>✏️ Edit</button>
+        <button className="btn btn-sm" onClick={function(){openEdit(ctr);}}>Edit</button>
         <button className="btn btn-sm btn-danger" onClick={function(){delCtr(ctr.id);}}>🗑</button>
-        <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import</button>
+        <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import</button>
         <button className="btn btn-gold" onClick={function(){addContract(ctr.id);}} style={{marginLeft:"auto"}}>＋ Add Contract</button>
       </div>
       {importUI}
@@ -5010,7 +5010,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     <div className="page-hdr">
       <div><div className="page-title">Subcontractors</div><div className="page-sub">Subcontractors, contracts and certifications</div></div>
       <div style={{display:"flex",gap:8}}>
-        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import</button>
+        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import</button>
         <button className="btn btn-gold" onClick={openNew}>+ New Subcontractor</button>
       </div>
     </div>
@@ -5040,14 +5040,14 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
           return <tr key={ctr.id} style={{cursor:"pointer"}} onClick={function(){setSelCtr(ctr);}}>
             <td style={{fontWeight:700}}>
               {ctr.name}
-              {unread>0&&<span style={{marginLeft:6,display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:"50%",background:"#c62828",color:"#fff",fontSize:10,fontWeight:800,verticalAlign:"middle"}} title={unread+" unanswered letter"+(unread>1?"s":"")}>{unread}</span>}
+              {unread>0&&<span style={{marginLeft:6,display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:"50%",background:"#b3302a",color:"#fff",fontSize:10,fontWeight:800,verticalAlign:"middle"}} title={unread+" unanswered letter"+(unread>1?"s":"")}>{unread}</span>}
             </td>
             <td>{ctr.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{ctr.package}</span>}</td>
             <td>{ctr.owner&&<OwnerChip owner={ctr.owner}/>}</td>
             <td style={{textAlign:"center"}}>
               {ctrLetters.length>0
                 ?<div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
-                  {unread>0&&<span style={{fontSize:10,fontWeight:700,color:"#c62828"}}>⚠️ {unread} unanswered</span>}
+                  {unread>0&&<span style={{fontSize:10,fontWeight:700,color:"#b3302a"}}>⚠️ {unread} unanswered</span>}
                   <span style={{fontSize:10,color:"#888"}}>{ctrLetters.length} total</span>
                 </div>
                 :<span style={{color:"#ddd",fontSize:12}}>—</span>}
@@ -5056,9 +5056,9 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
             <td><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[...new Set((ctr.contracts||[]).map(function(ct){return ct.tenderRef;}).filter(Boolean))].map(function(tid){var td=tnds.find(function(t){return t.id===tid;});return td?<span key={tid} className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {td.title}</span>:null;})}</div></td>
             <td style={{textAlign:"center"}}>{(ctr.contracts||[]).length}</td>
             <td style={{fontWeight:600}}>{totVal.toLocaleString()}</td>
-            <td style={{color:"#1a73e8",fontWeight:600}}>{(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).totalInstructed;},0).toLocaleString()}</td>
-            <td style={{color:"#2e7d32",fontWeight:600}}>{totCert.toLocaleString()}</td>
-            <td style={{color:totRem<0?"#c62828":"#1a1a1a",fontWeight:600}}>{totRem.toLocaleString()}</td>
+            <td style={{color:"#0f5299",fontWeight:600}}>{(ctr.contracts||[]).reduce(function(s,ct){return s+contractFinancials(ct).totalInstructed;},0).toLocaleString()}</td>
+            <td style={{color:"#1e6b3a",fontWeight:600}}>{totCert.toLocaleString()}</td>
+            <td style={{color:totRem<0?"#b3302a":"#1a1a1a",fontWeight:600}}>{totRem.toLocaleString()}</td>
           </tr>;
         })}</tbody>
       </table>}
@@ -5315,28 +5315,28 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
       <div style={{flex:1}}>
         <div style={{fontSize:11,color:"#888"}}>{ctr.name}</div>
-        <div className="page-title" style={{fontSize:18}}>{ct.number||"Contract"} {ct.sapNumber&&<span style={{fontSize:13,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
+        <div className="page-title" style={{fontSize:18}}>{ct.number||"Contract"} {ct.sapNumber&&<span style={{fontSize:13,color:"#0f5299",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:3}}>
           {ct.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>📦 {ct.package}</span>}
           {linkedTender&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa"}}>📑 {linkedTender.title}</span>}
         </div>
       </div>
-      <button onClick={function(){if(safeConfirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField){updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav(null);}}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#c62828",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
+      <button onClick={function(){if(safeConfirm("Delete this contract? This cannot be undone.")){var d=(window._ppContractors||[]).map(function(c){return c.id!==ctr.id?c:Object.assign({},c,{contracts:(c.contracts||[]).filter(function(ct2){return ct2.id!==ct.id;})});});if(updateCtField){updateCtField(ctr.id,ct.id,"__delete__","");if(typeof setNav==="function")setNav(null);}}}} style={{background:"none",border:"1px solid #f5c6c6",borderRadius:6,color:"#b3302a",cursor:"pointer",fontSize:11,padding:"4px 10px",fontFamily:"inherit",flexShrink:0}}>🗑 Delete contract</button>
     </div>
 
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {[
         {label:"Contract Value excl. tax",val:fin.total.toLocaleString()+" EUR",sub:"Base "+fin.base.toLocaleString()+" + Add. "+fin.addTotal.toLocaleString(),color:"#1a1a1a"},
-        {label:"Total Instructed excl. tax",val:fin.totalInstructed.toLocaleString()+" EUR",sub:"",color:"#1a73e8"},
-        {label:"Certified excl. tax",val:fin.certified.toLocaleString()+" EUR",sub:fin.pct+"% of contract",color:"#2e7d32"},
-        {label:"Remaining excl. tax",val:fin.remaining.toLocaleString()+" EUR",sub:fin.forecast?"Forecast: "+fmtMonthYear(fin.forecast):"",color:fin.remaining<0?"#c62828":"#1a1a1a"}
+        {label:"Total Instructed excl. tax",val:fin.totalInstructed.toLocaleString()+" EUR",sub:"",color:"#0f5299"},
+        {label:"Certified excl. tax",val:fin.certified.toLocaleString()+" EUR",sub:fin.pct+"% of contract",color:"#1e6b3a"},
+        {label:"Remaining excl. tax",val:fin.remaining.toLocaleString()+" EUR",sub:fin.forecast?"Forecast: "+fmtMonthYear(fin.forecast):"",color:fin.remaining<0?"#b3302a":"#1a1a1a"}
       ].map(function(k){return <div key={k.label} className="card" style={{flex:1,minWidth:130,marginBottom:0,padding:"10px 14px"}}>
         <div style={{fontSize:10,color:"#888",marginBottom:2}}>{k.label}</div>
         <div style={{fontSize:15,fontWeight:800,color:k.color}}>{k.val}</div>
         {k.sub&&<div style={{fontSize:10,color:"#aaa"}}>{k.sub}</div>}
       </div>;})}
     </div>
-    <div className="pbar" style={{height:6,marginBottom:14}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
+    <div className="pbar" style={{height:6,marginBottom:14}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#b3302a":fin.pct>=70?"#b35c00":"#1e6b3a"}}/></div>
 
     <div className="card" style={{marginBottom:10}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Contract Details</div>
@@ -5384,10 +5384,10 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           <input type="date" min="1990-01-01" max="2200-12-31" value={ct.endDate||""} onChange={function(e){updateCtField(ctr.id,ct.id,"endDate",e.target.value);}} style={{padding:"4px 8px",fontSize:11}}/>
         </div>
         {effCt.changedBy.endDate&&<div style={{flex:"0 0 auto",paddingBottom:6}}>
-          <span style={{fontSize:11,fontWeight:700,color:"#7b1fa2"}}>In force: {fmtDate(effCt.endDate)} ({effCt.changedBy.endDate})</span>
+          <span style={{fontSize:11,fontWeight:700,color:"#4a4740"}}>In force: {fmtDate(effCt.endDate)} ({effCt.changedBy.endDate})</span>
         </div>}
         {fin.forecast&&<div style={{flex:"0 0 auto",paddingBottom:6}}>
-          <span style={{fontSize:11,color:fin.forecast>(effCt.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:700}}>📅 Forecast: {fmtMonthYear(fin.forecast)}</span>
+          <span style={{fontSize:11,color:fin.forecast>(effCt.endDate||"9999")?"#b3302a":"#1e6b3a",fontWeight:700}}>📅 Forecast: {fmtMonthYear(fin.forecast)}</span>
         </div>}
         <div style={{flex:1,minWidth:160}}>
           <label>Linked Tender</label>
@@ -5415,7 +5415,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
           <input type="checkbox" checked={!!ct.closed} onChange={function(e){updateCtField(ctr.id,ct.id,"closed",e.target.checked);}} style={{width:15,height:15}}/>
           Contract closed
         </label>
-        {ct.closed&&<label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:500,color:"#2e7d32"}}>
+        {ct.closed&&<label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:12,fontWeight:500,color:"#1e6b3a"}}>
           <input type="checkbox" checked={!!ct.cacSigned} onChange={function(e){updateCtField(ctr.id,ct.id,"cacSigned",e.target.checked);}} style={{width:15,height:15}}/>
           Certificate at Completion signed
         </label>}
@@ -5427,8 +5427,8 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
     <div className="card" style={{marginBottom:10}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>ACC / ACONEX Status</div>
       {[
-        {key:"acc",label:"ACC",color:"#1a73e8",bg:"#e8f0fe"},
-        {key:"aconex",label:"ACONEX",color:"#7b1fa2",bg:"#f3e5f5"}
+        {key:"acc",label:"ACC",color:"#0f5299",bg:"#e8f0fe"},
+        {key:"aconex",label:"ACONEX",color:"#4a4740",bg:"#f2f0ec"}
       ].map(function(doc){
         var signed=ct[doc.key+"Signed"]||false;
         var nc=ctNoClient(ct,doc.key);
@@ -5450,7 +5450,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               Not sent to client (amount too low)
             </label>
             {!nc&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:4}}>
-              <select value={status} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Status",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5,fontFamily:"inherit",color:status==="approved"?"#2e7d32":status==="rejected"?"#c62828":"#555",fontWeight:status?"600":"400"}}>
+              <select value={status} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Status",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5,fontFamily:"inherit",color:status==="approved"?"#1e6b3a":status==="rejected"?"#b3302a":"#555",fontWeight:status?"600":"400"}}>
                 <option value="">— status —</option>
                 <option value="not submitted">Not submitted</option>
                 <option value="pending approval">Pending approval</option>
@@ -5461,7 +5461,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
                 <div style={{fontSize:9,fontWeight:700,color:"#888",marginBottom:2}}>SUBMISSION DATE</div>
                 <input type="date" min="1990-01-01" max="2200-12-31" value={subDate} onChange={function(e){updateCtField(ctr.id,ct.id,doc.key+"Date",e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid "+doc.color+"55",borderRadius:5}}/>
               </div>}
-              {due14&&<div style={{fontSize:10,color:overdue?"#c62828":"#888",fontWeight:overdue?700:400}}>
+              {due14&&<div style={{fontSize:10,color:overdue?"#b3302a":"#888",fontWeight:overdue?700:400}}>
                 {overdue?"⚠️ Overdue +"+workingDaysDiff(due14,today())+"d (due "+fmtDate(due14)+")":"Due: "+fmtDate(due14)}
               </div>}
             </div>}
@@ -5472,7 +5472,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
 
     <div className="card" style={{marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setShowAdd(!showAdd);}}>
-        <div style={{fontWeight:700,fontSize:13}}>Addendums ({(ct.addendums||[]).length}){(ct.addendums||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#1a73e8"}}>Total: {(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0).toLocaleString()} EUR</span>}</div>
+        <div style={{fontWeight:700,fontSize:13}}>Addendums ({(ct.addendums||[]).length}){(ct.addendums||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#0f5299"}}>Total: {(ct.addendums||[]).reduce(function(s,a){return s+Number(a.amount||0);},0).toLocaleString()} EUR</span>}</div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button className="btn btn-sm" onClick={function(e){e.stopPropagation();addAdItem(ctr.id,ct.id,"addendums",newAddendum());}}>+ Add</button>
           <span style={{fontSize:16,color:"#aaa"}}>{showAdd?"▾":"▸"}</span>
@@ -5490,16 +5490,16 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="number" value={ad.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:110,padding:"3px 6px",fontSize:11}}/>
 <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}><input type="number" value={ad.instructionAmount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"instructionAmount",e.target.value);}} placeholder="INS Amt" style={{width:110,padding:"3px 28px 3px 6px",fontSize:11}}/><span style={{position:"absolute",right:4,fontSize:9,fontWeight:700,color:"#aaa",pointerEvents:"none"}}>{ct.currency||"EUR"}</span></div>
               <span style={{fontSize:10,color:"#888"}}>Cumul: <strong>{addCumul.toLocaleString()} EUR</strong></span>
-              <button onClick={function(){if(safeConfirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+              <button onClick={function(){if(safeConfirm("Delete addendum?"))delAdItem(ctr.id,ct.id,"addendums",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
             <input type="text" value={ad.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box",marginBottom:6}}/>
             {((ad.dateChanges||[]).length>0||ad.scopeChanges)&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-              {(ad.dateChanges||[]).map(function(c,k){var lb=c.field==="startDate"?"Start":c.field==="endDate"?"Completion":c.milestone;return <span key={k} className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:10}}>📅 {lb} → {fmtDate(c.to)}</span>;})}
-              {ad.scopeChanges&&<span className="badge" style={{background:"#e8f5e9",color:"#2e7d32",fontSize:10}}>📐 Scope{(ad.scopeChanges.added||[]).length?" +"+ad.scopeChanges.added.length:""}{(ad.scopeChanges.removed||[]).length?" −"+ad.scopeChanges.removed.length:""}</span>}
+              {(ad.dateChanges||[]).map(function(c,k){var lb=c.field==="startDate"?"Start":c.field==="endDate"?"Completion":c.milestone;return <span key={k} className="badge" style={{background:"#f2f0ec",color:"#4a4740",fontSize:10}}>📅 {lb} → {fmtDate(c.to)}</span>;})}
+              {ad.scopeChanges&&<span className="badge" style={{background:"#e6f2e9",color:"#1e6b3a",fontSize:10}}>📐 Scope{(ad.scopeChanges.added||[]).length?" +"+ad.scopeChanges.added.length:""}{(ad.scopeChanges.removed||[]).length?" −"+ad.scopeChanges.removed.length:""}</span>}
             </div>}
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {["acc","aconex"].map(function(dk){
-                var dLabel=dk==="acc"?"ACC":"ACONEX";var dColor=dk==="acc"?"#1a73e8":"#7b1fa2";
+                var dLabel=dk==="acc"?"ACC":"ACONEX";var dColor=dk==="acc"?"#0f5299":"#4a4740";
                 var adStatus=ad[dk+"Status"]||"";var nc=ctNoClient(ad,dk);var adDate=nc?"":ad[dk+"Date"]||"";
                 var due14=adDate?(function(){var d=new Date(adDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
                 var overdue=adStatus!=="approved"&&due14&&due14<today();
@@ -5515,7 +5515,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
                     <option value="approved">✅ Approved</option>
                   </select>}
                   {!nc&&<input type="date" min="1990-01-01" max="2200-12-31" value={adDate} onChange={function(e){updateAdItem(ctr.id,ct.id,"addendums",i,dk+"Date",e.target.value);}} style={{fontSize:10,padding:"2px 4px",border:"1px solid "+dColor+"44",borderRadius:4,width:105}}/>}
-                  {overdue&&<span style={{fontSize:9,color:"#c62828",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due14,today())}d</span>}
+                  {overdue&&<span style={{fontSize:9,color:"#b3302a",fontWeight:700,flexShrink:0}}>⚠️+{workingDaysDiff(due14,today())}d</span>}
                 </div>;
               })}
             </div>
@@ -5526,7 +5526,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
 
     <div className="card" style={{marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setShowCert(!showCert);}}>
-        <div style={{fontWeight:700,fontSize:13}}>Certifications ({(ct.certifications||[]).length}){(ct.certifications||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#2e7d32"}}>Certified: {(ct.certifications||[]).reduce(function(s,cf){return s+Number(cf.amount||0);},0).toLocaleString()} EUR</span>}</div>
+        <div style={{fontWeight:700,fontSize:13}}>Certifications ({(ct.certifications||[]).length}){(ct.certifications||[]).length>0&&<span style={{marginLeft:8,fontSize:11,color:"#1e6b3a"}}>Certified: {(ct.certifications||[]).reduce(function(s,cf){return s+Number(cf.amount||0);},0).toLocaleString()} EUR</span>}</div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button className="btn btn-sm" onClick={function(e){e.stopPropagation();addAdItem(ctr.id,ct.id,"certifications",newCertification());}}>+ Add</button>
           <span style={{fontSize:16,color:"#aaa"}}>{showCert?"▾":"▸"}</span>
@@ -5542,9 +5542,9 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               <input type="text" value={cf.number||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"number",e.target.value);}} placeholder="Cert #" style={{width:80,padding:"3px 6px",fontSize:11,fontWeight:700}}/>
               <input type="month" value={cf.date?cf.date.slice(0,7):""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"date",e.target.value+"-01");}} style={{width:130,padding:"3px 6px",fontSize:11}}/>
               <input type="number" value={cf.amount||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"amount",e.target.value);}} placeholder="Amount excl. tax EUR" style={{width:130,padding:"3px 6px",fontSize:11}}/>
-              <span style={{fontSize:10,color:"#2e7d32"}}>Cumul: <strong>{certCumul.toLocaleString()} EUR</strong></span>
-              <span style={{fontSize:10,color:rem<0?"#c62828":"#888"}}>Left: <strong>{rem.toLocaleString()} EUR</strong></span>
-              <button onClick={function(){if(safeConfirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+              <span style={{fontSize:10,color:"#1e6b3a"}}>Cumul: <strong>{certCumul.toLocaleString()} EUR</strong></span>
+              <span style={{fontSize:10,color:rem<0?"#b3302a":"#888"}}>Left: <strong>{rem.toLocaleString()} EUR</strong></span>
+              <button onClick={function(){if(safeConfirm("Delete certification?"))delAdItem(ctr.id,ct.id,"certifications",i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:14,marginLeft:"auto"}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>
             <input type="text" value={cf.comment||""} onChange={function(e){updateAdItem(ctr.id,ct.id,"certifications",i,"comment",e.target.value);}} placeholder="Comment..." style={{width:"100%",padding:"3px 6px",fontSize:11,border:"1px solid #e8e6df",borderRadius:5,boxSizing:"border-box"}}/>
           </div>;
@@ -5847,14 +5847,14 @@ function ContractImportModal({contractors,packages,onApply,onClose}){
           <div style={{fontSize:12,color:"#666",marginBottom:8}}>Paste the <code>{CT_IMPORT_FORMAT}</code> block Claude produced from the signed contract or addendum. Nothing is saved before you confirm.</div>
           <textarea value={text} onChange={function(e){setText(e.target.value);}} rows={16} placeholder={'{ "format": "'+CT_IMPORT_FORMAT+'", "type": "contract", … }'}
             style={{width:"100%",boxSizing:"border-box",fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:8,border:"1px solid #e8e6df",borderRadius:6}}/>
-          {errors.length>0&&<div style={{marginTop:8,padding:"8px 10px",background:"#fce4ec",borderRadius:6,color:"#c62828",fontSize:12}}>
+          {errors.length>0&&<div style={{marginTop:8,padding:"8px 10px",background:"#fbe6e8",borderRadius:6,color:"#b3302a",fontSize:12}}>
             {errors.map(function(e,i){return <div key={i}>• {e}</div>;})}
           </div>}
         </div>}
 
         {plan&&<div>
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:6}}>
-            <span className="badge" style={{background:plan.type==="contract"?"#e8f0fe":"#f3e5f5",color:plan.type==="contract"?"#1a73e8":"#7b1fa2",fontWeight:700}}>
+            <span className="badge" style={{background:plan.type==="contract"?"#e8f0fe":"#f2f0ec",color:plan.type==="contract"?"#0f5299":"#4a4740",fontWeight:700}}>
               {plan.type==="contract"?(plan.existing?"Update contract":"New contract"):"Addendum "+d.no}
             </span>
             <strong style={{fontSize:14}}>{plan.type==="contract"?d.ref:(plan.existing?plan.existing.ct.number:d.contractRef)}</strong>
@@ -5863,7 +5863,7 @@ function ContractImportModal({contractors,packages,onApply,onClose}){
             {plan.type==="addendum"&&d.ref&&<span style={{fontSize:12,color:"#888"}}>· {d.ref}</span>}
           </div>
 
-          {plan.blocking.map(function(b,i){return <div key={"b"+i} style={{padding:"8px 10px",background:"#fce4ec",borderRadius:6,color:"#c62828",fontSize:12,fontWeight:600,marginBottom:6}}>⛔ {b}</div>;})}
+          {plan.blocking.map(function(b,i){return <div key={"b"+i} style={{padding:"8px 10px",background:"#fbe6e8",borderRadius:6,color:"#b3302a",fontSize:12,fontWeight:600,marginBottom:6}}>⛔ {b}</div>;})}
           {plan.warnings.map(function(w,i){return <div key={"w"+i} style={{padding:"8px 10px",background:"#fff3e0",borderRadius:6,color:"#ef6c00",fontSize:12,marginBottom:6}}>⚠️ {w}</div>;})}
 
           {plan.type==="contract"&&<div>
@@ -5874,7 +5874,7 @@ function ContractImportModal({contractors,packages,onApply,onClose}){
                   <option value="__new__">＋ Create “{d.subcontractor}”</option>
                   {(contractors||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
                 </select>
-                {!plan.existing&&ctrChoice!=="__new__"&&ctrChoice===plan.ctrId&&<div style={{fontSize:10,color:"#2e7d32",marginTop:2}}>Matched from the name in the document — change it if wrong.</div>}
+                {!plan.existing&&ctrChoice!=="__new__"&&ctrChoice===plan.ctrId&&<div style={{fontSize:10,color:"#1e6b3a",marginTop:2}}>Matched from the name in the document — change it if wrong.</div>}
               </div>
               {!plan.existing&&<div style={{flex:"0 1 200px"}}>
                 <label>Package</label>
@@ -5887,7 +5887,7 @@ function ContractImportModal({contractors,packages,onApply,onClose}){
             <table style={{width:"100%",borderCollapse:"collapse"}}>
               <thead><tr><th style={Object.assign({},hS,{width:28})}></th><th style={Object.assign({},hS,{width:170})}>Field</th><th style={hS}>In the app</th><th style={hS}>From the document</th></tr></thead>
               <tbody>{plan.rows.map(function(r){
-                var bg=r.same?"#fafaf8":r.conflict?"#fff8e1":"#fff";
+                var bg=r.same?"#fafaf8":r.conflict?"#faf3e0":"#fff";
                 return <tr key={r.key} style={{background:bg,opacity:r.same?.55:1}}>
                   <td style={cellS}>{r.same?<span style={{fontSize:10,color:"#aaa"}}>=</span>:<input type="checkbox" checked={!!sel[r.key]} onChange={function(){tog(r.key);}} style={{width:14,height:14}}/>}</td>
                   <td style={Object.assign({},cellS,{fontWeight:600})}>{r.label}{r.conflict&&<div style={{fontSize:9,color:"#ef6c00",fontWeight:700}}>REPLACES CURRENT VALUE</div>}</td>
@@ -5908,7 +5908,7 @@ function ContractImportModal({contractors,packages,onApply,onClose}){
                     var ct=plan.existing.ct;var cum=Number(ct.amount||0);
                     var rows=[<tr key="i"><td style={cellS}>Initial contract</td><td style={Object.assign({},cellS,{textAlign:"right"})}>{cum.toLocaleString()}</td><td style={Object.assign({},cellS,{textAlign:"right"})}>{cum.toLocaleString()}</td></tr>];
                     (ct.addendums||[]).forEach(function(a){cum+=Number(a.amount||0);rows.push(<tr key={a.id}><td style={cellS}>Addendum {a.number||"?"}</td><td style={Object.assign({},cellS,{textAlign:"right"})}>{Number(a.amount||0).toLocaleString()}</td><td style={Object.assign({},cellS,{textAlign:"right"})}>{cum.toLocaleString()}</td></tr>);});
-                    rows.push(<tr key="n" style={{background:"#f3e5f5"}}><td style={Object.assign({},cellS,{fontWeight:700})}>Addendum {d.no} (new)</td><td style={Object.assign({},cellS,{textAlign:"right",fontWeight:700})}>{(d.amountDelta>0?"+":"")+d.amountDelta.toLocaleString()}</td><td style={Object.assign({},cellS,{textAlign:"right",fontWeight:700})}>{(cum+d.amountDelta).toLocaleString()}</td></tr>);
+                    rows.push(<tr key="n" style={{background:"#f2f0ec"}}><td style={Object.assign({},cellS,{fontWeight:700})}>Addendum {d.no} (new)</td><td style={Object.assign({},cellS,{textAlign:"right",fontWeight:700})}>{(d.amountDelta>0?"+":"")+d.amountDelta.toLocaleString()}</td><td style={Object.assign({},cellS,{textAlign:"right",fontWeight:700})}>{(cum+d.amountDelta).toLocaleString()}</td></tr>);
                     return rows;
                   })()}
                 </tbody>
@@ -5922,11 +5922,11 @@ function ContractImportModal({contractors,packages,onApply,onClose}){
                 <thead><tr><th style={hS}>Date</th><th style={hS}>In force now</th><th style={hS}>New</th><th style={Object.assign({},hS,{textAlign:"right"})}>Shift</th></tr></thead>
                 <tbody>{plan.changes.map(function(x,i){
                   var shift=x.current?ctDays(x.current,x.change.to):null;
-                  return <tr key={i} style={{background:x.warn?"#fff8e1":"#fff"}}>
+                  return <tr key={i} style={{background:x.warn?"#faf3e0":"#fff"}}>
                     <td style={Object.assign({},cellS,{fontWeight:600})}>{x.label}</td>
                     <td style={Object.assign({},cellS,{color:"#888"})}>{x.current?fmtDate(x.current):"—"}</td>
                     <td style={Object.assign({},cellS,{fontWeight:700})}>{fmtDate(x.change.to)}</td>
-                    <td style={Object.assign({},cellS,{textAlign:"right",color:shift>0?"#c62828":"#2e7d32",fontWeight:700})}>{shift==null?"":(shift>0?"+":"")+shift+" d"}</td>
+                    <td style={Object.assign({},cellS,{textAlign:"right",color:shift>0?"#b3302a":"#1e6b3a",fontWeight:700})}>{shift==null?"":(shift>0?"+":"")+shift+" d"}</td>
                   </tr>;
                 })}</tbody>
               </table>
@@ -5936,8 +5936,8 @@ function ContractImportModal({contractors,packages,onApply,onClose}){
               <div style={secS}><label style={{display:"inline-flex",gap:6,alignItems:"center",cursor:"pointer"}}><input type="checkbox" checked={!!sel.scope} onChange={function(){tog("scope");}} style={{width:14,height:14}}/>Scope of works</label></div>
               <div style={{opacity:sel.scope?1:.45,fontSize:12}}>
                 {d.scopeChanges.summary&&<div style={{marginBottom:4}}>{d.scopeChanges.summary}</div>}
-                {(d.scopeChanges.added||[]).map(function(x,i){return <div key={"a"+i} style={{color:"#2e7d32"}}>＋ {x}</div>;})}
-                {(d.scopeChanges.removed||[]).map(function(x,i){return <div key={"r"+i} style={{color:"#c62828"}}>－ {x}</div>;})}
+                {(d.scopeChanges.added||[]).map(function(x,i){return <div key={"a"+i} style={{color:"#1e6b3a"}}>＋ {x}</div>;})}
+                {(d.scopeChanges.removed||[]).map(function(x,i){return <div key={"r"+i} style={{color:"#b3302a"}}>－ {x}</div>;})}
               </div>
             </div>}
           </div>}
@@ -5972,14 +5972,14 @@ function ContractTermsCard({ct}){
       <span style={{width:90,color:"#888",flexShrink:0}}>{label}</span>
       <strong>{cur?fmtDate(cur):"—"}</strong>
       {by&&orig&&orig!==cur&&<span style={{color:"#aaa",textDecoration:"line-through"}}>{fmtDate(orig)}</span>}
-      {by&&<span className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:9}}>{by}</span>}
+      {by&&<span className="badge" style={{background:"#f2f0ec",color:"#4a4740",fontSize:9}}>{by}</span>}
     </div>;
   }
   var cum=Number(ct.amount||0);
   return <div className="card" style={{marginBottom:10}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
       <div style={{fontWeight:700,fontSize:13}}>Contract terms &amp; scope
-        {eff.extensionDays!==0&&<span className="badge" style={{marginLeft:8,background:eff.extensionDays>0?"#fce4ec":"#e8f5e9",color:eff.extensionDays>0?"#c62828":"#2e7d32",fontSize:10}}>{eff.extensionDays>0?"+":""}{eff.extensionDays} d on completion</span>}
+        {eff.extensionDays!==0&&<span className="badge" style={{marginLeft:8,background:eff.extensionDays>0?"#fbe6e8":"#e6f2e9",color:eff.extensionDays>0?"#b3302a":"#1e6b3a",fontSize:10}}>{eff.extensionDays>0?"+":""}{eff.extensionDays} d on completion</span>}
       </div>
       <span style={{fontSize:16,color:"#aaa"}}>{open?"▾":"▸"}</span>
     </div>
@@ -5990,7 +5990,7 @@ function ContractTermsCard({ct}){
           <tr><td style={tdS}>Initial contract</td><td style={Object.assign({},tdS,{textAlign:"right"})}>{cum.toLocaleString()}</td><td style={Object.assign({},tdS,{textAlign:"right",color:"#888"})}>{cum.toLocaleString()}</td></tr>
           {ads.map(function(a){cum+=Number(a.amount||0);var v=Number(a.amount||0);return <tr key={a.id}>
             <td style={tdS}>Addendum {a.number||"?"}{a.date?<span style={{color:"#aaa"}}> · {fmtDate(a.date)}</span>:null}</td>
-            <td style={Object.assign({},tdS,{textAlign:"right",color:v<0?"#c62828":"#1a1a1a"})}>{(v>0?"+":"")+v.toLocaleString()}</td>
+            <td style={Object.assign({},tdS,{textAlign:"right",color:v<0?"#b3302a":"#1a1a1a"})}>{(v>0?"+":"")+v.toLocaleString()}</td>
             <td style={Object.assign({},tdS,{textAlign:"right",fontWeight:600})}>{cum.toLocaleString()}</td></tr>;})}
         </tbody></table>
         <div style={{fontSize:10,color:"#aaa",marginTop:2,textAlign:"right"}}>{ct.currency||"EUR"} excl. tax · last column is cumulative</div>
@@ -6007,7 +6007,7 @@ function ContractTermsCard({ct}){
           {eff.milestones.map(function(m,i){return <div key={i} style={{fontSize:12,marginBottom:3}}>
             <strong>{m.date?fmtDate(m.date):"—"}</strong>
             {m.changedBy&&m.original&&<span style={{color:"#aaa",textDecoration:"line-through",marginLeft:6}}>{fmtDate(m.original)}</span>}
-            {m.changedBy&&<span className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:9,marginLeft:6}}>{m.changedBy}</span>}
+            {m.changedBy&&<span className="badge" style={{background:"#f2f0ec",color:"#4a4740",fontSize:9,marginLeft:6}}>{m.changedBy}</span>}
             <span style={{color:"#555",marginLeft:6}}>{m.label}</span>
           </div>;})}
         </div>}
@@ -6024,8 +6024,8 @@ function ContractTermsCard({ct}){
         <div style={lblS}>Scope of works</div>
         {ct.scope&&ct.scope.summary&&<div style={{fontSize:12,fontWeight:600,marginBottom:4}}>{ct.scope.summary}</div>}
         {ct.scope&&(ct.scope.items||[]).map(function(x,i){return <div key={i} style={{fontSize:12,color:"#3a3f47",paddingLeft:10}}>• {x}</div>;})}
-        {eff.scopeAdded.map(function(x,i){return <div key={"a"+i} style={{fontSize:12,color:"#2e7d32",paddingLeft:10}}>＋ {x.text} <span className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:9}}>{x.by}</span></div>;})}
-        {eff.scopeRemoved.map(function(x,i){return <div key={"r"+i} style={{fontSize:12,color:"#c62828",paddingLeft:10}}>－ {x.text} <span className="badge" style={{background:"#f3e5f5",color:"#7b1fa2",fontSize:9}}>{x.by}</span></div>;})}
+        {eff.scopeAdded.map(function(x,i){return <div key={"a"+i} style={{fontSize:12,color:"#1e6b3a",paddingLeft:10}}>＋ {x.text} <span className="badge" style={{background:"#f2f0ec",color:"#4a4740",fontSize:9}}>{x.by}</span></div>;})}
+        {eff.scopeRemoved.map(function(x,i){return <div key={"r"+i} style={{fontSize:12,color:"#b3302a",paddingLeft:10}}>－ {x.text} <span className="badge" style={{background:"#f2f0ec",color:"#4a4740",fontSize:9}}>{x.by}</span></div>;})}
       </div>}
       {ct.importedAt&&<div style={{gridColumn:"1 / -1",fontSize:10,color:"#aaa"}}>Imported from the signed document on {fmtDate(ct.importedAt)}{ct.importSources?" · sources: "+Object.keys(ct.importSources).map(function(k){return k+" "+ct.importSources[k];}).join(", "):""}</div>}
     </div>}
@@ -6132,7 +6132,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
                 var isActive=ct2.id===nav.ctId;
                 var f2=contractFinancials(ct2);
                 return <div key={ct2.id} onClick={function(){setNav({ctrId:c.id,ctId:ct2.id});}} style={{padding:"6px 10px",cursor:"pointer",background:isActive?"#f0ede6":"transparent",borderLeft:"3px solid "+(isActive?"#c9a84c":"transparent")}}>
-                  <div style={{fontSize:11,fontWeight:isActive?700:400,color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct2.number||"(no #)"} {ct2.sapNumber&&<span style={{color:"#1a73e8",fontSize:9}}>SAP</span>}</div>
+                  <div style={{fontSize:11,fontWeight:isActive?700:400,color:isActive?"#1c1c1e":"#555",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct2.number||"(no #)"} {ct2.sapNumber&&<span style={{color:"#0f5299",fontSize:9}}>SAP</span>}</div>
                   <div style={{fontSize:9,color:"#aaa"}}>{f2.pct}% certified</div>
                 </div>;
               })}
@@ -6143,7 +6143,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
 
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-          <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import contract / addendum</button>
+          <button className="btn btn-sm" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import contract / addendum</button>
         </div>
         <CollapseContractDetail ctr={ctr} ct={ct} fin={fin} linkedTender={linkedTender}
           updateCtField={updateCtField} updateAdItem={updateAdItem} delAdItem={delAdItem} addAdItem={addAdItem}
@@ -6172,7 +6172,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
         </div>
         <div style={{textAlign:"right"}}>
           <div style={{fontSize:13,fontWeight:700}}>{totVal2.toLocaleString()} EUR</div>
-          <div style={{fontSize:11,color:"#2e7d32"}}>Certified: {totCert2.toLocaleString()}</div>
+          <div style={{fontSize:11,color:"#1e6b3a"}}>Certified: {totCert2.toLocaleString()}</div>
         </div>
       </div>
 
@@ -6184,7 +6184,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
           return <div key={ct.id} className="ctr-card" onClick={function(){setNav({ctrId:ctr2.id,ctId:ct.id});}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
               <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:14}}>{ct.number||"(no number)"} {ct.sapNumber&&<span style={{fontSize:12,color:"#1a73e8",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
+                <div style={{fontWeight:700,fontSize:14}}>{ct.number||"(no number)"} {ct.sapNumber&&<span style={{fontSize:12,color:"#0f5299",fontWeight:600}}>· SAP {ct.sapNumber}</span>}</div>
                 <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
                   {ct.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>📦 {ct.package}</span>}
                   {lt2&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt2.title}</span>}
@@ -6193,14 +6193,14 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
                 <div style={{fontSize:15,fontWeight:800}}>{fin.total.toLocaleString()} <span style={{fontSize:11}}>{ct.currency||"EUR"}</span></div>
-                <div style={{fontSize:11,color:"#2e7d32"}}>Certified: {fin.certified.toLocaleString()} ({fin.pct}%)</div>
-                <div style={{fontSize:11,color:fin.remaining<0?"#c62828":"#888"}}>Left: {fin.remaining.toLocaleString()}</div>
+                <div style={{fontSize:11,color:"#1e6b3a"}}>Certified: {fin.certified.toLocaleString()} ({fin.pct}%)</div>
+                <div style={{fontSize:11,color:fin.remaining<0?"#b3302a":"#888"}}>Left: {fin.remaining.toLocaleString()}</div>
               </div>
             </div>
-            <div className="pbar" style={{marginTop:8}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/></div>
+            <div className="pbar" style={{marginTop:8}}><div className="pfill" style={{width:fin.pct+"%",background:fin.pct>=90?"#b3302a":fin.pct>=70?"#b35c00":"#1e6b3a"}}/></div>
             <div style={{fontSize:11,color:"#aaa",marginTop:4}}>
               {(ct.addendums||[]).length} addendum{(ct.addendums||[]).length!==1?"s":""} · {(ct.certifications||[]).length} certification{(ct.certifications||[]).length!==1?"s":""}
-              {fin.forecast&&<span style={{marginLeft:8,color:fin.forecast>(ct.endDate||"9999")?"#c62828":"#2e7d32",fontWeight:600}}>Forecast: {fmtMonthYear(fin.forecast)}</span>}
+              {fin.forecast&&<span style={{marginLeft:8,color:fin.forecast>(ct.endDate||"9999")?"#b3302a":"#1e6b3a",fontWeight:600}}>Forecast: {fmtMonthYear(fin.forecast)}</span>}
             </div>
           </div>;
         })}
@@ -6225,7 +6225,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
         <div className="page-sub">{allContracts.length} contracts · {(contractors||[]).length} subcontractors</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">📥 Import</button>
+        <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import</button>
         <select id="new-contract-ctr" style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
           <option value="">Select subcontractor…</option>
           {(contractors||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
@@ -6274,7 +6274,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
             </div>
             <div style={{textAlign:"right"}}>
               <div style={{fontWeight:700,fontSize:13}}>{totV.toLocaleString()} EUR</div>
-              <div style={{fontSize:11,color:"#2e7d32"}}>Certified: {totC.toLocaleString()}</div>
+              <div style={{fontSize:11,color:"#1e6b3a"}}>Certified: {totC.toLocaleString()}</div>
             </div>
             <span style={{fontSize:16,color:"#aaa"}}>›</span>
           </div>
@@ -6286,7 +6286,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
             return <div key={ct.id} style={{padding:"10px 14px",borderBottom:"1px solid #f5f4f0",cursor:"pointer",background:"#fff",display:"flex",alignItems:"center",gap:10}} onClick={function(){setNav({ctrId:ctr.id,ctId:ct.id});}}
               onMouseEnter={function(e){e.currentTarget.style.background="#fafaf8";}} onMouseLeave={function(e){e.currentTarget.style.background="#fff";}}>
               <div style={{flex:1}}>
-                <div style={{fontWeight:600,fontSize:13}}>{ct.number||"(no number)"} {ct.sapNumber&&<span style={{color:"#1a73e8",fontSize:11}}>SAP {ct.sapNumber}</span>}</div>
+                <div style={{fontWeight:600,fontSize:13}}>{ct.number||"(no number)"} {ct.sapNumber&&<span style={{color:"#0f5299",fontSize:11}}>SAP {ct.sapNumber}</span>}</div>
                 <div style={{display:"flex",gap:5,marginTop:3,flexWrap:"wrap"}}>
                   {lt&&<span className="badge" style={{background:"#fff8f0",color:"#b45309",border:"1px solid #fed7aa",fontSize:10}}>📑 {lt.title}</span>}
                   {ct.package&&<span className="badge" style={{background:"#f0ede6",color:"#555",fontSize:10}}>📦 {ct.package}</span>}
@@ -6294,9 +6294,9 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
                 <div style={{fontWeight:600,fontSize:12}}>{fin.total.toLocaleString()} {ct.currency||"EUR"}</div>
-                <div style={{fontSize:10,color:"#2e7d32"}}>{fin.pct}% certified</div>
+                <div style={{fontSize:10,color:"#1e6b3a"}}>{fin.pct}% certified</div>
                 {(function(){
-                  if(ct.closed)return <div style={{fontSize:9,color:"#2e7d32",fontWeight:700}}>✅ Closed{ct.cacSigned?" · CAC":""}</div>;
+                  if(ct.closed)return <div style={{fontSize:9,color:"#1e6b3a",fontWeight:700}}>✅ Closed{ct.cacSigned?" · CAC":""}</div>;
                   var certs=ct.certifications||[];
                   if(certs.length===0)return null;
                   var lastDate=(certs.slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");})[0]||{}).date||"";
@@ -6304,12 +6304,12 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
                   var d=new Date(lastDate);var now=new Date();
                   var months=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
                   var late=months>=2;
-                  return <div style={{fontSize:9,fontWeight:late?700:400,color:late?"#c62828":"#aaa"}}>{late?"⚠️ ":""}Last cert: {fmtMonthYear(lastDate)}</div>;
+                  return <div style={{fontSize:9,fontWeight:late?700:400,color:late?"#b3302a":"#aaa"}}>{late?"⚠️ ":""}Last cert: {fmtMonthYear(lastDate)}</div>;
                 })()}
               </div>
               <div style={{width:50}}>
                 <div style={{height:4,background:"#f0ede6",borderRadius:2,overflow:"hidden"}}>
-                  <div style={{width:fin.pct+"%",height:"100%",background:fin.pct>=90?"#c62828":fin.pct>=70?"#f57f17":"#2e7d32"}}/>
+                  <div style={{width:fin.pct+"%",height:"100%",background:fin.pct>=90?"#b3302a":fin.pct>=70?"#b35c00":"#1e6b3a"}}/>
                 </div>
               </div>
               <span style={{fontSize:14,color:"#ccc"}}>›</span>
@@ -6436,7 +6436,7 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
   var shown=fOnlyIssues?rows.filter(function(r){return r.hasIssues;}):rows;
 
   function stepDot(agg){
-    var c=agg.state==="ok"?"#2e7d32":agg.state==="bad"?"#c62828":agg.state==="progress"?"#f57f17":"#ddd";
+    var c=agg.state==="ok"?"#1e6b3a":agg.state==="bad"?"#b3302a":agg.state==="progress"?"#b35c00":"#ddd";
     return c;
   }
 
@@ -6457,7 +6457,7 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
 
     {shown.map(function(r){
       var isOpen=openPkg===r.pkg;
-      return <div key={r.pkg} className="card" style={{marginBottom:8,padding:0,overflow:"hidden",borderColor:r.blockingActions>0?"#f48fb1":r.hasIssues?"#ffe082":"#e8e6df"}}>
+      return <div key={r.pkg} className="card" style={{marginBottom:8,padding:0,overflow:"hidden",borderColor:r.blockingActions>0?"#ecc3c7":r.hasIssues?"#e6d9b4":"#e8e6df"}}>
 
         <div onClick={function(){setOpenPkg(isOpen?null:r.pkg);}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer",flexWrap:"wrap",background:isOpen?"#fafaf8":"#fff"}}>
           <span style={{fontSize:12,color:"#aaa"}}>{isOpen?"▾":"▸"}</span>
@@ -6465,26 +6465,26 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
           <div style={{minWidth:140,flex:"0 0 auto"}}>
             <div style={{fontWeight:700,fontSize:14}}>{r.pkg}</div>
             <div style={{fontSize:10,color:"#888"}}>{r.owner?r.owner.split(",")[0]:"No owner"} · {r.tenders.length} tender{r.tenders.length!==1?"s":""}</div>
-            {r.subcontractor&&<div style={{fontSize:10,color:"#1a73e8",fontWeight:600}}>🤝 {r.subcontractor}</div>}
+            {r.subcontractor&&<div style={{fontSize:10,color:"#0f5299",fontWeight:600}}>🤝 {r.subcontractor}</div>}
           </div>
 
           <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
             <div style={{fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase"}}>MAR</div>
-            <div style={{fontSize:12,fontWeight:700,color:r.marTotal===0?"#ccc":r.marApproved===r.marTotal?"#2e7d32":"#f57f17"}}>
+            <div style={{fontSize:12,fontWeight:700,color:r.marTotal===0?"#ccc":r.marApproved===r.marTotal?"#1e6b3a":"#b35c00"}}>
               {r.marTotal===0?"—":r.marApproved+"/"+r.marTotal}
             </div>
           </div>
 
           <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
             <div style={{fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase"}}>ITP</div>
-            <div style={{fontSize:12,fontWeight:700,color:r.itpTotal===0?"#ccc":r.itpSubmitted===r.itpTotal?"#2e7d32":"#f57f17"}}>
+            <div style={{fontSize:12,fontWeight:700,color:r.itpTotal===0?"#ccc":r.itpSubmitted===r.itpTotal?"#1e6b3a":"#b35c00"}}>
               {r.itpTotal===0?"—":r.itpSubmitted+"/"+r.itpTotal}
             </div>
           </div>
 
           <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
             <div style={{fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase"}}>WMS</div>
-            <div style={{fontSize:12,fontWeight:700,color:r.wmsTotal===0?"#ccc":r.wmsSubmitted===r.wmsTotal?"#2e7d32":"#f57f17"}}>
+            <div style={{fontSize:12,fontWeight:700,color:r.wmsTotal===0?"#ccc":r.wmsSubmitted===r.wmsTotal?"#1e6b3a":"#b35c00"}}>
               {r.wmsTotal===0?"—":r.wmsSubmitted+"/"+r.wmsTotal}
             </div>
           </div>
@@ -6492,23 +6492,23 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
           <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:0,minWidth:110}}>
             <div style={{fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase"}}>Budget / Treated</div>
             <div style={{fontSize:11,fontWeight:700}}>{r.budgetTotal>0?r.budgetTotal.toLocaleString():"—"} <span style={{color:"#888",fontWeight:400}}>tot.</span></div>
-            <div style={{fontSize:10,color:"#1a73e8"}}>{r.budgetTreated>0?r.budgetTreated.toLocaleString():"—"} bud. tr.</div>
-            <div style={{fontSize:10,color:"#2e7d32"}}>{r.costTreated>0?r.costTreated.toLocaleString():"—"} cost tr.</div>
-            {r.budgetTreated>0&&<div style={{fontSize:10,fontWeight:700,color:r.varianceTreated<0?"#c62828":"#2e7d32"}}>{r.varianceTreated>0?"+":""}{r.varianceTreated.toLocaleString()} var.</div>}
+            <div style={{fontSize:10,color:"#0f5299"}}>{r.budgetTreated>0?r.budgetTreated.toLocaleString():"—"} bud. tr.</div>
+            <div style={{fontSize:10,color:"#1e6b3a"}}>{r.costTreated>0?r.costTreated.toLocaleString():"—"} cost tr.</div>
+            {r.budgetTreated>0&&<div style={{fontSize:10,fontWeight:700,color:r.varianceTreated<0?"#b3302a":"#1e6b3a"}}>{r.varianceTreated>0?"+":""}{r.varianceTreated.toLocaleString()} var.</div>}
           </div>
 
           <div style={{flex:"0 0 auto",display:"flex",gap:5,alignItems:"center"}}>
             <div style={{fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",marginRight:2}}>Quality</div>
-            {r.counts.approved>0&&<span className="badge" style={{background:"#e8f5e9",color:"#2e7d32"}}>✓{r.counts.approved}</span>}
-            {r.counts.pending>0&&<span className="badge" style={{background:"#fff8e1",color:"#f57f17"}}>⏳{r.counts.pending}</span>}
-            {r.counts.prep>0&&<span className="badge" style={{background:"#e3f2fd",color:"#1565c0"}}>🛠{r.counts.prep}</span>}
-            {r.counts.rejected>0&&<span className="badge" style={{background:"#fce4ec",color:"#c62828"}}>✗{r.counts.rejected}</span>}
-            {r.counts.overdue>0&&<span className="badge" style={{background:"#c62828",color:"#fff"}}>⚠{r.counts.overdue}</span>}
+            {r.counts.approved>0&&<span className="badge" style={{background:"#e6f2e9",color:"#1e6b3a"}}>✓{r.counts.approved}</span>}
+            {r.counts.pending>0&&<span className="badge" style={{background:"#faf3e0",color:"#b35c00"}}>⏳{r.counts.pending}</span>}
+            {r.counts.prep>0&&<span className="badge" style={{background:"#f4f6f9",color:"#0f5299"}}>🛠{r.counts.prep}</span>}
+            {r.counts.rejected>0&&<span className="badge" style={{background:"#fbe6e8",color:"#b3302a"}}>✗{r.counts.rejected}</span>}
+            {r.counts.overdue>0&&<span className="badge" style={{background:"#b3302a",color:"#fff"}}>⚠{r.counts.overdue}</span>}
             {r.counts.approved+r.counts.pending+r.counts.prep+r.counts.rejected===0&&<span style={{fontSize:11,color:"#ccc"}}>—</span>}
           </div>
 
           <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center",flex:"0 0 auto"}}>
-            {r.blockingActions>0&&<span className="badge" style={{background:"#c62828",color:"#fff",fontSize:11}}>🔴 {r.blockingActions} blocking</span>}
+            {r.blockingActions>0&&<span className="badge" style={{background:"#b3302a",color:"#fff",fontSize:11}}>🔴 {r.blockingActions} blocking</span>}
             {r.overdueActions>0&&<span className="badge" style={{background:"#fff3e0",color:"#e65100",fontSize:11}}>⚠️ {r.overdueActions} late</span>}
             <span className="badge" style={{background:r.actions.length>0?"#1c1c1e":"#f5f4f0",color:r.actions.length>0?"#fff":"#aaa",fontSize:11}}>{r.actions.length} open action{r.actions.length!==1?"s":""}</span>
           </div>
@@ -6516,8 +6516,8 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
 
         {isOpen&&<div style={{borderTop:"1.5px solid #f0ede6",padding:"12px 16px",background:"#fafaf8"}}>
 
-          {r.nextSteps.length>0&&<div style={{marginBottom:10,padding:"8px 12px",background:"#f3e5f5",borderRadius:7,border:"1px solid #ce93d8"}}>
-            <div style={{fontSize:10,fontWeight:800,color:"#7b1fa2",marginBottom:3,textTransform:"uppercase"}}>🎯 Next steps</div>
+          {r.nextSteps.length>0&&<div style={{marginBottom:10,padding:"8px 12px",background:"#f2f0ec",borderRadius:7,border:"1px solid #ddd9cf"}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#4a4740",marginBottom:3,textTransform:"uppercase"}}>🎯 Next steps</div>
             {r.nextSteps.map(function(ns,i){return <div key={i} style={{fontSize:12,color:"#4a148c"}}>{ns}</div>;})}
           </div>}
 
@@ -6531,13 +6531,13 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
           }).map(function(a){
             var isLate=a.due&&a.due<todayStr;
             var isBlocking=(a.tags||[]).includes("Blocking Point");
-            return <div key={a.id} className="ac-item" style={{borderColor:isBlocking?"#f48fb1":isLate?"#ffe082":"#e8e6df",background:isBlocking?"#fff5f7":"#fff"}}>
+            return <div key={a.id} className="ac-item" style={{borderColor:isBlocking?"#ecc3c7":isLate?"#e6d9b4":"#e8e6df",background:isBlocking?"#fff5f7":"#fff"}}>
               <div className={"ac-check"+(a.status==="done"?" done":"")} onClick={function(){updateAction(a.id,{status:a.status==="done"?"pending":"done",completedAt:a.status==="done"?"":todayStr});}}>{a.status==="done"?"✓":""}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div className="ac-text">{a.text}</div>
                 <div className="ac-meta">
                   {a.owner&&<OwnerChip owner={a.owner}/>}
-                  {a.due&&<span style={{fontSize:10,fontWeight:700,color:isLate?"#c62828":"#888"}}>{isLate?"⚠️ ":""}📅 {fmtDate(a.due)}</span>}
+                  {a.due&&<span style={{fontSize:10,fontWeight:700,color:isLate?"#b3302a":"#888"}}>{isLate?"⚠️ ":""}📅 {fmtDate(a.due)}</span>}
                   {(a.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;})}
                   {a.addedBy&&<span style={{fontSize:9,color:"#bbb"}}>by {a.addedBy==="System"?"🤖 System":a.addedBy.split(",")[0]}</span>}
                 </div>
@@ -6940,14 +6940,14 @@ function ClientEmailModal({docs,initialStage,onClose}){
               padding:"12px 14px",border:"1px solid #e8e6df",borderRadius:8,background:"#fff",maxHeight:"45vh",overflowY:"auto"}}>{mail.text}</pre>}
       </div>
       <div className="modal-footer">
-        {copied&&<span style={{fontSize:11,fontWeight:700,marginRight:"auto",color:copied==="fail"?"#c62828":"#2e7d32"}}>
+        {copied&&<span style={{fontSize:11,fontWeight:700,marginRight:"auto",color:copied==="fail"?"#b3302a":"#1e6b3a"}}>
           {copied==="html"?"✓ Copied — paste into Outlook":copied==="text"?"✓ Copied as plain text":"Copy failed — select the preview and copy it by hand"}</span>}
         <button className="btn" onClick={onClose}>Close</button>
         <span title={tooLong?"Too long for a mail link: Outlook would cut the text. Use Copy instead.":""}>
           <button className="btn" disabled={empty||tooLong} onClick={function(){window.location.href=mailto;}}>✉ Open in mail</button>
         </span>
         <button className="btn btn-gold" disabled={empty}
-          onClick={function(){copyClientEmail(mail).then(function(r){setCopied(r||"fail");});}}>📋 Copy for Outlook</button>
+          onClick={function(){copyClientEmail(mail).then(function(r){setCopied(r||"fail");});}}>Copy for Outlook</button>
       </div>
     </div>
   </div>;
@@ -6969,11 +6969,11 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
   },[tasks,tenders,contractors,fPkg,fTender,fOwner]);
 
   var STAGES=[
-    {key:"acc",label:"Tender",color:"#1a73e8",bg:"#dce8ff"},
-    {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f3e5f5"},
-    {key:"mss",label:"MSS",color:"#1565c0",bg:"#e3f2fd"},
+    {key:"acc",label:"Tender",color:"#0f5299",bg:"#dce8ff"},
+    {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f2f0ec"},
+    {key:"mss",label:"MSS",color:"#0f5299",bg:"#f4f6f9"},
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"},
-    {key:"itp",label:"ITP",color:"#2e7d32",bg:"#e8f5e9"}
+    {key:"itp",label:"ITP",color:"#1e6b3a",bg:"#e6f2e9"}
   ];
 
   // This view answers one question: what is sitting on the client's desk right now.
@@ -7010,8 +7010,8 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
         <div className="page-sub">Everything currently with the client — RFI, FCR, ACC/ACONEX, MAR, MSS, ITP, WMS, SD, Contract docs</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fce4ec",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#c62828",fontWeight:700,fontSize:13}}>⚠️ {overdueCount} overdue</div>}
-        <div style={{padding:"8px 16px",background:"#e3f2fd",border:"1.5px solid #90caf9",borderRadius:10,color:"#1565c0",fontWeight:700,fontSize:13}}>📬 {withClient.length} with client</div>
+        {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fbe6e8",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#b3302a",fontWeight:700,fontSize:13}}>⚠️ {overdueCount} overdue</div>}
+        <div style={{padding:"8px 16px",background:"#f4f6f9",border:"1.5px solid #c5d3e6",borderRadius:10,color:"#0f5299",fontWeight:700,fontSize:13}}>📬 {withClient.length} with client</div>
         <button className="btn btn-gold" disabled={emailDocs.length===0}
           title={emailDocs.length===0?"Nothing pending with the client for these filters":"Draft an email to the client listing every document pending approval"}
           onClick={function(){setShowEmail(true);}}>✉ Client email</button>
@@ -7019,8 +7019,8 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
     </div>
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
-      <button className={"fchip"+(fScope==="overdue"?" on":"")} onClick={function(){setFScope("overdue");}} style={fScope==="overdue"?{borderColor:"#c62828",background:"#c62828",color:"#fff"}:{}}>⚠️ Overdue</button>
-      <button className={"fchip"+(fScope==="withclient"?" on":"")} onClick={function(){setFScope("withclient");}} style={fScope==="withclient"?{borderColor:"#1565c0",background:"#1565c0",color:"#fff"}:{}}>📬 With client</button>
+      <button className={"fchip"+(fScope==="overdue"?" on":"")} onClick={function(){setFScope("overdue");}} style={fScope==="overdue"?{borderColor:"#b3302a",background:"#b3302a",color:"#fff"}:{}}>⚠️ Overdue</button>
+      <button className={"fchip"+(fScope==="withclient"?" on":"")} onClick={function(){setFScope("withclient");}} style={fScope==="withclient"?{borderColor:"#0f5299",background:"#0f5299",color:"#fff"}:{}}>📬 With client</button>
       <button className={"fchip"+(fScope==="all"?" on":"")} onClick={function(){setFScope("all");}}>All</button>
       <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All stages</option>
@@ -7076,9 +7076,9 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
                   <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{d.package||"—"}</td>
                   <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.owner?(d.owner.split(",")[0]):"—"}</td>
                   <td style={{fontSize:11,whiteSpace:"nowrap"}}>{d.submissionDate?fmtDate(d.submissionDate):"—"}</td>
-                  <td style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#c62828":"#555",whiteSpace:"nowrap"}}>{d.dueDate?fmtDate(d.dueDate):"—"}</td>
-                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#c62828",fontSize:12}}>⚠️ +{d.daysOverdue}d</span>:<span style={{fontSize:11,color:"#888"}}>{daysPending}d</span>}</td>
-                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:"#fff8e1",color:"#f57f17",fontWeight:600}}>{d.stepStatus||d.status||"Pending"}</span></td>
+                  <td style={{fontSize:11,fontWeight:d.overdue?700:400,color:d.overdue?"#b3302a":"#555",whiteSpace:"nowrap"}}>{d.dueDate?fmtDate(d.dueDate):"—"}</td>
+                  <td style={{textAlign:"center"}}>{d.overdue?<span style={{fontWeight:700,color:"#b3302a",fontSize:12}}>⚠️ +{d.daysOverdue}d</span>:<span style={{fontSize:11,color:"#888"}}>{daysPending}d</span>}</td>
+                  <td><span style={{fontSize:11,padding:"2px 7px",borderRadius:8,background:"#faf3e0",color:"#b35c00",fontWeight:600}}>{d.stepStatus||d.status||"Pending"}</span></td>
                 </tr>;
               })}
             </tbody>
@@ -7120,7 +7120,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
   useEffect(function(){if(setMemory)setMemory({fPkg:fPkg,fKind:fKind,fStatus:fStatus,q:q});},[fPkg,fKind,fStatus,q]);
 
   var now=today();
-  var KIND_COL={WMS:["#e0f7fa","#00838f"],ITP:["#e8f5e9","#2e7d32"]};
+  var KIND_COL={WMS:["#e0f7fa","#00838f"],ITP:["#e6f2e9","#1e6b3a"]};
   var RANK={late:0,overdue:1,returned:2,pending:3,none:4,approved:5,na:6};
 
   var rows=[];
@@ -7175,17 +7175,17 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
   }
 
   function statusCell(r){
-    if(r.na)return <span title="Not applicable — nothing to do" style={{fontSize:10,color:"#2e7d32",fontWeight:700,background:"#e8f5e9",border:"1px solid #c8e6c9",padding:"1px 6px",borderRadius:4}}>N/A</span>;
-    if(r.key==="late")return <span style={{fontSize:11,fontWeight:700,color:"#c62828"}}
+    if(r.na)return <span title="Not applicable — nothing to do" style={{fontSize:10,color:"#1e6b3a",fontWeight:700,background:"#e6f2e9",border:"1px solid #cfe3d5",padding:"1px 6px",borderRadius:4}}>N/A</span>;
+    if(r.key==="late")return <span style={{fontSize:11,fontWeight:700,color:"#b3302a"}}
       title="Not submitted and the due date has passed">⚠ Not submitted · due {fmtDate(r.due)}</span>;
-    var col={approved:"#1e6b3a",pending:"#1a73e8",returned:"#b35c00",none:"#9b968b"}[r.s.state];
+    var col={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"}[r.s.state];
     return <span style={{fontSize:11,fontWeight:600,color:col,display:"inline-flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
       {r.s.codes.filter(Boolean).map(function(c,i){var k=FLOW_CODE_COL[c];
         return <span key={i} style={{background:k[0],color:k[1],border:"1px solid "+k[1],borderRadius:3,fontSize:9.5,padding:"0 3px"}}>{c}</span>;})}
       {r.s.text}<OverdueTag o={r.s.overdue}/></span>;
   }
 
-  var chipCol={late:"#c62828",overdue:"#c62828",returned:"#b35c00",pending:"#1a73e8",none:"#6f6b62",approved:"#1e6b3a"};
+  var chipCol={late:"#b3302a",overdue:"#b3302a",returned:"#b35c00",pending:"#0f5299",none:"#6f6b62",approved:"#1e6b3a"};
   var pkgList=(packages&&packages.length?packages:[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))]).slice().sort();
 
   return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
@@ -7322,7 +7322,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
         <div style={{flex:1}}><MatDocStatus doc={doc} prep={r.mat[k+"Status"]==="under preparation"} onPrep={ro?null:function(v){setPrep(r,k,v);}}/></div>
       </div>
       {last&&last.submitted&&<div style={{fontSize:10.5,color:"#555",whiteSpace:"nowrap"}}>sent {fmtDate(last.submitted)}{last.rev>0&&<b style={{color:"#b35c00",marginLeft:3}}>R{last.rev}</b>}
-        {doc.ref?<span style={{fontFamily:"var(--font-mono)",color:"#1a73e8",marginLeft:5}}>{doc.ref}</span>:<span style={{color:"#c62828",fontWeight:700,marginLeft:5}}>⚠ ref.</span>}</div>}
+        {doc.ref?<span style={{fontFamily:"var(--font-mono)",color:"#0f5299",marginLeft:5}}>{doc.ref}</span>:<span style={{color:"#b3302a",fontWeight:700,marginLeft:5}}>⚠ ref.</span>}</div>}
       <MatDocApproval doc={doc}/>
       {!ro&&canAddCycle(doc.cycles)&&<button type="button" className="btn btn-sm" style={{fontSize:10,padding:"0 7px",height:22,alignSelf:"flex-start"}}
         onClick={function(){recordDocSubmission(r.td,doc,updTdFor(r.td),afterSaveFor(r.td)).then(function(p){if(p)setOpenDoc(function(o){var n=Object.assign({},o);n[key]=true;return n;});});}}>
@@ -7459,10 +7459,10 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
                 <td data-l="Lead time"><input type="text" value={r.mat.leadTime||""} onChange={function(e){updMat(r.td,r.mi,"leadTime",e.target.value);}} placeholder="e.g. 12 wks" style={{width:80,fontSize:11,padding:"3px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
                 <td data-l="MSS" style={{minWidth:120}}>{docCell(r,"mss")}</td>
                 <td data-l="MSS target"><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.mssTarget||""} onChange={function(e){updMat(r.td,r.mi,"mssTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
-                <td data-l="MSS actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MSS");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
+                <td data-l="MSS actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MSS");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fbe6e8":"#f0ede6",color:s.late>0?"#b3302a":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
                 <td data-l="MAR" style={{minWidth:120}}>{docCell(r,"mar")}</td>
                 <td data-l="MAR target"><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.marTarget||""} onChange={function(e){updMat(r.td,r.mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
-                <td data-l="MAR actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MAR");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fce4ec":"#f0ede6",color:s.late>0?"#c62828":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
+                <td data-l="MAR actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MAR");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fbe6e8":"#f0ede6",color:s.late>0?"#b3302a":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
               </tr>
               {openKinds.map(function(k){
                 var doc=matDoc(r.td,r.mat,r.mi,k);
@@ -7629,7 +7629,7 @@ function TenderPrintModal({onClose,onPrint}){
       </div>
       <div className="modal-footer">
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-gold" onClick={function(){onPrint(o);}}>🖨️ Print</button>
+        <button className="btn btn-gold" onClick={function(){onPrint(o);}}>Print</button>
       </div>
     </div>
   </div>;
@@ -7674,7 +7674,7 @@ function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClo
     onClose();
   }
   function close(){if(nChanged&&!confirm("Leave without saving "+nChanged+" value"+(nChanged>1?"s":"")+"?"))return;onClose();}
-  var inp={width:"100%",minWidth:0,boxSizing:"border-box",fontSize:11,padding:"3px 5px",border:"1.5px solid #f48fb1",borderRadius:5,background:"#fff8f9",fontFamily:"inherit"};
+  var inp={width:"100%",minWidth:0,boxSizing:"border-box",fontSize:11,padding:"3px 5px",border:"1.5px solid #ecc3c7",borderRadius:5,background:"#fff8f9",fontFamily:"inherit"};
   function editor(td,f){
     var v=(drafts[td.id]||{})[f.k];
     var st=Object.assign({},inp,_gapBlank(v)?{}:{borderColor:"#81c784",background:"#f2f9f3"});
@@ -7700,7 +7700,7 @@ function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClo
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
         <button className={"fchip"+(fieldF===""?" on":"")} onClick={function(){setFieldF("");}}>All fields</button>
         {TENDER_GAP_FIELDS.filter(function(f){return countBy[f.k];}).map(function(f){
-          return <button key={f.k} className={"fchip"+(fieldF===f.k?" on":"")} title={f.tip||""} onClick={function(){setFieldF(fieldF===f.k?"":f.k);}}>{f.label} <b style={{color:"#c62828",marginLeft:3}}>{countBy[f.k]}</b></button>;
+          return <button key={f.k} className={"fchip"+(fieldF===f.k?" on":"")} title={f.tip||""} onClick={function(){setFieldF(fieldF===f.k?"":f.k);}}>{f.label} <b style={{color:"#b3302a",marginLeft:3}}>{countBy[f.k]}</b></button>;
         })}
         {pkgs.length>1&&<select value={pkgF} onChange={function(e){setPkgF(e.target.value);}} style={{marginLeft:"auto",fontSize:12,width:"auto",minWidth:160}}><option value="">All packages</option>{pkgs.map(function(p){return <option key={p}>{p}</option>;})}</select>}
       </div>
@@ -7712,7 +7712,7 @@ function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClo
             <td style={{verticalAlign:"middle"}}><div style={{fontWeight:700,cursor:"pointer"}} onClick={function(){onOpenTender(td);}} title="Open the tender sheet">{td.title||"(no title)"}</div>
               <div style={{fontSize:10,color:"#888"}}>{td.package||"no package"} · {r.gaps.length} missing</div></td>
             {cols.map(function(f){
-              return <td key={f.k} style={{verticalAlign:"middle"}}>{r.gaps.indexOf(f.k)>=0?editor(td,f):<span style={{color:"#c8e6c9"}}>✓</span>}</td>;
+              return <td key={f.k} style={{verticalAlign:"middle"}}>{r.gaps.indexOf(f.k)>=0?editor(td,f):<span style={{color:"#cfe3d5"}}>✓</span>}</td>;
             })}
           </tr>;
         })}</tbody>
@@ -7721,7 +7721,7 @@ function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClo
       </>}
     </div>
     <div className="modal-footer">
-      <span style={{marginRight:"auto",fontSize:12,color:nChanged?"#2e7d32":"#888",alignSelf:"center"}}>{nChanged?nChanged+" value"+(nChanged>1?"s":"")+" to save":"Nothing typed yet"}</span>
+      <span style={{marginRight:"auto",fontSize:12,color:nChanged?"#1e6b3a":"#888",alignSelf:"center"}}>{nChanged?nChanged+" value"+(nChanged>1?"s":"")+" to save":"Nothing typed yet"}</span>
       <button className="btn" onClick={close}>Cancel</button>
       {!ro&&<button className="btn btn-pri" disabled={!nChanged} onClick={save}>✓ Save</button>}
     </div>

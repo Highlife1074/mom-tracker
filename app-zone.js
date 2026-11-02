@@ -40,7 +40,7 @@ function ZoneActionRow({task,rooms,onUpdate,onDelete,onOpenRoomModal,people,tags
   var isBlocking=(task.tags||[]).includes("Blocking Point");
   var blockedCount=task.blockedRooms==="all"?"ALL":(task.blockedRooms||[]).length;
 
-  return <div className="ac-item" style={{background:editMode?"#f8f9ff":task.status==="done"?"#fafaf8":"#fff",borderColor:isBlocking?"#f48fb1":editMode?"#3949ab":"#e8e6df"}}>
+  return <div className="ac-item" style={{background:editMode?"#f8f9ff":task.status==="done"?"#fafaf8":"#fff",borderColor:isBlocking?"#ecc3c7":editMode?"#3949ab":"#e8e6df"}}>
     <div className={"ac-check"+(task.status==="done"?" done":"")} onClick={function(){onUpdate({status:task.status==="done"?"pending":"done",completedAt:task.status==="done"?"":today()});}}>
       {task.status==="done"&&<span style={{fontSize:11,color:"#fff",fontWeight:900}}>✓</span>}
     </div>
@@ -61,12 +61,12 @@ function ZoneActionRow({task,rooms,onUpdate,onDelete,onOpenRoomModal,people,tags
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
             {(tags||[]).map(function(tg){var on=(task.tags||[]).includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){var cur=task.tags||[];var nt=on?cur.filter(function(x){return x!==tg;}):[...cur,tg];onUpdate({tags:nt});if(tg==="Blocking Point"&&!on)onOpenRoomModal();}} style={{padding:"5px 9px",borderRadius:12,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#bbb",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
           </div>
-          {isBlocking&&<button className="btn btn-sm" onClick={onOpenRoomModal} style={{alignSelf:"flex-start",background:"#fce4ec",color:"#c62828",border:"1px solid #f48fb1"}}>🚧 Blocked rooms: {blockedCount}</button>}
+          {isBlocking&&<button className="btn btn-sm" onClick={onOpenRoomModal} style={{alignSelf:"flex-start",background:"#fbe6e8",color:"#b3302a",border:"1px solid #ecc3c7"}}>🚧 Blocked rooms: {blockedCount}</button>}
           <div>
             <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",display:"block",marginBottom:2}}>🔗 Linked tender</label>
             <select value={task.tenderRef||""} onChange={function(e){onUpdate({tenderRef:e.target.value});}}
               title="Attach this action to a tender — it will then also show in that tender's Linked Actions"
-              style={{padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid "+(task.tenderRef?"#1a73e8":"#ddd"),color:task.tenderRef?"#1a73e8":"#888",width:"100%"}}>
+              style={{padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid "+(task.tenderRef?"#0f5299":"#ddd"),color:task.tenderRef?"#0f5299":"#888",width:"100%"}}>
               <option value="">— no tender —</option>
               {(tenders||[]).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(td){
                 return <option key={td.id} value={td.id}>{td.title}{td.package?" ("+td.package+")":""}</option>;
@@ -82,31 +82,31 @@ function ZoneActionRow({task,rooms,onUpdate,onDelete,onOpenRoomModal,people,tags
               ?(function(){
                 var isLate=task.due<today()&&task.status!=="done";
                 var isSoon=!isLate&&task.status!=="done"&&(function(){var d=new Date();d.setDate(d.getDate()+7);return task.due<=toISO(d);})();
-                return <span style={{fontSize:11,fontWeight:700,padding:"5px 8px",borderRadius:10,background:isLate?"#fce4ec":isSoon?"#fff8e1":"#f0ede6",color:isLate?"#c62828":isSoon?"#f57f17":"#666"}}>
+                return <span style={{fontSize:11,fontWeight:700,padding:"5px 8px",borderRadius:10,background:isLate?"#fbe6e8":isSoon?"#faf3e0":"#f0ede6",color:isLate?"#b3302a":isSoon?"#b35c00":"#666"}}>
                   📅 {fmtDate(task.due)}{isLate?" · "+workingDaysDiff(task.due,today())+"d late":""}
                 </span>;
               })()
               :<span style={{fontSize:11,padding:"5px 8px",borderRadius:10,background:"#f5f4f0",color:"#bbb",fontStyle:"italic"}}>no target date</span>}
             {task.owner&&<OwnerChip owner={task.owner}/>}
             {(task.tags||[]).map(function(tg){return <TagChip key={tg} tag={tg}/>;})}
-            {isBlocking&&<span style={{fontSize:10,fontWeight:700,color:"#c62828"}}>🚧 {blockedCount} room{blockedCount!==1?"s":""}</span>}
+            {isBlocking&&<span style={{fontSize:10,fontWeight:700,color:"#b3302a"}}>🚧 {blockedCount} room{blockedCount!==1?"s":""}</span>}
             {(task.tags||[]).includes("Prerequisite")&&(function(){
               var ok=task.status==="done"||!!task.dateConfirmed;
               return <button onClick={function(){onUpdate({dateConfirmed:!ok});}}
                 title={ok?"Date confirmed — click to put it back to TBC":"Date still to be confirmed"}
                 style={{fontSize:11,fontWeight:800,padding:"5px 8px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",
-                  border:"1px solid "+(ok?"#c8e6c9":"#ffe082"),background:ok?"#e8f5e9":"#fff8e1",color:ok?"#2e7d32":"#f57f17"}}>
+                  border:"1px solid "+(ok?"#cfe3d5":"#e6d9b4"),background:ok?"#e6f2e9":"#faf3e0",color:ok?"#1e6b3a":"#b35c00"}}>
                 {ok?"✓ date OK":"date TBC"}</button>;
             })()}
             {task.tenderRef&&(function(){
               var td=(tenders||[]).find(function(x){return x.id===task.tenderRef;});
-              return td?<span style={{fontSize:10,fontWeight:700,color:"#1a73e8",background:"#e8f0fe",padding:"5px 7px",borderRadius:10}}>🔗 {td.title}</span>:null;
+              return td?<span style={{fontSize:10,fontWeight:700,color:"#0f5299",background:"#e8f0fe",padding:"5px 7px",borderRadius:10}}>🔗 {td.title}</span>:null;
             })()}
           </div>
         </div>}
     </div>
     {!editMode&&<div style={{display:"flex",gap:4,flexShrink:0,alignItems:"flex-start"}}>
-      {onAdopt&&<button className="btn btn-sm" onClick={onAdopt} title="Take this procurement action into the zone: it will then count in the zone reports and KPIs" style={{padding:"5px 7px",background:"#fff8e1",color:"#f57f17",border:"1px solid #ffe082",fontWeight:700}}>⬇ Adopt</button>}
+      {onAdopt&&<button className="btn btn-sm" onClick={onAdopt} title="Take this procurement action into the zone: it will then count in the zone reports and KPIs" style={{padding:"5px 7px",background:"#faf3e0",color:"#b35c00",border:"1px solid #e6d9b4",fontWeight:700}}>⬇ Adopt</button>}
       <select className="btn btn-sm" value={task.status||"pending"} onChange={function(e){onUpdate({status:e.target.value,completedAt:e.target.value==="done"?today():""});}} style={{width:"auto",padding:"5px 6px",fontSize:10,border:"1px solid #ddd"}}>
         {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
       </select>
@@ -218,7 +218,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
   var weeklyPPI=computeWeeklyPPI();
   var pastWeeks=weeklyPPI.filter(function(w){return w.isPast&&w.promised>0;});
   var avgPPI=pastWeeks.length>0?Math.round(pastWeeks.reduce(function(s,w){return s+w.ppi;},0)/pastWeeks.length):null;
-  function ppiColor(v){if(v===null)return"#bbb";if(v>=80)return"#2e7d32";if(v>=60)return"#f57f17";return"#c62828";}
+  function ppiColor(v){if(v===null)return"#bbb";if(v>=80)return"#1e6b3a";if(v>=60)return"#b35c00";return"#b3302a";}
 
   var zoneKpis=(kpis||[]).filter(function(k){return k.zone===curZone;});
   function addKpi(){
@@ -603,7 +603,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       </div>
     </div>
     <div className="page-hdr" style={{marginBottom:12,justifyContent:"flex-end"}}>
-      {subTab==="actions"&&filteredActions.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>📧 Report</button>}
+      {subTab==="actions"&&filteredActions.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>Report</button>}
       <button className="btn btn-pri" title="Friday pack: programme progress, room by room, procurement delays, the readiness questionnaire for the next 3 weeks and the actions"
         onClick={function(){openReport("Weekly Zone Report — "+curZone,buildZoneWeeklyReport(curZone,schedules,rooms,tasks,tenders,{readiness:readiness}));}}>🗓 Weekly pack</button>
     </div>
@@ -616,7 +616,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
 
     <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
       <button className={"fchip"+(subTab==="actions"?" on":"")} onClick={function(){setSubTab("actions");}}>📋 Actions</button>
-      <button className={"fchip"+(subTab==="rooms"?" on":"")} onClick={function(){setSubTab("rooms");}}>🚪 Rooms {zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length>0&&<span style={{marginLeft:4,color:"#c62828",fontWeight:700}}>({zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length} blocked)</span>}</button>
+      <button className={"fchip"+(subTab==="rooms"?" on":"")} onClick={function(){setSubTab("rooms");}}>🚪 Rooms {zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length>0&&<span style={{marginLeft:4,color:"#b3302a",fontWeight:700}}>({zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length} blocked)</span>}</button>
       <button className={"fchip"+(subTab==="ppi"?" on":"")} onClick={function(){setSubTab("ppi");}}>📈 PPI Tracker {avgPPI!==null&&<span style={{marginLeft:4,fontWeight:800,color:ppiColor(avgPPI)}}>{avgPPI}%</span>}</button>
       <button className={"fchip"+(subTab==="kpi"?" on":"")} onClick={function(){setSubTab("kpi");}}>📊 KPI Tracker</button>
       <button className={"fchip"+(subTab==="schedule"?" on":"")} onClick={function(){setSubTab("schedule");}}>📅 Schedule</button>
@@ -633,9 +633,9 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
               var l=attendanceLists(currentMeeting);
               var total=l.present.length+l.excused.length+l.absent.length;
               return <span style={{fontSize:11,color:"#888"}}>
-                {fmtDate(currentMeeting.date)} · <strong style={{color:"#2e7d32"}}>{l.present.length} present</strong>
-                {l.excused.length>0&&<span style={{color:"#f57f17"}}> · {l.excused.length} excused</span>}
-                {l.absent.length>0&&<span style={{color:"#c62828"}}> · {l.absent.length} absent</span>}
+                {fmtDate(currentMeeting.date)} · <strong style={{color:"#1e6b3a"}}>{l.present.length} present</strong>
+                {l.excused.length>0&&<span style={{color:"#b35c00"}}> · {l.excused.length} excused</span>}
+                {l.absent.length>0&&<span style={{color:"#b3302a"}}> · {l.absent.length} absent</span>}
                 {total===0&&<span style={{color:"#bbb"}}> · nothing recorded yet</span>}
               </span>;
             })()}
@@ -659,7 +659,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
               var c=ownerColor(p);
               return <div key={p} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 6px",borderRadius:6,background:st?"#fafaf8":"transparent"}}>
                 <span style={{flex:1,fontSize:11,fontWeight:st?600:400,color:st?c.accent:"#bbb",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.split(",")[0]}</span>
-                {[{k:"present",label:"P",col:"#2e7d32",bg:"#e8f5e9"},{k:"excused",label:"E",col:"#f57f17",bg:"#fff8e1"},{k:"absent",label:"A",col:"#c62828",bg:"#fce4ec"}].map(function(opt){
+                {[{k:"present",label:"P",col:"#1e6b3a",bg:"#e6f2e9"},{k:"excused",label:"E",col:"#b35c00",bg:"#faf3e0"},{k:"absent",label:"A",col:"#b3302a",bg:"#fbe6e8"}].map(function(opt){
                   var on=st===opt.k;
                   return <button key={opt.k} onClick={function(){setAttendance(p,opt.k);}} title={opt.k} style={{width:22,height:20,borderRadius:5,border:"1.5px solid "+(on?opt.col:"#ddd"),background:on?opt.bg:"#fff",color:on?opt.col:"#ccc",fontFamily:"inherit",fontSize:10,fontWeight:800,cursor:"pointer",flexShrink:0,padding:0}}>{opt.label}</button>;
                 })}
@@ -674,11 +674,11 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
             var l=attendanceLists(m);
             return <div key={m.id} style={{padding:"6px 10px",borderRadius:7,background:"#fafaf8",marginBottom:4,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <span style={{fontSize:11,fontWeight:700,minWidth:80}}>{fmtDate(m.date)}</span>
-              <span style={{fontSize:10,color:"#2e7d32"}}>{l.present.length} present</span>
-              {l.excused.length>0&&<span style={{fontSize:10,color:"#f57f17"}}>{l.excused.length} excused</span>}
-              {l.absent.length>0&&<span style={{fontSize:10,color:"#c62828"}}>{l.absent.length} absent</span>}
+              <span style={{fontSize:10,color:"#1e6b3a"}}>{l.present.length} present</span>
+              {l.excused.length>0&&<span style={{fontSize:10,color:"#b35c00"}}>{l.excused.length} excused</span>}
+              {l.absent.length>0&&<span style={{fontSize:10,color:"#b3302a"}}>{l.absent.length} absent</span>}
               <span style={{flex:1,fontSize:10,color:"#aaa",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.present.map(function(p){return p.split(",")[0];}).join(", ")}</span>
-              <button onClick={function(){delMeeting(m.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+              <button onClick={function(){delMeeting(m.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
             </div>;
           })}
         </div>}
@@ -687,7 +687,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       <div className="card" style={{marginBottom:14}}>
         <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>＋ Add action to {curZone}</div>
         <textarea value={qText} onChange={function(e){setQText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTask();}}} placeholder="What needs to be done in this zone?" style={{width:"100%",minHeight:44,padding:"6px 8px",fontSize:12,border:"1.5px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:8}}/>
-        {zonePossibleDupes.length>0&&<div style={{marginBottom:8,padding:"8px 10px",background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:8}}>
+        {zonePossibleDupes.length>0&&<div style={{marginBottom:8,padding:"8px 10px",background:"#faf3e0",border:"1.5px solid #e6d9b4",borderRadius:8}}>
           <div style={{fontSize:11,fontWeight:700,color:"#b45309",marginBottom:4}}>⚠️ Similar action{zonePossibleDupes.length!==1?"s":""} already open in {curZone} — check before adding a duplicate:</div>
           {zonePossibleDupes.map(function(x){return <div key={x.t.id} style={{fontSize:11,color:"#555",padding:"3px 0",borderTop:"1px solid #fed7aa"}}>
             <strong>{x.t.text}</strong>{x.t.owner&&" — "+x.t.owner.split(",")[0]}
@@ -718,9 +718,9 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
         </label>
       </div>
 
-      {incomingActions.length>0&&<div style={{marginBottom:18,border:"1.5px solid #ffe082",borderRadius:10,background:"#fffdf5",padding:"10px 12px"}}>
+      {incomingActions.length>0&&<div style={{marginBottom:18,border:"1.5px solid #e6d9b4",borderRadius:10,background:"#fffdf5",padding:"10px 12px"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-          <span style={{padding:"5px 12px",borderRadius:20,background:"#fff8e1",color:"#f57f17",fontWeight:800,fontSize:12}}>⬇ FROM PROCUREMENT</span>
+          <span style={{padding:"5px 12px",borderRadius:20,background:"#faf3e0",color:"#b35c00",fontWeight:800,fontSize:12}}>⬇ FROM PROCUREMENT</span>
           <span style={{fontSize:11,color:"#aaa"}}>{incomingActions.length} item{incomingActions.length!==1?"s":""}</span>
           <button className="btn btn-sm" style={{marginLeft:"auto",padding:"3px 10px",fontSize:11}}
             onClick={function(){setIncomingOpen(!incomingOpen);}}>{incomingOpen?"▾ Hide":"▸ Show"}</button>
@@ -747,7 +747,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
             <span style={{fontSize:11,color:tc.color,width:10}}>{collapsedActCats[cat]?"▸":"▾"}</span>
             <span style={{padding:"5px 12px",borderRadius:20,background:tc.bg,color:tc.color,fontWeight:800,fontSize:12,letterSpacing:".3px"}}>{cat==="Blocking Point"?"🚧 ":cat==="Prerequisite"?"🔒 ":cat==="Warning"?"🟠 ":""}{cat.toUpperCase()}</span>
             <span style={{fontSize:11,color:"#aaa"}}>{items.length} item{items.length!==1?"s":""}</span>
-            {(function(){var late=items.filter(function(t){return t.due&&t.due<today()&&t.status!=="done";}).length;return late>0?<span style={{fontSize:11,fontWeight:700,color:"#c62828"}}>· {late} overdue</span>:null;})()}
+            {(function(){var late=items.filter(function(t){return t.due&&t.due<today()&&t.status!=="done";}).length;return late>0?<span style={{fontSize:11,fontWeight:700,color:"#b3302a"}}>· {late} overdue</span>:null;})()}
           </div>
           {!collapsedActCats[cat]&&items.map(function(t){
             return <ZoneActionRow key={t.id} task={t} rooms={zoneRooms} tenders={tenders}
@@ -765,8 +765,8 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
           <div style={{fontWeight:700,fontSize:13}}>＋ Add room to {curZone}</div>
           <div style={{display:"flex",gap:6}}>
-            <button className="btn btn-sm" onClick={syncRoomsFromCategories} title="The schedule is the reference: creates missing rooms, renames them to match their category, and reorders the list to follow the schedule">🔄 Sync from schedule</button>
-            <button className="btn btn-sm" onClick={function(){printSection("rooms");}}>🖨 Print / PDF</button>
+            <button className="btn btn-sm" onClick={syncRoomsFromCategories} title="The schedule is the reference: creates missing rooms, renames them to match their category, and reorders the list to follow the schedule">Sync from schedule</button>
+            <button className="btn btn-sm" onClick={function(){printSection("rooms");}}>Print / PDF</button>
           </div>
         </div>
         <div style={{display:"flex",gap:8}}>
@@ -787,27 +787,27 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
             var blockers=roomBlockers(r.id);
             var isBlocked=blockers.length>0;
             var prog=roomProgress(r.id);
-            return <div key={r.id} className="card" style={{marginBottom:0,padding:"12px 14px",borderColor:isBlocked?"#f48fb1":"#e8e6df",background:isBlocked?"#fff5f7":"#fff"}}>
+            return <div key={r.id} className="card" style={{marginBottom:0,padding:"12px 14px",borderColor:isBlocked?"#ecc3c7":"#e8e6df",background:isBlocked?"#fff5f7":"#fff"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <span style={{width:12,height:12,borderRadius:"50%",background:isBlocked?"#c62828":"#4caf50",flexShrink:0,boxShadow:isBlocked?"0 0 0 3px #fce4ec":"0 0 0 3px #e8f5e9"}}/>
+                <span style={{width:12,height:12,borderRadius:"50%",background:isBlocked?"#b3302a":"#4caf50",flexShrink:0,boxShadow:isBlocked?"0 0 0 3px #fbe6e8":"0 0 0 3px #e6f2e9"}}/>
                 <input type="text" value={r.name||""} onChange={function(e){renameRoom(r.id,e.target.value);}} style={{flex:1,fontWeight:700,fontSize:13,border:"none",background:"transparent",outline:"none",fontFamily:"inherit",padding:0,minWidth:0}}/>
-                <button className="sched-noprint" onClick={function(){delRoom(r.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#c62828";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
+                <button className="sched-noprint" onClick={function(){delRoom(r.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
               </div>
 
               {prog!==null&&<div style={{marginBottom:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#888",marginBottom:2}}>
                   <span>Schedule progress</span>
-                  <span style={{fontWeight:800,color:prog.pct>=100?"#2e7d32":prog.pct>0?"#1565c0":"#bbb"}}>{prog.pct}%</span>
+                  <span style={{fontWeight:800,color:prog.pct>=100?"#1e6b3a":prog.pct>0?"#0f5299":"#bbb"}}>{prog.pct}%</span>
                 </div>
-                <div className="pbar"><div className="pfill" style={{width:prog.pct+"%",background:prog.pct>=100?"#2e7d32":"#1a73e8"}}/></div>
+                <div className="pbar"><div className="pfill" style={{width:prog.pct+"%",background:prog.pct>=100?"#1e6b3a":"#0f5299"}}/></div>
                 <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{prog.doneRows}/{prog.totalRows} task{prog.totalRows!==1?"s":""} complete</div>
               </div>}
               {prog===null&&<div style={{fontSize:10,color:"#ccc",marginBottom:8,fontStyle:"italic"}}>No schedule rows linked to this room</div>}
 
               {isBlocked&&<div style={{display:"flex",flexDirection:"column",gap:3}}>
-                {blockers.map(function(b){return <div key={b.id} style={{fontSize:11,color:"#c62828",background:"#fce4ec",padding:"5px 8px",borderRadius:5,fontWeight:600}}>🚧 {b.text}</div>;})}
+                {blockers.map(function(b){return <div key={b.id} style={{fontSize:11,color:"#b3302a",background:"#fbe6e8",padding:"5px 8px",borderRadius:5,fontWeight:600}}>🚧 {b.text}</div>;})}
               </div>}
-              {!isBlocked&&<div style={{fontSize:11,color:"#2e7d32",fontWeight:600}}>✅ No blocking points</div>}
+              {!isBlocked&&<div style={{fontSize:11,color:"#1e6b3a",fontWeight:600}}>✅ No blocking points</div>}
             </div>;
           })}
         </div>}
@@ -833,11 +833,11 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
           <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8,marginBottom:16}}>
             {weeklyPPI.slice(0,12).map(function(w){
               var isOpen=expandedWeek===w.monday;
-              return <div key={w.monday} onClick={function(){setExpandedWeek(isOpen?null:w.monday);}} style={{flex:"0 0 100px",cursor:"pointer",padding:"10px 8px",borderRadius:10,border:"1.5px solid "+(isOpen?ppiColor(w.ppi):"#e8e6df"),background:w.isCurrent?"#fff8e1":isOpen?"#fafaf8":"#fff",textAlign:"center"}}>
+              return <div key={w.monday} onClick={function(){setExpandedWeek(isOpen?null:w.monday);}} style={{flex:"0 0 100px",cursor:"pointer",padding:"10px 8px",borderRadius:10,border:"1.5px solid "+(isOpen?ppiColor(w.ppi):"#e8e6df"),background:w.isCurrent?"#faf3e0":isOpen?"#fafaf8":"#fff",textAlign:"center"}}>
                 <div style={{fontSize:11,color:"#aaa",fontWeight:700}}>{fmtDate(w.monday)}</div>
-                <div style={{fontSize:20,fontWeight:900,color:w.isCurrent?"#f57f17":ppiColor(w.ppi),marginTop:4}}>{w.ppi!==null?w.ppi+"%":"—"}</div>
+                <div style={{fontSize:20,fontWeight:900,color:w.isCurrent?"#b35c00":ppiColor(w.ppi),marginTop:4}}>{w.ppi!==null?w.ppi+"%":"—"}</div>
                 <div style={{fontSize:11,color:"#888",marginTop:2}}>{w.kept}/{w.promised}</div>
-                {w.isCurrent&&<div style={{fontSize:11,fontWeight:800,color:"#f57f17",marginTop:2}}>IN PROGRESS</div>}
+                {w.isCurrent&&<div style={{fontSize:11,fontWeight:800,color:"#b35c00",marginTop:2}}>IN PROGRESS</div>}
               </div>;
             })}
           </div>
@@ -846,11 +846,11 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
             var w=weeklyPPI.find(function(x){return x.monday===expandedWeek;});
             if(!w)return null;
             return <div className="card">
-              <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Week of {fmtDate(w.monday)} — {fmtDate(w.sunday)} {w.isCurrent&&<span style={{color:"#f57f17"}}>(in progress)</span>}</div>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>Week of {fmtDate(w.monday)} — {fmtDate(w.sunday)} {w.isCurrent&&<span style={{color:"#b35c00"}}>(in progress)</span>}</div>
               <div style={{display:"flex",gap:16,marginBottom:12,flexWrap:"wrap"}}>
-                <div style={{fontSize:12}}><span style={{color:"#2e7d32",fontWeight:700}}>✓ {w.kept}</span> kept on time</div>
-                <div style={{fontSize:12}}><span style={{color:"#f57f17",fontWeight:700}}>⏰ {w.doneLate}</span> done late</div>
-                <div style={{fontSize:12}}><span style={{color:"#c62828",fontWeight:700}}>✗ {w.notDone}</span> not done</div>
+                <div style={{fontSize:12}}><span style={{color:"#1e6b3a",fontWeight:700}}>✓ {w.kept}</span> kept on time</div>
+                <div style={{fontSize:12}}><span style={{color:"#b35c00",fontWeight:700}}>⏰ {w.doneLate}</span> done late</div>
+                <div style={{fontSize:12}}><span style={{color:"#b3302a",fontWeight:700}}>✗ {w.notDone}</span> not done</div>
               </div>
               {w.tasks.slice().sort(function(a,b){
                 function rank(t){if(t.status==="done"&&t.completedAt&&t.completedAt<=t.due)return 0;if(t.status==="done")return 1;return 2;}
@@ -858,12 +858,12 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
               }).map(function(t){
                 var onTime=t.status==="done"&&t.completedAt&&t.completedAt<=t.due;
                 var late=t.status==="done"&&!onTime;
-                return <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:onTime?"#f0fff4":late?"#fff8e1":"#fff5f7",marginBottom:4}}>
+                return <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:onTime?"#e6f2e9":late?"#faf3e0":"#fff5f7",marginBottom:4}}>
                   <span style={{fontSize:14}}>{onTime?"✅":late?"⏰":"❌"}</span>
                   <div style={{flex:1,fontSize:12}}>{t.text}</div>
                   {t.owner&&<OwnerChip owner={t.owner}/>}
                   <span style={{fontSize:10,color:"#888"}}>due {fmtDate(t.due)}</span>
-                  {t.completedAt&&<span style={{fontSize:10,color:onTime?"#2e7d32":"#f57f17"}}>done {fmtDate(t.completedAt)}</span>}
+                  {t.completedAt&&<span style={{fontSize:10,color:onTime?"#1e6b3a":"#b35c00"}}>done {fmtDate(t.completedAt)}</span>}
                 </div>;
               })}
             </div>;
@@ -880,7 +880,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showKpiForm?10:0}}>
           <div style={{fontWeight:700,fontSize:13}}>📊 KPI Tracker — {curZone}</div>
           <div style={{display:"flex",gap:6}}>
-            <button className="btn btn-sm" onClick={function(){printSection("kpi");}}>🖨 Print / PDF</button>
+            <button className="btn btn-sm" onClick={function(){printSection("kpi");}}>Print / PDF</button>
             <button className="btn btn-sm btn-gold" onClick={function(){setShowKpiForm(!showKpiForm);}}>{showKpiForm?"✕ Cancel":"＋ Add KPI"}</button>
           </div>
         </div>
@@ -914,7 +914,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       </div>
 
       {zoneKpis.length===0
-        ?<div className="empty"><div className="empty-ico">📊</div><div className="empty-txt">No KPIs tracked for {curZone} yet.</div></div>
+        ?<div className="empty"><div className="empty-txt">No KPIs tracked for {curZone} yet.</div></div>
         :zoneKpis.map(function(kpi){
           var weeks=kpiWeeks(kpi);
           var lastWeek=weeks.length?weeks[weeks.length-1]:null;
@@ -924,15 +924,16 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
           var isOpen=expandedKpi===kpi.id;
           var behindSchedule=latestDone&&latestDone.actualCum<latestDone.plannedCum;
           return <div key={kpi.id} className="card" style={{marginBottom:10,padding:0,overflow:"hidden"}}>
-            <div onClick={function(){setExpandedKpi(isOpen?null:kpi.id);}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer",background:isOpen?"#fafaf8":"#fff",flexWrap:"wrap"}}>
-              <span style={{fontSize:12,color:"#aaa"}}>{isOpen?"▾":"▸"}</span>
+            <div onClick={function(){setExpandedKpi(isOpen?null:kpi.id);}} style={{display:"flex",alignItems:"center",gap:16,padding:"12px 16px",cursor:"pointer",background:isOpen?"#fafaf8":"#fff",flexWrap:"wrap",boxShadow:"inset 3px 0 0 "+(pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--ink-4)")}}>
+              <span style={{fontSize:11,color:"var(--ink-3)"}}>{isOpen?"▾":"▸"}</span>
               <div style={{flex:1,minWidth:150}}>
-                <div style={{fontWeight:700,fontSize:13}}>{kpi.name}</div>
-                <div style={{fontSize:10,color:"#888"}}>{fmtDate(kpi.startDate)} → {fmtDate(kpi.endDate)} · target {Number(kpi.totalTarget).toLocaleString()} {kpi.unit}</div>
+                <div style={{fontWeight:600,fontSize:13}}>{kpi.name}</div>
+                <div style={{fontSize:11,color:"var(--ink-3)"}}>{fmtDate(kpi.startDate)} → {fmtDate(kpi.endDate)} · target {Number(kpi.totalTarget).toLocaleString()} {kpi.unit}</div>
               </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:16,fontWeight:900,color:pctDone>=100?"#2e7d32":behindSchedule?"#c62828":"#1a73e8"}}>{pctDone}%</div>
-                <div style={{fontSize:11,color:behindSchedule?"#c62828":"#888",fontWeight:behindSchedule?700:400}}>{behindSchedule?"behind schedule":"on/ahead of schedule"}</div>
+              <div className="meter" style={{width:140}}><i className={pctDone>=100?"good":behindSchedule?"bad":""} style={{width:pctDone+"%"}}/></div>
+              <div style={{textAlign:"right",minWidth:110}}>
+                <div className="num" style={{fontSize:16,fontWeight:500,color:pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--ink)"}}>{pctDone}%</div>
+                <div style={{fontSize:11,color:behindSchedule?"var(--red)":"var(--ink-3)"}}>{behindSchedule?"Behind schedule":"On schedule"}</div>
               </div>
             </div>
 
@@ -958,7 +959,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                   <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase"}}>End</label>
                   <input type="date" min="1990-01-01" max="2200-12-31" value={kpi.endDate||""} onChange={function(e){updateKpi(kpi.id,"endDate",e.target.value);}} style={{padding:"4px 8px",fontSize:12}}/>
                 </div>
-                <button className="btn btn-sm btn-danger" onClick={function(){delKpi(kpi.id);}}>🗑 Delete</button>
+                <button className="btn btn-sm btn-danger" onClick={function(){delKpi(kpi.id);}}>Delete</button>
               </div>
               <KPICurveChart kpi={kpi} weeks={weeks}/>
 
@@ -979,22 +980,23 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                   projFinishLabel="No progress yet";
                 }
                 var isLateVsPlan=avgRate>0&&(function(){var d=new Date(latestDone.monday);d.setDate(d.getDate()+Math.ceil(remaining/avgRate)*7);return toISO(d)>kpi.endDate;})();
-                return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                  <div className="card" style={{flex:1,minWidth:150,marginBottom:0,padding:"8px 12px",background:remaining<=0?"#e8f5e9":"#f8f7f4"}}>
-                    <div style={{fontSize:11,color:"#888",textTransform:"uppercase",fontWeight:700}}>Remaining to do</div>
-                    <div style={{fontSize:14,fontWeight:800,color:remaining<=0?"#2e7d32":"#14171c"}}>{remaining<=0?"Done":remaining.toLocaleString()+" "+kpi.unit}</div>
+                return <div className="kpi-strip">
+                  <div className={"kpi"+(remaining<=0?" good":"")}>
+                    <div className="kpi-l">Remaining to do</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{remaining<=0?"Done":remaining.toLocaleString()}{remaining>0&&<small>{kpi.unit}</small>}</div>
                   </div>
-                  <div className="card" style={{flex:1,minWidth:150,marginBottom:0,padding:"8px 12px",background:"#f8f7f4"}}>
-                    <div style={{fontSize:11,color:"#888",textTransform:"uppercase",fontWeight:700}}>Current avg. pace</div>
-                    <div style={{fontSize:14,fontWeight:800}}>{avgRate.toLocaleString(undefined,{maximumFractionDigits:1})} {kpi.unit}/week</div>
+                  <div className="kpi">
+                    <div className="kpi-l">Current avg. pace</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{avgRate.toLocaleString(undefined,{maximumFractionDigits:1})}<small>{kpi.unit}/week</small></div>
                   </div>
-                  <div className="card" style={{flex:1,minWidth:170,marginBottom:0,padding:"8px 12px",background:weeksLeftInPlan<=0&&remaining>0?"#fce4ec":"#e3f2fd"}}>
-                    <div style={{fontSize:11,color:"#1565c0",textTransform:"uppercase",fontWeight:700}}>Rate needed to finish on time</div>
-                    <div style={{fontSize:14,fontWeight:800,color:weeksLeftInPlan<=0&&remaining>0?"#c62828":"#1565c0"}}>{neededRate===null?"Plan end passed":remaining<=0?"Done":neededRate.toLocaleString(undefined,{maximumFractionDigits:1})+" "+kpi.unit+"/week"}</div>
+                  <div className={"kpi"+(weeksLeftInPlan<=0&&remaining>0?" bad":"")}>
+                    <div className="kpi-l">Rate needed to finish on time</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{neededRate===null?"Plan end passed":remaining<=0?"Done":neededRate.toLocaleString(undefined,{maximumFractionDigits:1})}{neededRate!==null&&remaining>0&&<small>{kpi.unit}/week</small>}</div>
                   </div>
-                  <div className="card" style={{flex:1,minWidth:170,marginBottom:0,padding:"8px 12px",background:isLateVsPlan?"#fce4ec":"#f0fff4"}}>
-                    <div style={{fontSize:11,color:isLateVsPlan?"#c62828":"#2e7d32",textTransform:"uppercase",fontWeight:700}}>Projected finish (current pace)</div>
-                    <div style={{fontSize:14,fontWeight:800,color:isLateVsPlan?"#c62828":"#2e7d32"}}>{projFinishLabel}{isLateVsPlan?" ⚠️":""}</div>
+                  <div className={"kpi"+(isLateVsPlan?" bad":"")}>
+                    <div className="kpi-l">Projected finish (current pace)</div>
+                    <div className="kpi-v" style={{fontSize:17}}>{projFinishLabel}</div>
+                    {isLateVsPlan&&<div className="kpi-s" style={{color:"var(--red)"}}>After planned end</div>}
                   </div>
                 </div>;
               })()}
@@ -1007,14 +1009,14 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                     {weeks.map(function(w){
                       var hasData=w.isPast||w.isCurrent||(kpi.weeklyActuals||{})[w.monday]!==undefined;
                       var gap=w.actualCum-w.plannedCum;
-                      return <tr key={w.monday} style={{background:w.isCurrent?"#fff8e1":"#fff"}}>
+                      return <tr key={w.monday} style={{background:w.isCurrent?"#faf3e0":"#fff"}}>
                         <td style={{whiteSpace:"nowrap"}}>{fmtDate(w.monday)}{w.isCurrent?" (current)":""}</td>
                         <td style={{textAlign:"right",color:"#888"}}>{w.plannedCum.toLocaleString()}</td>
                         <td style={{textAlign:"right"}}>
                           <input type="number" value={(kpi.weeklyActuals||{})[w.monday]||""} onChange={function(e){setKpiWeekActual(kpi.id,w.monday,e.target.value);}} placeholder="0" style={{width:80,padding:"5px 5px",fontSize:11,textAlign:"right"}}/>
                         </td>
-                        <td style={{textAlign:"right",fontWeight:700,color:w.actualCum>=w.plannedCum?"#2e7d32":"#c62828"}}>{w.actualCum.toLocaleString()}</td>
-                        <td style={{textAlign:"right",fontWeight:700,color:!hasData?"#ccc":gap>=0?"#2e7d32":"#c62828"}}>{!hasData?"—":(gap>0?"+":"")+gap.toLocaleString()}</td>
+                        <td style={{textAlign:"right",fontWeight:700,color:w.actualCum>=w.plannedCum?"#1e6b3a":"#b3302a"}}>{w.actualCum.toLocaleString()}</td>
+                        <td style={{textAlign:"right",fontWeight:700,color:!hasData?"#ccc":gap>=0?"#1e6b3a":"#b3302a"}}>{!hasData?"—":(gap>0?"+":"")+gap.toLocaleString()}</td>
                       </tr>;
                     })}
                   </tbody>
@@ -1092,7 +1094,7 @@ function ReadinessView({zone,schedules,tenders,tasks,saveTasks,readiness,saveRea
       filled by the app (faded — hover for the source); a click answers by hand and overrides it.
       Click again to cycle ✓ → ✗ → n.a. → back to the app's value.
       A ✗ on a task starting next week creates a <b>Warning</b> action{owner?<span> for <b>{owner}</b></span>:null}; it is closed when the ✗ goes away.
-      {ro&&<div style={{color:"#c62828",fontWeight:700,marginTop:4}}>Read only: you can view the answers but not change them.</div>}
+      {ro&&<div style={{color:"#b3302a",fontWeight:700,marginTop:4}}>Read only: you can view the answers but not change them.</div>}
     </div>
     {wins.map(function(win){
       var starting=readinessStarting(zone,schedules,win,tenders);

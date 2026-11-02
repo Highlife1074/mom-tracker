@@ -408,8 +408,8 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
         onClick={function(){
           var f=[];if(horizon!=="all")f.push((HZ.find(function(h){return h[0]===horizon;})||[0,""])[1].replace(/\s*\(\d+\)$/,""));
           if(typeF!=="all")f.push(ppTypeLabel(typeF));if(deptF!=="all")f.push(deptF);if(q)f.push('"'+q+'"');
-          ppOpenReport(vis,f.join(" · "));}}>🖨 Print</button>
-      {!ro&&<button className="btn btn-gold" onClick={function(){setPaste(true);}}>📋 Paste list from Excel</button>}
+          ppOpenReport(vis,f.join(" · "));}}>Print</button>
+      {!ro&&<button className="btn btn-gold" onClick={function(){setPaste(true);}}>Paste list from Excel</button>}
     </div>
     {paste&&<ProcPlanPasteModal tenders={tenders} saveTenders={saveTenders} packages={packages} onClose={function(){setPaste(false);}}/>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
@@ -448,7 +448,7 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
             var f=tenderScheduleStart(td);
             if(f)return <span onClick={function(){openScheduleStart(f,td,onNavZone);}}
               title={"From the schedule: \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+(f.sc.title||"")+")\nChange it in the schedule. Click to open that task."}
-              style={{fontSize:11,fontWeight:700,color:"#00695c",background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:5,padding:"2px 7px",cursor:"pointer",whiteSpace:"nowrap"}}>
+              style={{fontSize:11,fontWeight:700,color:"#00695c",background:"#e6f2e9",border:"1px solid #cfe3d5",borderRadius:5,padding:"2px 7px",cursor:"pointer",whiteSpace:"nowrap"}}>
               🗓 {fmtDate(td.startOnSite||f.r.startWeek)}</span>;
             return <input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
               title="No schedule task is linked to this package: set the date by hand. As soon as a task is linked, the schedule takes over."

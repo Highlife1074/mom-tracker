@@ -108,8 +108,8 @@ function scheduleWeeks(sc){
 // A meeting records attendance for one lookahead session in one zone.
 // attendance = {"LASTNAME, First":"present"|"absent"|"excused"}
 const SCHED_PALETTE=[
-  {hex:"#c9a84c",name:"Gold"},      {hex:"#2e7d32",name:"Green"},
-  {hex:"#7b1fa2",name:"Purple"},    {hex:"#00838f",name:"Teal"},
+  {hex:"#c9a84c",name:"Gold"},      {hex:"#1e6b3a",name:"Green"},
+  {hex:"#4a4740",name:"Purple"},    {hex:"#00838f",name:"Teal"},
   {hex:"#e65100",name:"Orange"},    {hex:"#5d4037",name:"Brown"},
   {hex:"#c2185b",name:"Pink"},      {hex:"#455a64",name:"Slate"},
   {hex:"#f9a825",name:"Amber"},     {hex:"#6d4c41",name:"Cocoa"},
@@ -180,15 +180,15 @@ function BlockedRoomsModal({zone,rooms,selected,onSave,onClose}){
         <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
       </div>
       <div className="modal-body">
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:700,fontSize:13,padding:"8px 10px",background:sel==="all"?"#fce4ec":"#fafaf8",borderRadius:8,border:"1.5px solid "+(sel==="all"?"#c62828":"#e8e6df"),marginBottom:10}}>
+        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:700,fontSize:13,padding:"8px 10px",background:sel==="all"?"#fbe6e8":"#fafaf8",borderRadius:8,border:"1.5px solid "+(sel==="all"?"#b3302a":"#e8e6df"),marginBottom:10}}>
           <input type="checkbox" checked={sel==="all"} onChange={toggleAll} style={{width:15,height:15}}/>
-          <span style={{color:sel==="all"?"#c62828":"#333"}}>☑ All rooms in {zone}</span>
+          <span style={{color:sel==="all"?"#b3302a":"#333"}}>☑ All rooms in {zone}</span>
         </label>
         {zoneRooms.length===0&&<div style={{color:"#bbb",fontSize:12}}>No rooms defined for this zone yet. Add rooms from the Rooms tab first.</div>}
         <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:280,overflowY:"auto",opacity:sel==="all"?0.4:1,pointerEvents:sel==="all"?"none":"auto"}}>
           {zoneRooms.map(function(r){
             var checked=Array.isArray(sel)&&sel.includes(r.id);
-            return <label key={r.id} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:12,padding:"6px 10px",background:checked?"#fce4ec":"#fafaf8",borderRadius:6}}>
+            return <label key={r.id} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:12,padding:"6px 10px",background:checked?"#fbe6e8":"#fafaf8",borderRadius:6}}>
               <input type="checkbox" checked={checked} onChange={function(){toggleRoom(r.id);}} style={{width:14,height:14}}/>
               {r.name}
             </label>;
@@ -1908,8 +1908,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   function cellStyle(v,row){
     var pc=planColor(row);
     if(v==="plan")return{background:pc};
-    if(v==="actual")return{background:"#1a73e8"};
-    if(v==="both")return{background:"linear-gradient(180deg,"+pc+" 50%,#1a73e8 50%)"};
+    if(v==="actual")return{background:"#0f5299"};
+    if(v==="both")return{background:"linear-gradient(180deg,"+pc+" 50%,#0f5299 50%)"};
     return{};
   }
 
@@ -1944,7 +1944,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     });
     return{iso:iso,t:t,rows:rows,late:late,ahead:ahead,on:on};
   }
-  function plColor(v){return v===null||v===undefined?"#999":v<=-0.25?"#c62828":v>=0.25?"#2e7d32":"#333";}
+  function plColor(v){return v===null||v===undefined?"#999":v<=-0.25?"#b3302a":v>=0.25?"#1e6b3a":"#333";}
   // The part of the line that crosses one week cell, drawn in that cell's own coordinates
   // (0..1 across the week, 0..1 down the row), so it lines up whatever the column widths.
   function plCellArt(g,w,opts){
@@ -1952,7 +1952,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var w0=plDay(w),tu=(g.t-w0)/7,pu=g.p===null?tu:(g.p-w0)/7;
     var lo=Math.min(tu,pu),hi=Math.max(tu,pu);
     if(hi<0||lo>1)return null;
-    var bend=g.p!==null&&Math.abs(pu-tu)>1e-6,col=pu<tu?"#c62828":"#2e7d32";
+    var bend=g.p!==null&&Math.abs(pu-tu)>1e-6,col=pu<tu?"#b3302a":"#1e6b3a";
     var d=bend?"M"+tu+" 0 L"+pu+" 0.5 L"+tu+" 1":"M"+tu+" 0 L"+tu+" 1";
     var here=bend&&pu>=0&&pu<1;
     return [
@@ -2192,7 +2192,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   function subSelect(row,big){
                           var rs=rowSub(row);
                           var look={
-                            row:{c:rs.forced?"#b35c00":"#00695c",bg:rs.forced?"#fdf1e0":"#e8f5e9",b:rs.forced?"#e6c48c":"#00695c",w:700},
+                            row:{c:rs.forced?"#b35c00":"#00695c",bg:rs.forced?"#fdf1e0":"#e6f2e9",b:rs.forced?"#e6c48c":"#00695c",w:700},
                             tender:{c:"#00695c",bg:"#f2f9f3",b:"#a5d6a7",w:700},
                             choose:{c:"#b35c00",bg:"#fdf1e0",b:"#e6c48c",w:700},
                             pending:{c:"#9b968b",bg:"#fff",b:"#e8e6df",w:400},
@@ -2291,7 +2291,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(v.noPlan)return{t:"no plan",c:"#6f6b62",bg:"#f0ede6",tip:"In the baseline ("+fmtDate(v.bStart)+" → "+fmtDate(v.bEnd)+"), no planned week now"};
     if(v.finish===0&&v.start===0)return null;
     var late=v.finish>0;
-    return{t:(v.finish>0?"+":v.finish<0?"−":"±")+Math.abs(v.finish)+"w",c:late?"#c62828":v.finish<0?"#2e7d32":"#6f6b62",bg:late?"#fce4ec":v.finish<0?"#e8f5e9":"#f5f4f0",
+    return{t:(v.finish>0?"+":v.finish<0?"−":"±")+Math.abs(v.finish)+"w",c:late?"#b3302a":v.finish<0?"#1e6b3a":"#6f6b62",bg:late?"#fbe6e8":v.finish<0?"#e6f2e9":"#f5f4f0",
       tip:"Against “"+activeBl.name+"” ("+fmtDate(activeBl.date)+"):\nstart "+fmtDate(v.bStart)+" → "+fmtDate(v.cStart)+" ("+(v.start>0?"+":"")+v.start+" wk)\nfinish "+fmtDate(v.bEnd)+" → "+fmtDate(v.cEnd)+" ("+(v.finish>0?"+":"")+v.finish+" wk)"};
   }
 
@@ -2411,7 +2411,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       <span style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:17}}>{curZone} — {sc?sc.title:""}</span>
       <span style={{fontSize:11,color:"#aaa"}}>press Esc to leave full screen</span>
       {sc&&<button className="btn btn-pri" onClick={openPrint} style={{marginLeft:"auto"}}
-        title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">🖨 Print / PDF</button>}
+        title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">Print / PDF</button>}
     </div>}
     {backTo&&<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,
       padding:"8px 12px",borderRadius:8,background:"var(--blue-soft,#e8f0fe)",border:"1.5px solid #c6d9f5"}}>
@@ -2455,7 +2455,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           </React.Fragment>}
         </span>
         <button className="btn btn-pri" onClick={openPrint}
-          title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">🖨 Print / PDF</button>
+          title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">Print / PDF</button>
       </span>}
     </div>
 
@@ -2491,8 +2491,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         </span>}
         </div>}
 
-        {canEdit&&selRows.length>0&&<div className="sched-noprint" style={{padding:"8px 12px",background:"#e8f0fe",border:"1.5px solid #1a73e8",borderRadius:8,marginBottom:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          <span style={{fontSize:12,fontWeight:800,color:"#1a73e8"}}>{selRows.length} task{selRows.length!==1?"s":""} selected</span>
+        {canEdit&&selRows.length>0&&<div className="sched-noprint" style={{padding:"8px 12px",background:"#e8f0fe",border:"1.5px solid #0f5299",borderRadius:8,marginBottom:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:12,fontWeight:800,color:"#0f5299"}}>{selRows.length} task{selRows.length!==1?"s":""} selected</span>
 
           <select value={bulkTender} onChange={function(e){
             var v=e.target.value;setBulkTender("");
@@ -2526,7 +2526,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <button className="btn btn-sm" onClick={function(){bulkShift(1);}} title="Shift every selected task 1 week later">1wk ▶</button>
           </span>
 
-          <button className="btn btn-sm btn-danger" onClick={bulkDelete} title="Delete every selected task">🗑 Delete</button>
+          <button className="btn btn-sm btn-danger" onClick={bulkDelete} title="Delete every selected task">Delete</button>
           <span style={{fontSize:10,color:"#5f7fae"}}>Shift+click a box to select a range</span>
           <button className="btn btn-sm" onClick={function(){setSelRows([]);}} style={{marginLeft:"auto"}}>✕ Clear selection</button>
         </div>}
@@ -2554,11 +2554,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           {(function(){
             if(!blStats.curEnd||!blStats.blEnd)return null;
             var d=weeksBetween(blStats.blEnd,blStats.curEnd);
-            return <span style={{fontWeight:700,color:d>0?"#c62828":d<0?"#2e7d32":"#37474f"}}>
+            return <span style={{fontWeight:700,color:d>0?"#b3302a":d<0?"#1e6b3a":"#37474f"}}>
               Finish {fmtDate(xerAddDays(blStats.curEnd,4))} — {d===0?"on baseline":(d>0?"+":"−")+Math.abs(d)+" week"+(Math.abs(d)!==1?"s":"")+(d>0?" late":" early")}</span>;
           })()}
-          <span style={{color:blStats.late?"#c62828":"#607d8b"}}>{blStats.late} task{blStats.late!==1?"s":""} finishing later{blStats.late?" (worst +"+blStats.maxLate+" wk)":""}</span>
-          {blStats.early>0&&<span style={{color:"#2e7d32"}}>{blStats.early} earlier</span>}
+          <span style={{color:blStats.late?"#b3302a":"#607d8b"}}>{blStats.late} task{blStats.late!==1?"s":""} finishing later{blStats.late?" (worst +"+blStats.maxLate+" wk)":""}</span>
+          {blStats.early>0&&<span style={{color:"#1e6b3a"}}>{blStats.early} earlier</span>}
           {blStats.isNew>0&&<span style={{color:"#607d8b"}}>{blStats.isNew} new since</span>}
           {blStats.removed>0&&<span style={{color:"#607d8b"}}>{blStats.removed} no longer planned</span>}
           <span style={{fontSize:10,color:"#90a4ae",marginLeft:"auto"}}>grey line under the bars = baseline</span>
@@ -2577,23 +2577,23 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               style={{fontSize:11,color:"#555",padding:"2px 4px",borderRadius:4,cursor:"pointer"}}
               onMouseEnter={function(e){e.currentTarget.style.background="#fde4ec";}} onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}>
               <strong>{x.row.label}</strong> — {x.risk.tender.title} delivers {fmtDate(x.risk.delivery)}, starts week of {fmtDate(x.risk.startWeek)}
-              {x.risk.late&&<span style={{color:"#c62828",fontWeight:700}}> ({x.risk.weeksLate}w late)</span>}
+              {x.risk.late&&<span style={{color:"#b3302a",fontWeight:700}}> ({x.risk.weeksLate}w late)</span>}
               {x.risk.tight&&<span style={{color:"#b45309"}}> (no margin)</span>}
             </div>;
           }
-          return <div className={printPlan&&!printPlan.risks?"sched-noprint":""} style={{padding:procOpen?"8px 12px":"5px 12px",background:"#fff5f7",border:"1.5px solid #f48fb1",borderRadius:8,marginBottom:10}}>
+          return <div className={printPlan&&!printPlan.risks?"sched-noprint":""} style={{padding:procOpen?"8px 12px":"5px 12px",background:"#fff5f7",border:"1.5px solid #ecc3c7",borderRadius:8,marginBottom:10}}>
             <div onClick={function(){setProcOpen(!procOpen);}} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}
               title={procOpen?"Fold the list":"Show the list"}>
-              <span style={{fontSize:12,fontWeight:700,color:"#c62828"}}>🚚 {list.length} task{list.length!==1?"s":""} at risk from procurement</span>
+              <span style={{fontSize:12,fontWeight:700,color:"#b3302a"}}>🚚 {list.length} task{list.length!==1?"s":""} at risk from procurement</span>
               <span style={{fontSize:11,color:"#888"}}>{nLate>0?nLate+" late":""}{nLate>0&&nTight>0?" · ":""}{nTight>0?nTight+" no margin":""}</span>
-              <span className="sched-noprint" style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:"#c62828"}}>{procOpen?"▴ Hide":"▾ Show"}</span>
+              <span className="sched-noprint" style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:"#b3302a"}}>{procOpen?"▴ Hide":"▾ Show"}</span>
             </div>
             {procOpen&&<div className="sched-noprint" style={{marginTop:5,maxHeight:220,overflowY:"auto",overscrollBehavior:"contain"}}>{list.map(item)}</div>}
             <div className="sched-print-only">{list.map(item)}</div>
           </div>;
         })()}
 
-        {canEdit===false&&<div className="sched-noprint" style={{padding:"8px 12px",background:"#f0f8ff",border:"1px solid #bbdefb",borderRadius:8,marginBottom:10,fontSize:12,color:"#1565c0"}}>
+        {canEdit===false&&<div className="sched-noprint" style={{padding:"8px 12px",background:"#f0f8ff",border:"1px solid #bbdefb",borderRadius:8,marginBottom:10,fontSize:12,color:"#0f5299"}}>
           👁 Read-only — only the leaders of {curZone} can modify this schedule.
         </div>}
 
@@ -2602,7 +2602,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           <div style={{fontSize:11,color:"#555"}}>{curZone} · {fmtDate(wks[0]||sc.startDate)} → {fmtDate(wks[wks.length-1]||sc.startDate)} · printed {fmtDate(todayStr)}{fGroup?" · subcontractor: "+fGroup:""}</div>
         </div>
 
-        {canEdit!==false&&<div className="sched-noprint" style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#fffdf0",border:"1px solid #f0e2b8",borderRadius:8}}>
+        {canEdit!==false&&<div className="sched-noprint" style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#faf9f7",border:"1px solid #f0e2b8",borderRadius:8}}>
           <select value={newRowKind} onChange={function(e){setNewRowKind(e.target.value);}} style={{width:"auto",padding:"5px 8px",fontSize:12}}>
             <option value="task">Task</option>
             <option value="category">Category / Room</option>
@@ -2629,13 +2629,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           </span>}
           {canEdit!==false&&<React.Fragment>
             <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase"}} title="Click or drag along a row to fill the weeks as">Fill:</span>
-            <button onClick={function(){setPaintMode("plan");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="plan"?"#c9a84c":"#ddd"),background:paintMode==="plan"?"#fffdf0":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="plan"?"#b45309":"#aaa"}}>
+            <button onClick={function(){setPaintMode("plan");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="plan"?"#c9a84c":"#ddd"),background:paintMode==="plan"?"#faf9f7":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="plan"?"#b45309":"#aaa"}}>
               <span style={{width:14,height:10,background:"#c9a84c",borderRadius:2}}></span> Planned
             </button>
-            <button onClick={function(){setPaintMode("actual");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="actual"?"#1a73e8":"#ddd"),background:paintMode==="actual"?"#f0f8ff":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="actual"?"#1a73e8":"#aaa"}}>
-              <span style={{width:14,height:10,background:"#1a73e8",borderRadius:2}}></span> Actual
+            <button onClick={function(){setPaintMode("actual");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="actual"?"#0f5299":"#ddd"),background:paintMode==="actual"?"#f0f8ff":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="actual"?"#0f5299":"#aaa"}}>
+              <span style={{width:14,height:10,background:"#0f5299",borderRadius:2}}></span> Actual
             </button>
-            <button onClick={function(){setPaintMode("progress");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="progress"?"#7b1fa2":"#ddd"),background:paintMode==="progress"?"#f3e5f5":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="progress"?"#7b1fa2":"#aaa"}}>
+            <button onClick={function(){setPaintMode("progress");}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:16,border:"1.5px solid "+(paintMode==="progress"?"#4a4740":"#ddd"),background:paintMode==="progress"?"#f2f0ec":"#fff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",color:paintMode==="progress"?"#4a4740":"#aaa"}}>
               % Progress
             </button>
           </React.Fragment>}
@@ -2670,7 +2670,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               ⓘ Tips</span>
             <button className={"btn btn-sm"+(showTools?" btn-pri":"")} onClick={function(){setShowTools(!showTools);}}
               title="Baseline, critical path, link arrows, advanced columns, collapse / expand the rooms"
-              style={{padding:"2px 10px",fontSize:10}}>🔍 Analyse & view {showTools?"▴":"▾"}{!showTools&&(activeBl||critPath)?" ●":""}</button>
+              style={{padding:"2px 10px",fontSize:10}}>Analyse & view {showTools?"▴":"▾"}{!showTools&&(activeBl||critPath)?" ●":""}</button>
           </span>
         </div>
 
@@ -2813,7 +2813,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       var pr=procRisk(r), pq=prereqState(r);
                       var done=it.cell==="actual"||it.cell==="both";
                       return <div key={r.id} style={{display:"flex",gap:10,alignItems:"flex-start",background:"#fff",
-                        border:"1.5px solid "+(done?"#c8e6c9":"var(--rule,#ddd9cf)"),borderLeft:"4px solid "+planColor(r),
+                        border:"1.5px solid "+(done?"#cfe3d5":"var(--rule,#ddd9cf)"),borderLeft:"4px solid "+planColor(r),
                         borderRadius:9,padding:"9px 11px",marginBottom:6}}>
                         <div onClick={canEdit?function(){
                             var cells=Object.assign({},r.cells||{});
@@ -2839,7 +2839,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                                 }}
                                 title={canEdit?"Tap to record the progress reached this week":"Progress"}
                                 style={{fontFamily:"var(--font-mono)",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:10,cursor:canEdit?"pointer":"default",
-                                  border:"1px solid "+(pr>=100?"#c8e6c9":"var(--rule,#ddd9cf)"),background:pr>=100?"var(--green-soft,#e6f2e9)":"#f7f5f0",color:pr>=100?"var(--green,#1e6b3a)":"var(--ink-2,#4a4740)"}}>
+                                  border:"1px solid "+(pr>=100?"#cfe3d5":"var(--rule,#ddd9cf)"),background:pr>=100?"var(--green-soft,#e6f2e9)":"#f7f5f0",color:pr>=100?"var(--green,#1e6b3a)":"var(--ink-2,#4a4740)"}}>
                                 {pr===null?"— %":pr+" %"}{wv!==undefined&&wv!==null?" ✎":""}</button>;
                             })()}
                             {rowGroup(r)&&<span className="badge" style={{background:planColor(r),color:"#fff"}}>{rowGroup(r)}</span>}
@@ -2881,8 +2881,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   return <th key={wk} data-wk={wk} onClick={function(){toggleHolidayWeek(wk);}}
                     title={hol?"Neutralised week (holiday/shutdown) — click to re-activate":"Click to neutralise this week (holiday/shutdown)"}
                     style={{position:"sticky",top:0,zIndex:3,width:40,minWidth:40,maxWidth:40,padding:"4px 2px",borderBottom:"1.5px solid #e8e6df",borderLeft:"1px solid #f0ede6",cursor:"pointer",
-                      background:hol?"#d5d1c8":isCur?"#fff8e1":"#f5f4f0",
-                      fontSize:8,color:hol?"#fff":isCur?"#f57f17":"#888",fontWeight:(isCur||hol)?800:600}}>
+                      background:hol?"#d5d1c8":isCur?"#faf3e0":"#f5f4f0",
+                      fontSize:8,color:hol?"#fff":isCur?"#b35c00":"#888",fontWeight:(isCur||hol)?800:600}}>
                     {hol?"⊘":fmtDate(wk).slice(0,5)}
                   </th>;
                 })}
@@ -2909,7 +2909,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 var rowPq=isCat?null:prereqState(row);
                 var collapsed=isCat&&collapsedCats[row.id];
                 var warn=rowWarning(row.id);
-                var warnColor=warn?(warn.severity==="blocking"?"#c62828":warn.severity==="warning"?"#ef6c00":warn.severity==="late"?"#e65100":"#f57f17"):"";
+                var warnColor=warn?(warn.severity==="blocking"?"#b3302a":warn.severity==="warning"?"#ef6c00":warn.severity==="late"?"#e65100":"#b35c00"):"";
                 // While a task is being moved (Shift+drag) its bars are drawn where they will land.
                 var shownCells=row.cells||{};
                 if(drag&&drag.type==="move"&&drag.rowId===row.id){
@@ -2922,13 +2922,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   var ok=pq.status==="done"||!!pq.dateConfirmed;
                   return <tr key={"pq"+pq.id} className="sched-noprint">
                     <td style={{position:"sticky",left:0,zIndex:1,background:ok?"#f3f8f3":"#fffdf3",padding:"1px 10px 1px 26px",borderBottom:"1px dashed #e8e6df",borderRight:"1.5px solid #e8e6df"}}>
-                      <span style={{fontSize:9,fontWeight:800,color:ok?"#2e7d32":"#f57f17",marginRight:5}}>🔒</span>
+                      <span style={{fontSize:9,fontWeight:800,color:ok?"#1e6b3a":"#b35c00",marginRight:5}}>🔒</span>
                       <span style={{fontSize:10,color:ok?"#7a8a7a":"#8a7550",textDecoration:ok?"line-through":"none"}}>{pq.text}</span>
                       {pq.owner&&<span style={{fontSize:9,color:"#aaa",marginLeft:6}}>· {pq.owner}</span>}
                       <span onClick={function(){if(!canEdit)return;saveTasks((tasks||[]).map(function(x){return x.id!==pq.id?x:stampModified(Object.assign({},x,{dateConfirmed:!ok}));}));}}
                         title={ok?"Date confirmed — click for TBC":"Date to be confirmed — click to confirm"}
                         style={{fontSize:8,fontWeight:800,marginLeft:6,padding:"0 5px",borderRadius:8,cursor:canEdit?"pointer":"default",
-                          background:ok?"#e8f5e9":"#fff8e1",color:ok?"#2e7d32":"#f57f17",border:"1px solid "+(ok?"#c8e6c9":"#ffe082")}}>
+                          background:ok?"#e6f2e9":"#faf3e0",color:ok?"#1e6b3a":"#b35c00",border:"1px solid "+(ok?"#cfe3d5":"#e6d9b4")}}>
                         {ok?"✓":"TBC"}</span>
                     </td>
                     <td className="sched-noprint" style={{borderBottom:"1px dashed #e8e6df",borderRight:"1.5px solid #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>
@@ -2938,7 +2938,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     {wks.map(function(w){
                       var hit=pq.due&&w<=pq.due&&pq.due<=(function(){var d=new Date(w);d.setDate(d.getDate()+6);return toISO(d);})();
                       return <td key={w} style={{borderBottom:"1px dashed #e8e6df",borderLeft:"1px solid #f5f4f0",height:14,textAlign:"center",fontSize:8,
-                        background:ok?"#f3f8f3":"#fffdf3",color:ok?"#2e7d32":"#f57f17"}}>{hit?"◆":""}</td>;
+                        background:ok?"#f3f8f3":"#fffdf3",color:ok?"#1e6b3a":"#b35c00"}}>{hit?"◆":""}</td>;
                     })}
                   </tr>;
                 })}
@@ -2950,7 +2950,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     setCtxMenu({rowId:row.id,x:e.clientX,y:e.clientY});
                   }}
                   style={{background:isSection?"#2b2e36":isCat?"#f0ede6":"#fff"}}>
-                  <td style={{position:"sticky",left:0,zIndex:1,background:(drag&&drag.type==="link"&&drag.target===row.id)?"#d6e6fb":panelRowId===row.id?(isSection?"#3a3f4b":"#fff3cd"):focusRow===row.id?"#fff8e1":isSel?"#e8f0fe":isSection?"var(--ink,#16181d)":isCat?"#f0ede6":"#fff",padding:isSection?"5px 10px":"3px 10px",borderBottom:isSection?"1.5px solid var(--ink,#16181d)":"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",boxShadow:focusRow===row.id?"inset 3px 0 0 #f57f17":onCrit?"inset 3px 0 0 var(--amber,#b35c00)":(critPath&&critPath.zeroFloat[row.id])?"inset 3px 0 0 #e6c48c":"none"}}>
+                  <td style={{position:"sticky",left:0,zIndex:1,background:(drag&&drag.type==="link"&&drag.target===row.id)?"#d6e6fb":panelRowId===row.id?(isSection?"#3a3f4b":"#fff3cd"):focusRow===row.id?"#faf3e0":isSel?"#e8f0fe":isSection?"var(--ink,#16181d)":isCat?"#f0ede6":"#fff",padding:isSection?"5px 10px":"3px 10px",borderBottom:isSection?"1.5px solid var(--ink,#16181d)":"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",boxShadow:focusRow===row.id?"inset 3px 0 0 #b35c00":onCrit?"inset 3px 0 0 var(--amber,#b35c00)":(critPath&&critPath.zeroFloat[row.id])?"inset 3px 0 0 #e6c48c":"none"}}>
                     <div style={{display:"flex",alignItems:"center",gap:3}}>
                       {canEdit&&!isCat&&<input type="checkbox" className="sched-noprint" checked={isSel}
                         onChange={function(){}} onClick={function(e){clickSelRow(row.id,e);}}
@@ -2965,7 +2965,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       {(function(){
                         var nameStyle={flex:1,minWidth:120,fontSize:isSection?12.5:isCat?12:11,fontWeight:isSection?800:isCat?700:500,
                           letterSpacing:isSection?".08em":"normal",textTransform:isCat?"uppercase":"none",
-                          color:isSection?"#fff":rowDocs.length>0?"#1a73e8":isCat?"#555":"#333",
+                          color:isSection?"#fff":rowDocs.length>0?"#0f5299":isCat?"#555":"#333",
                           padding:"2px 0",paddingLeft:isCat?0:12,fontFamily:"inherit"};
                         if(canEdit&&editRowId===row.id){
                           return <SchedBufInput type="text" value={row.label||""}
@@ -3009,7 +3009,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         title={rowDocs.length===1
                           ?"Open \""+(rowDocs[0].title||"document")+"\" in a new tab"
                           :rowDocs.length+" documents attached — open the list"}
-                        style={{cursor:"pointer",fontSize:11,flexShrink:0,color:"#1a73e8"}}>
+                        style={{cursor:"pointer",fontSize:11,flexShrink:0,color:"#0f5299"}}>
                         📐{rowDocs.length>1?rowDocs.length:""}</span>}
                       {isCat&&collapsed&&(function(){
                         var all=(sc.rows||[]);var i=all.findIndex(function(r){return r.id===row.id;});
@@ -3019,7 +3019,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       {(function(){
                         var n=(tasks||[]).filter(function(t){return t.scheduleRowRef===row.id&&t.status!=="done";}).length;
                         return n>0?<span className="sched-noprint" onClick={function(){setPanelRowId(row.id);}} title={n+" open action"+(n!==1?"s":"")+" linked — open the details"}
-                          style={{fontSize:9,fontWeight:800,color:"#1a73e8",background:"#e8f0fe",borderRadius:8,padding:"0 5px",flexShrink:0,cursor:"pointer"}}>⚑{n}</span>:null;
+                          style={{fontSize:9,fontWeight:800,color:"#0f5299",background:"#e8f0fe",borderRadius:8,padding:"0 5px",flexShrink:0,cursor:"pointer"}}>⚑{n}</span>:null;
                       })()}
                     </div>
                   </td>
@@ -3030,7 +3030,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           var rv=blRoll[row.id];
                           if(rv===undefined||rv<=0)return null;
                           return <span title={"Latest finish in this "+(isSection?"section":"room")+" is "+rv+" week"+(rv!==1?"s":"")+" behind the baseline"}
-                            style={{fontFamily:"var(--font-mono)",fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:8,flexShrink:0,cursor:"help",background:"#fce4ec",color:"#c62828"}}>+{rv}w</span>;
+                            style={{fontFamily:"var(--font-mono)",fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:8,flexShrink:0,cursor:"help",background:"#fbe6e8",color:"#b3302a"}}>+{rv}w</span>;
                         }
                         var bb=blBadge(blVar[row.id]);
                         if(!bb)return null;
@@ -3048,11 +3048,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         if(pg===null)return null;
                         return <span title={lw?"Latest entry: "+lw.pct+"% at week of "+fmtDate(lw.week):"Derived from actual vs planned bars"}
                           style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:8,flexShrink:0,cursor:"help",
-                            background:pg>=100?"#e8f5e9":pg>0?"#e3f2fd":"#f5f4f0",
-                            color:pg>=100?"#2e7d32":pg>0?"#1565c0":"#bbb",
-                            border:lw?"1px solid #ce93d8":"1px solid transparent"}}>{pg}%</span>;
+                            background:pg>=100?"#e6f2e9":pg>0?"#f4f6f9":"#f5f4f0",
+                            color:pg>=100?"#1e6b3a":pg>0?"#0f5299":"#bbb",
+                            border:lw?"1px solid #ddd9cf":"1px solid transparent"}}>{pg}%</span>;
                       })()}
-                      {isCat&&(function(){var pg=rowProgress(row);return pg===null?null:<span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:8,flexShrink:0,background:pg>=100?"#e8f5e9":"#f5f4f0",color:pg>=100?"#2e7d32":"#888"}}>{pg}%</span>;})()}
+                      {isCat&&(function(){var pg=rowProgress(row);return pg===null?null:<span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:8,flexShrink:0,background:pg>=100?"#e6f2e9":"#f5f4f0",color:pg>=100?"#1e6b3a":"#888"}}>{pg}%</span>;})()}
                       {showFloat&&critPath&&!isCat&&critPath.float[row.id]!==undefined&&(function(){
                         var f=critPath.float[row.id];
                         var crit=f<=0;
@@ -3062,7 +3062,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           style={{fontFamily:"var(--font-mono)",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:8,flexShrink:0,cursor:"help",
                             background:crit?"var(--red-soft,#fbe6e8)":f<=2?"var(--amber-soft,#fdf1e0)":"var(--green-soft,#e6f2e9)",
                             color:crit?"var(--red,#b3302a)":f<=2?"var(--amber,#b35c00)":"var(--green,#1e6b3a)",
-                            border:"1px solid "+(crit?"#f0cdc9":f<=2?"#e6c48c":"#c8e6c9")}}>
+                            border:"1px solid "+(crit?"#f0cdc9":f<=2?"#e6c48c":"#cfe3d5")}}>
                           {crit?"0f":f+"f"}</span>;
                       })()}
                       {onCrit&&<span title={"Critical path, step "+(critPath.order.indexOf(row.id)+1)+" of "+critPath.order.length+" — any delay here pushes the end of the schedule"}
@@ -3075,9 +3075,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           ?rowPq.tbc+" prerequisite date(s) still TBC: "+rowPq.all.filter(function(p){return !p.confirmed;}).map(function(p){return p.label||"(unnamed)";}).join(", ")
                           :"All "+rowPq.all.length+" prerequisite(s) confirmed — earliest start "+fmtDate(rowPq.gateWeek)}
                         style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:8,flexShrink:0,cursor:canEdit?"pointer":"help",whiteSpace:"nowrap",
-                          background:rowPq.tbc>0?"#fff8e1":rowPq.tooEarly?"#fce4ec":"#e8f5e9",
-                          color:rowPq.tbc>0?"#f57f17":rowPq.tooEarly?"#c62828":"#2e7d32",
-                          border:"1px solid "+(rowPq.tbc>0?"#ffe082":rowPq.tooEarly?"#f48fb1":"#c8e6c9")}}>
+                          background:rowPq.tbc>0?"#faf3e0":rowPq.tooEarly?"#fbe6e8":"#e6f2e9",
+                          color:rowPq.tbc>0?"#b35c00":rowPq.tooEarly?"#b3302a":"#1e6b3a",
+                          border:"1px solid "+(rowPq.tbc>0?"#e6d9b4":rowPq.tooEarly?"#ecc3c7":"#cfe3d5")}}>
                         {rowPq.tbc>0?"🔒 "+rowPq.tbc+" TBC":rowPq.tooEarly?"🔒 "+fmtDate(rowPq.gateWeek).slice(0,5):"🔓"}
                       </span>}
                       {(function(){
@@ -3094,7 +3094,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                             title={"Delivery is forecast "+fmtDate(pr.delivery)+". Earliest week this task can start: "+fmtDate(pr.feasible)+(canEdit?" — click to move the task there (duration kept)":"")}
                             style={{fontSize:9,fontWeight:800,padding:"1px 4px",borderRadius:8,whiteSpace:"nowrap",cursor:canEdit?"pointer":"help",
                               background:pr.late?"#fff3e0":pr.tight?"#fffde7":"#f1f8e9",
-                              color:pr.late?"#e65100":pr.tight?"#f57f17":"#558b2f",
+                              color:pr.late?"#e65100":pr.tight?"#b35c00":"#558b2f",
                               border:"1px solid "+(pr.late?"#ffcc80":pr.tight?"#fff59d":"#c5e1a5")}}>
                             ⇢ {fmtDate(pr.feasible).slice(0,5)}
                           </span>}
@@ -3117,7 +3117,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         ?<div style={{display:"flex",alignItems:"center",gap:3}}>
                         <span className="sched-noprint" title="Choose a colour for this task or for the whole subcontractor"
                           onClick={function(){setColorRowId(colorRowId===row.id?null:row.id);}}
-                          style={{width:11,height:11,borderRadius:3,flexShrink:0,cursor:"pointer",background:planColor(row),border:"1px solid rgba(0,0,0,.15)",boxShadow:row.color?"0 0 0 1.5px #1a73e8":"none"}}></span>
+                          style={{width:11,height:11,borderRadius:3,flexShrink:0,cursor:"pointer",background:planColor(row),border:"1px solid rgba(0,0,0,.15)",boxShadow:row.color?"0 0 0 1.5px #0f5299":"none"}}></span>
                         {subSelect(row)}
                         </div>
                         :<span style={{fontSize:10,fontWeight:rowGroup(row)?700:400,color:rowGroup(row)?"#00695c":"#ddd",fontStyle:rowSub(row).source==="pending"?"italic":"normal"}}>
@@ -3245,7 +3245,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         }}
                         title="Drag onto another task: that task will start after this one"
                         style={{position:"absolute",right:-6,top:"50%",transform:"translateY(-50%)",width:12,height:12,borderRadius:"50%",
-                          background:"#fff",border:"2.5px solid #1a73e8",cursor:"crosshair",zIndex:1,boxSizing:"border-box",touchAction:"none"}}></span>}
+                          background:"#fff",border:"2.5px solid #0f5299",cursor:"crosshair",zIndex:1,boxSizing:"border-box",touchAction:"none"}}></span>}
                     </td>;
                   })}
                 </tr></React.Fragment>;
@@ -3255,7 +3255,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           {showLinks&&arrowGeo.length>0&&<svg className="sched-noprint" style={{position:"absolute",left:0,top:0,width:"100%",height:"100%",overflow:"visible",pointerEvents:"none",zIndex:0}}>
             <defs>
               <marker id="sched-arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8f8a7e"/></marker>
-              <marker id="sched-arr-bad" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c62828"/></marker>
+              <marker id="sched-arr-bad" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#b3302a"/></marker>
             </defs>
             {arrowGeo.map(function(g){
               var d=arrowPath(g);
@@ -3271,7 +3271,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   }}>
                   <title>{g.label+(g.bad?"\n⚠ starts before the previous task ends":"")+(canEdit?"\nClick: options · Drag onto another task: move the link to it":"")}</title>
                 </path>
-                <path className="sched-link-line" d={d} fill="none" stroke={g.bad?"#c62828":"#8f8a7e"} strokeWidth={g.bad?1.8:1.2}
+                <path className="sched-link-line" d={d} fill="none" stroke={g.bad?"#b3302a":"#8f8a7e"} strokeWidth={g.bad?1.8:1.2}
                   strokeDasharray={g.bad?"4 3":"none"} markerEnd={"url(#"+(g.bad?"sched-arr-bad":"sched-arr-ok")+")"} style={{pointerEvents:"none"}}/>
               </g>;
             })}
@@ -3314,8 +3314,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         {fmtDate(ck[0])} → {fmtDate(ck[ck.length-1])}
                         {pl&&<span style={{marginLeft:10,color:"#d32f2f",fontWeight:800}}>│ Progress line at {fmtDate(pl.iso)}</span>}
                         {pl&&printPlan.plSum&&<span style={{marginLeft:8}}>
-                          <b style={{color:"#c62828"}}>● {pl.late} behind</b>{"  "}
-                          <b style={{color:"#2e7d32",marginLeft:6}}>● {pl.ahead} ahead</b>{"  "}
+                          <b style={{color:"#b3302a"}}>● {pl.late} behind</b>{"  "}
+                          <b style={{color:"#1e6b3a",marginLeft:6}}>● {pl.ahead} ahead</b>{"  "}
                           <span style={{color:"#555",marginLeft:6}}>● {pl.on} on time</span>
                         </span>}
                       </th>
@@ -3372,7 +3372,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           var before=risk&&risk.late&&risk.feasible&&w<risk.feasible&&(v==="plan"||v==="both");
                           var feas=risk&&risk.feasible===w;
                           var bg=hol?"#e8e4da":before?"repeating-linear-gradient(45deg,#ef9a9a,#ef9a9a 2px,#e57373 2px,#e57373 4px)"
-                                 :v==="plan"?planColor(r):v==="actual"?"#1a73e8":v==="both"?"linear-gradient(180deg,"+planColor(r)+" 50%,#1a73e8 50%)":"#fff";
+                                 :v==="plan"?planColor(r):v==="actual"?"#0f5299":v==="both"?"linear-gradient(180deg,"+planColor(r)+" 50%,#0f5299 50%)":"#fff";
                           var wp=printPlan.progress?((r.weekProgress||{})[w]):"";
                           return <td key={w} className={pl?"pl-cell":undefined} style={{border:"1px solid #ccc",padding:0,height:11,background:bg,textAlign:"center",fontSize:6,color:"#fff",
                             boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none",position:pl?"relative":undefined,transform:pl?"translate(0,0)":undefined}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}{pl&&plCellArt(pl.rows[r.id],w,printPlan)}</td>;
@@ -3409,7 +3409,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               return <div key={d.id} style={{display:"flex",gap:8,alignItems:"center",padding:"8px 10px",border:"1.5px solid #e8e6df",borderRadius:8,marginBottom:6,background:"#fafaf8"}}>
                 <span style={{fontSize:15}}>📄</span>
                 <div style={{flex:1,minWidth:0}}>
-                  <div onClick={function(){openDoc(d.url);}} style={{fontSize:12.5,fontWeight:700,color:"#1a73e8",cursor:"pointer",textDecoration:"underline",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title||"(untitled)"} ↗</div>
+                  <div onClick={function(){openDoc(d.url);}} style={{fontSize:12.5,fontWeight:700,color:"#0f5299",cursor:"pointer",textDecoration:"underline",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title||"(untitled)"} ↗</div>
                   <div style={{fontSize:10,color:"#aaa"}}>{d.kind}{rm?" · 🚪 "+rm.name:" · whole schedule"}{d.addedBy?" · "+d.addedBy:""} · {fmtDate(d.updatedAt)}</div>
                 </div>
                 {canEdit&&<select value={d.roomId||""} onChange={function(e){updDoc(d.id,{roomId:e.target.value});}} style={{width:150,padding:"3px 5px",fontSize:10}}>
@@ -3420,7 +3420,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               </div>;
             })}
 
-            {!canEdit&&<div style={{marginTop:14,padding:"10px 12px",borderRadius:8,background:"#fff8e1",border:"1.5px solid #ffe082",fontSize:11,color:"#8a6d1f"}}>
+            {!canEdit&&<div style={{marginTop:14,padding:"10px 12px",borderRadius:8,background:"#faf3e0",border:"1.5px solid #e6d9b4",fontSize:11,color:"#8a6d1f"}}>
               You can read the documents but not add one: adding requires being a <b>zone leader</b> for {curZone} (Settings › Zones › zone owners), or the app admin.
               {window._currentUser&&window._currentUser.name?<div style={{marginTop:4,fontSize:10,color:"#b0a070"}}>Signed in as “{window._currentUser.name}”.</div>:null}
             </div>}
@@ -3443,7 +3443,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 <button className="btn btn-sm btn-gold" disabled={!newDoc.title.trim()||!isSafeDocUrl(newDoc.url)}
                   onClick={function(){addDoc(newDoc);setNewDoc({title:"",url:"",kind:"Setting-out plan",roomId:""});}}>＋ Add</button>
               </div>
-              {newDoc.url.trim()&&!isSafeDocUrl(newDoc.url)&&<div style={{fontSize:10,color:"#c62828",marginTop:5}}>The link must start with http:// or https://</div>}
+              {newDoc.url.trim()&&!isSafeDocUrl(newDoc.url)&&<div style={{fontSize:10,color:"#b3302a",marginTop:5}}>The link must start with http:// or https://</div>}
             </div>
 
             <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
@@ -3490,7 +3490,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     </select>
                   </div>
                 </div>
-                <div style={{fontSize:12,color:pw.length?"#555":"#c62828",marginBottom:16,padding:"8px 10px",background:pw.length?"#f8f7f4":"#fdecea",borderRadius:8}}>
+                <div style={{fontSize:12,color:pw.length?"#555":"#b3302a",marginBottom:16,padding:"8px 10px",background:pw.length?"#f8f7f4":"#fdecea",borderRadius:8}}>
                   {pw.length?pw.length+" week"+(pw.length!==1?"s":"")+" · "+nS+" sheet"+(nS!==1?"s":"")+" · "+per+" weeks across · "+printOpts.size+" landscape"+(pw.length?" · "+fmtDate(pw[0])+" → "+fmtDate(pw[pw.length-1]):""):"No week in this period — check From and To."}
                 </div>
               </div>;
@@ -3525,7 +3525,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <div style={{fontSize:10,color:"#aaa",marginBottom:14}}>Landscape is set automatically; each sheet fits the page width. Task and Subcont. columns are repeated on every sheet. Tick <b>Background graphics</b> if the bars come out white.</div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
               <button className="btn btn-sm" onClick={function(){setPrintOpts(null);}}>Cancel</button>
-              <button className="btn btn-sm btn-pri" disabled={printWeeksOf(wks,printOpts).length===0} onClick={function(){runPrint(printOpts);}}>🖨 Print</button>
+              <button className="btn btn-sm btn-pri" disabled={printWeeksOf(wks,printOpts).length===0} onClick={function(){runPrint(printOpts);}}>Print</button>
             </div>
           </div>
         </div>}
@@ -3564,7 +3564,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 {SCHED_PALETTE.map(function(c){
                   var on=row.color===c.hex;
                   return <button key={c.hex} title={c.name} onClick={function(){setTask(c.hex);}}
-                    style={{width:26,height:26,borderRadius:6,cursor:"pointer",background:c.hex,border:on?"3px solid #1a73e8":"1px solid rgba(0,0,0,.15)"}}></button>;
+                    style={{width:26,height:26,borderRadius:6,cursor:"pointer",background:c.hex,border:on?"3px solid #0f5299":"1px solid rgba(0,0,0,.15)"}}></button>;
                 })}
                 <button onClick={function(){setTask("");}} title="Follow the subcontractor colour again"
                   style={{width:26,height:26,borderRadius:6,cursor:"pointer",fontSize:13,color:"#aaa",background:"#fff",border:"1px dashed #ccc"}}>×</button>
@@ -3656,7 +3656,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           return <div className="sched-noprint" onClick={function(e){e.stopPropagation();}}
             style={{position:"fixed",top:0,right:0,bottom:0,width:400,maxWidth:"100vw",zIndex:800,background:"#fff",
               borderLeft:"1.5px solid #e0ddd6",boxShadow:"-10px 0 36px rgba(0,0,0,.18)",display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"12px 14px",borderBottom:"1.5px solid #e8e6df",background:isSection?"#2b2e36":isCat?"#f0ede6":"#fffdf0",display:"flex",alignItems:"flex-start",gap:8}}>
+            <div style={{padding:"12px 14px",borderBottom:"1.5px solid #e8e6df",background:isSection?"#2b2e36":isCat?"#f0ede6":"#faf9f7",display:"flex",alignItems:"flex-start",gap:8}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:9,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:isSection?"#cfcac0":"#9b968b",marginBottom:3}}>
                   {isSection?"Section":isCat?"Room / category":"Task"}{!isCat&&myCat?" · "+(myCat.label||"room"):""}{mySec&&!isSection?" · "+(mySec.label||"section"):""}
@@ -3710,13 +3710,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               {(row.kind!=="section")&&<div style={sec}>
                 <div style={secH}>Room</div>
                 <select value={row.roomId||""} disabled={!canEdit} onChange={function(e){updRow(row.id,{roomId:e.target.value});}}
-                  style={{padding:"5px 7px",fontSize:12,width:"100%",color:row.roomId?"#7b1fa2":"#888"}}>
+                  style={{padding:"5px 7px",fontSize:12,width:"100%",color:row.roomId?"#4a4740":"#888"}}>
                   <option value="">🚪 — no room —</option>
                   {roomsOfZone.map(function(rm){return <option key={rm.id} value={rm.id}>{rm.name}</option>;})}
                 </select>
                 {row.kind==="category"&&canEdit&&<select value="" onChange={function(e){if(e.target.value){copySequenceToRoom(row.id,e.target.value);e.target.value="";}}}
                   title="Copy this whole sequence onto another room (keeps links, clears durations)"
-                  style={{padding:"5px 7px",fontSize:12,width:"100%",marginTop:6,color:"#1a73e8"}}>
+                  style={{padding:"5px 7px",fontSize:12,width:"100%",marginTop:6,color:"#0f5299"}}>
                   <option value="">⧉ Copy this sequence to another room…</option>
                   {roomsOfZone.filter(function(rm){return rm.id!==row.roomId;}).map(function(rm){return <option key={rm.id} value={rm.id}>{rm.name}</option>;})}
                 </select>}
@@ -3768,7 +3768,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         updRow(row.id,{afterId:v});
                         setQAfter("");
                       }}
-                      style={{padding:"5px 7px",fontSize:12,width:"100%",color:row.afterId?"#1a73e8":"#888"}}>
+                      style={{padding:"5px 7px",fontSize:12,width:"100%",color:row.afterId?"#0f5299":"#888"}}>
                       <option value="">— nothing (free start) —</option>
                       {afterOpts.map(function(g,gi){
                         return <optgroup key={gi} label={g.room||"(no room)"}>
@@ -3787,7 +3787,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   </div>
                 </div>
                 {ls&&<div style={{marginTop:7,padding:"6px 8px",borderRadius:6,fontSize:10.5,display:"flex",alignItems:"center",gap:6,
-                  background:ls.weeks<0?"#fce4ec":ls.weeks===0?"#e8f5e9":"#f5f4f0",color:ls.weeks<0?"#c62828":ls.weeks===0?"#2e7d32":"#6f6b62"}}>
+                  background:ls.weeks<0?"#fbe6e8":ls.weeks===0?"#e6f2e9":"#f5f4f0",color:ls.weeks<0?"#b3302a":ls.weeks===0?"#1e6b3a":"#6f6b62"}}>
                   <span style={{flex:1}}>
                     {ls.weeks<0
                       ?"🔴 Starts "+(-ls.weeks)+" week"+(-ls.weeks!==1?"s":"")+" too early: “"+(ls.pred.label||"untitled")+"”"+(Number(row.lagWeeks)?" + "+row.lagWeeks+" wk gap":"")+" allows "+(ls.earliestWeek?fmtDate(ls.earliestWeek):"a later week")
@@ -3800,7 +3800,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 </div>}
                 {followers.length>0&&<div style={{marginTop:7,fontSize:10.5,color:"#6f6b62"}}>
                   Followed by: {followers.map(function(f,fi){
-                    return <span key={f.id}>{fi>0?", ":""}<a onClick={function(){setPanelRowId(f.id);}} style={{color:"#1a73e8",cursor:"pointer"}}>{f.label||"(untitled)"}</a></span>;
+                    return <span key={f.id}>{fi>0?", ":""}<a onClick={function(){setPanelRowId(f.id);}} style={{color:"#0f5299",cursor:"pointer"}}>{f.label||"(untitled)"}</a></span>;
                   })}
                 </div>}
               </div>}
@@ -3812,8 +3812,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 var pr=procRisk(row);
                 if(!pr)return null;
                 return <div style={{marginTop:6,padding:"6px 8px",borderRadius:6,fontSize:10,
-                  background:pr.late?"#fce4ec":pr.tight?"#fff8e1":"#e8f5e9",
-                  color:pr.late?"#c62828":pr.tight?"#b45309":"#2e7d32"}}>
+                  background:pr.late?"#fbe6e8":pr.tight?"#faf3e0":"#e6f2e9",
+                  color:pr.late?"#b3302a":pr.tight?"#b45309":"#1e6b3a"}}>
                   {pr.late?"🔴 Delivery "+fmtDate(pr.delivery)+" — "+pr.weeksLate+" week"+(pr.weeksLate!==1?"s":"")+" after the planned start"
                     :pr.tight?"🟡 Delivery "+fmtDate(pr.delivery)+" — same week as the start, no margin"
                     :"🟢 Delivery "+fmtDate(pr.delivery)+" — ahead of the planned start"}
@@ -3861,13 +3861,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   <button onClick={function(){saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,{dateConfirmed:!ok,status:ok?"pending":x.status}));}));}}
                     title={ok?"Date confirmed — click to put it back to TBC":"Date still to be confirmed — click to confirm it"}
                     style={{fontSize:9,fontWeight:800,padding:"3px 6px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
-                      border:"1px solid "+(ok?"#c8e6c9":"#ffe082"),background:ok?"#e8f5e9":"#fff8e1",color:ok?"#2e7d32":"#f57f17"}}>
+                      border:"1px solid "+(ok?"#cfe3d5":"#e6d9b4"),background:ok?"#e6f2e9":"#faf3e0",color:ok?"#1e6b3a":"#b35c00"}}>
                     {ok?"✓ OK":"TBC"}</button>
                 </div>;
               })}
               {(row.prereqs||[]).map(function(p,pi){
                 return <div key={"lg"+pi} style={{display:"flex",gap:4,alignItems:"center",marginBottom:4,opacity:.75}}>
-                  <span style={{flex:1,minWidth:0,fontSize:10}}>{p.label||"(unnamed)"} <span style={{fontSize:8,color:"#f57f17",fontWeight:700}}>OLD</span></span>
+                  <span style={{flex:1,minWidth:0,fontSize:10}}>{p.label||"(unnamed)"} <span style={{fontSize:8,color:"#b35c00",fontWeight:700}}>OLD</span></span>
                   <span style={{fontSize:9,color:"#888"}}>{p.date?fmtDate(p.date):"—"}</span>
                   <button className="btn btn-sm" style={{padding:"1px 6px",fontSize:9}}
                     title="Turn this into a real action, so it can be assigned and tracked in the zone"
@@ -3884,8 +3884,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 var pq=prereqState(row);
                 if(!pq)return null;
                 return <div style={{marginTop:6,padding:"6px 8px",borderRadius:6,fontSize:10,
-                  background:pq.tbc>0?"#fff8e1":pq.tooEarly?"#fce4ec":"#e8f5e9",
-                  color:pq.tbc>0?"#b45309":pq.tooEarly?"#c62828":"#2e7d32"}}>
+                  background:pq.tbc>0?"#faf3e0":pq.tooEarly?"#fbe6e8":"#e6f2e9",
+                  color:pq.tbc>0?"#b45309":pq.tooEarly?"#b3302a":"#1e6b3a"}}>
                   {pq.tbc>0
                     ?"⏳ "+pq.tbc+" date"+(pq.tbc!==1?"s":"")+" still TBC — the start week cannot be trusted yet"
                     :pq.tooEarly
@@ -3906,7 +3906,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               <input type="text" value={newActionText} onChange={function(e){setNewActionText(e.target.value);}}
                 onKeyDown={function(e){if(e.key==="Enter"){createLinkedAction(row.id,row.label,newActionText,newActionSeverity,newActionOwner,newActionDue);setNewActionText("");setNewActionDue("");}}}
                 placeholder="New action for this task…" style={{flex:1,minWidth:200,padding:"5px 10px",fontSize:12}}/>
-              {[{k:"blocking",lbl:"🔴 Blocking",c:"#c62828",bg:"#fce4ec"},{k:"warning",lbl:"🟠 Warning",c:"#ef6c00",bg:"#fff3e0"},{k:"prereq",lbl:"🔒 Prerequisite",c:"#f57f17",bg:"#fff8e1"},{k:"info",lbl:"ℹ️ Info",c:"#1565c0",bg:"#e8f0fe"}].map(function(o){
+              {[{k:"blocking",lbl:"🔴 Blocking",c:"#b3302a",bg:"#fbe6e8"},{k:"warning",lbl:"🟠 Warning",c:"#ef6c00",bg:"#fff3e0"},{k:"prereq",lbl:"🔒 Prerequisite",c:"#b35c00",bg:"#faf3e0"},{k:"info",lbl:"ℹ️ Info",c:"#0f5299",bg:"#e8f0fe"}].map(function(o){
                 var on=newActionSeverity===o.k;
                 return <button key={o.k} onClick={function(){setNewActionSeverity(o.k);}}
                   title={o.k==="blocking"?"Stops the task — turns the row red":o.k==="warning"?"Needs attention but does not stop the work — turns the row orange":o.k==="prereq"?"Must happen before the task can start — gets its own section in the zone actions":"Information only — no marker on the row"}
@@ -3936,12 +3936,12 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             {linked.map(function(t){
               var isB=(t.tags||[]).includes("Blocking Point");
               var isL=t.due&&t.due<today()&&t.status!=="done";
-              return <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:t.status==="done"?"#f5f4f0":isB?"#fff5f7":"#fff",marginBottom:4,border:"1px solid "+(isB?"#f48fb1":"#e8e6df")}}>
+              return <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:t.status==="done"?"#f5f4f0":isB?"#fff5f7":"#fff",marginBottom:4,border:"1px solid "+(isB?"#ecc3c7":"#e8e6df")}}>
                 <span style={{flex:1,fontSize:12,textDecoration:t.status==="done"?"line-through":"none",color:t.status==="done"?"#aaa":"#333"}}>
                   {isB&&"🔴 "}{t.text}
                 </span>
                 {t.owner&&<span style={{fontSize:10,color:"#888"}}>{t.owner.split(",")[0]}</span>}
-                {t.due&&<span style={{fontSize:10,color:isL?"#c62828":"#888",fontWeight:isL?700:400}}>{fmtDate(t.due)}</span>}
+                {t.due&&<span style={{fontSize:10,color:isL?"#b3302a":"#888",fontWeight:isL?700:400}}>{fmtDate(t.due)}</span>}
                 <select value={t.status||"pending"} onChange={function(e){saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,{status:e.target.value,completedAt:e.target.value==="done"?today():""}));}));}} style={{width:"auto",padding:"2px 5px",fontSize:10}}>
                   {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
                 </select>
@@ -3954,7 +3954,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             {canEdit&&<div style={{padding:"10px 14px",borderTop:"1.5px solid #e8e6df",display:"flex",gap:6,flexWrap:"wrap",background:"#fafaf8"}}>
               <button className="btn btn-sm btn-gold" onClick={function(){insertTaskAfter(row.id);}}>{isCat?"＋ Task at the top":"＋ Task below"}</button>
               <button className="btn btn-sm" onClick={function(){isCat?duplicateCategoryBlock(row.id):duplicateRow(row.id);}}>{isCat?"⧉ Duplicate with its tasks":"⧉ Duplicate"}</button>
-              <button className="btn btn-sm btn-danger" style={{marginLeft:"auto"}} onClick={function(){delRow(row.id);}}>🗑 Delete</button>
+              <button className="btn btn-sm btn-danger" style={{marginLeft:"auto"}} onClick={function(){delRow(row.id);}}>Delete</button>
             </div>}
           </div>;
         })()}
@@ -3973,7 +3973,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               width:W,background:"#fff",border:"1px solid #e0ddd6",borderRadius:9,boxShadow:"0 10px 32px rgba(0,0,0,.22)",padding:"6px 0"}}>
               <div style={{fontSize:11,color:"#6f6b62",padding:"3px 12px 6px",lineHeight:1.4}}>
                 <b style={{color:"#16181d"}}>{succ.label||"(untitled)"}</b> starts after <b style={{color:"#16181d"}}>{pred.label||"(untitled)"}</b>
-                {ls&&ls.weeks<0&&<div style={{color:"#c62828",fontWeight:700}}>⚠ starts {-ls.weeks} week{-ls.weeks!==1?"s":""} too early</div>}
+                {ls&&ls.weeks<0&&<div style={{color:"#b3302a",fontWeight:700}}>⚠ starts {-ls.weeks} week{-ls.weeks!==1?"s":""} too early</div>}
                 {ls&&ls.weeks>0&&<div>{ls.weeks} week{ls.weeks!==1?"s":""} of slack</div>}
               </div>
               {ls&&ls.weeks!==0&&ls.earliestWeek&&<div style={item} onMouseEnter={function(e){hov(e,true);}} onMouseLeave={function(e){hov(e,false);}}
@@ -3981,7 +3981,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 {ls.weeks<0?"⇢ Move “"+(succ.label||"task")+"” right after it":"⇠ Pull “"+(succ.label||"task")+"” back right after it"}</div>}
               <div style={item} onMouseEnter={function(e){hov(e,true);}} onMouseLeave={function(e){hov(e,false);}}
                 onClick={function(){setLinkMenu(null);setPanelRowId(succ.id);}}>↻ Change the previous task… (details panel)</div>
-              <div style={Object.assign({},item,{color:"#c62828"})} onMouseEnter={function(e){hov(e,true);}} onMouseLeave={function(e){hov(e,false);}}
+              <div style={Object.assign({},item,{color:"#b3302a"})} onMouseEnter={function(e){hov(e,true);}} onMouseLeave={function(e){hov(e,false);}}
                 onClick={function(){setLinkMenu(null);removeLink(succ.id);}}>⛌ Remove the link</div>
               <div style={{fontSize:10,color:"#9b968b",padding:"5px 12px 2px",borderTop:"1px solid #f0ede6",marginTop:4}}>Tip: drag the arrow onto another task to move the link to it · Ctrl+Z undoes</div>
             </div>
@@ -4017,7 +4017,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               {items.map(function(it){
                 return <div key={it.k} onClick={function(){setCtxMenu(null);it.f();}}
                   onMouseEnter={function(e){e.currentTarget.style.background="#f5f4f0";}} onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}
-                  style={{padding:"6px 12px",fontSize:12,cursor:"pointer",color:it.danger?"#c62828":"#16181d",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{it.t}</div>;
+                  style={{padding:"6px 12px",fontSize:12,cursor:"pointer",color:it.danger?"#b3302a":"#16181d",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{it.t}</div>;
               })}
             </div>
           </React.Fragment>;
@@ -4026,15 +4026,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       </div>}
 
     {drag&&(drag.type==="link"||(drag.type==="relink"&&Math.abs(drag.x-drag.x0)+Math.abs(drag.y-drag.y0)>=6))&&<svg className="sched-noprint" style={{position:"fixed",inset:0,width:"100vw",height:"100vh",pointerEvents:"none",zIndex:1400}}>
-      <line x1={drag.x0} y1={drag.y0} x2={drag.x} y2={drag.y} stroke={drag.target?"#1a73e8":"#9b968b"} strokeWidth={2} strokeDasharray="5 4"/>
-      <circle cx={drag.x} cy={drag.y} r={5} fill={drag.target?"#1a73e8":"#fff"} stroke="#1a73e8" strokeWidth={2}/>
+      <line x1={drag.x0} y1={drag.y0} x2={drag.x} y2={drag.y} stroke={drag.target?"#0f5299":"#9b968b"} strokeWidth={2} strokeDasharray="5 4"/>
+      <circle cx={drag.x} cy={drag.y} r={5} fill={drag.target?"#0f5299":"#fff"} stroke="#0f5299" strokeWidth={2}/>
       {drag.target&&(function(){
         var t=rowById(drag.target);
         if(!t)return null;
         var ok=t.kind!=="category"&&t.kind!=="section";
         var predLbl=drag.type==="relink"?((rowById(drag.predId)||{}).label||"the previous task"):((rowById(drag.rowId)||{}).label||"this task");
         var txt=ok?"starts after “"+predLbl+"”":"drop on a task, not a header";
-        return <text x={drag.x+12} y={drag.y-10} fontSize="11" fontWeight="700" fill={ok?"#1a73e8":"#c62828"}
+        return <text x={drag.x+12} y={drag.y-10} fontSize="11" fontWeight="700" fill={ok?"#0f5299":"#b3302a"}
           style={{paintOrder:"stroke",stroke:"#fff",strokeWidth:3}}>{(t.label||"(untitled)")+" — "+txt}</text>;
       })()}
     </svg>}
@@ -4043,7 +4043,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       if(!row)return null;
       var w=rowWarning(row.id);
       if(!w)return null;
-      var col=w.severity==="blocking"?"#ff8a80":w.severity==="late"?"#ffcc80":"#ffe082";
+      var col=w.severity==="blocking"?"#ff8a80":w.severity==="late"?"#ffcc80":"#e6d9b4";
       return <div style={{position:"fixed",left:Math.min(hoverInfo.x,window.innerWidth-360),top:hoverInfo.y,zIndex:9999,width:330,background:"#1c1c1e",color:"#fff",padding:"10px 12px",borderRadius:8,boxShadow:"0 6px 24px rgba(0,0,0,.35)",fontSize:11,pointerEvents:"none"}}>
         <div style={{fontWeight:700,marginBottom:6,color:col}}>{row.label||"(untitled)"} — {w.acts.length} open action{w.acts.length!==1?"s":""}{w.blocking>0?" · "+w.blocking+" blocking":""}{w.late>0?" · "+w.late+" late":""}</div>
         {w.acts.slice(0,6).map(function(a){
