@@ -3057,7 +3057,7 @@ function ProcFlowView({tenders,onNavTender}){
       <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Tender, package, subcontractor…" style={{width:240,padding:"5px 10px",fontSize:12}}/>
     </div>
     {list.length===0
-      ?<div className="empty"><div className="empty-ico">🧭</div><div className="empty-txt">No live tender{q?" matches this search":""}.</div></div>
+      ?<div className="empty"><div className="empty-txt">No live tender{q?" matches this search":""}.</div></div>
       :<div style={{overflowX:"auto"}}>
         <div style={{display:"grid",gridTemplateColumns:"84px repeat(6,minmax(150px,1fr))",minWidth:990,border:"1.5px solid #e8e6df",borderRadius:12,overflow:"hidden",background:"#fff"}}>
           <div style={{background:"#fafaf8",borderBottom:"1.5px solid #e8e6df"}}/>
@@ -4567,7 +4567,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     {filtered.length>0&&<div className="tp-legend"><FlowDocLegend/></div>}
     {filtered.length>0&&listRange&&<div className="tp-legend tp-tl"><TenderTimelineLegend/></div>}
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">📑</div><div className="empty-txt">No packages found.</div></div>
+      ?<div className="empty"><div className="empty-txt">No packages found.</div></div>
       :<div className="tp-table" style={{position:"relative"}}><table className="tbl tbl-tenders">
         <thead><tr className="tgroup-hdr">
           {/* One label over each family of columns, so the eye knows where it is in the row. */}
@@ -4964,7 +4964,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         <textarea value={ctr.notes||""} onChange={function(e){updateCtrField(ctr.id,"notes",e.target.value);}} placeholder="Any note about this subcontractor…" style={{width:"100%",minHeight:70,padding:"7px 9px",fontSize:12,fontFamily:"inherit",border:"1px solid #e8e6df",borderRadius:6,resize:"vertical",boxSizing:"border-box"}}/>
       </div>
 
-      {(ctr.contracts||[]).length===0&&<div className="empty" style={{padding:"24px 0"}}><div className="empty-ico">📋</div><div className="empty-txt">No contracts yet. Click "＋ Add Contract" to create one.</div></div>}
+      {(ctr.contracts||[]).length===0&&<div className="empty" style={{padding:"24px 0"}}><div className="empty-txt">No contracts yet. Click "＋ Add Contract" to create one.</div></div>}
       {(ctr.contracts||[]).map(function(ct){
         var fin=contractFinancials(ct);
         var linkedTender=ct.tenderRef?(tnds||[]).find(function(t){return t.id===ct.tenderRef;}):null;
@@ -5022,7 +5022,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
       {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">🤝</div><div className="empty-txt">No subcontractors found.</div></div>
+      ?<div className="empty"><div className="empty-txt">No subcontractors found.</div></div>
       :<table className="tbl">
         <thead><tr>
           <th className="sortable" onClick={function(){toggleSort("name");}}>Name{sortIcon("name")}</th>
@@ -6177,7 +6177,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
       </div>
 
       {(ctr2.contracts||[]).length===0
-        ?<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No contracts for this subcontractor.</div></div>
+        ?<div className="empty"><div className="empty-txt">No contracts for this subcontractor.</div></div>
         :(ctr2.contracts||[]).map(function(ct){
           var fin=contractFinancials(ct);
           var lt2=ct.tenderRef?(tenders||[]).find(function(t){return t.id===ct.tenderRef;}):null;
@@ -6318,7 +6318,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
         </div>
       </div>;
     })}
-    {allContracts.length===0&&<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No contracts yet. Add contracts from the Subcontractors tab.</div></div>}
+    {allContracts.length===0&&<div className="empty"><div className="empty-txt">No contracts yet. Add contracts from the Subcontractors tab.</div></div>}
   </div>;
 }
 function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSubcontractors,saveTasks,tags,onNavTender,memory,setMemory}){
@@ -6453,7 +6453,7 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
       <button className={"fchip"+(fOnlyIssues?" on":"")} onClick={function(){setFOnlyIssues(!fOnlyIssues);}}>⚠️ Issues only</button>
     </div>
 
-    {shown.length===0&&<div className="empty"><div className="empty-ico">📦</div><div className="empty-txt">No packages with activity.</div></div>}
+    {shown.length===0&&<div className="empty"><div className="empty-txt">No packages with activity.</div></div>}
 
     {shown.map(function(r){
       var isOpen=openPkg===r.pkg;
@@ -7043,7 +7043,7 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
     </div>
 
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">Nothing currently pending with the client.</div></div>
+      ?<div className="empty"><div className="empty-txt">Nothing currently pending with the client.</div></div>
       :<div>
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
           {STAGES.map(function(s){
@@ -7220,7 +7220,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
     </div>
 
     {shown.length===0
-      ?<div className="empty"><div className="empty-ico">🛡️</div><div className="empty-txt">No WMS or ITP matches these filters.</div></div>
+      ?<div className="empty"><div className="empty-txt">No WMS or ITP matches these filters.</div></div>
       :<div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
         <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
@@ -7432,7 +7432,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     </div>
 
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">🏗️</div><div className="empty-txt">No materials found.</div></div>
+      ?<div className="empty"><div className="empty-txt">No materials found.</div></div>
       :<div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
         <table className="tbl tbl-cards" style={{width:"100%",borderCollapse:"collapse"}}>
           <thead>
@@ -7696,7 +7696,7 @@ function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClo
       </div>
       <button onClick={close} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button></div>
     <div className="modal-body">
-      {!rows.length?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">Nothing missing: the table is complete.</div></div>:<>
+      {!rows.length?<div className="empty"><div className="empty-txt">Nothing missing: the table is complete.</div></div>:<>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
         <button className={"fchip"+(fieldF===""?" on":"")} onClick={function(){setFieldF("");}}>All fields</button>
         {TENDER_GAP_FIELDS.filter(function(f){return countBy[f.k];}).map(function(f){

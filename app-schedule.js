@@ -2460,7 +2460,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     </div>
 
     {!sc
-      ?<div className="empty"><div className="empty-ico">📅</div><div className="empty-txt">No schedule for {curZone} yet. Create one to plan work week by week.</div></div>
+      ?<div className="empty"><div className="empty-txt">No schedule for {curZone} yet. Create one to plan work week by week.</div></div>
       :<div>
         {showSettings&&<div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginBottom:10,padding:"10px 12px",background:"#fafaf8",borderRadius:8,border:"1px solid #e8e6df"}}>
           <div style={{flex:2,minWidth:170}}>
@@ -2781,7 +2781,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               })}
             </div>;
           })()}
-          {monthWindows().length===0&&<div className="empty"><div className="empty-ico">📅</div>
+          {monthWindows().length===0&&<div className="empty">
             <div className="empty-txt">This schedule has no week covering today.</div></div>}
           {monthWindows().map(function(win){
             var items=tasksInWeek(win.week);

@@ -344,7 +344,7 @@ function SteelView({dockets,saveDockets,wbs,saveWbs,periods,savePeriods,zones,ta
 function SteelAnalysis({periods,dockets,wbs,edit,savePeriods,allPeriods,raiseAction,onGoPoints}){
   const [pid,setPid]=useState(periods[0]?periods[0].id:"");
   const [byDia,setByDia]=useState(false);
-  if(!periods.length)return <div className="empty"><div className="empty-ico">🗓</div><div className="empty-txt">No financial point yet.</div>
+  if(!periods.length)return <div className="empty"><div className="empty-txt">No financial point yet.</div>
     <div style={{marginTop:12}}><button className="btn btn-pri" onClick={onGoPoints}>Go to Financial points</button></div></div>;
   var p=periods.find(function(q){return q.id===pid;})||periods[0];
   var f=steelFigures(p,dockets,wbs);
@@ -501,7 +501,7 @@ function SteelPoints({periods,allPeriods,savePeriods,dockets,wbs,edit,isAdmin}){
       <div style={{fontSize:12,color:"#888"}}>A financial point holds the site stock count and the progress of every steel WBS line, at the date you choose.</div>
       {edit&&<button className="btn btn-pri btn-sm" onClick={create} disabled={!wbs.length} title={wbs.length?"":"Create the steel WBS lines first"}>+ New financial point</button>}
     </div>
-    {!periods.length?<div className="empty"><div className="empty-ico">🗓</div><div className="empty-txt">{wbs.length?"No financial point yet.":"Start with the 🧱 WBS tab: progress is entered against its lines."}</div></div>:
+    {!periods.length?<div className="empty"><div className="empty-txt">{wbs.length?"No financial point yet.":"Start with the 🧱 WBS tab: progress is entered against its lines."}</div></div>:
     <table className="tbl"><thead><tr><th>Date</th><th>Label</th><th>Status</th><th style={{textAlign:"right"}}>Delivered</th><th style={{textAlign:"right"}}>Stock</th><th style={{textAlign:"right"}}>Site variance</th><th style={{textAlign:"right"}}>Overall</th><th>Entered by</th></tr></thead>
       <tbody>{periods.map(function(p){
         var f=steelFigures(p,dockets,wbs);
@@ -695,7 +695,7 @@ function SteelDockets({dockets,saveDockets,zones,edit,periods,raiseAction}){
       {edit&&<button className="btn btn-sm" onClick={function(){setImportOpen(true);}}>⤓ Import pt-docket/1</button>}
       {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newSteelDocket({lines:[newSteelLine()]}));}}>+ New docket</button>}
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">🚚</div><div className="empty-txt">No docket{q||onlyIssues?" matches":" yet"}.</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">No docket{q||onlyIssues?" matches":" yet"}.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Date</th><th>Docket</th><th>Flow</th><th>Supplier</th><th>PO / BBS</th><th>Zone</th><th style={{textAlign:"right"}}>Total t</th><th>Breakdown</th><th>Cert. 3.1</th><th>Test</th><th/></tr></thead>
       <tbody>{list.map(function(d){
@@ -874,7 +874,7 @@ function SteelWbs({wbs,saveWbs,zones,edit,latest}){
       {edit&&<button className="btn btn-sm" onClick={function(){setPaste("");}}>Paste from Excel</button>}
       {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newSteelWbs());}}>+ WBS line</button>}
     </div>
-    {!wbs.length?<div className="empty"><div className="empty-ico">🧱</div><div className="empty-txt">No steel WBS line yet. Paste them from the BOQ or the BBS summary.</div></div>:
+    {!wbs.length?<div className="empty"><div className="empty-txt">No steel WBS line yet. Paste them from the BOQ or the BBS summary.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Code</th><th>Description</th><th>Zone</th><th>Level</th><th>Type</th><th style={{textAlign:"right"}}>Theoretical t</th><th style={{textAlign:"right"}}>Progress</th><th style={{textAlign:"right"}}>Earned t</th></tr></thead>
       <tbody>{wbs.map(function(w){

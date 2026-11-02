@@ -918,7 +918,7 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,tags,
         </div>;
       })()}
     </div>
-    {personList.length===0?<div className="empty"><div className="empty-ico">👥</div><div className="empty-txt">No actions assigned to team members yet.</div></div>
+    {personList.length===0?<div className="empty"><div className="empty-txt">No actions assigned to team members yet.</div></div>
     :personList.map(function(name){return <PersonCard key={name} name={name}/>;} )}
   </div>}
   </div>;
@@ -1418,7 +1418,7 @@ function MomView({moms,saveMoms,tenders,packages,people,contractors,tasks,saveTa
       </div>
 
       {shown.length===0
-        ?<div className="empty"><div className="empty-ico">📝</div><div className="empty-txt">No minutes yet.</div></div>
+        ?<div className="empty"><div className="empty-txt">No minutes yet.</div></div>
         :<table className="tbl">
           <thead><tr><th style={{width:104}}>Number</th><th>Subcontractor</th><th>Package</th>
             <th style={{width:96}}>Date</th><th>Prepared by</th><th style={{width:96,textAlign:"center"}}>Open actions</th><th style={{width:150}}></th></tr></thead>
@@ -1860,7 +1860,7 @@ function TimelineView({tasks,tenders,people,packages,zones,saveTasks,onNavTender
     </div>
 
     {order.length===0
-      ?<div className="empty"><div className="empty-ico">🗓</div><div className="empty-txt">No action matches these filters.</div></div>
+      ?<div className="empty"><div className="empty-txt">No action matches these filters.</div></div>
       :<div style={{overflowX:"auto",border:"1.5px solid var(--rule,#ddd9cf)",borderRadius:10,background:"#fff"}}>
         <table style={{borderCollapse:"collapse",width:"max-content",minWidth:"100%"}}>
           <thead><tr>

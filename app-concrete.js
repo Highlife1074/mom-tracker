@@ -420,7 +420,7 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
   const [showTable,setShowTable]=useState(false);
   const [pastReal,setPastReal]=useState(function(){try{return localStorage.getItem("pp_con_pastreal")==="1";}catch(e){return false;}});
   function togglePastReal(){var v=!pastReal;setPastReal(v);try{localStorage.setItem("pp_con_pastreal",v?"1":"0");}catch(e){}}
-  if(!wbs.length)return <div className="empty"><div className="empty-ico">🧱</div>
+  if(!wbs.length)return <div className="empty">
     <div className="empty-txt">{types.length?"No WBS yet. Start with the works done to date as one WBS, then add the WBS still to come.":"Start with the concrete types (grades), then the WBS."}</div>
     <div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){onGo(types.length?"wbs":"types");}}>{types.length?"Go to WBS":"Go to Types"}</button></div></div>;
   var typeIds=typeId?[typeId]:types.map(function(t){return t.id;});
@@ -766,7 +766,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
   var dIn={padding:"3px 4px",fontSize:11.5,width:118};
   var wbsZones=[...new Set(wbs.map(function(w){return w.zone;}).filter(Boolean))];
   var R={textAlign:"right"};
-  if(!types.length)return <div className="empty"><div className="empty-ico">🏷</div><div className="empty-txt">Create the concrete types first (Types tab): every quantity is entered per type.</div></div>;
+  if(!types.length)return <div className="empty"><div className="empty-txt">Create the concrete types first (Types tab): every quantity is entered per type.</div></div>;
   return <div>
     <div className="filter-bar">
       <input type="text" placeholder="Search code, description…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:200}}/>
@@ -781,7 +781,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
       {edit&&<button className="btn btn-sm" onClick={function(){setPaste(true);}}>⤓ Paste from Excel</button>}
       {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newConWbs());}}>+ New WBS</button>}
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">🧱</div><div className="empty-txt">{wbs.length?"No WBS matches.":"No WBS yet. “Works to date” enters the past as one WBS; it can be split into detailed WBS later."}</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">{wbs.length?"No WBS matches.":"No WBS yet. “Works to date” enters the past as one WBS; it can be split into detailed WBS later."}</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th style={R}>Theoretical</th><th style={R}>Poured</th>
         {lc&&<><th style={R} title={"Progress % typed at the cut-off of "+fmtDate(lc.date)}>Progress {fmtDate(lc.date)}</th><th style={R} title="Budget × progress %">Earned</th><th style={R} title="Poured up to the cut-off − earned: > 0 loss, < 0 gain">Loss (+) / gain (−)</th></>}<th/></tr></thead>
@@ -1098,7 +1098,7 @@ function ConPours({types,wbs,pours,zones,edit,savePours}){
   }).slice().sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:0;});
   var allIds=types.map(function(t){return t.id;});
   var total=list.reduce(function(s,p){return s+conPourQty({lines:linesOf(p)},allIds);},0);
-  if(!wbs.length)return <div className="empty"><div className="empty-ico">🚚</div><div className="empty-txt">Create the WBS first: every pour is booked on a WBS.</div></div>;
+  if(!wbs.length)return <div className="empty"><div className="empty-txt">Create the WBS first: every pour is booked on a WBS.</div></div>;
   return <div>
     <div className="filter-bar">
       <input type="text" placeholder="Search reference, supplier, note…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:200}}/>
@@ -1109,7 +1109,7 @@ function ConPours({types,wbs,pours,zones,edit,savePours}){
       <div style={{flex:1}}/>
       {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newConPour({wbsId:wbsId,lines:[newConLine({supplier:supplier&&supplier!==CON_NO_SUPPLIER?supplier:""})]}));}}>+ New pour</button>}
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">🚚</div><div className="empty-txt">No pour recorded{wbsId?" on this WBS":""}.</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">No pour recorded{wbsId?" on this WBS":""}.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Date</th><th>WBS</th><th>Reference</th><th>Type · supplier</th><th style={{textAlign:"right"}}>Total</th><th>Note</th></tr></thead>
       <tbody>{list.map(function(p){
@@ -1193,7 +1193,7 @@ function ConTypes({types,wbs,pours,edit,saveTypes}){
       {edit&&<button className="btn btn-sm" onClick={addDefaults} title={CON_DEFAULT_TYPES.join(", ")}>+ Usual grades</button>}
       {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newConType());}}>+ New type</button>}
     </div>
-    {!types.length?<div className="empty"><div className="empty-ico">🏷</div><div className="empty-txt">No concrete type yet. “Usual grades” adds {CON_DEFAULT_TYPES.join(", ")}.</div></div>:
+    {!types.length?<div className="empty"><div className="empty-txt">No concrete type yet. “Usual grades” adds {CON_DEFAULT_TYPES.join(", ")}.</div></div>:
     <table className="tbl"><thead><tr><th>Type</th><th>Note</th><th>Used</th></tr></thead>
       <tbody>{conSortTypes(types).map(function(t){
         return <tr key={t.id} onClick={function(){setEditing(t);}} style={{cursor:"pointer",opacity:t.archived?.5:1}}>
@@ -1447,12 +1447,12 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
   const [creating,setCreating]=useState(false);
   var cur=cutoffs.find(function(c){return c.id===curId;})||sorted[0]||null;
   var isAdmin=isAppAdmin(window._currentUser&&window._currentUser.name);
-  if(!types.length||!wbs.length)return <div className="empty"><div className="empty-ico">💰</div><div className="empty-txt">Create the types and the WBS first.</div></div>;
+  if(!types.length||!wbs.length)return <div className="empty"><div className="empty-txt">Create the types and the WBS first.</div></div>;
   var newBtn=edit&&<button className="btn btn-pri btn-sm" onClick={function(){setCreating(true);}}>+ New cut-off</button>;
   var creator=creating&&<ConCutoffNew cutoffs={cutoffs} wbs={wbs} onClose={function(){setCreating(false);}}
     onCreate={function(c){saveCutoffs([c].concat(cutoffs));setCurId(c.id);setCreating(false);}}/>;
   if(!cur)return <div>
-    <div className="empty"><div className="empty-ico">💰</div><div className="empty-txt">No cut-off yet. A cut-off is a dated situation: give each WBS its physical progress %, which unlocks the budget (theoretical × %) to compare with the concrete really poured, and set the remain to be spent.</div>
+    <div className="empty"><div className="empty-txt">No cut-off yet. A cut-off is a dated situation: give each WBS its physical progress %, which unlocks the budget (theoretical × %) to compare with the concrete really poured, and set the remain to be spent.</div>
       <div style={{marginTop:12}}>{newBtn}</div></div>
     {creator}
   </div>;

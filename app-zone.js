@@ -736,7 +736,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
         })}
       </div>}
 
-      {filteredActions.length===0&&<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No actions for {curZone} yet.</div></div>}
+      {filteredActions.length===0&&<div className="empty"><div className="empty-txt">No actions for {curZone} yet.</div></div>}
 
       {orderedCats.map(function(cat){
         var items=groups[cat];
@@ -781,7 +781,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       </div>
 
       {zoneRooms.length===0
-        ?<div className="empty"><div className="empty-ico">🚪</div><div className="empty-txt">No rooms defined for {curZone} yet.</div></div>
+        ?<div className="empty"><div className="empty-txt">No rooms defined for {curZone} yet.</div></div>
         :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))",gap:10}}>
           {zoneRooms.map(function(r){
             var blockers=roomBlockers(r.id);
@@ -828,7 +828,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       </div>
 
       {weeklyPPI.length===0
-        ?<div className="empty"><div className="empty-ico">📈</div><div className="empty-txt">No actions with due dates in {curZone} yet. PPI needs due dates to track promises.</div></div>
+        ?<div className="empty"><div className="empty-txt">No actions with due dates in {curZone} yet. PPI needs due dates to track promises.</div></div>
         :<div>
           <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8,marginBottom:16}}>
             {weeklyPPI.slice(0,12).map(function(w){

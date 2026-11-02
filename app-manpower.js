@@ -440,7 +440,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
       </span>}
       {M.tot.cutoff&&<span style={{marginLeft:"auto",fontSize:11,color:"#888"}} title="Last week with real hours entered: “to date” figures stop there">Cut-off <b>W{mpIsoWeek(M.tot.cutoff)}</b> · {fmtDate(M.tot.cutoff)}</span>}
     </div>
-    {empty&&tab!=="plan"&&tab!=="overview"&&<div className="empty"><div className="empty-ico">👷</div>
+    {empty&&tab!=="plan"&&tab!=="overview"&&<div className="empty">
       <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks. The budget in hours follows.</div>
       {can&&<div style={{marginTop:12}}><button className="btn btn-pri" onClick={function(){setTab("plan");}}>Go to the plan</button></div>}</div>}
     {(tab==="overview"&&(!empty||bRec||isAdmin))&&<MpOverview M={M} M0={M0} filtered={filtered} fWbs={fWbs} knownActs={knownActs} onOpenWeek={openWeek} onAlignPlan={alignPlanOnReal} bRec={bRec} meta={meta} saveMeta={saveMeta}
@@ -453,7 +453,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
     {!empty&&tab==="months"&&<MpMonths M={M}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
     {!empty&&tab==="activities"&&<MpActivities M={M} onPick={function(k,v){if(k==="wbs"){setFWbs(v);setFSrc("");}else setFSrc(v);}}/>}
-    {empty&&tab==="overview"&&!bRec&&!isAdmin&&<div className="empty"><div className="empty-ico">👷</div>
+    {empty&&tab==="overview"&&!bRec&&!isAdmin&&<div className="empty">
       <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks.</div></div>}
     {importing&&<MpImportModal weeks={weeks} saveWeeks={saveWeeks} plan={plan} savePlan={savePlan} knownActs={knownActs} currentUser={currentUser} onClose={function(){setImporting(false);}}/>}
     {edit&&<MpWeekEditor w={edit} known={known} knownActs={knownActs} can={can} M={M0} isNew={!weeks.some(function(x){return x.id===edit.id;})}

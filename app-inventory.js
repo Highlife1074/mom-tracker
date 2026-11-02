@@ -311,7 +311,7 @@ function InvOverview({items,counts,figs,onOpenItem,onGoItems,issues}){
   const [crit,setCrit]=useState(false);
   const [cat,setCat]=useState("");
   const [lowOnly,setLowOnly]=useState(false);
-  if(!items.length)return <div className="empty"><div className="empty-ico">📦</div><div className="empty-txt">No item in the catalogue yet.</div>
+  if(!items.length)return <div className="empty"><div className="empty-txt">No item in the catalogue yet.</div>
     <div style={{marginTop:12}}><button className="btn btn-pri" onClick={onGoItems}>Go to Items</button></div></div>;
   var cats=[...new Set(items.map(function(it){return it.category;}).filter(Boolean))].sort();
   var ql=q.trim().toLowerCase();
@@ -515,7 +515,7 @@ function InvWhereUsed({items,issues,figs,onOpenItem}){
       {[["zone","By zone"],["location","By location"],["use","By use"]].map(function(g){return <button key={g[0]} className={"fchip"+(groupBy===g[0]?" on":"")} onClick={function(){setGroupBy(g[0]);}}>{g[1]}</button>;})}
       <button className={"fchip"+(crit?" on":"")} onClick={function(){setCrit(!crit);}}>★ Critical only</button>
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">📍</div><div className="empty-txt">No issue recorded in this period.</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">No issue recorded in this period.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Item</th><th>Unit</th>{w.places.map(function(p){return <th key={p} style={R}>{p}</th>;})}<th style={R}>Total issued</th></tr></thead>
       <tbody>{list.map(function(it){
@@ -552,7 +552,7 @@ function InvPos({items,pos,savePos,dockets,edit}){
       <div style={{flex:1}}/>
       {edit&&<button className="btn btn-pri btn-sm" disabled={!items.length} onClick={function(){setEditing(newInvPo({lines:[newInvLine()]}));}}>+ New PO</button>}
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">🧾</div><div className="empty-txt">No purchase order{q||stateF?" matches":" yet"}.</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">No purchase order{q||stateF?" matches":" yet"}.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>PO no.</th><th>Date</th><th>Supplier</th><th>Items ordered</th><th>Delivered</th><th>Status</th><th/></tr></thead>
       <tbody>{list.map(function(x){
@@ -626,7 +626,7 @@ function InvDockets({items,pos,dockets,saveDockets,edit}){
       <div style={{flex:1}}/>
       {edit&&<button className="btn btn-pri btn-sm" disabled={!items.length} onClick={function(){setEditing(newInvDocket({lines:[newInvLine()]}));}}>+ New docket</button>}
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">🚚</div><div className="empty-txt">No docket{q?" matches":" yet"}.</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">No docket{q?" matches":" yet"}.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Date</th><th>Docket</th><th>Supplier</th><th>PO</th><th>Items delivered</th><th/></tr></thead>
       <tbody>{list.map(function(d){
@@ -722,7 +722,7 @@ function InvIssues({items,issues,saveIssues,figs,zones,contractors,edit}){
       {edit&&<button className="btn btn-sm" disabled={!items.length} onClick={function(){setEditing(newInvIssue({kind:"return",lines:[newInvLine()]}));}}>↩ Return to store</button>}
       {edit&&<button className="btn btn-pri btn-sm" disabled={!items.length} onClick={function(){setEditing(newInvIssue({lines:[newInvLine()]}));}}>+ New issue</button>}
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">📤</div><div className="empty-txt">No issue{q||zoneF?" matches":" recorded yet"}.</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">No issue{q||zoneF?" matches":" recorded yet"}.</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>Date</th><th>Slip</th><th>Zone</th><th>Location</th><th>Use</th><th>Issued to</th><th>Items</th></tr></thead>
       <tbody>{list.map(function(s){
@@ -807,7 +807,7 @@ function InvCounts({items,counts,saveCounts,ix,edit}){
       <div style={{fontSize:12,color:"#888"}}>Count the stock once a month, at month end. Each count closes a period: opening + delivered − count = real consumption.</div>
       {edit&&<button className="btn btn-pri btn-sm" disabled={!items.length} onClick={function(){setDraft(newInvCount());}}>+ New stock count</button>}
     </div>
-    {!sorted.length?<div className="empty"><div className="empty-ico">🗓</div><div className="empty-txt">No stock count yet.</div></div>:
+    {!sorted.length?<div className="empty"><div className="empty-txt">No stock count yet.</div></div>:
     <table className="tbl"><thead><tr><th>Date</th><th>Label</th><th>Type</th><th style={{textAlign:"right"}}>Items counted</th><th>Entered by</th></tr></thead>
       <tbody>{sorted.map(function(c){
         var n=Object.keys(c.qty||{}).filter(function(k){return _invHas(c.qty[k]);}).length;
@@ -915,7 +915,7 @@ function InvItems({items,saveItems,figs,edit,onOpenItem}){
       {edit&&<button className="btn btn-sm" onClick={function(){setPaste(true);}}>⤓ Paste from Excel</button>}
       {edit&&<button className="btn btn-pri btn-sm" onClick={function(){setEditing(newInvItem());}}>+ New item</button>}
     </div>
-    {!list.length?<div className="empty"><div className="empty-ico">📦</div><div className="empty-txt">{q?"No item matches.":"Start with the critical items: code, name, unit. Everything else refers to them."}</div></div>:
+    {!list.length?<div className="empty"><div className="empty-txt">{q?"No item matches.":"Start with the critical items: code, name, unit. Everything else refers to them."}</div></div>:
     <table className="tbl"><thead><tr><th>Code</th><th>Name</th><th>Unit</th><th>Category</th><th>Critical</th><th style={{textAlign:"right"}}>Min. stock</th><th style={{textAlign:"right"}}>Book stock</th><th/></tr></thead>
       <tbody>{list.map(function(it){
         return <tr key={it.id} onClick={function(){setEditing(it);}} style={{cursor:"pointer",opacity:it.archived?.5:1}}>

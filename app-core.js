@@ -1357,7 +1357,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
         <button className="btn btn-sm" onClick={()=>{setFilterPkg("all");setFilterStatus("all");setFilterOwner("all");setQ("");}}>✕ Reset</button>}
     </div>
 
-    {filtered.length===0?<div className="empty"><div className="empty-ico">📋</div><div className="empty-txt">No actions found. Add one using the sidebar →</div></div>
+    {filtered.length===0?<div className="empty"><div className="empty-txt">No actions found. Add one using the sidebar →</div></div>
     :filtered.map(t=>{
       const c=ownerColor(t.owner||"");
       const sc=calcScore(t.importance||1,t.urgence||1);
@@ -2622,7 +2622,7 @@ function AwnView({awns,saveAwns,people}){
       {(filterType!=="all"||filterReplied!=="all"||q)&&<button className="btn btn-sm" onClick={function(){setFilterType("all");setFilterReplied("all");setQ("");}}>Reset</button>}
     </div>
 
-    {filtered.length===0?<div className="empty"><div className="empty-ico">⚠️</div><div className="empty-txt">No AWNs found.</div></div>
+    {filtered.length===0?<div className="empty"><div className="empty-txt">No AWNs found.</div></div>
     :<table className="tbl">
       <thead><tr><th>AWN #</th><th>Type</th><th>Date</th><th>Subject</th><th>Status</th><th>Response</th><th></th></tr></thead>
       <tbody>{filtered.map(function(a){
@@ -2831,7 +2831,7 @@ function DuplicateFinder({tasks,saveTasks,tenders,onClose,canDelete}){
           You can review the pairs, but merging is reserved for the app admin.
         </div>}
 
-        {pairs.length===0&&<div className="empty"><div className="empty-ico">✅</div>
+        {pairs.length===0&&<div className="empty">
           <div className="empty-txt">No duplicate found at this sensitivity.{threshold>0.3?" Try a looser setting to catch reworded ones.":""}</div></div>}
 
         {pairs.slice(0,40).map(function(p){
@@ -3634,7 +3634,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     </div>}
 
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">🔍</div><div className="empty-txt">No actions match the filters.</div></div>
+      ?<div className="empty"><div className="empty-txt">No actions match the filters.</div></div>
       :<div style={{overflowX:"auto"}}>
         <table className="tbl tbl-cards">
           <thead><tr>
@@ -4005,7 +4005,7 @@ function MyProcurementView({myPkgs,myTenders,tenders,tasks,onNavTender}){
       </div>
     </div>
 
-    {grouped.length===0&&orphanTenders.length===0&&<div className="empty"><div className="empty-ico">📦</div><div className="empty-txt">No packages or tenders are assigned to you yet. Ask your project manager to set you as owner, or grant you package access in Settings → Access.</div></div>}
+    {grouped.length===0&&orphanTenders.length===0&&<div className="empty"><div className="empty-txt">No packages or tenders are assigned to you yet. Ask your project manager to set you as owner, or grant you package access in Settings → Access.</div></div>}
 
     {grouped.map(function(g){
       return <div key={g.pkg} className="card" style={{marginBottom:10}}>
@@ -4119,7 +4119,7 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     </div>
 
     {filtered.length===0
-      ?<div className="empty"><div className="empty-ico">✅</div><div className="empty-txt">{fStatus==="overdue"?"No overdue documents!":"No documents matching filters."}</div></div>
+      ?<div className="empty"><div className="empty-txt">{fStatus==="overdue"?"No overdue documents!":"No documents matching filters."}</div></div>
       :<div>
 
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
