@@ -4175,6 +4175,37 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
   </div>;
 }
 
+// Line icons of the left rail (24x24, stroke = currentColor, so CSS sets the colour).
+// A view id without a drawing falls back to the emoji of NAV.
+var NAV_SVG={
+  packages:'<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 17.5l9 5 9-5"/>',
+  zone:'<path d="M4 21V5l9-2v18"/><path d="M13 9l7 2v10"/><path d="M8 8h1M8 12h1M8 16h1M17 15h1M17 18h1"/>',
+  tenders:'<path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/>',
+  procplan:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  procflow:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"/>',
+  materials:'<path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/>',
+  steel:'<path d="M5 5h14M5 19h14M12 5v14"/><path d="M8 5v14M16 5v14" opacity=".35"/>',
+  inventory:'<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9M10 13h4"/>',
+  concrete:'<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9.5h18M3 15h18M9 4v5.5M15 9.5V15M9 15v5"/>',
+  manpower:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5a3 3 0 010 6M18 14c2 .7 3 2.6 3 6"/>',
+  qadocs:'<path d="M12 3l8 3v6c0 4.5-3.3 8-8 9-4.7-1-8-4.5-8-9V6l8-3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+  timeline:'<path d="M4 6h9M8 12h12M6 18h8"/><path d="M4 3v18" opacity=".35"/>',
+  moms:'<path d="M6 3h9l4 4v14H6V3z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>',
+  notes:'<path d="M4 4h16v11l-5 5H4V4z"/><path d="M15 20v-5h5M8 9h8M8 13h4"/>',
+  global:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.500L12 7M8 15l1.5 1.500L12 14M14.5 8.500H17M14.5 15.500H17"/>',
+  submissions:'<path d="M3 13l3-8h12l3 8v6H3v-6z"/><path d="M3 13h5l1.5 2.500h5L16 13h5"/>',
+  trackers:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  contracts:'<path d="M6 3h9l4 4v14H6V3z"/><path d="M14 3v5h5M9 17c1.5-2 2.5 1 4-1l2-2"/>',
+  awn:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  contractors:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M3 13h18"/>',
+  dashboard:'<path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/>',
+  settings:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/>'
+};
+function NavIcon({id,fallback,size}){
+  var d=NAV_SVG[id];
+  if(!d)return <span style={{fontSize:size}}>{fallback}</span>;
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{__html:d}}/>;
+}
 function KPICurveChart({kpi,weeks}){
   if(!weeks||weeks.length===0)return <div style={{padding:20,textAlign:"center",color:"#bbb",fontSize:12}}>No date range set.</div>;
   var W=680,H=220,padL=50,padR=16,padT=14,padB=28;
@@ -5054,14 +5085,14 @@ function App(){
               }
               else setView(n.id);
             }}>
-            <span style={{fontSize:20}}>{n.icon}</span>
+            <NavIcon id={n.id} fallback={n.icon} size={22}/>
             <span className="lbl">{n.label}</span>
             {kids&&<span style={{fontSize:8,lineHeight:1,marginTop:-1,opacity:.7}}>{groupOpen?"▾":"▸"}</span>}
           </button>
           {kids&&groupOpen&&kids.map(function(k){
             return <button key={k.id} className={"navbtn navsub"+(view===k.id?" on":"")} title={k.label}
               onClick={function(){setView(k.id);}}>
-              <span style={{fontSize:14}}>{k.icon}</span>
+              <NavIcon id={k.id} fallback={k.icon} size={16}/>
               <span className="lbl" style={{fontSize:7}}>{k.label.length>9?k.label.slice(0,8)+"…":k.label}</span>
             </button>;
           })}
