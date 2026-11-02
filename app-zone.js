@@ -924,7 +924,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
           var isOpen=expandedKpi===kpi.id;
           var behindSchedule=latestDone&&latestDone.actualCum<latestDone.plannedCum;
           return <div key={kpi.id} className="card" style={{marginBottom:10,padding:0,overflow:"hidden"}}>
-            <div onClick={function(){setExpandedKpi(isOpen?null:kpi.id);}} style={{display:"flex",alignItems:"center",gap:16,padding:"12px 16px",cursor:"pointer",background:isOpen?"#fafaf8":"#fff",flexWrap:"wrap",boxShadow:"inset 3px 0 0 "+(pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--ink-4)")}}>
+            <div onClick={function(){setExpandedKpi(isOpen?null:kpi.id);}} style={{display:"flex",alignItems:"center",gap:16,padding:"12px 16px",cursor:"pointer",background:isOpen?"#fafaf8":"#fff",flexWrap:"wrap",boxShadow:"inset 3px 0 0 "+(pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--brand)")}}>
               <span style={{fontSize:11,color:"var(--ink-3)"}}>{isOpen?"▾":"▸"}</span>
               <div style={{flex:1,minWidth:150}}>
                 <div style={{fontWeight:600,fontSize:13}}>{kpi.name}</div>
@@ -932,7 +932,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
               </div>
               <div className="meter" style={{width:140}}><i className={pctDone>=100?"good":behindSchedule?"bad":""} style={{width:pctDone+"%"}}/></div>
               <div style={{textAlign:"right",minWidth:110}}>
-                <div className="num" style={{fontSize:16,fontWeight:500,color:pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--ink)"}}>{pctDone}%</div>
+                <div className="num" style={{fontSize:16,fontWeight:500,color:pctDone>=100?"var(--green)":behindSchedule?"var(--red)":"var(--brand)"}}>{pctDone}%</div>
                 <div style={{fontSize:11,color:behindSchedule?"var(--red)":"var(--ink-3)"}}>{behindSchedule?"Behind schedule":"On schedule"}</div>
               </div>
             </div>

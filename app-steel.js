@@ -285,7 +285,7 @@ function _stCan(){return !window._ppReadOnly;}
 function SteelBig({label,kg,colour,sub}){
   return <div className="kpi" style={{flex:"1 1 130px",background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}>
     <div className="kpi-l">{label}</div>
-    <div className="kpi-v" style={{color:colour||"var(--ink)"}}>{kg===null?"—":steelFmtT(kg)}<small>t</small></div>
+    <div className="kpi-v" style={{color:colour||"var(--brand)"}}>{kg===null?"—":steelFmtT(kg)}<small>t</small></div>
     {sub&&<div className="kpi-s">{sub}</div>}
   </div>;
 }

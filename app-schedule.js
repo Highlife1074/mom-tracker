@@ -3048,7 +3048,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         if(pg===null)return null;
                         return <span title={lw?"Latest entry: "+lw.pct+"% at week of "+fmtDate(lw.week):"Derived from actual vs planned bars"}
                           style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:8,flexShrink:0,cursor:"help",
-                            background:pg>=100?"#e6f2e9":pg>0?"#f4f6f9":"#f5f4f0",
+                            background:pg>=100?"#e6f2e9":pg>0?"#e8eef6":"#f5f4f0",
                             color:pg>=100?"#1e6b3a":pg>0?"#0f5299":"#bbb",
                             border:lw?"1px solid #ddd9cf":"1px solid transparent"}}>{pg}%</span>;
                       })()}

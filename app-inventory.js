@@ -197,7 +197,7 @@ function invParseItemsPaste(text,existing){
 function InvBig({label,value,unit,colour,sub}){
   return <div className="kpi" style={{flex:"1 1 130px",background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}>
     <div className="kpi-l">{label}</div>
-    <div className="kpi-v" style={{color:colour||"var(--ink)"}}>{value===null||value===undefined?"—":invFmt(value,1)}{unit&&<small>{unit}</small>}</div>
+    <div className="kpi-v" style={{color:colour||"var(--brand)"}}>{value===null||value===undefined?"—":invFmt(value,1)}{unit&&<small>{unit}</small>}</div>
     {sub&&<div className="kpi-s">{sub}</div>}
   </div>;
 }

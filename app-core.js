@@ -275,9 +275,9 @@ function scoreStyle(s){
   return{bg:"#f5f4f0",color:"#888",label:s>1?""+s:"—"};
 }
 
-const OWNER_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#f4f6f9|#0f5299","#fbe9e7|#bf360c","#f9fbe7|#827717"];
+const OWNER_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#e8eef6|#0f5299","#fbe9e7|#bf360c","#f9fbe7|#827717"];
 function ownerColor(n){let h=0;if(!n)return{bg:"#f5f4f0",accent:"#888"};for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%OWNER_COLORS.length;const p=OWNER_COLORS[h].split("|");return{bg:p[0],accent:p[1]};}
-const TAG_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#fbe9e7|#bf360c","#f4f6f9|#0f5299","#f9fbe7|#827717"];
+const TAG_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#fbe9e7|#bf360c","#e8eef6|#0f5299","#f9fbe7|#827717"];
 function tagColor(t){
   if(t==="Blocking Point")return{bg:"#fbe6e8",color:"#b3302a"};
   if(t==="Warning")return{bg:"#fff3e0",color:"#ef6c00"};
@@ -797,7 +797,7 @@ function QuickChips({parsed,owner,due,tags,trackedBy,onTrackedBy,people}){
       ?<span style={Object.assign({},chip,{background:isDept(owner)?"#ede7f6":"#e8eaf6",color:isDept(owner)?"#5e35b1":"#3949ab"})}>{isDept(owner)?"🏢 "+owner:"👤 "+owner.split(",")[0]}</span>
       :<span style={Object.assign({},chip,{background:"#f5f4f0",color:"#aaa"})}>👤 no owner</span>}
     {due
-      ?<span style={Object.assign({},chip,{background:"#f4f6f9",color:"#0f5299"})}>📅 {fmtDate(due)}</span>
+      ?<span style={Object.assign({},chip,{background:"#e8eef6",color:"#0f5299"})}>📅 {fmtDate(due)}</span>
       :<span style={Object.assign({},chip,{background:"#f5f4f0",color:"#aaa"})}>📅 no date</span>}
     {(tags||[]).map(function(t){return <TagChip key={t} tag={t}/>;})}
     {pick
@@ -941,7 +941,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
           </select>
         </div>
 
-        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:8,color:isInfo?"#0f5299":"#888",background:isInfo?"#f4f6f9":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(isInfo?"#0f5299":"#ddd"),alignSelf:"flex-start"}}>
+        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,marginBottom:8,color:isInfo?"#0f5299":"#888",background:isInfo?"#e8eef6":"transparent",padding:"3px 8px",borderRadius:8,border:"1.5px solid "+(isInfo?"#0f5299":"#ddd"),alignSelf:"flex-start"}}>
           <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:13,height:13}}/>
           ℹ️ Info only
         </label>
@@ -1070,7 +1070,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
                 {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
               </select>
             </div>
-            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,color:task.isInfo?"#0f5299":"#888",background:task.isInfo?"#f4f6f9":"transparent",padding:"5px 8px",borderRadius:8,border:"1.5px solid "+(task.isInfo?"#0f5299":"#ddd"),alignSelf:"flex-start"}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontSize:11,fontWeight:600,color:task.isInfo?"#0f5299":"#888",background:task.isInfo?"#e8eef6":"transparent",padding:"5px 8px",borderRadius:8,border:"1.5px solid "+(task.isInfo?"#0f5299":"#ddd"),alignSelf:"flex-start"}}>
               <input type="checkbox" checked={!!task.isInfo} onChange={function(e){upd("isInfo",e.target.checked);}} style={{width:13,height:13,cursor:"pointer"}}/>
               ℹ️ Info only (no action needed)
             </label>
@@ -1128,7 +1128,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
           </div>
           :<div onClick={function(){setEditMode(true);}} style={{cursor:"pointer"}}>
             <div className={"ac-text"+(task.status==="done"?" done":"")} style={{fontWeight:500}}>
-              {task.isInfo&&<span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"5px 6px",borderRadius:8,background:"#f4f6f9",color:"#0f5299",fontSize:10,fontWeight:700,marginRight:5}}>ℹ️ INFO</span>}
+              {task.isInfo&&<span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"5px 6px",borderRadius:8,background:"#e8eef6",color:"#0f5299",fontSize:10,fontWeight:700,marginRight:5}}>ℹ️ INFO</span>}
               {task.text||<span style={{color:"#ccc",fontStyle:"italic"}}>No text</span>}
             </div>
             {task.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginTop:2}}>{task.note}</div>}
@@ -1264,7 +1264,7 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
         <select value={owner} onChange={function(e){setOwnerOv(e.target.value);}} style={{padding:"3px 7px",fontSize:11,border:"1px solid #ddd",borderRadius:5,fontFamily:"inherit"}}>
           <OwnerOptions people={ppl} emptyLabel="No owner"/>
         </select>
-        <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",fontSize:11,fontWeight:600,textTransform:"none",letterSpacing:"normal",color:isInfo?"#0f5299":"#888",background:isInfo?"#f4f6f9":"transparent",padding:"2px 8px",borderRadius:10,border:"1.5px solid "+(isInfo?"#0f5299":"#ddd")}}>
+        <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",fontSize:11,fontWeight:600,textTransform:"none",letterSpacing:"normal",color:isInfo?"#0f5299":"#888",background:isInfo?"#e8eef6":"transparent",padding:"2px 8px",borderRadius:10,border:"1.5px solid "+(isInfo?"#0f5299":"#ddd")}}>
           <input type="checkbox" checked={isInfo} onChange={function(e){setIsInfo(e.target.checked);setImportance(1);setUrgence(1);}} style={{width:12,height:12,cursor:"pointer"}}/>
           ℹ️ Info only
         </label>
@@ -1679,7 +1679,7 @@ function CorrespondenceLog({ctrId,ctrName,correspondences,saveCorrespondences,sa
 
   function set(f,v){setForm(function(prev){return Object.assign({},prev,{[f]:v});});}
 
-  const TYPE_COLORS={received:{bg:"#f4f6f9",color:"#0f5299",label:"Received"},sent:{bg:"#e6f2e9",color:"#1e6b3a",label:"Sent"}};
+  const TYPE_COLORS={received:{bg:"#e8eef6",color:"#0f5299",label:"Received"},sent:{bg:"#e6f2e9",color:"#1e6b3a",label:"Sent"}};
 
   return <div className="card" style={{marginBottom:12}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
@@ -3603,7 +3603,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       {allOwners.map(function(o){var on=fOwners.includes(o);var col=ownerColor(o);return <button key={o} onClick={function(){setFOwners(function(prev){return prev.includes(o)?prev.filter(function(x){return x!==o;}):[...prev,o];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?col.accent:"#ddd"),background:on?col.bg:"#fff",color:on?col.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{o.split(",")[0]}</button>;})}
       <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginLeft:8}}>Tags:</span>
       {(tags||[]).map(function(tg){var on=fTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){setFTags(function(prev){return prev.includes(tg)?prev.filter(function(x){return x!==tg;}):[...prev,tg];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
-      <button onClick={function(){setShowInfo(!showInfo);}} style={{padding:"3px 10px",borderRadius:10,border:"1.5px solid "+(showInfo?"#0f5299":"#ddd"),background:showInfo?"#f4f6f9":"#fff",color:showInfo?"#0f5299":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>ℹ️ Info</button>
+      <button onClick={function(){setShowInfo(!showInfo);}} style={{padding:"3px 10px",borderRadius:10,border:"1.5px solid "+(showInfo?"#0f5299":"#ddd"),background:showInfo?"#e8eef6":"#fff",color:showInfo?"#0f5299":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>ℹ️ Info</button>
       {(fStatus!=="all"||fOwners.length>0||fTags.length>0||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||fCC!=="all"||fScore!=="all"||q||preset||fAddedBy!=="all")&&
         <button className="btn btn-sm" style={{marginLeft:8}} onClick={function(){setFStatus("all");setFOwners([]);setFTags([]);setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setFScore("all");setQ("");setPreset("");setFAddedBy("all");}}>✕ Reset all</button>}
     </div>
@@ -4057,7 +4057,7 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
     {key:"acc",label:"Tender ACC",color:"#0f5299",bg:"#dce8ff"},
     {key:"itp",label:"ITP",color:"#1e6b3a",bg:"#e6f2e9"},
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"},
-    {key:"mss",label:"MSS",color:"#0f5299",bg:"#f4f6f9"},
+    {key:"mss",label:"MSS",color:"#0f5299",bg:"#e8eef6"},
     {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f2f0ec"},
     {key:"sd_approval",label:"SD",color:"#00695c",bg:"#e0f2f1"}
   ];

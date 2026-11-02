@@ -2202,7 +2202,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
   function chip(label,val,col,tip){
     return <div title={tip||""} className="kpi" style={{background:"var(--surface)",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)",minWidth:110,cursor:tip?"help":"default"}}>
       <div className="kpi-l">{label}</div>
-      <div className="kpi-v" style={{fontSize:18,color:col||"var(--ink)"}}>{val}</div>
+      <div className="kpi-v" style={{fontSize:18,color:col||"var(--brand)"}}>{val}</div>
     </div>;
   }
   function head(key,title,extra){
@@ -6501,7 +6501,7 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
             <div style={{fontSize:9,color:"#aaa",fontWeight:700,textTransform:"uppercase",marginRight:2}}>Quality</div>
             {r.counts.approved>0&&<span className="badge" style={{background:"#e6f2e9",color:"#1e6b3a"}}>✓{r.counts.approved}</span>}
             {r.counts.pending>0&&<span className="badge" style={{background:"#faf3e0",color:"#b35c00"}}>⏳{r.counts.pending}</span>}
-            {r.counts.prep>0&&<span className="badge" style={{background:"#f4f6f9",color:"#0f5299"}}>🛠{r.counts.prep}</span>}
+            {r.counts.prep>0&&<span className="badge" style={{background:"#e8eef6",color:"#0f5299"}}>🛠{r.counts.prep}</span>}
             {r.counts.rejected>0&&<span className="badge" style={{background:"#fbe6e8",color:"#b3302a"}}>✗{r.counts.rejected}</span>}
             {r.counts.overdue>0&&<span className="badge" style={{background:"#b3302a",color:"#fff"}}>⚠{r.counts.overdue}</span>}
             {r.counts.approved+r.counts.pending+r.counts.prep+r.counts.rejected===0&&<span style={{fontSize:11,color:"#ccc"}}>—</span>}
@@ -6971,7 +6971,7 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
   var STAGES=[
     {key:"acc",label:"Tender",color:"#0f5299",bg:"#dce8ff"},
     {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f2f0ec"},
-    {key:"mss",label:"MSS",color:"#0f5299",bg:"#f4f6f9"},
+    {key:"mss",label:"MSS",color:"#0f5299",bg:"#e8eef6"},
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"},
     {key:"itp",label:"ITP",color:"#1e6b3a",bg:"#e6f2e9"}
   ];
@@ -7011,7 +7011,7 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fbe6e8",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#b3302a",fontWeight:700,fontSize:13}}>⚠️ {overdueCount} overdue</div>}
-        <div style={{padding:"8px 16px",background:"#f4f6f9",border:"1.5px solid #c5d3e6",borderRadius:10,color:"#0f5299",fontWeight:700,fontSize:13}}>📬 {withClient.length} with client</div>
+        <div style={{padding:"8px 16px",background:"#e8eef6",border:"1.5px solid #c5d3e6",borderRadius:10,color:"#0f5299",fontWeight:700,fontSize:13}}>📬 {withClient.length} with client</div>
         <button className="btn btn-gold" disabled={emailDocs.length===0}
           title={emailDocs.length===0?"Nothing pending with the client for these filters":"Draft an email to the client listing every document pending approval"}
           onClick={function(){setShowEmail(true);}}>✉ Client email</button>
