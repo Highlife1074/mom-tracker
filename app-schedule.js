@@ -203,6 +203,453 @@ function BlockedRoomsModal({zone,rooms,selected,onSave,onClose}){
   </div>;
 }
 
+// ---- Links typed as an instruction -------------------------------------------
+// "I want zone 3 tennis to be linked to the demolition of the transformer, the stabilized
+// earth linked to the end of zone 3 and zone basket linked to the stabilized earth":
+// the sentence is cut into "X starts after Y" clauses, X and Y are matched against the
+// rows of the schedule (French or English, typos tolerated), and the resulting chain is
+// shown for validation before anything is written. No AI service: plain text matching,
+// so nothing leaves the browser. Pure functions here; SchedInstructionModal shows them.
+var SI_STOP={};
+("le la les l un une des du de d au aux a en sur pour par avec et ou the of to an and or with on in at for by from "+
+ "que qu qui je j veux voudrais aimerais aimerai aimer souhaite souhaiterais want would like make sure please merci svp stp "+
+ "il faut faire sorte soit soient sois etre est sont be is are get gets doit doivent peut peuvent va vont must should can will "+
+ "commence commencer commencent demarre demarrer demarrent debute debuter debutent start starts begin begins "+
+ "conclusion fin achevement terminaison completion end finish fini finie termine terminee "+
+ "tache taches task tasks travaux lien link liens links ensuite puis aussi also then plus tard later "+
+ "decalage delai lag gap ecart semaine semaines sem week weeks wk wks toute tout tous toutes ensemble whole all entire partie").split(" ").forEach(function(w){SI_STOP[w]=1;});
+// A few French site words → the English used in the schedules (stems, singular).
+var SI_SYN={transformateur:"transformer",transfo:"transformer",terrassement:"earthwork",terrassements:"earthwork",terre:"earth",
+  stabilisee:"stabilized",stabilise:"stabilized",stabilisation:"stabilized",cloture:"fence",clotures:"fence",eclairage:"lighting",
+  arrosage:"irrigation",plantation:"planting",gazon:"grass",enrobe:"asphalt",bordure:"kerb",curb:"kerb",dallage:"paving",pave:"paving",
+  beton:"concrete",reseau:"network",reseaux:"network",assainissement:"drainage",piscine:"pool",mur:"wall",murs:"wall",portail:"gate",
+  demolir:"demolition",demoli:"demolition",basketball:"basket",tenni:"tennis",fondation:"foundation",fondations:"foundation",
+  voirie:"road",route:"road",parking:"parking",stationnement:"parking",escalier:"stair",rampe:"ramp",toiture:"roof",
+  etancheite:"waterproofing",peinture:"painting",carrelage:"tiling",plomberie:"plumbing",electricite:"electrical",
+  menuiserie:"joinery",facade:"facade",charpente:"structure",structure:"structure",excavation:"excavation",remblai:"backfill"};
+function siNorm(s){
+  var t=String(s||"").toLowerCase();
+  try{t=t.normalize("NFD").replace(/[̀-ͯ]/g,"");}catch(e){}
+  return t.replace(/[’'`´]/g," ").replace(/\s+/g," ").trim();
+}
+function siStem(t){
+  if(SI_SYN[t])return SI_SYN[t];
+  if(t.length>3&&/[^s]s$/.test(t))t=t.slice(0,-1);
+  return SI_SYN[t]||t;
+}
+function siTokens(s){
+  return siNorm(s).replace(/[^a-z0-9]+/g," ").split(" ").filter(function(t){return t&&!SI_STOP[t];}).map(siStem);
+}
+function siLev1(a,b){                     // edit distance <= 1
+  if(Math.abs(a.length-b.length)>1)return false;
+  var i=0,j=0,d=0;
+  while(i<a.length&&j<b.length){
+    if(a[i]===b[j]){i++;j++;continue;}
+    if(++d>1)return false;
+    if(a.length>b.length)i++;else if(b.length>a.length)j++;else{i++;j++;}
+  }
+  return d+(a.length-i)+(b.length-j)<=1;
+}
+function siSim(a,b){
+  if(a===b)return 1;
+  if(/^\d+$/.test(a)||/^\d+$/.test(b))return 0;   // "zone 3" never matches "zone 2"
+  var s=a.length<b.length?a:b,l=a.length<b.length?b:a;
+  if(s.length>=4&&l.indexOf(s)===0)return 0.9;
+  var p=0;while(p<s.length&&a[p]===b[p])p++;
+  if(p>=5)return 0.8;
+  if(s.length>=5&&siLev1(a,b))return 0.8;
+  return 0;
+}
+// own: tokens of the row's own label; ctx: tokens of the headers above it (count less).
+function siScore(pt,own,ctx){
+  if(!pt.length||!own.length)return 0;
+  var cov=0;
+  pt.forEach(function(t){
+    var b=0;
+    own.forEach(function(o){b=Math.max(b,siSim(t,o));});
+    ctx.forEach(function(c){b=Math.max(b,0.7*siSim(t,c));});
+    cov+=b;
+  });
+  cov/=pt.length;
+  var lc=0;
+  own.forEach(function(o){var b=0;pt.forEach(function(t){b=Math.max(b,siSim(t,o));});lc+=b;});
+  lc/=own.length;
+  var s=0.7*cov+0.3*lc;
+  var isNum=function(t){return /^\d+$/.test(t);};
+  var pn=pt.filter(isNum),ln=own.concat(ctx).filter(isNum);
+  if(pn.length&&!pn.some(function(n){return ln.indexOf(n)>=0;}))s*=0.3;
+  return s;
+}
+function siIsHeader(r){return r&&(r.kind==="category"||r.kind==="section");}
+// Every row with its tokens and the headers above it.
+function siCandidates(rows){
+  var sec=null,cat=null,out=[];
+  (rows||[]).forEach(function(r){
+    if(r.kind==="section"){sec=r;cat=null;out.push({row:r,own:siTokens(r.label),ctx:[]});return;}
+    if(r.kind==="category"){cat=r;out.push({row:r,own:siTokens(r.label),ctx:sec?siTokens(sec.label):[]});return;}
+    var ctx=[];if(sec)ctx=ctx.concat(siTokens(sec.label));if(cat)ctx=ctx.concat(siTokens(cat.label));
+    out.push({row:r,own:siTokens(r.label),ctx:ctx});
+  });
+  return out;
+}
+// Best rows for a phrase, best first: [{id, score}]. A header wins a tie: "zone 3" is the room.
+function siMatch(phrase,cands){
+  var pt=siTokens(phrase);
+  if(!pt.length)return [];
+  return cands.map(function(c){
+    var s=siScore(pt,c.own,c.ctx);
+    if(siIsHeader(c.row))s+=0.01;
+    return{id:c.row.id,score:Math.min(1,s)};
+  }).filter(function(x){return x.score>=0.3;}).sort(function(a,b){return b.score-a.score;}).slice(0,6);
+}
+var SI_AFTER="(?:(?:soit|soient|sois|est|sont|etre|be|is|are|get|gets)\\s+)?(?:lie|liee|lies|liees|relie|reliee|relies|reliees|rattache|rattachee|rattaches|rattachees|attache|attachee|linked|connected|tied|attached)\\s+(?:a|au|aux|avec|to|with|on)"+
+  "|(?:(?:doit|doivent|peut|peuvent|va|vont|must|should|can|will|to)\\s+)?(?:(?:commencer|commence|commencent|demarrer|demarre|demarrent|debuter|debute|debutent|start|starts|begin|begins)\\s+)?(?:apres|after|a la suite (?:de|du|des)|des la fin (?:de|du|des)|following|once)"+
+  "|(?:suit|suivent|suive|suivre|follows|follow|depend|dependent|depends|dependre)(?:\\s+(?:de|du|des|d|on|of))?";
+var SI_BEFORE="(?:avant|before|precede|precedent|precedes)";
+var SI_CHAIN="(?:puis|then|ensuite|followed by|suivi de|suivie de|suivis de|suivies de)";
+var SI_LAG=/(?:\+\s*)?(\d+)\s*(?:semaines?|sem|weeks?|wks?|w|sw)\b/;
+// Text → [{text, succText, predText, lag}] ("succ starts after pred").
+function siParseInstruction(text){
+  var out=[];
+  var raw=String(text||"").replace(/\s*(?:->|=>|→|»)\s*/g," avant ");
+  raw.split(/\n+|[;!?]+|\.(?=\s|$)/).forEach(function(sentence){
+    var s=" "+siNorm(sentence)+" ";
+    if(!s.trim())return;
+    function scan(re){
+      var ms=[],m;re.lastIndex=0;
+      while((m=re.exec(s))!==null){ms.push({start:m.index,end:m.index+m[0].length,before:!!m[2]});if(m[0].length===0)re.lastIndex++;}
+      return ms;
+    }
+    var ms=scan(new RegExp("\\s(?:("+SI_AFTER+")|("+SI_BEFORE+"))(?=\\s)","g"));
+    if(ms.length===0)ms=scan(new RegExp("\\s(?:(__none__)|("+SI_CHAIN+"))(?=\\s)","g"));
+    if(ms.length===0)return;
+    var segs=[s.slice(0,ms[0].start)];
+    for(var k=0;k<ms.length;k++)segs.push(s.slice(ms[k].end,k+1<ms.length?ms[k+1].start:s.length));
+    // a segment between two keywords ends one clause and starts the next: "Y et X2 lié à…"
+    var parts=[{l:segs[0]}];
+    for(var j=1;j<segs.length;j++){
+      var seg=segs[j];
+      if(j===segs.length-1){parts[j-1].r=seg;break;}
+      var sepRe=/(?:\s+(?:et|and|puis|then|ensuite|also|aussi|plus)\s+|\s*,\s*)/g,last=null,mm;
+      while((mm=sepRe.exec(seg))!==null)last=mm;
+      if(last){parts[j-1].r=seg.slice(0,last.index);parts.push({l:seg.slice(last.index+last[0].length)});}
+      else{parts[j-1].r=seg;parts.push({l:seg});}       // "A after B after C": B is both
+    }
+    parts.forEach(function(p,k){
+      if(p.r===undefined)return;
+      var L=p.l,R=p.r,lag=null;
+      var lm=R.match(SI_LAG)||L.match(SI_LAG);
+      if(lm){
+        lag=Number(lm[1]);
+        // "… avec 2 semaines de décalage": drop the lag wording from the names
+        var cut=function(x){return x.replace(SI_LAG," ").replace(/\s+(?:avec|with|plus|\+)(?:\s+(?:un|une|a|de|of|decalage|delai|lag|gap|ecart))*\s*$/,"").replace(/\s+(?:de\s+)?(?:decalage|delai|lag|gap|ecart|plus tard|later)\s*$/,"");};
+        L=cut(L);R=cut(R);
+      }
+      L=L.replace(/^.*\b(?:veux|voudrais|aimerais|aimerai|souhaite|souhaiterais|faut|want|like|sure)\s+(?:que\s+|qu\s+|to\s+|that\s+)?/,"");
+      var before=ms[k].before;
+      var succ=before?R:L,pred=before?L:R;
+      if(!siTokens(succ).length||!siTokens(pred).length)return;
+      out.push({text:sentence.trim(),succText:succ.trim(),predText:pred.trim(),lag:lag});
+    });
+  });
+  return out;
+}
+// Tasks under a header: a section owns everything down to the next section, a room down
+// to the next room or section.
+function siTasksUnder(rows,headerId){
+  var i=(rows||[]).findIndex(function(r){return r.id===headerId;});
+  if(i<0)return [];
+  var h=rows[i],out=[];
+  for(var k=i+1;k<rows.length;k++){
+    var r=rows[k];
+    if(r.kind==="section")break;
+    if(h.kind==="category"&&r.kind==="category")break;
+    if(!siIsHeader(r))out.push(r);
+  }
+  return out;
+}
+// Working-week index of a row's first / last planned week, or -1.
+function siSpanIdx(row,wl,working){
+  var sp=spanFromCells(row.cells,wl,null);
+  return{s:sp.startWeek?working.indexOf(sp.startWeek):-1,e:sp.endWeek?working.indexOf(sp.endWeek):-1};
+}
+// A picked row → the task the link is drawn on. As a successor, a room is its first task and
+// moves as a block; as a predecessor, a room is the task that finishes last.
+function siResolve(rows,id,asPred,wl,working){
+  var row=(rows||[]).find(function(r){return r.id===id;});
+  if(!row)return null;
+  if(!siIsHeader(row))return{task:row,group:null,moveIds:[row.id]};
+  var ts=siTasksUnder(rows,id);
+  if(!ts.length)return{task:null,group:row,moveIds:[]};
+  var pick=null,best=null;
+  ts.forEach(function(t){
+    var ix=siSpanIdx(t,wl,working);
+    var v=asPred?ix.e:ix.s;
+    if(v<0)return;
+    if(best===null||(asPred?v>=best:v<best)){best=v;pick=t;}
+  });
+  if(!pick)pick=asPred?ts[ts.length-1]:ts[0];
+  return{task:pick,group:row,moveIds:ts.filter(function(t){return siSpanIdx(t,wl,working).s>=0;}).map(function(t){return t.id;})};
+}
+// Writes the links and (mode "snap" / "later") moves each successor so it starts right after
+// its predecessor (+ lag). Predecessors first, and each link is written just before its own
+// move: written all at once, an early move would drag a successor through its new link
+// before that successor had been placed (and could push it off the board).
+// Returns the new rows and, per link, what happened.
+function siApplyLinks(rows,links,mode,wl,hol,shift){
+  var working=wl.filter(function(w){return hol.indexOf(w)<0;});
+  var out=rows.slice(),res={};
+  // a link whose predecessor another link moves comes after it
+  var order=[],seen={};
+  function visit(L){
+    if(seen[L.key])return;
+    seen[L.key]=1;                                    // set first: no endless walk on a cycle
+    links.forEach(function(P){if(P!==L&&(P.moveIds.indexOf(L.predId)>=0||P.succId===L.predId))visit(P);});
+    order.push(L);
+  }
+  links.forEach(function(L){visit(L);});
+  function place(L){
+    if(mode==="none")return false;
+    var byId={};out.forEach(function(r){byId[r.id]=r;});
+    var p=byId[L.predId],s=byId[L.succId];
+    if(!p||!s)return false;
+    var pi=siSpanIdx(p,wl,working),si=siSpanIdx(s,wl,working);
+    if(pi.e<0||si.s<0){res[L.key].noBar=true;return false;}
+    var delta=pi.e+1+(Number(s.lagWeeks)||0)-si.s;
+    if(delta===0||(mode==="later"&&delta<0))return false;
+    var visited={};
+    (L.moveIds.length?L.moveIds:[L.succId]).forEach(function(id){if(!visited[id])out=shift(out,id,delta,wl,visited,hol);});
+    return true;
+  }
+  order.forEach(function(L){
+    if(linkMakesLoop(out,L.predId,L.succId)){res[L.key]={err:"loop"};return;}
+    out=out.map(function(r){
+      if(r.id!==L.succId)return r;
+      var lag=L.lag!==null&&L.lag!==undefined?L.lag:(r.afterId===L.predId?(Number(r.lagWeeks)||0):0);
+      return Object.assign({},r,{afterId:L.predId,lagWeeks:lag});
+    });
+    res[L.key]={ok:true};
+    place(L);
+  });
+  // a later move can still pull an earlier one: settle (a few passes are plenty)
+  for(var pass=0;pass<5;pass++){
+    var moved=false;
+    order.forEach(function(L){if(res[L.key].ok&&place(L))moved=true;});
+    if(!moved)break;
+  }
+  return{rows:out,res:res};
+}
+// The text box, the proposed chain to check and correct, the moves it makes; Apply = one save.
+function SchedInstructionModal({rows,weeks,holidays,shift,onApply,onClose}){
+  const [text,setText]=useState(function(){try{return localStorage.getItem("pp_sched_instr")||"";}catch(e){return "";}});
+  const [clauses,setClauses]=useState(null);       // [{text, succText, predText, lag, succ, pred, succAlts, predAlts, on}]
+  const [mode,setMode]=useState("snap");
+  var cands=React.useMemo(function(){return siCandidates(rows);},[rows]);
+  var byId=React.useMemo(function(){var m={};(rows||[]).forEach(function(r){m[r.id]=r;});return m;},[rows]);
+  var working=React.useMemo(function(){return weeks.filter(function(w){return holidays.indexOf(w)<0;});},[weeks,holidays]);
+  // the headers above each row, for the labels in the lists
+  var pathOf=React.useMemo(function(){
+    var m={},sec="",cat="";
+    (rows||[]).forEach(function(r){
+      if(r.kind==="section"){sec=r.label||"";cat="";m[r.id]="";return;}
+      if(r.kind==="category"){cat=r.label||"";m[r.id]=sec;return;}
+      m[r.id]=[sec,cat].filter(Boolean).join(" › ");
+    });
+    return m;
+  },[rows]);
+  function rowName(id){
+    var r=byId[id];if(!r)return "?";
+    return (r.label||"untitled")+(pathOf[id]?" ("+pathOf[id]+")":"");
+  }
+  function analyse(){
+    try{localStorage.setItem("pp_sched_instr",text);}catch(e){}
+    var cl=siParseInstruction(text).map(function(c){
+      var sa=siMatch(c.succText,cands),pa=siMatch(c.predText,cands);
+      return Object.assign({},c,{succAlts:sa,predAlts:pa,succ:sa[0]?sa[0].id:"",pred:pa[0]?pa[0].id:"",on:true});
+    });
+    setClauses(cl);
+  }
+  function setCl(i,patch){setClauses(clauses.map(function(c,j){return j===i?Object.assign({},c,patch):c;}));}
+
+  // clauses → links on tasks
+  var links=React.useMemo(function(){
+    if(!clauses)return [];
+    return clauses.map(function(c,i){
+      var L={key:"c"+i,i:i,lag:c.lag,on:c.on};
+      if(!c.succ||!c.pred){L.err="Choose both rows";return L;}
+      var S=siResolve(rows,c.succ,false,weeks,working),P=siResolve(rows,c.pred,true,weeks,working);
+      if(!S||!P||!S.task||!P.task){L.err="This room has no task";return L;}
+      if(S.task.id===P.task.id||(S.group&&S.moveIds.indexOf(P.task.id)>=0)||(P.group&&siTasksUnder(rows,P.group.id).some(function(t){return t.id===S.task.id;}))){
+        L.err="A task cannot start after itself";return L;
+      }
+      L.succId=S.task.id;L.predId=P.task.id;L.moveIds=S.moveIds;L.succGroup=S.group;L.predGroup=P.group;
+      L.prevPred=S.task.afterId&&S.task.afterId!==P.task.id?S.task.afterId:"";
+      return L;
+    });
+  },[clauses,rows,weeks,working]);
+  var active=links.filter(function(L){return L.on&&!L.err;});
+  var result=React.useMemo(function(){
+    return siApplyLinks(rows,active,mode,weeks,holidays,shift);
+  },[rows,active.map(function(L){return L.key+L.succId+L.predId+L.lag;}).join("|"),mode]);
+  var lost=plannedCellCount(rows)-plannedCellCount(result.rows);
+  var okCount=active.filter(function(L){return result.res[L.key]&&result.res[L.key].ok;}).length;
+  var moves=React.useMemo(function(){
+    var after={};result.rows.forEach(function(r){after[r.id]=r;});
+    var out=[];
+    (rows||[]).forEach(function(r){
+      if(siIsHeader(r)||!after[r.id])return;
+      var a=siSpanIdx(r,weeks,working),b=siSpanIdx(after[r.id],weeks,working);
+      if(a.s<0||b.s<0||a.s===b.s)return;
+      out.push({id:r.id,from:working[a.s],to:working[b.s],d:b.s-a.s});
+    });
+    return out;
+  },[result,rows]);
+  // the sequence, as the user named it: rooms by their name, tasks by theirs
+  var sequence=React.useMemo(function(){
+    var nm=function(L,side){var g=side==="s"?L.succGroup:L.predGroup;return g?(g.label||"room"):((byId[side==="s"?L.succId:L.predId]||{}).label||"untitled");};
+    var ok=active.filter(function(L){return result.res[L.key]&&result.res[L.key].ok;});
+    var next={},isSucc={};
+    ok.forEach(function(L){var p=nm(L,"p"),s=nm(L,"s");(next[p]=next[p]||[]).push({s:s,lag:L.lag});isSucc[s]=1;});
+    var lines=[];
+    Object.keys(next).filter(function(p){return !isSucc[p];}).forEach(function(start){
+      var line=[start],cur=start,guard=0;
+      while(next[cur]&&guard++<50){
+        var n=next[cur][0];line.push((n.lag?"(+"+n.lag+" wk) ":"")+n.s);
+        if(next[cur].length>1)next[cur].slice(1).forEach(function(o){lines.push([cur,o.s]);});
+        cur=n.s;
+      }
+      lines.unshift(line);
+    });
+    return lines;
+  },[active,result]);
+
+  function rowOptions(alts){
+    return <React.Fragment>
+      <option value="">— choose —</option>
+      {alts.length>0&&<optgroup label="Best matches">
+        {alts.map(function(a){return <option key={"a"+a.id} value={a.id}>{(siIsHeader(byId[a.id])?"▸ ":"")+rowName(a.id)+" · "+Math.round(a.score*100)+"%"}</option>;})}
+      </optgroup>}
+      <optgroup label="All rows">
+        {(rows||[]).map(function(r){
+          var pre=r.kind==="section"?"■ ":r.kind==="category"?"▸ ":"    ";
+          return <option key={r.id} value={r.id}>{pre+(r.label||"untitled")}</option>;
+        })}
+      </optgroup>
+    </React.Fragment>;
+  }
+  function conf(alts,id){
+    var a=(alts||[]).find(function(x){return x.id===id;});
+    if(!id)return null;
+    if(!a)return null;                                // picked by hand
+    if(a.score<0.6)return <span style={{fontSize:10,color:"var(--amber,#b35c00)",fontWeight:700,marginLeft:6}}>not sure — check</span>;
+    return null;
+  }
+  var lbl={fontSize:9,fontWeight:700,color:"var(--ink-4,#9b968b)",textTransform:"uppercase",letterSpacing:".06em"};
+
+  return <div className="overlay" onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:760}}>
+      <div className="modal-hdr">
+        <div className="modal-title">Links from an instruction</div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+      </div>
+      <div className="modal-body">
+        <div style={{fontSize:12,color:"var(--ink-3,#5d5a52)",marginBottom:6,lineHeight:1.5}}>
+          Type the sequence in French or English. Each part “X linked to Y” (lié à, après, suit, dépend de, avant, puis, →) becomes
+          “X starts after Y”. A room or section name stands for the whole room: as the second part, its last task; as the first part,
+          the room moves as a block. Nothing changes until you apply.
+        </div>
+        <textarea value={text} onChange={function(e){setText(e.target.value);}} rows={4}
+          onKeyDown={function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();analyse();}}}
+          placeholder={"Je veux que la zone 3 tennis soit liée à la démolition du transformateur. Le stabilized earth lié à la conclusion de la zone 3 et la zone basket liée au stabilized earth"}
+          style={{width:"100%",boxSizing:"border-box",padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:8,border:"1px solid var(--rule,#ddd9cf)",resize:"vertical"}}/>
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}>
+          <button className="btn btn-pri btn-sm" onClick={analyse} disabled={!text.trim()} title="Ctrl+Enter">Propose the sequence</button>
+        </div>
+
+        {clauses&&clauses.length===0&&<div style={{marginTop:12,padding:"10px 12px",borderRadius:8,background:"#fafaf8",border:"1px solid #e8e6df",fontSize:12,color:"var(--ink-3,#5d5a52)"}}>
+          No link found in this text. Write it as “X lié à Y”, “X après Y”, “Y avant X” or “Y → X”, one per sentence or joined with “et”.
+        </div>}
+
+        {clauses&&clauses.length>0&&<div style={{marginTop:14}}>
+          <div style={lbl}>Proposed links — check and correct</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:6}}>
+            {clauses.map(function(c,i){
+              var L=links[i]||{};
+              var r=result.res[L.key];
+              return <div key={i} style={{padding:"8px 10px",borderRadius:8,border:"1px solid "+(L.err&&c.on?"var(--red,#b3302a)":"var(--rule,#ddd9cf)"),background:c.on?"#fff":"#fafaf8",opacity:c.on?1:0.6}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <input type="checkbox" checked={c.on} onChange={function(e){setCl(i,{on:e.target.checked});}} style={{width:14,height:14,margin:0}}/>
+                  <span style={{fontSize:11,color:"var(--ink-4,#9b968b)",fontStyle:"italic"}}>“{c.succText}” after “{c.predText}”</span>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+                  <div style={{flex:"1 1 220px",minWidth:0}}>
+                    <select value={c.succ} onChange={function(e){setCl(i,{succ:e.target.value});}} style={{width:"100%",fontSize:12,padding:"4px 6px"}}>{rowOptions(c.succAlts)}</select>
+                    {conf(c.succAlts,c.succ)}
+                  </div>
+                  <span style={{fontSize:11,fontWeight:700,color:"var(--ink-3,#5d5a52)",whiteSpace:"nowrap"}}>starts after</span>
+                  <div style={{flex:"1 1 220px",minWidth:0}}>
+                    <select value={c.pred} onChange={function(e){setCl(i,{pred:e.target.value});}} style={{width:"100%",fontSize:12,padding:"4px 6px"}}>{rowOptions(c.predAlts)}</select>
+                    {conf(c.predAlts,c.pred)}
+                  </div>
+                  <span style={{display:"flex",alignItems:"center",gap:3,fontSize:11,whiteSpace:"nowrap"}} title="Gap in working weeks between the end of the predecessor and the start">
+                    +<input type="number" min={0} value={c.lag===null||c.lag===undefined?"":c.lag} placeholder="0"
+                      onChange={function(e){var v=e.target.value;setCl(i,{lag:v===""?null:Math.max(0,Number(v)||0)});}}
+                      style={{width:44,fontSize:12,padding:"3px 4px"}}/> wk</span>
+                </div>
+                {c.on&&<div style={{fontSize:11,marginTop:5,color:"var(--ink-3,#5d5a52)",lineHeight:1.5}}>
+                  {L.err&&<span style={{color:"var(--red,#b3302a)",fontWeight:700}}>{L.err}</span>}
+                  {!L.err&&r&&r.err==="loop"&&<span style={{color:"var(--red,#b3302a)",fontWeight:700}}>Not possible: this link would make a loop in the chain.</span>}
+                  {!L.err&&r&&r.ok&&<React.Fragment>
+                    Link: <b>{(byId[L.succId]||{}).label||"untitled"}</b>{L.succGroup?" (first task of "+(L.succGroup.label||"the room")+", the room follows as a block)":""}
+                    {" "}starts after <b>{(byId[L.predId]||{}).label||"untitled"}</b>{L.predGroup?" (last task to finish in "+(L.predGroup.label||"the room")+")":""}.
+                    {L.prevPred&&<span style={{color:"var(--amber,#b35c00)"}}> Replaces its link after “{(byId[L.prevPred]||{}).label||"untitled"}”.</span>}
+                    {r.noBar&&<span style={{color:"var(--ink-4,#9b968b)"}}> No planned bar on one of them: linked, not moved.</span>}
+                  </React.Fragment>}
+                </div>}
+              </div>;
+            })}
+          </div>
+
+          {sequence.length>0&&<div style={{marginTop:14}}>
+            <div style={lbl}>Resulting sequence</div>
+            {sequence.map(function(line,k){
+              return <div key={k} style={{fontSize:12,fontWeight:600,marginTop:4,lineHeight:1.6}}>{line.join("  →  ")}</div>;
+            })}
+          </div>}
+
+          <div style={{marginTop:14,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={lbl}>Dates</span>
+            <select value={mode} onChange={function(e){setMode(e.target.value);}} style={{fontSize:12,padding:"4px 6px"}}>
+              <option value="snap">Move each task to start right after its predecessor</option>
+              <option value="later">Only push later the tasks that would start too early</option>
+              <option value="none">Do not move anything, only create the links</option>
+            </select>
+          </div>
+          {mode!=="none"&&<div style={{marginTop:8}}>
+            {moves.length===0
+              ?<div style={{fontSize:11,color:"var(--ink-4,#9b968b)"}}>No task moves.</div>
+              :<table className="tbl" style={{width:"100%",fontSize:11}}>
+                <thead><tr><th style={{textAlign:"left"}}>Task that moves</th><th>From</th><th>To</th><th>Weeks</th></tr></thead>
+                <tbody>{moves.map(function(m){
+                  return <tr key={m.id}><td>{rowName(m.id)}</td><td style={{textAlign:"center"}}>{fmtDate(m.from)}</td><td style={{textAlign:"center"}}>{fmtDate(m.to)}</td>
+                    <td style={{textAlign:"center",fontWeight:700,color:m.d>0?"var(--amber,#b35c00)":"var(--green,#1e6b3a)"}}>{m.d>0?"+":""}{m.d}</td></tr>;
+                })}</tbody>
+              </table>}
+            {lost>0&&<div style={{marginTop:6,fontSize:11,fontWeight:700,color:"var(--red,#b3302a)"}}>
+              {lost} planned week{lost!==1?"s":""} would fall outside the schedule. Increase “Nb weeks” in Settings first, or choose “Do not move anything”.</div>}
+          </div>}
+        </div>}
+      </div>
+      <div className="modal-footer">
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-pri" disabled={!clauses||okCount===0||lost>0}
+          onClick={function(){onApply(result.rows);}}
+          title="One save; Ctrl+Z undoes it">✓ Apply {okCount} link{okCount!==1?"s":""}</button>
+      </div>
+    </div>
+  </div>;
+}
+
 // ---- Print period helpers (pure functions, no state) ----
 // The grid is weekly: any date snaps back to the Monday of its week.
 function printMonday(iso){
@@ -501,6 +948,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [mirrorBox,setMirrorBox]=useState({show:false,left:0,width:0});
   const [colorRowId,setColorRowId]=useState(null);
   const [editRowId,setEditRowId]=useState(null);
+  const [instrOpen,setInstrOpen]=useState(false);  // "Links from text" window
   const [critOn,setCritOn]=useState(false);       // critical path shown; recomputed from the live schedule
   const critCache=useRef({sc:null,cp:null});
   const [critOnly,setCritOnly]=useState(true);     // while the critical path is on: hide the other tasks
@@ -2728,6 +3176,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               if(!cp){safeAlert("No critical path to show.\n\nTasks need a duration (painted bars or a start/end week) and at least one “starts after” link.");return;}
               critCache.current={sc:sc,cp:cp};setCritOn(true);
             }} style={{padding:"2px 8px",fontSize:10,borderColor:critPath?"":"var(--amber,#b35c00)",color:critPath?"":"var(--amber,#b35c00)",fontWeight:700}}>🎯 Critical path</button>
+          {canEdit!==false&&<button className="btn btn-sm" onClick={function(){if(blockIfReadOnly())return;setInstrOpen(true);}}
+            title="Type the sequence in words — “zone 3 tennis linked to the transformer demolition, stabilized earth after zone 3…” — then check the proposed links and moves before applying"
+            style={{padding:"2px 8px",fontSize:10,fontWeight:700}}>✎ Links from text</button>}
           </span>
           <span style={{display:"flex",gap:6,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
             <span style={{fontSize:9,fontWeight:700,color:"var(--ink-4,#9b968b)",textTransform:"uppercase",letterSpacing:".06em",marginRight:2}}>View</span>
@@ -3397,6 +3848,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             </div>}
           </div>;
         })()}
+        {instrOpen&&<SchedInstructionModal rows={sc.rows||[]} weeks={scheduleWeeks(sc)} holidays={sc.holidayWeeks||[]} shift={shiftRowCascade}
+          onApply={function(rows){upd(sc.id,{rows:rows});setInstrOpen(false);}} onClose={function(){setInstrOpen(false);}}/>}
         {showDocs&&<div className="sched-noprint" style={{position:"fixed",inset:0,zIndex:960,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
           onClick={function(){setShowDocs(false);}}>
           <div onClick={function(e){e.stopPropagation();}} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:640,maxWidth:"100%",maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
