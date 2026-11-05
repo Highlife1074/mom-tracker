@@ -2877,6 +2877,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       <button className="btn btn-sm btn-gold" onClick={addSchedule}>＋ New schedule</button>
       {sc&&<span style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {sc.updatedAt&&<span style={{fontSize:10,color:"#aaa"}}>Last update {fmtDate(sc.updatedAt)}{sc.updatedBy?" by "+sc.updatedBy.split(",")[0]:""}</span>}
+        {canEdit!==false&&<button className="btn btn-sm" onClick={function(){if(blockIfReadOnly())return;setInstrOpen(true);}}
+          title="Type the sequence in words — “zone 3 tennis linked to the transformer demolition, stabilized earth after zone 3…” — then check the proposed links and moves before applying">✎ Links from text</button>}
         <button className={"btn btn-sm"+(showSettings?" btn-pri":"")} onClick={function(){setShowSettings(!showSettings);}}
           title="Title, start week, number of weeks, subcontractors, copy to another zone">⚙ Settings</button>
         <span style={{position:"relative",display:"inline-block"}}>
@@ -3176,9 +3178,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               if(!cp){safeAlert("No critical path to show.\n\nTasks need a duration (painted bars or a start/end week) and at least one “starts after” link.");return;}
               critCache.current={sc:sc,cp:cp};setCritOn(true);
             }} style={{padding:"2px 8px",fontSize:10,borderColor:critPath?"":"var(--amber,#b35c00)",color:critPath?"":"var(--amber,#b35c00)",fontWeight:700}}>🎯 Critical path</button>
-          {canEdit!==false&&<button className="btn btn-sm" onClick={function(){if(blockIfReadOnly())return;setInstrOpen(true);}}
-            title="Type the sequence in words — “zone 3 tennis linked to the transformer demolition, stabilized earth after zone 3…” — then check the proposed links and moves before applying"
-            style={{padding:"2px 8px",fontSize:10,fontWeight:700}}>✎ Links from text</button>}
           </span>
           <span style={{display:"flex",gap:6,alignItems:"center",paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
             <span style={{fontSize:9,fontWeight:700,color:"var(--ink-4,#9b968b)",textTransform:"uppercase",letterSpacing:".06em",marginRight:2}}>View</span>
