@@ -488,7 +488,10 @@ var PP_GANTT_CSS=
   '.ppg-fc.late{border-bottom-color:#b3302a}.ppg-fc.act{border-bottom-color:#16181d}'+
   '.ppg-st{font-size:9.5px;font-weight:700;border-radius:4px;padding:0 5px;white-space:nowrap}'+
   '.ppg-leg{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:10.5px;color:#6f6b62;margin-top:8px}'+
-  '.ppg-leg i{display:inline-block;width:16px;height:9px;border-radius:2px;vertical-align:middle;margin-right:4px}';
+  '.ppg-leg i{display:inline-block;width:16px;height:9px;border-radius:2px;vertical-align:middle;margin-right:4px}'+
+  // phone: a narrow name column, the status under the name, the calendar scrolls sideways
+  '@media(max-width:768px){.ppg{min-width:760px}.ppg-l{flex-basis:150px;width:150px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;padding:3px 8px}'+
+  '.ppg-l .t{flex:none;max-width:100%}.ppg-hd .ppg-l{flex-direction:row;align-items:center}.ppg-ov{left:150px}}';
 // The same chart as HTML, for the printed report.
 function ppGanttHtml(model,grouped){
   function seg(s,st){
