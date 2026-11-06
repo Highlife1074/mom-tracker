@@ -51,7 +51,7 @@ const THEORETICAL_CHAIN=[
 ];
 function addCalDays(dateStr,days){
   if(!isValidDate(dateStr))return "";
-  var d=new Date(dateStr);
+  var d=parseISODate(dateStr);   // local midnight: new Date("YYYY-MM-DD") is UTC and slips a day west of Greenwich
   d.setDate(d.getDate()+Number(days||0));
   return toISO(d);
 }
@@ -2946,6 +2946,12 @@ function procFlowCol(td){
 function ProcFlowView({tenders,onNavTender}){
   const [selId,setSelId]=useState("");
   const [q,setQ]=useState("");
+  // The detail card sits under the whole board: bring it into view when a card is picked.
+  const detailRef=useRef(null);
+  useEffect(function(){
+    if(!selId||!detailRef.current)return;
+    try{detailRef.current.scrollIntoView({block:"nearest",behavior:"smooth"});}catch(e){}
+  },[selId]);
   var now=today();
   var list=(tenders||[]).filter(function(t){
     if(t.cancelled)return false;
@@ -2995,7 +3001,7 @@ function ProcFlowView({tenders,onNavTender}){
     var aw=(t.awards||[]).filter(function(a){return a.subcontractor;});
     var cs=circuitState(circuitOf(t),now);
     var h3={fontSize:10.5,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#6f6b62",margin:"12px 0 6px"};
-    return <div className="card" style={{marginTop:14}}>
+    return <div className="card" ref={detailRef} style={{marginTop:14,scrollMarginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
         <div><span style={{fontSize:11,color:"#9b968b"}}>{t.package||"—"}</span> <span style={{fontWeight:700,fontSize:15}}>{t.title}</span>
           <span style={{fontSize:11,color:"#6f6b62",marginLeft:8}}>Budget {budget?budget.toLocaleString()+" "+cur:"—"}</span></div>
@@ -5067,9 +5073,23 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
   </div>;
 }
 
+// The delivery forecast of a Package. Asked many times per render (each schedule row, each
+// line of the Package list, Proc. plan, Proc. flow, reports) for the same few Packages: the
+// answer depends only on the Package object, Settings › Durations and the day, so it is kept
+// per Package object exactly like tenderDocs (an edit replaces the object = new entry).
+// Callers only read the result; never modify it.
+var _calcProcCache={stamp:null,day:"",map:new WeakMap()};
 function calcProcurement(td){
+  if(!td||typeof td!=="object")return _calcProcurement(td||{});
+  var stamp=window._ppDurations||null,day=today();
+  if(_calcProcCache.stamp!==stamp||_calcProcCache.day!==day)_calcProcCache={stamp:stamp,day:day,map:new WeakMap()};
+  var hit=_calcProcCache.map.get(td);
+  if(!hit){hit=_calcProcurement(td);_calcProcCache.map.set(td,hit);}
+  return hit;
+}
+function _calcProcurement(td){
 
-  var matMaxLead = (td.materials||[]).reduce(function(max,mat){
+  var matMaxLead =(td.materials||[]).reduce(function(max,mat){
     var d=parseLeadDays(mat.leadTime||"");return d>max?d:max;
   },0);
 
@@ -5104,7 +5124,7 @@ function calcProcurement(td){
     if(!isValidDate(dateStr)) return "";
     var n=Number(days);
     if(!isFinite(n)) return "";
-    var d = new Date(dateStr);
+    var d = parseISODate(dateStr);
     d.setDate(d.getDate()+n);
     return toISO(d);
   }
@@ -5292,10 +5312,10 @@ function calcProcurement(td){
   var procStart = "";
   var totalDays = steps.filter(function(s){return s.duration;}).reduce(function(a,s){return a+(s.duration||0);},0) + LEAD;
   if(startOnSite){
-    var sos = new Date(startOnSite);
-    var del = deliveryDate ? new Date(deliveryDate) : null;
+    var sos = parseISODate(startOnSite);
+    var del = deliveryDate ? parseISODate(deliveryDate) : null;
     margin = del ? Math.round((sos - del)/(1000*60*60*24)) : null;
-    var ps = new Date(startOnSite);
+    var ps = parseISODate(startOnSite);
     ps.setDate(ps.getDate() - totalDays);
     procStart = toISO(ps);
   }

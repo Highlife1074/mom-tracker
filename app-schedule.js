@@ -86,6 +86,22 @@ function linkMakesLoop(rows,predId,succId){
   }
   return false;
 }
+// Rows are deleted: whoever started after one of them now starts after that row's own
+// predecessor (the nearest one that survives), so deleting B from A → B → C leaves A → C
+// instead of C pointing at a row that no longer exists. The successor keeps its own gap.
+function rechainAfterDelete(rows,ids){
+  var byId={};(rows||[]).forEach(function(r){byId[r.id]=r;});
+  function survivor(id){
+    var g=0;
+    while(id&&ids[id]&&g++<5000)id=byId[id]?(byId[id].afterId||""):"";
+    return id&&!ids[id]&&byId[id]?id:"";
+  }
+  return (rows||[]).filter(function(r){return !ids[r.id];}).map(function(r){
+    if(!r.afterId||!ids[r.afterId])return r;
+    var p=survivor(r.afterId);
+    return Object.assign({},r,{afterId:p===r.id?"":p});
+  });
+}
 // Number of planned week-cells across rows. A move that lowers it pushed bars off the board.
 function plannedCellCount(rows){
   var n=0;
@@ -93,8 +109,11 @@ function plannedCellCount(rows){
   return n;
 }
 function scheduleWeeks(sc){
-  if(!sc.startDate)return[];
-  var start=new Date(sc.startDate);
+  if(!sc||!isValidDate(sc.startDate))return[];
+  // Local midnight (parseISODate), not new Date("YYYY-MM-DD") = UTC midnight: west of
+  // Greenwich that was the previous evening, the Monday slipped a week back and every
+  // stored bar fell outside the grid.
+  var start=parseISODate(sc.startDate);
   var dow=start.getDay();
   var monday=new Date(start);monday.setDate(start.getDate()-(dow===0?6:dow-1));
   var out=[];
@@ -935,6 +954,27 @@ function buildScheduleXer(sc,opts){
   return{text:text,warnings:warnings,stats:{activities:acts.length,links:preds.length,wbs:wbs.length,holidays:holDays.length,dataDate:dataDate}};
 }
 
+// ---- Schedule health check --------------------------------------------------------------
+// Quality checks on the plan itself, in the spirit of the DCMA 14-point assessment used on
+// Primavera schedules, adapted to a weekly grid with one predecessor per task. Nothing is
+// changed: each check lists its tasks, a click opens the task.
+//   high  the plan says something false today (bars not shown, a link broken, late work)
+//   mid   the plan is right but the site will hit it soon (no company, not awarded…)
+//   low   structure: what makes a plan hard to follow or to re-sequence
+const SCHED_HEALTH_CHECKS=[
+  {k:"nobar",lvl:"high",label:"No planned bar",tip:"No planned week: the task has no duration, so it is not scheduled, not in the critical path and not printed as a bar."},
+  {k:"offgrid",lvl:"high",label:"Bars outside the grid",tip:"Weeks painted outside the weeks of this schedule (its start week or number of weeks changed since): they are neither shown nor counted. Widen the schedule (Settings) to see them."},
+  {k:"conflict",lvl:"high",label:"Starts before its predecessor ends",tip:"Drawn earlier than its “starts after” link allows (red arrow). Move it, or remove the link."},
+  {k:"behind",lvl:"high",label:"Behind schedule",tip:"A planned week is over, it was not marked done on site and the task is not at 100 %."},
+  {k:"proc",lvl:"high",label:"Procurement late",tip:"The forecast delivery of the linked Package lands after the week the task starts."},
+  {k:"outseq",lvl:"mid",label:"Out of sequence",tip:"Work recorded on site while the task it starts after is not finished."},
+  {k:"future",lvl:"mid",label:"Done on site in the future",tip:"A week marked done on site (blue) that has not started yet: the progress is overstated."},
+  {k:"notawarded",lvl:"mid",label:"Package not awarded, starts within 8 weeks",tip:"Linked to a Package with nobody in its Awarded section, and the task starts in the next 8 weeks (or should already have started)."},
+  {k:"nocompany",lvl:"mid",label:"No company, starts within 8 weeks",tip:"Nobody is doing this task yet (no subcontractor on the task, no awarded Package), and it starts in the next 8 weeks."},
+  {k:"isolated",lvl:"low",label:"No link in or out",tip:"Neither starts after another task nor is followed by one: when it slips nothing moves, and when the others slip it never moves."},
+  {k:"lag",lvl:"low",label:"Gap over 4 weeks",tip:"More than 4 weeks between the end of the predecessor and the start: often a missing task, or a link to the wrong one."},
+  {k:"long",lvl:"low",label:"Longer than 8 working weeks",tip:"Long tasks hide their own sequence and their progress: split them by area or by trade."}
+];
 function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,tags,zones,rooms,saveRooms,canEdit,roomBlockersOf,tenders,saveTenders,pkgOwners,onNavTender}){
   // Destructive or wide-reaching operations (deleting a schedule, editing tasks by batch)
   // are reserved for the app admin, whatever the zone rights are.
@@ -1132,6 +1172,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // Simplified toolbar: the rarely used controls sit behind ⚙ Settings, ⋯ More and 🔍 Analyse & view.
   const [showSettings,setShowSettings]=useState(false);
   const [moreMenu,setMoreMenu]=useState(false);
+  const [healthOpen,setHealthOpen]=useState(false);   // schedule health check panel
+  const [healthCheck,setHealthCheck]=useState("");    // the check whose tasks are listed
   const [showTools,setShowToolsRaw]=useState(function(){try{return localStorage.getItem("pp_sched_tools")==="1";}catch(e){return false;}});
   function setShowTools(v){setShowToolsRaw(v);try{localStorage.setItem("pp_sched_tools",v?"1":"0");}catch(e){}}
   const tableBoxRef=useRef(null);
@@ -1358,7 +1400,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         return (t.scheduleRowRef&&ids[t.scheduleRowRef])?Object.assign({},t,{scheduleRowRef:""}):t;
       }));
     }
-    upd(sc.id,{rows:rows.filter(function(r){return !ids[r.id];})});
+    upd(sc.id,{rows:rechainAfterDelete(rows,ids)});
     // A deleted room or category also removed its Room and unlinked actions: undoing only the
     // rows would leave them out of step, so the history stops here.
     if(isSection||isCat||linked.length>0)clearUndo();
@@ -1468,13 +1510,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     try{proc=calcProcurement(td);}catch(e){return null;}
     if(!proc||!proc.deliveryDate)return null;
     // start week = Monday; the task can start any day that week, so compare against the Sunday
-    var wkEnd=(function(){var d=new Date(row.startWeek);d.setDate(d.getDate()+6);return toISO(d);})();
+    var wkEnd=addCalDays(row.startWeek,6);
     // RULE (single source of truth for the two markers):
     //   RED    delivery lands AFTER the task's start week ends  -> the task cannot start
     //   ORANGE delivery lands within the 21 days BEFORE that     -> it starts, but with no float
     //   nothing at all if the material arrives more than 3 weeks early.
     var DAY=1000*60*60*24;
-    var gapDays=Math.round((new Date(wkEnd)-new Date(proc.deliveryDate))/DAY); // >0 = delivered early
+    var gapDays=Math.round((parseISODate(wkEnd)-parseISODate(proc.deliveryDate))/DAY); // >0 = delivered early
     var late=gapDays<0;
     var tight=!late&&gapDays<21;
     var weeksLate=late?Math.ceil(-gapDays/7):0;
@@ -1483,12 +1525,94 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var feasible="";
     var wl=scheduleWeeks(sc);
     for(var fi=0;fi<wl.length;fi++){
-      var we=(function(w){var d=new Date(w);d.setDate(d.getDate()+6);return toISO(d);})(wl[fi]);
+      var we=addCalDays(wl[fi],6);
       if(we>=proc.deliveryDate&&(sc.holidayWeeks||[]).indexOf(wl[fi])===-1){feasible=wl[fi];break;}
     }
     return{tender:td,delivery:proc.deliveryDate,startWeek:row.startWeek,late:late,tight:tight,weeksLate:weeksLate,feasible:feasible,gapDays:gapDays};
   }
   var procRisks=sc?(sc.rows||[]).map(function(r){var pr=procRisk(r);return pr?{row:r,risk:pr}:null;}).filter(Boolean).filter(function(x){return x.risk.late||x.risk.tight;}):[];
+
+  // Runs only while the Analyse bar or the health panel is open (one pass over the rows).
+  function schedHealth(){
+    if(!sc)return null;
+    if(_rm.health)return _rm.health;               // asked by the button and by the panel: once per render
+    var rows=sc.rows||[],wl=scheduleWeeks(sc),inGrid={};wl.forEach(function(w){inGrid[w]=1;});
+    var t=today(),soon=addCalDays(t,56);
+    var byId={},hasSucc={};
+    rows.forEach(function(r){byId[r.id]=r;});
+    rows.forEach(function(r){if(r.afterId&&byId[r.afterId])hasSucc[r.afterId]=1;});
+    var lvlOf={};SCHED_HEALTH_CHECKS.forEach(function(c){lvlOf[c.k]=c.lvl;});
+    var out={},flagged={},sec="",cat="",n=0;
+    SCHED_HEALTH_CHECKS.forEach(function(c){out[c.k]=[];});
+    rows.forEach(function(r){
+      if(r.kind==="section"){sec=r.label||"";cat="";return;}
+      if(r.kind==="category"){cat=r.label||"";return;}
+      n++;
+      function add(k,why){out[k].push({row:r,room:cat,section:sec,why:why||""});if(lvlOf[k]!=="low")flagged[r.id]=1;}
+      var c=r.cells||{},keys=Object.keys(c).filter(function(w){return !!c[w];});
+      var plan=keys.filter(function(w){return c[w]==="plan"||c[w]==="both";}).sort();
+      var act=keys.filter(function(w){return c[w]==="actual"||c[w]==="both";}).sort();
+      var sp=rowSpan(r);
+      if(!plan.length&&!sp)add("nobar");
+      var off=keys.filter(function(w){return !inGrid[w];}).sort();
+      if(off.length)add("offgrid",off.length+" week"+(off.length>1?"s":"")+" · "+fmtDate(off[0])+(off.length>1?" → "+fmtDate(off[off.length-1]):""));
+      var ls=linkState(r);
+      if(ls&&ls.weeks<0)add("conflict",(-ls.weeks)+" wk too early after “"+(ls.pred.label||"untitled")+"”");
+      var pr=rowProgress(r);
+      if(pr===null||pr<100){
+        var miss=plan.filter(function(w){return c[w]==="plan"&&addCalDays(w,6)<t;});
+        if(miss.length)add("behind",miss.length+" planned week"+(miss.length>1?"s":"")+" not done"+(pr!==null?" · "+pr+" %":""));
+      }
+      var rk=procRisk(r);
+      if(rk&&rk.late)add("proc",(rk.tender.title||"")+" delivers "+fmtDate(rk.delivery)+" · "+rk.weeksLate+" wk late");
+      var pred=r.afterId?byId[r.afterId]:null;
+      var started=act.length>0||(pr!==null&&pr>0);
+      if(started&&pred){
+        var pp=rowProgress(pred);
+        if(pp!==null&&pp<100)add("outseq","“"+(pred.label||"untitled")+"” is at "+pp+" %");
+      }
+      var fut=act.filter(function(w){return w>t;});
+      if(fut.length)add("future",fut.length+" week"+(fut.length>1?"s":"")+" from "+fmtDate(fut[0]));
+      var start=plan[0]||r.startWeek||"";
+      if(start&&start<=soon&&!started){
+        var rs=rowSub(r);
+        if(rs.source==="pending")add("notawarded",((tenderById[r.tenderRef]||{}).title||"Package")+" · starts "+fmtDate(start));
+        else if(!rs.name)add("nocompany",rs.source==="choose"?"pick one of "+rs.options.join(" / "):"starts "+fmtDate(start));
+      }
+      if(!(r.afterId&&byId[r.afterId])&&!hasSucc[r.id]&&(plan.length||sp))add("isolated");
+      var lag=Number(r.lagWeeks)||0;
+      if(lag>4)add("lag",lag+" wk after “"+((pred&&pred.label)||"?")+"”");
+      if(sp&&sp.workingWeeks>8)add("long",sp.workingWeeks+" working weeks");
+    });
+    var nf=Object.keys(flagged).length;
+    return _rm.health={checks:SCHED_HEALTH_CHECKS.map(function(c){return Object.assign({},c,{items:out[c.k]});}),
+      tasks:n,flagged:nf,score:n?Math.round((n-nf)/n*100):100};
+  }
+  // Shows one task: opens what hides it (room, section, filter, critical-only), opens it in the
+  // side panel, highlights it and scrolls the grid to it once its row is drawn.
+  function goToRow(id){
+    var rows=(sc&&sc.rows)||[],secId="",catId="",row=null;
+    for(var k=0;k<rows.length;k++){
+      if(rows[k].id===id){row=rows[k];break;}
+      if(rows[k].kind==="section"){secId=rows[k].id;catId="";}
+      else if(rows[k].kind==="category")catId=rows[k].id;
+    }
+    if(!row)return;
+    setCollapsedCats(function(prev){
+      if(!prev[secId]&&!prev[catId])return prev;
+      var o=Object.assign({},prev);delete o[secId];delete o[catId];return o;
+    });
+    if(fGroup&&rowGroup(row)!==fGroup)setFGroup("");
+    if(critPath&&critOnly&&!critPath.ids[id]&&!critPath.zeroFloat[id])setCritOnly(false);
+    setPanelRowId(id);setFocusRow(id);
+    var tries=0;
+    (function go(){
+      var tr=document.querySelector('tr[data-rowid="'+id+'"]');
+      if(!tr){if(++tries<20)setTimeout(go,120);return;}
+      var wk=row.startWeek&&tr.querySelector('td[data-wk="'+row.startWeek+'"]');
+      try{(wk||tr).scrollIntoView({block:"center",inline:wk?"center":"nearest",behavior:"smooth"});}catch(e){}
+    })();
+  }
 
   // Push the tender's "start on site" back to the planned start week of its earliest linked task
   // Accepts one tender id or a list, and the rows of this schedule as they are ABOUT to be
@@ -1531,6 +1655,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   var autoBusyRef=useRef(false);
   useEffect(function(){
     if(!sc||!saveTasks||!tasks)return;
+    if(isReadOnly())return;                        // a read-only account never writes, not even the auto-actions
     if(autoBusyRef.current)return;                 // a write is already in flight
     var changed=false;
     var next=(tasks||[]).slice();
@@ -1855,6 +1980,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     // Remap ids so internal "starts after" links point to the copies, not the originals
     var idMap={};
     block.forEach(function(r){idMap[r.id]=uuid();});
+    // Rooms and categories are kept 1:1: the copy gets a Room of its own. Sharing the
+    // original's Room meant deleting the copy later also removed the original's Room.
+    var srcRoom=rows[start].roomId||"";
+    var newRm=srcRoom&&saveRooms?newRoom({name:(rows[start].label||"")+" (copy)",zone:curZone}):null;
     var copies=block.map(function(r,bi){
       return Object.assign({},r,{
         id:idMap[r.id],
@@ -1862,10 +1991,12 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         cells:{},                                   // durations are not copied — the new room is planned from scratch
         weekProgress:{},
         progress:"",
-        afterId:idMap[r.afterId]||r.afterId||""     // links between the copied tasks are kept
+        afterId:idMap[r.afterId]||r.afterId||"",    // links between the copied tasks are kept
+        roomId:newRm&&(r.roomId===srcRoom||bi===0)?newRm.id:r.roomId||""
       });
     });
     rows.splice(end,0,...copies);
+    if(newRm)saveRooms([...(rooms||[]),newRm]);
     upd(sc.id,{rows:rows});
   }
   // Copy this whole schedule into another zone (fresh ids, links preserved)
@@ -1951,7 +2082,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     // A task moves inside its own category only, never across a header.
     var j=i+dir;
     if(j<0||j>=rows.length)return;
-    if(rows[j].kind==="category")return;
+    if(rows[j].kind==="category"||rows[j].kind==="section")return;   // a section header is a header too
     var tmp=rows[i];rows[i]=rows[j];rows[j]=tmp;
     upd(sc.id,{rows:rows});
   }
@@ -1981,8 +2112,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(latest&&sc){
       var wl=scheduleWeeks(sc);
       for(var i=0;i<wl.length;i++){
-        var e=new Date(wl[i]);e.setDate(e.getDate()+6);
-        if(toISO(e)>=latest&&(sc.holidayWeeks||[]).indexOf(wl[i])===-1){gateWeek=wl[i];break;}
+        if(addCalDays(wl[i],6)>=latest&&(sc.holidayWeeks||[]).indexOf(wl[i])===-1){gateWeek=wl[i];break;}
       }
     }
     return{all:ps,tbc:tbc.length,confirmed:ps.length-tbc.length,latest:latest,gateWeek:gateWeek,
@@ -2528,8 +2658,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(linked.length>0&&saveTasks){
       saveTasks((tasks||[]).map(function(t){return (t.scheduleRowRef&&ids[t.scheduleRowRef])?Object.assign({},t,{scheduleRowRef:""}):t;}));
     }
-    // a task that started after a deleted one now has no predecessor
-    upd(sc.id,{rows:(sc.rows||[]).filter(function(r){return !ids[r.id];}).map(function(r){return ids[r.afterId]?Object.assign({},r,{afterId:""}):r;})});
+    // a task that started after a deleted one now starts after that one's own predecessor
+    upd(sc.id,{rows:rechainAfterDelete(sc.rows||[],ids)});
     if(linked.length>0)clearUndo();
     if(ids[panelRowId])setPanelRowId(null);
     setSelRows([]);
@@ -2979,6 +3109,48 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           <button className="btn btn-sm" onClick={function(){setSelRows([]);}} style={{marginLeft:"auto"}}>✕ Clear selection</button>
         </div>}
 
+        {healthOpen&&(function(){
+          var h=schedHealth();if(!h)return null;
+          var LV={high:{fg:"var(--red,#b3302a)",bg:"var(--red-soft,#fbe6e8)"},mid:{fg:"var(--amber,#b35c00)",bg:"var(--amber-soft,#fdf1e0)"},low:{fg:"var(--ink-2,#4a4740)",bg:"#f2f0eb"}};
+          var scCol=h.score>=90?"var(--green,#1e6b3a)":h.score>=70?"var(--amber,#b35c00)":"var(--red,#b3302a)";
+          var cur=h.checks.find(function(c){return c.k===healthCheck;})||null;
+          return <div className="sched-noprint" style={{padding:"10px 12px",background:"var(--surface,#fff)",border:"1.5px solid var(--rule,#ddd9cf)",borderRadius:8,marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap",marginBottom:8}}>
+              <span style={{fontFamily:"var(--font-mono)",fontWeight:600,fontSize:11,letterSpacing:".08em",textTransform:"uppercase",color:"var(--ink-3,#6f6b62)"}}>Schedule health</span>
+              <span style={{fontFamily:"var(--font-mono)",fontSize:20,fontWeight:700,color:scCol}}>{h.score} %</span>
+              <span style={{fontSize:11.5,color:"var(--ink-3,#6f6b62)"}}>{h.tasks-h.flagged} of {h.tasks} task{h.tasks!==1?"s":""} with no red or orange point · click a check to list its tasks, then a task to open it</span>
+              <button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setHealthOpen(false);setHealthCheck("");}}>Close</button>
+            </div>
+            {["high","mid","low"].map(function(lv){
+              var L=LV[lv];
+              return <div key={lv} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:5}}>
+                <span style={{width:74,fontSize:9.5,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"var(--ink-4,#9b968b)"}}>{lv==="high"?"Fix now":lv==="mid"?"Coming up":"Structure"}</span>
+                {h.checks.filter(function(c){return c.lvl===lv;}).map(function(c){
+                  var n=c.items.length,on=healthCheck===c.k;
+                  return <button key={c.k} title={c.tip} disabled={!n} onClick={function(){setHealthCheck(on?"":c.k);}}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 9px",borderRadius:6,cursor:n?"pointer":"default",fontFamily:"inherit",fontSize:11,
+                      border:"1.5px solid "+(on?L.fg:n?"transparent":"var(--rule-2,#efece5)"),background:n?L.bg:"var(--surface,#fff)",
+                      color:n?L.fg:"var(--ink-4,#9b968b)",fontWeight:n?700:400}}>
+                    <span style={{fontFamily:"var(--font-mono)",minWidth:12,textAlign:"right"}}>{n?n:"✓"}</span>{c.label}</button>;
+                })}
+              </div>;
+            })}
+            {cur&&cur.items.length>0&&<div style={{marginTop:6,borderTop:"1px solid var(--rule-2,#efece5)",paddingTop:6}}>
+              <div style={{fontSize:11,color:"var(--ink-3,#6f6b62)",marginBottom:4}}><b style={{color:LV[cur.lvl].fg}}>{cur.label}</b> — {cur.tip}</div>
+              <div style={{maxHeight:230,overflowY:"auto",overscrollBehavior:"contain"}}>
+                {cur.items.map(function(x){
+                  return <div key={x.row.id} onClick={function(){goToRow(x.row.id);}} title="Open this task in the grid"
+                    onMouseEnter={function(e){e.currentTarget.style.background="var(--rule-2,#efece5)";}} onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}
+                    style={{display:"flex",gap:8,alignItems:"baseline",fontSize:11.5,padding:"3px 6px",borderRadius:5,cursor:"pointer"}}>
+                    <span style={{color:"var(--ink-4,#9b968b)",fontSize:10.5,flex:"0 0 auto",maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[x.section,x.room].filter(Boolean).join(" › ")||"—"}</span>
+                    <b style={{flex:"0 0 auto"}}>{x.row.label||"(untitled)"}</b>
+                    {x.why&&<span style={{color:"var(--ink-3,#6f6b62)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.why}</span>}
+                  </div>;
+                })}
+              </div>
+            </div>}
+          </div>;
+        })()}
         {critPath&&<div className="sched-noprint" style={{padding:"9px 12px",background:"#fdf1e0",border:"1.5px solid #e6c48c",borderRadius:8,marginBottom:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontWeight:800,fontSize:12,color:"var(--amber,#b35c00)"}}>🎯 CRITICAL PATH</span>
           <span style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:700}}>{critPath.weeks} working week{critPath.weeks!==1?"s":""}</span>
@@ -3091,7 +3263,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <button className="btn btn-sm" onClick={function(){var el=document.querySelector(".sched-wrap");if(el)el.scrollLeft-=400;}} title="Scroll back in time" style={{padding:"2px 8px",fontSize:11}}>◀◀</button>
             <button className="btn btn-sm" onClick={function(){
               var el=document.querySelector(".sched-wrap");if(!el)return;
-              var idx=wks.findIndex(function(w){var e=new Date(w);e.setDate(e.getDate()+6);return w<=todayStr&&todayStr<=toISO(e);});
+              var idx=wks.findIndex(function(w){return w<=todayStr&&todayStr<=addCalDays(w,6);});
               var th=idx>=0?el.querySelector('th[data-wk="'+wks[idx]+'"]'):null;
               if(th)el.scrollLeft=Math.max(0,th.offsetLeft-el.clientWidth/2);
             }} title="Jump to the current week" style={{padding:"2px 8px",fontSize:11}}>Today</button>
@@ -3176,6 +3348,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               if(!cp){safeAlert("No critical path to show.\n\nTasks need a duration (painted bars or a start/end week) and at least one “starts after” link.");return;}
               critCache.current={sc:sc,cp:cp};setCritOn(true);
             }} style={{padding:"2px 8px",fontSize:10,borderColor:critPath?"":"var(--amber,#b35c00)",color:critPath?"":"var(--amber,#b35c00)",fontWeight:700}}>🎯 Critical path</button>
+          {(function(){
+            var h=schedHealth();
+            var col=!h?"inherit":h.score>=90?"var(--green,#1e6b3a)":h.score>=70?"var(--amber,#b35c00)":"var(--red,#b3302a)";
+            return <button className={"btn btn-sm"+(healthOpen?" btn-pri":"")} onClick={function(){setHealthOpen(!healthOpen);setHealthCheck("");}}
+              title="Schedule quality checks (in the spirit of the DCMA 14 points): tasks with no bar, broken or missing links, work behind or out of sequence, bars outside the grid, no company or Package not awarded a few weeks before the start…"
+              style={{padding:"2px 8px",fontSize:10,fontWeight:700}}>Health check{h?<span style={{marginLeft:5,fontFamily:"var(--font-mono)",color:healthOpen?"inherit":col}}>{h.score} %</span>:null}</button>;
+          })()}
           {canEdit!==false&&<button className="btn btn-sm" onClick={function(){if(blockIfReadOnly())return;setInstrOpen(true);}}
             title="Type the sequence in words — “zone 3 tennis linked to the transformer demolition, stabilized earth after zone 3…” — then check the proposed links and moves before applying"
             style={{padding:"2px 8px",fontSize:10,fontWeight:700}}>✎ Links from text</button>}
@@ -3327,7 +3506,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 {advanced&&<th title="Quantity of work on the row — typed here or in the side panel" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Qty</th>}
                 {advanced&&<th title={"Quantity divided by the working weeks of the row, and by "+WORK_DAYS_PER_WEEK+" working days a week"} style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888",borderRight:"1.5px solid #e8e6df"}}>Rate</th>}
                 {wks.map(function(wk){
-                  var isCur=(function(){var d=new Date(wk);var e=new Date(wk);e.setDate(e.getDate()+6);return wk<=todayStr&&todayStr<=toISO(e);})();
+                  var isCur=wk<=todayStr&&todayStr<=addCalDays(wk,6);
                   var hol=isHoliday(wk);
                   return <th key={wk} data-wk={wk} onClick={function(){toggleHolidayWeek(wk);}}
                     title={hol?"Neutralised week (holiday/shutdown) — click to re-activate":"Click to neutralise this week (holiday/shutdown)"}
@@ -3387,7 +3566,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     {advanced&&<td style={{borderBottom:"1px dashed #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>}
                     {advanced&&<td style={{borderBottom:"1px dashed #e8e6df",borderRight:"1.5px solid #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>}
                     {wks.map(function(w){
-                      var hit=pq.due&&w<=pq.due&&pq.due<=(function(){var d=new Date(w);d.setDate(d.getDate()+6);return toISO(d);})();
+                      var hit=pq.due&&w<=pq.due&&pq.due<=addCalDays(w,6);
                       return <td key={w} style={{borderBottom:"1px dashed #e8e6df",borderLeft:"1px solid #f5f4f0",height:14,textAlign:"center",fontSize:8,
                         background:ok?"#f3f8f3":"#fffdf3",color:ok?"#1e6b3a":"#b35c00"}}>{hit?"◆":""}</td>;
                     })}
@@ -4268,7 +4447,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   background:pr.late?"#fbe6e8":pr.tight?"#faf3e0":"#e6f2e9",
                   color:pr.late?"#b3302a":pr.tight?"#b45309":"#1e6b3a"}}>
                   {pr.late?"🔴 Delivery "+fmtDate(pr.delivery)+" — "+pr.weeksLate+" week"+(pr.weeksLate!==1?"s":"")+" after the planned start"
-                    :pr.tight?"🟡 Delivery "+fmtDate(pr.delivery)+" — same week as the start, no margin"
+                    :pr.tight?"🟡 Delivery "+fmtDate(pr.delivery)+" — under 3 weeks of float ("+pr.gapDays+" d to the end of the start week)"
                     :"🟢 Delivery "+fmtDate(pr.delivery)+" — ahead of the planned start"}
                 </div>;
               })()}
