@@ -340,7 +340,31 @@ function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
 // ---- Shared by the screen, the print and the Excel export -----------------------------------
 // The status families shown as KPI tiles and used as filters. "Late" also takes a package
 // whose forecast delivery lands after its latest delivery date.
+// Starts on site within 21 days (and not delivered yet): the packages to watch this month.
+var PP_SOON_DAYS=21;
+function ppStartsSoon(p,now){
+  now=now||today();
+  return !!p.need&&p.need>=now&&p.need<=addCalDays(now,PP_SOON_DAYS)&&!p.deliveredOn&&p.status!=="cancelled";
+}
+// Open actions of every package, read once per render: Blocking points (tag "Blocking Point")
+// and the other open actions = next steps, soonest due first.
+function ppActionsIndex(tasks){
+  var m={};
+  (tasks||[]).forEach(function(t){
+    if(!t||!t.tenderRef||t.status==="done")return;
+    var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[]});
+    ((t.tags||[]).indexOf("Blocking Point")>=0?e.block:e.next).push(t);
+  });
+  function byDue(a,b){var x=a.due||"9999",y=b.due||"9999";return x<y?-1:x>y?1:0;}
+  Object.keys(m).forEach(function(k){m[k].next.sort(byDue);m[k].block.sort(byDue);});
+  return m;
+}
+function ppActText(t){
+  var o=String(t.owner||"").split(",")[0].trim();
+  return (t.text||"")+(o?" — "+o:"")+(t.due?" ("+fmtDate(t.due)+")":"");
+}
 var PP_KPIS=[
+  {k:"start21",label:"Starts ≤ 21 d",cls:"warn",tip:"Needed on site within the next 21 days and not delivered yet: highlighted in the list"},
   {k:"late",label:"Late",cls:"bad",tip:"Next milestone past its latest date, or forecast delivery after the latest delivery date"},
   {k:"soon",label:"Due ≤ 14 d",cls:"warn",tip:"Next milestone due within 14 days"},
   {k:"ok",label:"On track",cls:"good",tip:"Next milestone more than 14 days away, or every milestone reached"},
@@ -350,6 +374,7 @@ var PP_KPIS=[
 ];
 function ppKpiOf(r,k){
   var p=r.p;
+  if(k==="start21")return ppStartsSoon(p);
   if(k==="late")return p.status==="late"||p.deliveryLate;
   if(k==="soon")return p.status==="soon"&&!p.deliveryLate;
   if(k==="ok")return (p.status==="ok"||p.status==="done")&&!p.deliveryLate;
@@ -507,7 +532,8 @@ function ppGanttHtml(model,grouped){
   }
   function row(g){
     var r=g.r,st=PP_STATUS[r.p.status];
-    var h='<div class="ppg-row"><div class="ppg-l"><span class="t">'+esc(r.td.title||"(untitled)")+'</span><span class="ppg-st" style="background:'+st.bg+';color:'+st.fg+'">'+
+    var soon=ppStartsSoon(r.p);
+    var h='<div class="ppg-row"'+(soon?' style="background:#fdf1e0"':'')+'><div class="ppg-l"'+(soon?' style="background:#fdf1e0;box-shadow:inset 3px 0 0 #b35c00"':'')+'><span class="t">'+esc(r.td.title||"(untitled)")+'</span><span class="ppg-st" style="background:'+st.bg+';color:'+st.fg+'">'+
       esc(r.p.next&&r.p.need&&r.p.status!=="past"?PP_MS_LABEL[r.p.next]:st.label)+(r.p.daysLeft!==null?' · '+ppDaysText(r.p.daysLeft):'')+'</span></div><div class="ppg-tr">';
     g.segs.forEach(function(s){h+=seg(s,st);});
     if(g.need)h+='<div class="ppg-nd" style="left:'+g.need.left.toFixed(3)+'%"></div>';
@@ -545,8 +571,9 @@ function ProcPlanGantt({vis,grouped,onNavTender}){
   var withNeed=vis.filter(function(r){return !!r.p.need;}).length;
   function row(g){
     var r=g.r,td=r.td,p=r.p,st=PP_STATUS[p.status];
-    return <div key={td.id} className="ppg-row">
-      <div className="ppg-l">
+    var soon=ppStartsSoon(p);
+    return <div key={td.id} className="ppg-row" style={soon?{background:"var(--amber-soft,#fdf1e0)"}:null}>
+      <div className="ppg-l" style={soon?{background:"var(--amber-soft,#fdf1e0)",boxShadow:"inset 3px 0 0 var(--amber,#b35c00)"}:null}>
         <span className="t" style={{cursor:onNavTender?"pointer":"default"}} title={(td.title||"")+(td.package?" · "+td.package:"")+" — open the package"}
           onClick={function(){if(onNavTender)onNavTender(td.id,"procplan");}}>{td.title||"(untitled)"}</span>
         <span className="ppg-st" style={{background:st.bg,color:st.fg}}>
@@ -598,7 +625,8 @@ function ProcPlanGantt({vis,grouped,onNavTender}){
 
 // Excel export of the rows shown (same filters, same order): one line per package, the latest
 // and actual date of every milestone, real dates so Excel can sort and filter them.
-function ppExportXlsx(vis){
+function ppExportXlsx(vis,acts){
+  acts=acts||{};
   if(!window.XLSX||!window.XLSX.utils||!window.XLSX.writeFile){safeAlert("The Excel library is not loaded.");return;}
   // Dates as Excel day numbers (formatted dd/mm/yyyy): a JS Date picks up the timezone's
   // historic offset in SheetJS (a few seconds off in Cyprus); a day number is exact everywhere.
@@ -606,7 +634,7 @@ function ppExportXlsx(vis){
   function d(v){return isValidDate(v)?{xlDate:_ppDay(v)-EPOCH}:"";}
   var head=["Package","Department","Type","Budget","Need on site","Need from","Status","Next milestone","Days left","Total lead (d)"];
   PP_MS_ORDER.forEach(function(m){if(m==="need")return;head.push(PP_MS_LABEL[m]+" — latest");head.push(PP_MS_LABEL[m]+" — actual");});
-  head.push("Forecast delivery","Delivered","Delivery late");
+  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Next steps","Blocking points");
   var aoa=[head];
   vis.forEach(function(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status];
@@ -619,7 +647,9 @@ function ppExportXlsx(vis){
       line.push(d(p.latest[m]));
       line.push(a?(a.date?d(a.date):"done"):"");
     });
-    line.push(d(p.fcDelivery),d(p.deliveredOn),p.deliveryLate?"yes":"");
+    var a=acts[td.id]||{next:[],block:[]};
+    line.push(d(p.fcDelivery),d(p.deliveredOn),p.deliveryLate?"yes":"",ppStartsSoon(p)?"yes":"",
+      [td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean).join("\n"),a.block.map(ppActText).join("\n"));
     aoa.push(line);
   });
   aoa=aoa.map(function(line,ri){return line.map(function(v,ci){if(v&&typeof v==="object"&&"xlDate" in v){dateCells.push([ri,ci]);return v.xlDate;}return v;});});
@@ -634,7 +664,8 @@ function ppExportXlsx(vis){
 // The plan of the whole project: every package, sorted by its next deadline.
 // Printable procurement plan: the rows shown on screen (same filters, same order), A4 landscape.
 // mode "timeline" prints the Gantt, otherwise the table of latest dates.
-function ppOpenReport(vis,filterLabel,mode,grouped){
+function ppOpenReport(vis,filterLabel,mode,grouped,acts){
+  acts=acts||{};
   var MS=["start","issue","approved","contract","submittals","delivered"];
   var now=today();
   function ms(p,m){
@@ -656,7 +687,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped){
     '.pp th{background:#f5f3ee;font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.03em}.pp td.t{white-space:normal;font-weight:600;min-width:150px}'+
     '.pp td.r,.pp th.r{text-align:right}.pp .pill{border-radius:4px;padding:0 5px;font-weight:700}.pp .d{font-size:8.5px;font-weight:700}'+
     '.pp .c-ok{color:#1e6b3a;font-weight:600}.pp .c-soon{color:#b35c00;font-weight:600}.pp .c-late{color:#b3302a}.pp .c-none{color:#ccc}'+
-    '.pp tr.g td{background:#fafaf8;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:9px}'+
+    '.pp tr.s21 td{background:#fdf1e0}.pp tr.s21 td.t{box-shadow:inset 3px 0 0 #b35c00}.pp td.a{white-space:normal;min-width:110px;max-width:170px;font-size:8.5px}.pp td.b{color:#b3302a;font-weight:600}.pp tr.g td{background:#fafaf8;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:9px}'+
     '.pp .leg{font-size:9px;color:#777;margin-top:8px}.pp thead{display:table-header-group}@media print{.pp tr,.pp .ppg-row{break-inside:avoid}}'+
     PP_GANTT_CSS+'.pp .ppg{min-width:0}.pp .ppg-l{flex-basis:230px;width:230px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;padding:3px 8px}'+
     '.pp .ppg-l .t{white-space:normal;flex:none;font-size:10.5px;line-height:1.2}.pp .ppg-l .ppg-st{font-size:8.5px}.pp .ppg-hd .ppg-l{flex-direction:row;align-items:center}.pp .ppg-ov{left:230px}</style><div class="pp">';
@@ -674,20 +705,24 @@ function ppOpenReport(vis,filterLabel,mode,grouped){
     openReport("Procurement plan "+now,html);
     return;
   }
-  html+='<table><thead><tr><th>Package</th><th>Department</th><th>Type</th><th class="r">Budget</th><th>Need on site</th><th>Next deadline</th>'+
+  html+='<table><thead><tr><th>Package</th><th>Department</th><th>Type</th><th class="r">Budget</th><th>Need on site</th><th>Next deadline</th><th>Next steps</th><th>Blocking points</th>'+
     MS.map(function(m){return '<th>'+esc(PP_MS_LABEL[m])+'</th>';}).join("")+'<th>Forecast delivery</th></tr></thead><tbody>';
   function line(r){
-    var td=r.td,p=r.p,st=PP_STATUS[p.status];
-    return '<tr><td class="t">'+esc(td.title||"(untitled)")+'</td><td>'+esc(td.package||"—")+'</td><td>'+esc(ppTypeLabel(ppType(td)))+'</td>'+
+    var td=r.td,p=r.p,st=PP_STATUS[p.status],soon=ppStartsSoon(p,now);
+    var a=acts[td.id]||{next:[],block:[]};
+    function li(l){return l.length?l.map(function(x){return '<div>'+esc(x)+'</div>';}).join(""):'<span class="c-none">—</span>';}
+    return '<tr'+(soon?' class="s21"':'')+'><td class="t">'+esc(td.title||"(untitled)")+(soon?'<div class="d" style="color:#b35c00">starts ≤ 21 d</div>':'')+'</td><td>'+esc(td.package||"—")+'</td><td>'+esc(ppTypeLabel(ppType(td)))+'</td>'+
       '<td class="r">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>'+
       '<td>'+(p.need?fmtDate(p.need):"—")+'</td>'+
       '<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label)+'</span>'+
         (p.daysLeft!==null?'<div class="d" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+'</td>'+
+      '<td class="a">'+li([td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean))+'</td>'+
+      '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
       MS.map(function(m){return ms(p,m);}).join("")+
       '<td'+(p.deliveryLate?' class="c-late" style="font-weight:700"':'')+'>'+(p.deliveredOn?"✓ "+fmtDate(p.deliveredOn):p.fcDelivery?fmtDate(p.fcDelivery):"—")+(p.deliveryLate?" ⚠":"")+'</td></tr>';
   }
   if(grouped)ppGroups(vis).forEach(function(g){
-    html+='<tr class="g"><td colspan="'+(7+MS.length)+'">'+esc(g.dept||"No department")+' · '+g.rows.length+' · '+ppMoney(g.rows.reduce(function(s,r){return s+ppBudget(r.td);},0))+'</td></tr>';
+    html+='<tr class="g"><td colspan="'+(9+MS.length)+'">'+esc(g.dept||"No department")+' · '+g.rows.length+' · '+ppMoney(g.rows.reduce(function(s,r){return s+ppBudget(r.td);},0))+'</td></tr>';
     g.rows.forEach(function(r){html+=line(r);});
   });
   else vis.forEach(function(r){html+=line(r);});
@@ -695,7 +730,57 @@ function ppOpenReport(vis,filterLabel,mode,grouped){
     '✓ = reached (green on time, orange later than the latest date). Highlighted = next deadline. Red = latest date already past. A package whose need date is past is "Started" and never flagged late.</div></div>';
   openReport("Procurement plan "+now,html);
 }
-function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
+// One cell of the Next steps / Blocking points columns: the open actions of the package
+// (the same actions as everywhere else — Actions, the package sheet, the zone), ticked off
+// here, and a box to add one. Next steps also shows the package's own "Next Step" text.
+function PpActionsCell({td,list,kind,tasks,saveTasks}){
+  const [open,setOpen]=useState(false);
+  const [txt,setTxt]=useState("");
+  const [all,setAll]=useState(false);
+  var ro=isReadOnly()||!saveTasks;
+  var now=today();
+  var block=kind==="block";
+  var shown=all?list:list.slice(0,3);
+  function add(){
+    var v=txt.trim();if(!v||blockIfReadOnly())return;
+    saveTasks([newTask({text:v,tenderRef:td.id,package:td.package||"",tags:block?["Blocking Point"]:[],
+      importance:block?3:2,urgence:block?3:2,owner:td.ownerTender||"",note:"From the Procurement plan"})].concat(tasks||[]));
+    setTxt("");setOpen(false);
+  }
+  function close(t){
+    if(blockIfReadOnly())return;
+    saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,{status:"done",completedAt:now}));}));
+  }
+  var col=block?"#b3302a":"#16181d";
+  return <div style={{minWidth:190,maxWidth:280,fontSize:11,lineHeight:1.35}}>
+    {!block&&td.nextStep&&<div title="Next Step of the package (Follow-up)" style={{color:"#4a4740",fontStyle:"italic",marginBottom:3,whiteSpace:"pre-wrap"}}>{td.nextStep}</div>}
+    {shown.map(function(t){
+      var late=t.due&&t.due<now;
+      return <div key={t.id} style={{display:"flex",gap:5,alignItems:"flex-start",marginBottom:2}}>
+        {!ro&&<input type="checkbox" checked={false} onChange={function(){close(t);}} title="Mark done" style={{width:12,height:12,margin:"2px 0 0",flex:"0 0 auto"}}/>}
+        {ro&&<span style={{color:col}}>{block?"■":"•"}</span>}
+        <span style={{color:block?col:"inherit",fontWeight:block?600:400}} title={ppActText(t)+(t.note?"\n"+t.note:"")}>
+          {t.text||"(no text)"}
+          {t.owner&&<span style={{color:"#9b968b",fontWeight:400}}> · {String(t.owner).split(",")[0]}</span>}
+          {t.due&&<span style={{color:late?"#b3302a":"#9b968b",fontWeight:late?700:400,fontFamily:"var(--font-mono)",fontSize:10}}> {fmtDate(t.due)}</span>}
+        </span>
+      </div>;
+    })}
+    {list.length>3&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit"}}>
+      {all?"show less":"+ "+(list.length-3)+" more"}</button>}
+    {ro&&!list.length&&!(!block&&td.nextStep)&&<span style={{color:"#ccc"}}>—</span>}
+    {!ro&&(open
+      ?<div style={{display:"flex",gap:3,marginTop:3}}>
+        <input type="text" autoFocus value={txt} onChange={function(e){setTxt(e.target.value);}}
+          onKeyDown={function(e){if(e.key==="Enter")add();if(e.key==="Escape"){setOpen(false);setTxt("");}}}
+          placeholder={block?"Blocking point…":"Next step…"} style={{flex:1,minWidth:0,fontSize:11,padding:"2px 6px"}}/>
+        <button className="btn btn-sm" onClick={add} disabled={!txt.trim()} style={{padding:"1px 7px",fontSize:10.5}}>Add</button>
+      </div>
+      :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":"Add a next step (an action linked to this package)"}
+        style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ add</button>)}
+  </div>;
+}
+function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,onNavZone}){
   function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   const [q,setQ]=useState("");
@@ -733,6 +818,8 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
     return true;
   }),sort);
   var budgetVis=vis.reduce(function(s,r){return s+ppBudget(r.td);},0);
+  var acts=ppActionsIndex(tasks);
+  var NOACT={next:[],block:[]};
   function upd(td,patch){if(blockIfReadOnly())return;saveTenders((tenders||[]).map(function(t){return t.id===td.id?Object.assign({},t,patch):t;}));}
   var MS=["start","issue","approved","contract","submittals","delivered"];
   var HZ=[["all","Any date"],["4w","Next deadline ≤ 4 weeks"],["8w","≤ 8 weeks"]];
@@ -750,9 +837,14 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
   }
   function line(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status];
-    return <tr key={td.id}>
-      <td><span style={{fontWeight:600,cursor:onNavTender?"pointer":"default",color:"var(--ink,#16181d)"}} onClick={function(){if(onNavTender)onNavTender(td.id,"procplan");}}
-        title="Open the package">{td.title||"(untitled)"}</span></td>
+    var soon=ppStartsSoon(p,now),a=acts[td.id]||NOACT;
+    var dLeft=soon?Math.round((parseISODate(p.need)-parseISODate(now))/86400000):null;
+    // starts within 21 days: amber background and rule on the left, days to go under the name
+    var hl=soon?{background:"var(--amber-soft,#fdf1e0)"}:null;
+    return <tr key={td.id} style={hl}>
+      <td style={soon?{boxShadow:"inset 3px 0 0 var(--amber,#b35c00)"}:null}><span style={{fontWeight:600,cursor:onNavTender?"pointer":"default",color:"var(--ink,#16181d)"}} onClick={function(){if(onNavTender)onNavTender(td.id,"procplan");}}
+        title="Open the package">{td.title||"(untitled)"}</span>
+        {soon&&<div style={{fontSize:10,fontWeight:700,color:"var(--amber,#b35c00)",marginTop:2}}>starts on site {dLeft===0?"today":"in "+dLeft+" d"}</div>}</td>
       <td style={{fontSize:11,color:"#6f6b62"}}>{td.package||"—"}</td>
       <td><select value={ppType(td)} disabled={ro} onChange={function(e){upd(td,{procType:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}>
         {PP_TYPES.map(function(t){return <option key={t.k} value={t.k}>{t.label}</option>;})}</select></td>
@@ -774,22 +866,24 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
           next task {fmtDate(p.need)}</div>}</td>
       <td><span className="badge" style={{background:st.bg,color:st.fg}}>{p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label}</span>
         {p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}</td>
+      <td style={{verticalAlign:"top"}}><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks}/></td>
+      <td style={{verticalAlign:"top"}}><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>
       {MS.map(function(m){return <td key={m}><PpMsCell p={p} m={m}/></td>;})}
       <td style={{fontSize:11,whiteSpace:"nowrap",color:p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":p.deliveredOn?"#1e6b3a":"#6f6b62",fontWeight:p.deliveryLate||p.deliveryTight||p.deliveredOn?700:400}}
         title={p.deliveredOn?"Every purchase of the package is delivered":p.deliveryLate?"Forecast delivery after the week the package is needed on site ("+fmtDate(p.need)+")":p.deliveryTight?"Before the need on site, but after the latest delivery date "+fmtDate(p.latest.delivered)+": the float is used up":""}>
         {p.deliveredOn?"✓ "+fmtDate(p.deliveredOn):p.fcDelivery?fmtDate(p.fcDelivery):"—"}{p.deliveryLate?" ⚠":""}</td>
     </tr>;
   }
-  var nCols=7+MS.length;
+  var nCols=9+MS.length;
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Procurement plan</div>
         <div className="page-sub">Every package with its latest dates, worked back from the need on site through the lead time of each step</div></div>
       <span style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
         <button className="btn" disabled={!vis.length} title="Excel file of the packages shown (current filters and order): latest and actual date of every milestone"
-          onClick={function(){ppExportXlsx(vis);}}>Excel</button>
+          onClick={function(){ppExportXlsx(vis,acts);}}>Excel</button>
         <button className="btn" disabled={!vis.length} title={"Printable A4 landscape report of the packages shown (current filters)"+(mode==="timeline"?", as the timeline":", as the table")}
-          onClick={function(){ppOpenReport(vis,filterLabel(),mode,grouped);}}>Print</button>
+          onClick={function(){ppOpenReport(vis,filterLabel(),mode,grouped,acts);}}>Print</button>
         {!ro&&<button className="btn btn-gold" onClick={function(){setPaste(true);}}>Paste list from Excel</button>}
       </span>
     </div>
@@ -836,6 +930,8 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
           {th("title","Package",{minWidth:200})}{th("dept","Department")}{th("type","Type",{minWidth:130})}{th("budget","Budget",{textAlign:"right"})}
           {th("need","Need on site",{minWidth:120},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked")}
           {th("deadline","Next deadline",{minWidth:150},"Next milestone not reached yet and the days left to its latest date")}
+          <th title="Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one.">Next steps</th>
+          <th title="Open actions tagged Blocking Point linked to the package — including the automatic “Procurement late” ones from the schedule">Blocking points</th>
           {MS.map(function(m){return <th key={m} style={{minWidth:86}} title={"Latest date to reach: "+PP_MS_LABEL[m]}>{PP_MS_LABEL[m]}</th>;})}
           <th style={{minWidth:100}} title="Forecast delivery of the package (fabrication cascade) against the latest delivery date; ✓ once every purchase is delivered">Forecast delivery</th>
         </tr></thead>
