@@ -346,12 +346,15 @@ function ppStartsSoon(p,now){
   now=now||today();
   return !!p.need&&p.need>=now&&p.need<=addCalDays(now,PP_SOON_DAYS)&&!p.deliveredOn&&p.status!=="cancelled";
 }
-// Open actions of every package, read once per render: Blocking points (tag "Blocking Point")
-// and the other open actions = next steps, soonest due first.
+// Open MANUAL actions of every package, read once per render: Blocking points (tag "Blocking
+// Point") and the other open ones = next steps, soonest due first. Actions the app creates by
+// itself (addedBy "System": "Procurement late", document flow, SD / MAR preparation…) are left
+// out: these two columns are what people decided to do.
+function ppIsManualAction(t){return !!t&&t.addedBy!=="System"&&!t.autoKey;}
 function ppActionsIndex(tasks){
   var m={};
   (tasks||[]).forEach(function(t){
-    if(!t||!t.tenderRef||t.status==="done")return;
+    if(!t||!t.tenderRef||t.status==="done"||!ppIsManualAction(t))return;
     var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[]});
     ((t.tags||[]).indexOf("Blocking Point")>=0?e.block:e.next).push(t);
   });
@@ -930,8 +933,8 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
           {th("title","Package",{minWidth:200})}{th("dept","Department")}{th("type","Type",{minWidth:130})}{th("budget","Budget",{textAlign:"right"})}
           {th("need","Need on site",{minWidth:120},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked")}
           {th("deadline","Next deadline",{minWidth:150},"Next milestone not reached yet and the days left to its latest date")}
-          <th title="Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one.">Next steps</th>
-          <th title="Open actions tagged Blocking Point linked to the package — including the automatic “Procurement late” ones from the schedule">Blocking points</th>
+          <th title="Manual open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Automatic actions are not shown. Tick to close, + add to create one.">Next steps</th>
+          <th title="Manual open actions tagged Blocking Point linked to the package. Automatic actions (e.g. “Procurement late”) are not shown. Tick to close, + add to create one.">Blocking points</th>
           {MS.map(function(m){return <th key={m} style={{minWidth:86}} title={"Latest date to reach: "+PP_MS_LABEL[m]}>{PP_MS_LABEL[m]}</th>;})}
           <th style={{minWidth:100}} title="Forecast delivery of the package (fabrication cascade) against the latest delivery date; ✓ once every purchase is delivered">Forecast delivery</th>
         </tr></thead>
