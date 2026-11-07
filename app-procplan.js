@@ -109,7 +109,10 @@ function ppPlan(td,now){
   now=now||today();
   var leads=ppLeads(td);
   var total=PP_STEPS.reduce(function(n,s){return n+leads[s.k].days;},0);
-  var need=isValidDate(td.startOnSite)?td.startOnSite:"";
+  // need on site: Target start, or — once that is past — the next linked schedule task not
+  // started yet (tenderNeedDate): the rooms still to come keep the package under watch.
+  var nd=tenderNeedDate(td,now);
+  var need=isValidDate(nd.date)?nd.date:"";
   var latest={};
   if(need){
     latest.need=need;
@@ -143,9 +146,14 @@ function ppPlan(td,now){
     status=daysLeft<0?"late":daysLeft<=14?"soon":"ok";
   }else if(need)status="done";
   var deliveredOn=act.delivered&&isValidDate(act.delivered.date)?act.delivered.date:"";
-  return {need:need,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  // Same rule as the schedule and the Package list: late when the forecast lands after the
+  // end of the need week. Landing after the latest delivery date but before that only eats
+  // the float (deliveryTight).
+  var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
+  return {need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
-    deliveryLate:!past&&!deliveredOn&&!!(fcDelivery&&latest.delivered&&fcDelivery>latest.delivered)};
+    deliveryLate:!!(dst&&dst.late),
+    deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
 }
 const PP_STATUS={
   late:{label:"Late",fg:"#b3302a",bg:"#fbe6e8"},
@@ -759,12 +767,16 @@ function ProcPlanView({tenders,saveTenders,packages,onNavTender,onNavZone}){
         return <input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
           title="No schedule task is linked to this package: set the date by hand. As soon as a task is linked, the schedule takes over."
           onChange={function(e){upd(td,{startOnSite:e.target.value});}} style={{fontSize:11,padding:"2px 5px"}}/>;
-      })()}</td>
+      })()}
+        {p.needNext&&p.needTask&&<div style={{fontSize:10,color:"#b35c00",marginTop:2,whiteSpace:"nowrap",cursor:"pointer"}}
+          onClick={function(){openScheduleStart(p.needTask,td,onNavZone);}}
+          title={"The first task has started; the next linked task not started yet is \""+(p.needTask.r.label||"task")+"\" in "+(p.needTask.sc.zone||"?")+" — the plan is worked back from it. Click to open it."}>
+          next task {fmtDate(p.need)}</div>}</td>
       <td><span className="badge" style={{background:st.bg,color:st.fg}}>{p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label}</span>
         {p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}</td>
       {MS.map(function(m){return <td key={m}><PpMsCell p={p} m={m}/></td>;})}
-      <td style={{fontSize:11,whiteSpace:"nowrap",color:p.deliveryLate?"#b3302a":p.deliveredOn?"#1e6b3a":"#6f6b62",fontWeight:p.deliveryLate||p.deliveredOn?700:400}}
-        title={p.deliveredOn?"Every purchase of the package is delivered":p.deliveryLate?"Forecast delivery after the latest delivery date "+fmtDate(p.latest.delivered):""}>
+      <td style={{fontSize:11,whiteSpace:"nowrap",color:p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":p.deliveredOn?"#1e6b3a":"#6f6b62",fontWeight:p.deliveryLate||p.deliveryTight||p.deliveredOn?700:400}}
+        title={p.deliveredOn?"Every purchase of the package is delivered":p.deliveryLate?"Forecast delivery after the week the package is needed on site ("+fmtDate(p.need)+")":p.deliveryTight?"Before the need on site, but after the latest delivery date "+fmtDate(p.latest.delivered)+": the float is used up":""}>
         {p.deliveredOn?"✓ "+fmtDate(p.deliveredOn):p.fcDelivery?fmtDate(p.fcDelivery):"—"}{p.deliveryLate?" ⚠":""}</td>
     </tr>;
   }

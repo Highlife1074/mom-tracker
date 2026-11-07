@@ -1509,17 +1509,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var proc=null;
     try{proc=calcProcurement(td);}catch(e){return null;}
     if(!proc||!proc.deliveryDate)return null;
-    // start week = Monday; the task can start any day that week, so compare against the Sunday
-    var wkEnd=addCalDays(row.startWeek,6);
-    // RULE (single source of truth for the two markers):
+    // RULE shared with the Package list, Proc. flow, Proc. plan and the reports (procDeliveryState):
     //   RED    delivery lands AFTER the task's start week ends  -> the task cannot start
     //   ORANGE delivery lands within the 21 days BEFORE that     -> it starts, but with no float
     //   nothing at all if the material arrives more than 3 weeks early.
-    var DAY=1000*60*60*24;
-    var gapDays=Math.round((parseISODate(wkEnd)-parseISODate(proc.deliveryDate))/DAY); // >0 = delivered early
-    var late=gapDays<0;
-    var tight=!late&&gapDays<21;
-    var weeksLate=late?Math.ceil(-gapDays/7):0;
+    var ds=procDeliveryState(proc.deliveryDate,row.startWeek);
+    if(!ds)return null;
+    var gapDays=ds.gap,late=ds.late,tight=ds.tight,weeksLate=ds.weeksLate;
     // First Monday of the schedule on or after the delivery date — the week the task
     // could realistically start if the tender keeps its current forecast.
     var feasible="";
