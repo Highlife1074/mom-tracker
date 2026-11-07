@@ -51,7 +51,7 @@ const THEORETICAL_CHAIN=[
 ];
 function addCalDays(dateStr,days){
   if(!isValidDate(dateStr))return "";
-  var d=new Date(dateStr);
+  var d=parseISODate(dateStr);   // local midnight: new Date("YYYY-MM-DD") is UTC and slips a day west of Greenwich
   d.setDate(d.getDate()+Number(days||0));
   return toISO(d);
 }
@@ -2709,9 +2709,53 @@ function TenderStageCell({td}){
 }
 // Late delivery that still matters: the forecast delivery is after the start on site AND that
 // start is still to come. A package already started is the past: it is no longer flagged.
+// ONE rule for "procurement late", used by the schedule (per task), the Package list, Proc.
+// flow, Proc. plan and the reports: the delivery is late when it lands after the end of the
+// week the work starts (a crew can start any day of its start week), tight when it leaves
+// under 21 days to that Sunday.
+function procWeekEnd(iso){
+  if(!isValidDate(iso))return "";
+  var d=parseISODate(iso),dow=d.getDay();
+  return addCalDays(iso,dow===0?0:7-dow);
+}
+function procDeliveryState(delivery,need){
+  if(!isValidDate(delivery)||!isValidDate(need))return null;
+  var end=procWeekEnd(need);
+  var gap=Math.round((parseISODate(end)-parseISODate(delivery))/86400000);   // > 0 = early
+  return {gap:gap,late:gap<0,tight:gap>=0&&gap<21,weeksLate:gap<0?Math.ceil(-gap/7):0,weekEnd:end};
+}
+// The date the package is needed on site. "The past is the past": a need date already past
+// means the work started — unless linked schedule tasks have not started yet; the earliest of
+// those is then the need (a package not awarded while its first room has started is still
+// late for the next rooms).
+function tenderScheduleNextStart(td,now){
+  if(!td)return null;
+  now=now||today();
+  var best=null;
+  (window._ppSchedules||[]).forEach(function(sc){
+    (sc.rows||[]).forEach(function(r){
+      if(r.tenderRef!==td.id||!r.startWeek||r.startWeek<now)return;
+      var c=r.cells||{};
+      if(Object.keys(c).some(function(w){return c[w]==="actual"||c[w]==="both";}))return;
+      if(!best||r.startWeek<best.r.startWeek)best={sc:sc,r:r};
+    });
+  });
+  return best;
+}
+function tenderNeedDate(td,now){
+  now=now||today();
+  var sos=isValidDate(td&&td.startOnSite)?td.startOnSite:"";
+  if(!sos||sos>=now)return {date:sos,next:false};
+  var nx=tenderScheduleNextStart(td,now);
+  return nx?{date:nx.r.startWeek,next:true,task:nx}:{date:sos,next:false};
+}
 function tenderWillStartLate(td,p,now){
   now=now||today();
-  return !!p&&isValidDate(p.deliveryDate)&&isValidDate(td.startOnSite)&&td.startOnSite>=now&&p.deliveryDate>td.startOnSite;
+  if(!p||!isValidDate(p.deliveryDate))return false;
+  var need=tenderNeedDate(td,now);
+  if(!need.date||need.date<now)return false;   // the past is the past
+  var st=procDeliveryState(p.deliveryDate,need.date);
+  return !!(st&&st.late);
 }
 // Quick filters of the tenders list.
 function tenderQuick(td,k){
@@ -2946,6 +2990,12 @@ function procFlowCol(td){
 function ProcFlowView({tenders,onNavTender}){
   const [selId,setSelId]=useState("");
   const [q,setQ]=useState("");
+  // The detail card sits under the whole board: bring it into view when a card is picked.
+  const detailRef=useRef(null);
+  useEffect(function(){
+    if(!selId||!detailRef.current)return;
+    try{detailRef.current.scrollIntoView({block:"nearest",behavior:"smooth"});}catch(e){}
+  },[selId]);
   var now=today();
   var list=(tenders||[]).filter(function(t){
     if(t.cancelled)return false;
@@ -2995,7 +3045,7 @@ function ProcFlowView({tenders,onNavTender}){
     var aw=(t.awards||[]).filter(function(a){return a.subcontractor;});
     var cs=circuitState(circuitOf(t),now);
     var h3={fontSize:10.5,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"#6f6b62",margin:"12px 0 6px"};
-    return <div className="card" style={{marginTop:14}}>
+    return <div className="card" ref={detailRef} style={{marginTop:14,scrollMarginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
         <div><span style={{fontSize:11,color:"#9b968b"}}>{t.package||"—"}</span> <span style={{fontWeight:700,fontSize:15}}>{t.title}</span>
           <span style={{fontSize:11,color:"#6f6b62",marginLeft:8}}>Budget {budget?budget.toLocaleString()+" "+cur:"—"}</span></div>
@@ -3991,8 +4041,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   color:src==="manual"?"var(--blue,#0f5299)":src==="material"?"var(--gold-ink,#8a6a1e)":"var(--ink-3,#6f6b62)"}}
                   title={src==="manual"?"You typed this lead time; it overrides the materials."
                     :src==="material"?"Longest lead time among this tender's materials"
+                    :src==="plan"?"Fabrication + transport of the Procurement plan (this package's lead times, else the template of its type)"
                     :"No lead time set anywhere — 30 days assumed"}>
-                  {src==="manual"?"manual":src==="material"?"from "+(proc.leadMaterial||"material"):"default 30d"}</span>
+                  {src==="manual"?"manual":src==="material"?"from "+(proc.leadMaterial||"material"):src==="plan"?"from Proc. plan":"default 30d"}</span>
                 <span style={{display:"flex",gap:3,alignItems:"center"}}>
                   <button className={"btn btn-sm"+(src!=="manual"?" btn-pri":"")} style={{padding:"2px 9px",fontSize:10}}
                     title="Use the longest material lead time"
@@ -4108,7 +4159,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                       cls:proc.deliveryDate?"":"muted",
                       tip:proc.deliveryDate
                         ?("Fabrication launch "+fmtDate(proc.fabStart||"")+"\n+ "+proc.LEAD+" days lead time"+
-                          (proc.leadSource==="manual"?" (typed by hand)":proc.leadSource==="material"?" (longest material: "+(proc.leadMaterial||"—")+")":" (default, no lead time anywhere)")+
+                          (proc.leadSource==="manual"?" (typed by hand)":proc.leadSource==="material"?" (longest material: "+(proc.leadMaterial||"—")+")":proc.leadSource==="plan"?" (fabrication + transport of the Procurement plan)":" (default, no lead time anywhere)")+
                           "\n= delivery "+fmtDate(proc.deliveryDate))
                         :"The whole chain is computed from the ACC submittal date. Fill in the ACC/Aconex target (or its date done) in Submission steps, and this fills itself."},
                     {k:"Start",v:td.startOnSite?fmtDate(td.startOnSite):"no linked task",
@@ -5067,17 +5118,39 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
   </div>;
 }
 
+// The delivery forecast of a Package. Asked many times per render (each schedule row, each
+// line of the Package list, Proc. plan, Proc. flow, reports) for the same few Packages: the
+// answer depends only on the Package object, Settings › Durations and the day, so it is kept
+// per Package object exactly like tenderDocs (an edit replaces the object = new entry).
+// Callers only read the result; never modify it.
+var _calcProcCache={stamp:null,day:"",map:new WeakMap()};
 function calcProcurement(td){
+  if(!td||typeof td!=="object")return _calcProcurement(td||{});
+  var stamp=window._ppDurations||null,day=today();
+  if(_calcProcCache.stamp!==stamp||_calcProcCache.day!==day)_calcProcCache={stamp:stamp,day:day,map:new WeakMap()};
+  var hit=_calcProcCache.map.get(td);
+  if(!hit){hit=_calcProcurement(td);_calcProcCache.map.set(td,hit);}
+  return hit;
+}
+function _calcProcurement(td){
 
-  var matMaxLead = (td.materials||[]).reduce(function(max,mat){
+  var matMaxLead =(td.materials||[]).reduce(function(max,mat){
     var d=parseLeadDays(mat.leadTime||"");return d>max?d:max;
   },0);
 
   var manualLead = Number(td.leadTimeDays||0);
-  var LEAD = manualLead>0 ? manualLead : (matMaxLead>0 ? matMaxLead : 30);
+  // Fabrication + transport as the Procurement plan sees them (the package's own lead times,
+  // else the longest material, else the template of its type), so the forecast delivery and
+  // the plan never use two different lead times for the same package. 30 d when it gives 0
+  // (a subcontract: no fabrication of its own).
+  var planLead = (function(){try{var L=ppLeads(td);return {days:(L.fab.days||0)+(L.transport.days||0),own:L.fab.src==="pkg"||L.transport.src==="pkg"};}catch(e){return {days:0,own:false};}})();
+  var LEAD = manualLead>0 ? manualLead
+    : planLead.own&&planLead.days>0 ? planLead.days
+    : matMaxLead>0 ? matMaxLead
+    : planLead.days>0 ? planLead.days : 30;
   // Where the lead time came from, so the tender sheet can explain the delivery date
   // instead of showing a number nobody can trace.
-  var leadSource = manualLead>0 ? "manual" : (matMaxLead>0 ? "material" : "default");
+  var leadSource = manualLead>0 ? "manual" : planLead.own&&planLead.days>0 ? "plan" : (matMaxLead>0 ? "material" : planLead.days>0 ? "plan" : "default");
   var leadMaterial = null;
   (td.materials||[]).forEach(function(mat){
     if(!leadMaterial&&parseLeadDays(mat.leadTime||"")===matMaxLead&&matMaxLead>0)leadMaterial=mat;
@@ -5104,7 +5177,7 @@ function calcProcurement(td){
     if(!isValidDate(dateStr)) return "";
     var n=Number(days);
     if(!isFinite(n)) return "";
-    var d = new Date(dateStr);
+    var d = parseISODate(dateStr);
     d.setDate(d.getDate()+n);
     return toISO(d);
   }
@@ -5137,11 +5210,14 @@ function calcProcurement(td){
 
   steps.push({key:"accSub", label:"ACC Submittal", date:accSubmittal, done:accDoneActual, duration:null, manual:true, note:accDoneActual?"From 'Date done' of ACC step":"Provisional — from ACC target date (not yet submitted)"});
 
-  var accApprTargetAuto = addWorkDays(accSubmittal, getDur("accApproval"));
+  // Settings › Durations gives these in WORKING days: they follow the project calendar
+  // (Mon–Fri, public holidays, extra holidays), like the ACC clock of the documents. They
+  // used to be added as calendar days, which made every forecast 30–40 % too early.
+  var accApprTargetAuto = addWorkingDays(accSubmittal, getDur("accApproval"));
   var accApprTarget = ov.accApp||accApprTargetAuto;
   steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:14, manual:false, autoDate:accApprTargetAuto, overridden:!!(ov.accApp&&ov.accApp!==accApprTargetAuto)});
 
-    var contractTargetAuto = addWorkDays(accApproval||accApprTarget, getDur("contractSigning"));
+    var contractTargetAuto = addWorkingDays(accApproval||accApprTarget, getDur("contractSigning"));
   // La cible saisie à la main dans le tableau Contract (stepDates.contract.signedTarget)
   // est la vraie source de vérité : elle doit primer sur le calcul automatique.
   var contractTarget = _ct.signedTarget||ov.contract||contractTargetAuto;
@@ -5156,7 +5232,7 @@ function calcProcurement(td){
   if(hasSd){
 
     var sdSubDate = td.sdDone||(addWorkDays(contractDone||contractTarget, 14));
-    var sdSubTargetAuto = addWorkDays(contractDone||contractTarget, getDur("sdAfterContract"));
+    var sdSubTargetAuto = addWorkingDays(contractDone||contractTarget, getDur("sdAfterContract"));
     // The SD panel's own Target date takes priority over the computed one — a manual entry there
     // is a commitment, so the whole timeline downstream is rebuilt from it.
     // With transmissions, the shop drawings are approved once the LAST one is: the cascade
@@ -5173,7 +5249,7 @@ function calcProcurement(td){
       overridden:!_sdPanel&&!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
       fromSdPanel:!!_sdPanel});
 
-    var sdAppTargetAuto = addWorkDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
+    var sdAppTargetAuto = addWorkingDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
     var sdAppTarget = ov.sdApp||sdAppTargetAuto;
     steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
       review:td.sdReview||"", autoDate:sdAppTargetAuto, overridden:!!(ov.sdApp&&ov.sdApp!==sdAppTargetAuto)});
@@ -5186,7 +5262,7 @@ function calcProcurement(td){
       var _back=isValidDate(sdBack.returned)?sdBack.returned:(td.sdApprovalDone||today());
       var _rs=addWorkDays(_back,14);
       if(_rs<today())_rs=addWorkDays(today(),7);
-      var _ra=addWorkDays(_rs,getDur("sdApproval"));
+      var _ra=addWorkingDays(_rs,getDur("sdApproval"));
       steps.push({key:"sdResubBack", label:"SD Resubmission (returned "+sdBack.code+")", date:_rs, done:"", duration:14, manual:false, sd:true});
       steps.push({key:"sdReappBack", label:"SD Approval R"+((sdBack.rev||0)+1), date:_ra, done:"", duration:getDur("sdApproval"), manual:false, sd:true});
       lastSdDate=_ra;
@@ -5292,10 +5368,10 @@ function calcProcurement(td){
   var procStart = "";
   var totalDays = steps.filter(function(s){return s.duration;}).reduce(function(a,s){return a+(s.duration||0);},0) + LEAD;
   if(startOnSite){
-    var sos = new Date(startOnSite);
-    var del = deliveryDate ? new Date(deliveryDate) : null;
+    var sos = parseISODate(startOnSite);
+    var del = deliveryDate ? parseISODate(deliveryDate) : null;
     margin = del ? Math.round((sos - del)/(1000*60*60*24)) : null;
-    var ps = new Date(startOnSite);
+    var ps = parseISODate(startOnSite);
     ps.setDate(ps.getDate() - totalDays);
     procStart = toISO(ps);
   }

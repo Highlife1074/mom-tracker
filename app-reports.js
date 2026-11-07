@@ -87,8 +87,8 @@ function readinessStarting(zone,schedules,win,tenders){
 function readinessDeliveryFloat(r,td){
   var proc=(function(){try{return calcProcurement(td)||{};}catch(e){return{};}})();
   if(!proc.deliveryDate||!r.startWeek)return null;
-  var gap=Math.round((parseISODate(addCalDays(r.startWeek,6))-parseISODate(proc.deliveryDate))/86400000);
-  return isFinite(gap)?{delivery:proc.deliveryDate,gap:gap}:null;
+  var ds=procDeliveryState(proc.deliveryDate,r.startWeek);
+  return ds?{delivery:proc.deliveryDate,gap:ds.gap}:null;
 }
 function readinessPrefill(r,tenders){
   var out={};
@@ -379,8 +379,9 @@ function buildProcurementReport(tenders,tasks,packages,opts){
       // Float = days between the delivery forecast and the start on site. Under three weeks
       // is the same warning the schedule shows; negative means the crew arrives first.
       var floatTxt='—',rowStyle='',floatCell='<td>—</td>';
-      if(proc.deliveryDate&&td.startOnSite){
-        var gap=Math.round((new Date(td.startOnSite)-new Date(proc.deliveryDate))/86400000);
+      var _ds=procDeliveryState(proc.deliveryDate,td.startOnSite);
+      if(_ds){
+        var gap=_ds.gap;
         if(gap<0){floatCell='<td><span class="pill red">'+(-gap)+'d LATE</span></td>';rowStyle=' style="background:#fdeced"';}
         else if(gap<21){floatCell='<td><span class="pill amb">'+gap+'d</span></td>';rowStyle=' style="background:#fdf6ec"';}
         else floatCell='<td><span class="pill grn">'+gap+'d</span></td>';
