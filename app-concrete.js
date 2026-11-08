@@ -395,7 +395,7 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
   return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">🧱 Concrete</div>
+        <div className="page-title">Concrete</div>
         <div className="page-sub">Theoretical quantities per WBS and per type, against what is really poured. Curve, variances in total and per WBS, and the quantities still to come.</div>
       </div>
       {!edit&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Concrete editor”"}</span>}

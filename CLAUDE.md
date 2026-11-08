@@ -123,6 +123,14 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
   `--ink` est un marine très sombre. Chaque section a une couleur d'accent discrète (`color` dans `NAV_SECTIONS` →
   variable `--sec` : étiquette et onglet actif de la barre du haut, titres du menu téléphone). Les couleurs de statut
   (`--red`, `--amber`, `--green`, `--blue`) ne changent pas. Icônes en couleur (plus de filtre gris).
+- **En-tête de page commun** : `.page-hdr` = titre `.page-title` (sans emoji : l'icône est dans l'onglet) + `.page-sub`
+  à gauche, actions à droite dans `.page-actions` (boutons secondaires d'abord, le bouton principal marine en dernier),
+  filet en dessous. Pas de marge propre à une vue (`.content` gère le cadre).
+- **Terminologie dans les filtres et colonnes** : « Department » pour `package` / `pp_packages`, « Package » pour un tender.
+- **Filtres de la vue Actions** : barre d'usage courant (recherche, statut, Blocking / Top Mgmt / Overdue, Info) +
+  panneau « ⚙ Filters » (département, package, sous-traitant, CC, score, added by, owners, tags) ; le bouton affiche le
+  nombre de filtres actifs du panneau, listés en pastilles quand il est fermé ; ouvert / fermé en localStorage
+  `pp_actions_filters_open`.
 - Rapports imprimables : HTML autonome ouvert dans un nouvel onglet, imprimé via le navigateur.
 - Les fichiers sont gros (jusqu'à ~430 KB) : chercher avec grep plutôt que tout lire.
 

@@ -3102,9 +3102,9 @@ function ProcFlowView({tenders,onNavTender}){
   }
 
   return <div>
-    <div className="page-header" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10,marginBottom:12}}>
-      <div><div className="page-title">Procurement flow</div><div className="page-sub">Every live tender, by package and by stage. Click a card for its results and its contract circuit.</div></div>
-      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Tender, package, subcontractor…" style={{width:240,padding:"5px 10px",fontSize:12}}/>
+    <div className="page-hdr">
+      <div><div className="page-title">Procurement flow</div><div className="page-sub">Every live package, by department and by stage. Click a card for its results and its contract circuit.</div></div>
+      <div className="page-actions"><input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Package, department, subcontractor…" style={{width:240,padding:"5px 10px",fontSize:12}}/></div>
     </div>
     {list.length===0
       ?<div className="empty"><div className="empty-ico">🧭</div><div className="empty-txt">No live tender{q?" matches this search":""}.</div></div>
@@ -4533,14 +4533,16 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Packages</div><div className="page-sub">Submissions, contracts and addendums — by department</div></div>
-      <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
-      <button className="btn btn-sm" onClick={function(){setShowPrint(true);}} title="Choose the sections to print" style={{marginLeft:"auto"}}>Print</button>
-      {(function(){
-        var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
-        return <button className="btn btn-sm" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
-          style={n?{borderColor:"#ecc3c7",color:"#b3302a"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
-      })()}
-      <button className="btn btn-gold" onClick={openNew}>＋ New Package</button>
+      <div className="page-actions">
+        {(function(){
+          var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
+          return <button className="btn" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
+            style={n?{borderColor:"#ecc3c7",color:"#b3302a"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
+        })()}
+        <button className="btn" onClick={function(){setShowPrint(true);}} title="Choose the sections to print">Print</button>
+        <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
+        <button className="btn btn-gold" onClick={openNew}>＋ New Package</button>
+      </div>
     </div>
     {showPrint&&<TenderPrintModal onClose={function(){setShowPrint(false);}}
       onPrint={function(o){setShowPrint(false);setTimeout(function(){tenderPrint(o);},50);}}/>}
@@ -4965,7 +4967,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Subcontractors</div>
           <select value={sidebarPkg||"all"} onChange={function(e){setSidebarPkg(e.target.value);}} style={{width:"100%",padding:"3px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",background:"#fafaf8"}}>
-            <option value="all">All packages</option>
+            <option value="all">All departments</option>
             {(pkgs||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
           </select>
         </div>
@@ -5068,7 +5070,7 @@ function ContractorsView({contractors,saveContractors,packages,people,tasks,tend
     {importUI}
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search..." style={{width:180,padding:"5px 10px",fontSize:12}}/>
-      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All packages</button>
+      <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All departments</button>
       {allPkgs.map(function(p){return <button key={p} className={"fchip"+(pkgFilter===p?" on":"")} onClick={function(){setPkgFilter(pkgFilter===p?"all":p);}}>{p}</button>;})}
       {(searchQ||pkgFilter!=="all")&&<button className="btn btn-sm" onClick={function(){setSearchQ("");setPkgFilter("all");}}>✕ Reset</button>}
     </div>
@@ -6195,7 +6197,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
         <div style={{padding:"8px 10px",borderBottom:"1.5px solid #e8e6df"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginBottom:4}}>Contracts</div>
           <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"100%",padding:"3px 5px",fontSize:10,border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",background:"#fafaf8"}}>
-            <option value="all">All packages</option>
+            <option value="all">All departments</option>
             {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
           </select>
         </div>
@@ -6302,7 +6304,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <button className="btn" onClick={function(){setShowImport(true);}} title="Paste the data Claude extracted from a signed contract or addendum">Import</button>
-        <select id="new-contract-ctr" style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <select id="new-contract-ctr" style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
           <option value="">Select subcontractor…</option>
           {(contractors||[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
         </select>
@@ -6326,7 +6328,7 @@ function ContractsView({contractors,saveContractors,tenders,packages,saveTasks,t
         // if the selected subcontractor has no contract in the new package, clear it
         if(fCtr!=="all"&&newPkg!=="all"){var ctr=(contractors||[]).find(function(c){return c.name===fCtr;});if(ctr&&!(ctr.contracts||[]).some(function(ct){return ct.package===newPkg;}))setFCtr("all");}
       }} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All packages</option>
+        <option value="all">All departments</option>
         {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
       {(q||fCtr!=="all"||fPkg!=="all")&&<button className="btn btn-sm" onClick={function(){setQ("");setFCtr("all");setFPkg("all");}}>✕ Reset</button>}
@@ -6523,7 +6525,7 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
   return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">🗂️ Departments</div>
+        <div className="page-title">Departments</div>
         <div className="page-sub">{shown.length} departments · live status from packages, contracts, quality docs & actions</div>
       </div>
       <button className={"fchip"+(fOnlyIssues?" on":"")} onClick={function(){setFOnlyIssues(!fOnlyIssues);}}>⚠️ Issues only</button>
@@ -7079,10 +7081,10 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
   var allOwners=[...new Set(allDocs.map(function(d){return d.owner;}).filter(Boolean))].sort();
   var allTenders=[...new Set(allDocs.map(function(d){return d.tenderRef;}).filter(Boolean))].map(function(id){return(tenders||[]).find(function(t){return t.id===id;});}).filter(Boolean);
 
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+  return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">📬 Client Follow-up</div>
+        <div className="page-title">Client Follow-up</div>
         <div className="page-sub">Everything currently with the client — RFI, FCR, ACC/ACONEX, MAR, MSS, ITP, WMS, SD, Contract docs</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -7098,19 +7100,19 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
       <button className={"fchip"+(fScope==="overdue"?" on":"")} onClick={function(){setFScope("overdue");}} style={fScope==="overdue"?{borderColor:"#b3302a",background:"#b3302a",color:"#fff"}:{}}>⚠️ Overdue</button>
       <button className={"fchip"+(fScope==="withclient"?" on":"")} onClick={function(){setFScope("withclient");}} style={fScope==="withclient"?{borderColor:"#0f5299",background:"#0f5299",color:"#fff"}:{}}>📬 With client</button>
       <button className={"fchip"+(fScope==="all"?" on":"")} onClick={function(){setFScope("all");}}>All</button>
-      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All stages</option>
         {STAGES.map(function(s){return <option key={s.key} value={s.key}>{s.label}</option>;})}
       </select>
-      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All packages</option>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All departments</option>
         {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
-      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All tenders</option>
+      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All packages</option>
         {allTenders.sort(function(a,b){return(a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
       </select>
-      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All owners</option>
         {allOwners.map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
       </select>
@@ -7264,10 +7266,10 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
   var chipCol={late:"#b3302a",overdue:"#b3302a",returned:"#b35c00",pending:"#0f5299",none:"#6f6b62",approved:"#1e6b3a"};
   var pkgList=(packages&&packages.length?packages:[...new Set((tenders||[]).map(function(t){return t.package;}).filter(Boolean))]).slice().sort();
 
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+  return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">🛡️ WMS / ITP</div>
+        <div className="page-title">WMS / ITP</div>
         <div className="page-sub">{shown.length} document{shown.length!==1?"s":""} across {new Set(shown.map(function(r){return r.td.id;})).size} tenders · revisions are recorded in each tender, under Submission steps → WMS &amp; ITP</div>
       </div>
     </div>
@@ -7284,11 +7286,11 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
       <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Tender, package, reference…" style={{width:220,padding:"5px 10px",fontSize:12}}/>
-      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All packages</option>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All departments</option>
         {pkgList.map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
-      <select value={fKind} onChange={function(e){setFKind(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fKind} onChange={function(e){setFKind(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">WMS and ITP</option><option value="WMS">WMS only</option><option value="ITP">ITP only</option>
       </select>
       {(fPkg!=="all"||fKind!=="all"||fStatus!=="all"||q)&&
@@ -7458,10 +7460,10 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     else{setShowAddModal(true);}
   }
 
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+  return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">🏗️ Materials</div>
+        <div className="page-title">Materials</div>
         <div className="page-sub">{filtered.length} materials across {new Set(filtered.map(function(r){return r.td.id;})).size} packages — MSS / MAR edited here: status, submissions and references, dates, client codes</div>
       </div>
       <button className="btn btn-gold" onClick={handleAddClick}>＋ Add Material</button>
@@ -7491,15 +7493,15 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
       <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search material, tender…" style={{width:200,padding:"5px 10px",fontSize:12}}/>
-      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);if(fTender!=="all"){var t=(tenders||[]).find(function(x){return x.id===fTender;});if(t&&t.package!==e.target.value)setFTender("all");}}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);if(fTender!=="all"){var t=(tenders||[]).find(function(x){return x.id===fTender;});if(t&&t.package!==e.target.value)setFTender("all");}}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All departments</option>
         {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
-      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All packages</option>
         {allPkgTenders.slice().sort(function(a,b){return(a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
       </select>
-      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All statuses</option>
         {Object.keys(MAT_FILTERS).map(function(k){return <option key={k} value={k}>{MAT_FILTERS[k]}</option>;})}
       </select>
@@ -7778,7 +7780,7 @@ function TenderGapsModal({tenders,saveTenders,packages,people,onOpenTender,onClo
         {TENDER_GAP_FIELDS.filter(function(f){return countBy[f.k];}).map(function(f){
           return <button key={f.k} className={"fchip"+(fieldF===f.k?" on":"")} title={f.tip||""} onClick={function(){setFieldF(fieldF===f.k?"":f.k);}}>{f.label} <b style={{color:"#b3302a",marginLeft:3}}>{countBy[f.k]}</b></button>;
         })}
-        {pkgs.length>1&&<select value={pkgF} onChange={function(e){setPkgF(e.target.value);}} style={{marginLeft:"auto",fontSize:12,width:"auto",minWidth:160}}><option value="">All packages</option>{pkgs.map(function(p){return <option key={p}>{p}</option>;})}</select>}
+        {pkgs.length>1&&<select value={pkgF} onChange={function(e){setPkgF(e.target.value);}} style={{marginLeft:"auto",fontSize:12,width:"auto",minWidth:160}}><option value="">All departments</option>{pkgs.map(function(p){return <option key={p}>{p}</option>;})}</select>}
       </div>
       <div style={{overflowX:"auto"}}><table className="tbl tbl-tenders">
         <thead><tr><th style={{minWidth:200}}>Tender</th>{cols.map(function(f){return <th key={f.k} title={f.tip||""} style={{minWidth:f.kind==="person"||f.kind==="package"||f.kind==="step"?130:f.kind==="open"?80:105}}>{f.label}</th>;})}</tr></thead>
