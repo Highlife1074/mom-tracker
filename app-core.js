@@ -5171,16 +5171,6 @@ function App(){
       {/* Deployment is a manual copy-paste, so the running build must be visible without
           opening the console — otherwise "it doesn't work" and "it isn't deployed" look alike. */}
       <div className="rail-build" title={"Running build "+APP_BUILD+"\nIf this is not the build you just uploaded, GitHub Pages is still serving the old file: hard-reload with Ctrl+Shift+R."}>{APP_BUILD}</div>
-      {favs.length>0&&<React.Fragment>
-        <div className="nav-cap" title="Favourites — pin a view with ☆ in the bar above the page (same list as the phone bottom bar)">★ Fav.</div>
-        {favs.map(function(n){
-          return <button key={"f:"+n.id} className={"navbtn navfav"+(view===n.id?" on":"")} title={(n.long||n.label)+" (favourite)"} onClick={function(){setView(n.id);}}>
-            <span style={{fontSize:15}}>{n.icon}</span>
-            <span className="lbl">{n.label.length>10?n.label.slice(0,9)+"…":n.label}</span>
-          </button>;
-        })}
-        <div className="nav-sep"/>
-      </React.Fragment>}
       {navSecs.filter(function(sec){return !sec.bottom;}).map(function(sec){
         return <button key={sec.id} className={"navbtn navsec"+(curSec&&curSec.id===sec.id?" on":"")}
           title={sec.label+" — "+sec.items.map(function(n){return n.label;}).join(", ")} onClick={function(){openSection(sec);}}>
@@ -5189,6 +5179,14 @@ function App(){
         </button>;
       })}
       <div style={{flex:1}}/>
+      {/* Favourites: plain shortcuts, grouped in a box at the bottom of the rail and never
+          highlighted — only the section above is "you are here", so the rail shows one selection. */}
+      {favs.length>0&&<div className="rail-favs" title="Favourites — pin a view with ☆ next to the tabs (same list as the phone bottom bar)">
+        <div className="nav-cap">★ Favourites</div>
+        <div className="rail-favs-grid">{favs.map(function(n){
+          return <button key={"f:"+n.id} className="navfav" title={(n.long||n.label)+" — favourite"} onClick={function(){setView(n.id);}}>{n.icon}</button>;
+        })}</div>
+      </div>}
       <button className="navbtn navsec" title="Go to any view or tool (Ctrl+K)" onClick={function(){setPaletteOpen(true);}}>
         <span style={{fontSize:18}}>🔍</span>
         <span className="lbl">Search</span>

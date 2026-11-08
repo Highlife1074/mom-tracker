@@ -166,9 +166,12 @@ table td,table th{font-variant-numeric:tabular-nums}
 /* Rail: one button per section (NAV_SECTIONS), favourites (★, shared with the phone bar) above */
 .navbtn.navsec{width:66px;height:52px;flex-shrink:0}
 .navbtn.navsec span.lbl{font-size:9px}
-.navbtn.navfav{width:62px;height:40px;flex-shrink:0;gap:1px}
-.navbtn.navfav span.lbl{font-size:8.5px;font-weight:500;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nav-cap{font-size:8px;color:var(--gold);line-height:1;margin:2px 0 2px;letter-spacing:.12em;text-transform:uppercase;font-family:var(--font-mono)}
+.rail-favs{width:62px;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:5px 4px 6px;margin:6px 0 4px;flex-shrink:0;background:rgba(0,0,0,.12)}
+.rail-favs-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;justify-items:center}
+.navfav{width:24px;height:24px;border:none;border-radius:6px;background:transparent;cursor:pointer;font-size:14px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
+.navfav:hover{background:rgba(255,255,255,.14)}
+.navfav:focus-visible{outline:2px solid var(--gold);outline-offset:0}
+.nav-cap{font-size:7px;color:var(--gold);line-height:1;margin:0 0 5px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--font-mono);text-align:center}
 /* Column holding the section tab bar and the scrolling page */
 .main-col{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
 .topbar{--sec:var(--brand);display:flex;align-items:center;gap:6px;height:50px;padding:0 12px 0 16px;background:var(--surface);border-bottom:1px solid var(--rule);box-shadow:0 1px 3px rgba(23,42,66,.06);flex-shrink:0;min-width:0;position:relative;z-index:5}

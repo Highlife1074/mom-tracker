@@ -45,8 +45,9 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
   et `NAV_SECTIONS` (Follow-up / Procurement / Site / Contract / Dashboard / Settings, vues dans l'ordre d'usage).
   Elle sert au rail de gauche, à la barre d'onglets au-dessus de la page, au menu téléphone et à Ctrl+K.
   Les ids de vue ne changent jamais (`pp_view`, sauts entre vues) : on ne renomme que le libellé.
-- **Rail** : ★ favoris en haut (même liste que la barre du bas du téléphone, localStorage `pp_phone_pins`, 4 max,
-  ☆ / ★ à droite des onglets), une icône par section, 🔍 Search et ⚙️ Settings en bas. Un clic sur une section rouvre sa
+- **Rail** : une icône par section en haut (seule sélection surlignée du rail), puis en bas un encadré ★ Favourites
+  (raccourcis icône seule, jamais surlignés ; même liste que la barre du bas du téléphone, localStorage `pp_phone_pins`,
+  4 max, ☆ / ★ à droite des onglets), 🔍 Search et ⚙️ Settings. Un clic sur une section rouvre sa
   dernière vue (localStorage `pp_nav_last`, noté par `setView`). Les sections sans vue autorisée sont masquées.
 - **Barre du haut** (`.topbar`, dans `.main-col` au-dessus de `.content`, masquée sur téléphone, à l'impression et en plein écran
   planning) : onglets de la section, outils (Weekly actions, Certification PDF, Improvement idea — plus de boutons flottants),
