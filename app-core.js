@@ -206,7 +206,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-11-07-a";
+var APP_BUILD="2026-11-08-a";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -702,13 +702,15 @@ var NAV_VIEWS={
   settings:{icon:"⚙️",label:"Settings",kw:"people access durations zones tags backup parametres"}
 };
 // Sections of the rail, views in order of use. A view listed in no section has no tab bar.
+// color = the section's muted accent (section label and active tab of the top bar, phone menu);
+// the rest of the chrome stays navy (--brand) with the gold accent.
 var NAV_SECTIONS=[
-  {id:"follow",icon:"✅",label:"Follow-up",views:["global","moms","notes","submissions","trackers","timeline"]},
-  {id:"proc",icon:"📦",label:"Procurement",views:["myprocurement","tenders","procplan","procflow","materials","qadocs","packages"]},
-  {id:"site",icon:"🏗️",label:"Site",views:["zone","manpower","concrete","steel","inventory"]},
-  {id:"contract",icon:"📋",label:"Contract",views:["contracts","awn","contractors"]},
-  {id:"dash",icon:"📈",label:"Dashboard",views:["dashboard"]},
-  {id:"settings",icon:"⚙️",label:"Settings",views:["settings"],bottom:true}
+  {id:"follow",icon:"✅",label:"Follow-up",color:"#2f6fb0",views:["global","moms","notes","submissions","trackers","timeline"]},
+  {id:"proc",icon:"📦",label:"Procurement",color:"#a86f12",views:["myprocurement","tenders","procplan","procflow","materials","qadocs","packages"]},
+  {id:"site",icon:"🏗️",label:"Site",color:"#2e7a57",views:["zone","manpower","concrete","steel","inventory"]},
+  {id:"contract",icon:"📋",label:"Contract",color:"#74508f",views:["contracts","awn","contractors"]},
+  {id:"dash",icon:"📈",label:"Dashboard",color:"#0f7584",views:["dashboard"]},
+  {id:"settings",icon:"⚙️",label:"Settings",color:"#55657a",views:["settings"],bottom:true}
 ];
 function navView(id,label){var v=NAV_VIEWS[id];return v?Object.assign({id:id},v,label?{label:label}:{}):null;}
 function navSectionOf(view){
@@ -795,7 +797,7 @@ function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras,p
   if(bar.length<4)flat.forEach(function(n){if(bar.length<4&&bar.indexOf(n)<0)bar.push(n);});
   var inBar=bar.some(function(n){return n.id===view;});
   function go(id){setView(id);setOpen(false);try{document.querySelector(".content").scrollTop=0;}catch(e){}}
-  var groups=NAV_SECTIONS.map(function(g){return [g.label,g.views.map(byId).filter(Boolean)];}).filter(function(g){return g[1].length;});
+  var groups=NAV_SECTIONS.map(function(g){return [g.label,g.views.map(byId).filter(Boolean),g.color];}).filter(function(g){return g[1].length;});
   var listed=[];groups.forEach(function(g){g[1].forEach(function(n){listed.push(n.id);});});
   var other=flat.filter(function(n){return listed.indexOf(n.id)<0;});
   if(other.length)groups.push(["Other",other]);
@@ -820,7 +822,7 @@ function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras,p
         <div style={{fontSize:11,color:"var(--ink-3)",margin:"0 4px"}}>★ = favourite: on the bottom bar here, at the top of the left rail on a computer (4 max).</div>
         {groups.map(function(g){
           return <div key={g[0]}>
-            <div className="grp">{g[0]}</div>
+            <div className="grp" style={g[2]?{"--sec":g[2]}:null}>{g[0]}</div>
             <div className="grid">{g[1].map(function(n){
               var pinned=(pins||[]).indexOf(n.id)>=0;
               return <div key={n.id} className={"item"+(view===n.id?" on":"")} onClick={function(){go(n.id);}}>
@@ -988,7 +990,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
 
   return <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
     <div style={{padding:"14px 14px 10px",borderBottom:"1.5px solid #e8e6df"}}>
-      <div style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:15,marginBottom:2}}>Quick Add</div>
+      <div style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:15,marginBottom:2,color:"var(--brand-ink)"}}>Quick Add</div>
       <div style={{fontSize:11,color:"#bbb"}}>Enter to add · {today().split("-").reverse().join("/")}</div>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:12}} className="sform">
@@ -4025,10 +4027,11 @@ function UserLogin({people,onLogin}){
     });
   }
 
-  return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#1c1c1e"}}>
+  return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#0f2945 0%,#173b63 60%,#21508a 100%)"}}>
     <div style={{marginBottom:24,textAlign:"center"}}>
-      <div style={{fontWeight:700,color:"#f97316",fontSize:20,letterSpacing:"2px",fontFamily:"var(--font-display)",marginBottom:2}}>RIVIERA TOWER TRACKER</div>
-      <div style={{fontWeight:700,color:"#f97316",fontSize:13,letterSpacing:"1.5px",fontFamily:"var(--font-display)"}}>MAGIC TEAM</div>
+      <div style={{width:52,height:52,borderRadius:13,background:"#c9a84c",color:"#0f2945",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--font-display)",fontWeight:700,fontSize:21,margin:"0 auto 12px",boxShadow:"0 4px 14px rgba(0,0,0,.3)"}}>RT</div>
+      <div style={{fontWeight:700,color:"#fff",fontSize:20,letterSpacing:"2px",fontFamily:"var(--font-display)",marginBottom:2}}>RIVIERA TOWER TRACKER</div>
+      <div style={{fontWeight:700,color:"#c9a84c",fontSize:13,letterSpacing:"1.5px",fontFamily:"var(--font-display)"}}>MAGIC TEAM</div>
     </div>
     <div style={{background:"#fff",borderRadius:16,padding:"28px 32px",width:340,boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
       {step==="pick"&&<div>
@@ -4509,7 +4512,9 @@ function App(){
   const [schedules,setSchedules]=useState([]);
   const saveSchedules=d=>{setSchedules(d);queuedListSave(KEYS_SCHEDULES,schedulesRef,schedulesQueue,d);};
   const [pdfGlobal,setPdfGlobal]=useState(null);
-  const [sidebarOpen,setSidebarOpen]=useState(true);
+  // Quick Add sidebar open / closed: remembered in this browser (localStorage pp_sidebar_open).
+  const [sidebarOpen,setSidebarOpenRaw]=useState(function(){try{return localStorage.getItem("pp_sidebar_open")!=="0";}catch(e){return true;}});
+  function setSidebarOpen(v){setSidebarOpenRaw(v);try{localStorage.setItem("pp_sidebar_open",v?"1":"0");}catch(e){}}
   const [mobileQAOpen,setMobileQAOpen]=useState(false);
   const phone=usePhone();
   const [impSignal,setImpSignal]=useState(0);
@@ -5130,13 +5135,12 @@ function App(){
   if(!currentUser)return <UserLogin people={people} onLogin={function(name){setCurrentUser(name);window._currentUser={name:name};}}/>;  return <div className="layout">
 
     <nav className="leftnav">
-      <div className="logo" style={{fontSize:11,lineHeight:1.2,textAlign:"center",letterSpacing:".5px"}}>Project<br/>Tracker</div>
+      <div className="rail-logo" title="Riviera Tower — Project Tracker"><span className="mono">RT</span><span className="nm">Project<br/>Tracker</span></div>
       {/* Deployment is a manual copy-paste, so the running build must be visible without
           opening the console — otherwise "it doesn't work" and "it isn't deployed" look alike. */}
-      <div title={"Running build "+APP_BUILD+"\nIf this is not the build you just uploaded, GitHub Pages is still serving the old file: hard-reload with Ctrl+Shift+R."}
-        style={{fontSize:7,color:"#c9a84c",fontFamily:"monospace",letterSpacing:0,marginTop:-8,marginBottom:6,cursor:"help"}}>{APP_BUILD}</div>
+      <div className="rail-build" title={"Running build "+APP_BUILD+"\nIf this is not the build you just uploaded, GitHub Pages is still serving the old file: hard-reload with Ctrl+Shift+R."}>{APP_BUILD}</div>
       {favs.length>0&&<React.Fragment>
-        <div className="nav-cap" title="Favourites — pin a view with ☆ in the bar above the page (same list as the phone bottom bar)">★</div>
+        <div className="nav-cap" title="Favourites — pin a view with ☆ in the bar above the page (same list as the phone bottom bar)">★ Fav.</div>
         {favs.map(function(n){
           return <button key={"f:"+n.id} className={"navbtn navfav"+(view===n.id?" on":"")} title={(n.long||n.label)+" (favourite)"} onClick={function(){setView(n.id);}}>
             <span style={{fontSize:15}}>{n.icon}</span>
@@ -5167,7 +5171,7 @@ function App(){
 
     <div className="main-area">
       <div className="main-col">
-      <div className="topbar phone-hide">
+      <div className="topbar phone-hide" style={curSec&&curSec.color?{"--sec":curSec.color}:null}>
         {curSec&&<div className="tb-sec">{curSec.label}</div>}
         <div className="tb-tabs">
           {curSecItems.map(function(n){
@@ -5184,9 +5188,10 @@ function App(){
           return <button key={t.key} className="tb-tool" onClick={t.run} title={t.long}><span>{t.icon}</span> <span className="t-lbl">{t.label}</span></button>;
         })}
         <div className="tb-user">
-          {syncDot}
-          <span className="tb-sync">{syncStatus==="syncing"?"saving…":syncStatus==="ok"?"saved":"error"}</span>
+          <span className="tb-avatar" title={currentUser+" — "+(syncStatus==="syncing"?"saving…":syncStatus==="ok"?"all changes saved":"sync error")}>
+            {String(currentUser).split(/[ ,]+/).filter(Boolean).slice(0,2).map(function(w){return w[0];}).join("").toUpperCase()}{syncDot}</span>
           <b title={currentUser}>{String(currentUser).split(",")[0]}</b>
+          <span className="tb-sync">{syncStatus==="syncing"?"saving…":syncStatus==="ok"?"saved":"error"}</span>
           <button className="tb-change" onClick={logout} title="Change user">change</button>
         </div>
       </div>
