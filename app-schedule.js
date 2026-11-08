@@ -76,13 +76,37 @@ function schedRowCompany(row,tenders){
   var aw=tenderAwardees(td);
   return aw.length===1?aw[0]:"";
 }
+// ---- Predecessors -----------------------------------------------------------
+// A task may wait for several tasks: it starts when ALL of them are finished (+ their gap).
+// The first one stays in afterId / lagWeeks — what older data, the exports and the printed
+// schedule read — and the others are in moreAfter [{id, lag}]. A schedule saved before this
+// simply has no moreAfter: one predecessor, as before.
+function predsOf(r){
+  if(!r)return [];
+  var out=[];
+  if(r.afterId)out.push({id:r.afterId,lag:Number(r.lagWeeks)||0});
+  (r.moreAfter||[]).forEach(function(p){
+    if(p&&p.id&&!out.some(function(x){return x.id===p.id;}))out.push({id:p.id,lag:Number(p.lag)||0});
+  });
+  return out;
+}
+function predIdsOf(r){return predsOf(r).map(function(p){return p.id;});}
+// The fields that store a list of predecessors (first one in afterId / lagWeeks).
+function predsPatch(list){
+  var seen={},l=(list||[]).filter(function(p){if(!p||!p.id||seen[p.id])return false;seen[p.id]=1;return true;});
+  return{afterId:l[0]?l[0].id:"",lagWeeks:l[0]?(Number(l[0].lag)||0):0,
+    moreAfter:l.slice(1).map(function(p){return{id:p.id,lag:Number(p.lag)||0};})};
+}
 // Would "succ starts after pred" close a loop (pred already follows succ, directly or not)?
 function linkMakesLoop(rows,predId,succId){
   var byId={};(rows||[]).forEach(function(r){byId[r.id]=r;});
-  var cur=predId,guard=0;
-  while(cur&&guard++<5000){
+  var stack=[predId],seen={},guard=0;
+  while(stack.length&&guard++<20000){
+    var cur=stack.pop();
     if(cur===succId)return true;
-    cur=byId[cur]?byId[cur].afterId:"";
+    if(!cur||seen[cur])continue;
+    seen[cur]=1;
+    predIdsOf(byId[cur]).forEach(function(id){stack.push(id);});
   }
   return false;
 }
@@ -97,9 +121,14 @@ function rechainAfterDelete(rows,ids){
     return id&&!ids[id]&&byId[id]?id:"";
   }
   return (rows||[]).filter(function(r){return !ids[r.id];}).map(function(r){
-    if(!r.afterId||!ids[r.afterId])return r;
-    var p=survivor(r.afterId);
-    return Object.assign({},r,{afterId:p===r.id?"":p});
+    var ps=predsOf(r);
+    if(!ps.some(function(p){return ids[p.id];}))return r;
+    var next=[];
+    ps.forEach(function(p){
+      var id=ids[p.id]?survivor(p.id):p.id;
+      if(id&&id!==r.id)next.push({id:id,lag:p.lag});
+    });
+    return Object.assign({},r,predsPatch(next));
   });
 }
 // Number of planned week-cells across rows. A move that lowers it pushed bars off the board.
@@ -1083,9 +1112,11 @@ function buildScheduleXer(sc,opts){
     segsOf[r.id]=ids;
   });
   (sc.rows||[]).forEach(function(r){
-    if(!r.afterId||!segsOf[r.id]||!segsOf[r.afterId])return;
-    var p=segsOf[r.afterId],s=segsOf[r.id];
-    preds.push({pred:p[p.length-1].task_id,succ:s[0].task_id,lag:(Number(r.lagWeeks)||0)*HPW});
+    predsOf(r).forEach(function(pr){
+      if(!segsOf[r.id]||!segsOf[pr.id])return;
+      var p=segsOf[pr.id],s=segsOf[r.id];
+      preds.push({pred:p[p.length-1].task_id,succ:s[0].task_id,lag:(Number(pr.lag)||0)*HPW});
+    });
   });
   if(skipped.length)warnings.push(skipped.length+" task"+(skipped.length!==1?"s":"")+" without planned weeks not exported: "+skipped.slice(0,6).join(", ")+(skipped.length>6?"…":""));
   if(acts.length===0)return{text:"",warnings:warnings.concat(["Nothing to export: no task has planned weeks."]),stats:{}};
@@ -1338,6 +1369,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [pickAfter,setPickAfter]=useState(false);   // "Starts after" picker on the plan
   const [pop,setPop]=useState(null);                // {kind, rowId, rect}: the search pop-over open
   const [addMenu,setAddMenu]=useState(false);
+  const [progOpen,setProgOpen]=useState(false);     // weekly progress update window
+  const [progDraft,setProgDraft]=useState({});      // {rowId: {st:"none"|"wip"|"done", pct}} — only the answered rows
   const kbRef=useRef(null);                         // what the keyboard shortcuts act on, refreshed each render       // "＋ Add ▾" menu of the toolbar
   const [spanPick,setSpanPick]=useState(null);      // {rowId, start}: first click on the side panel's week strip
   const spanPickRef=useRef(null);spanPickRef.current=spanPick;
@@ -1677,6 +1710,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         weekProgress:{},
         progress:"",
         afterId:idMap[r.afterId]||"",               // links remapped inside the copied block
+        moreAfter:(r.moreAfter||[]).filter(function(p){return idMap[p.id];}).map(function(p){return{id:idMap[p.id],lag:p.lag||0};}),
         roomId:targetRoomId
       });
     });
@@ -1742,7 +1776,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var t=today(),soon=addCalDays(t,56);
     var byId={},hasSucc={};
     rows.forEach(function(r){byId[r.id]=r;});
-    rows.forEach(function(r){if(r.afterId&&byId[r.afterId])hasSucc[r.afterId]=1;});
+    rows.forEach(function(r){predIdsOf(r).forEach(function(id){if(byId[id])hasSucc[id]=1;});});
     var lvlOf={};SCHED_HEALTH_CHECKS.forEach(function(c){lvlOf[c.k]=c.lvl;});
     var out={},flagged={},sec="",cat="",n=0;
     SCHED_HEALTH_CHECKS.forEach(function(c){out[c.k]=[];});
@@ -1767,12 +1801,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       }
       var rk=procRisk(r);
       if(rk&&rk.late)add("proc",(rk.tender.title||"")+" delivers "+fmtDate(rk.delivery)+" · "+rk.weeksLate+" wk late");
-      var pred=r.afterId?byId[r.afterId]:null;
+      var rPreds=predsOf(r).filter(function(x){return byId[x.id];});
+      var pred=rPreds.length?byId[rPreds[0].id]:null;
       var started=act.length>0||(pr!==null&&pr>0);
-      if(started&&pred){
-        var pp=rowProgress(pred);
-        if(pp!==null&&pp<100)add("outseq","“"+(pred.label||"untitled")+"” is at "+pp+" %");
-      }
+      if(started)rPreds.some(function(x){
+        var pp=rowProgress(byId[x.id]);
+        if(pp!==null&&pp<100){add("outseq","“"+(byId[x.id].label||"untitled")+"” is at "+pp+" %");return true;}
+        return false;
+      });
       var fut=act.filter(function(w){return w>t;});
       if(fut.length)add("future",fut.length+" week"+(fut.length>1?"s":"")+" from "+fmtDate(fut[0]));
       var start=plan[0]||r.startWeek||"";
@@ -1781,9 +1817,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         if(rs.source==="pending")add("notawarded",((tenderById[r.tenderRef]||{}).title||"Package")+" · starts "+fmtDate(start));
         else if(!rs.name)add("nocompany",rs.source==="choose"?"pick one of "+rs.options.join(" / "):"starts "+fmtDate(start));
       }
-      if(!(r.afterId&&byId[r.afterId])&&!hasSucc[r.id]&&(plan.length||sp))add("isolated");
-      var lag=Number(r.lagWeeks)||0;
-      if(lag>4)add("lag",lag+" wk after “"+((pred&&pred.label)||"?")+"”");
+      if(!rPreds.length&&!hasSucc[r.id]&&(plan.length||sp))add("isolated");
+      var bigLag=rPreds.filter(function(x){return x.lag>4;})[0];
+      if(bigLag)add("lag",bigLag.lag+" wk after “"+((byId[bigLag.id]||{}).label||"?")+"”");
       if(sp&&sp.workingWeeks>8)add("long",sp.workingWeeks+" working weeks");
     });
     var nf=Object.keys(flagged).length;
@@ -2006,8 +2042,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // The chain of linked tasks that sets the finish of the schedule, worked out from the
   // planned bars: each task starts at its planned week, or later when its predecessor (plus
   // lag) finishes after that. Counting is in working weeks, so neutralised weeks are skipped.
-  // Each task has at most one predecessor (afterId), so both passes are memoised walks:
-  // O(number of rows), no matrix, no library.
+  // Both passes are memoised walks over the predecessors (predsOf): a task with several
+  // predecessors starts after the one that finishes last. No matrix, no library.
   // It used to add up the durations along a chain and ignore the dates: overlapping tasks
   // gave a total longer than the schedule, and the task that really finishes last could be
   // missed.
@@ -2036,21 +2072,22 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     }
     var sp={};rows.forEach(function(r){sp[r.id]=span(r);});
     function dur(id){return sp[id]?sp[id].dur:0;}
-    function lagOf(r){return Number(r.lagWeeks)||0;}
-
     // Forward pass. es/ef: early start/finish (ef exclusive). driven: the predecessor, not
-    // the planned week, decides when this task can start.
-    var es={},ef={},driven={},state={};
+    // the planned week, decides when this task can start; drivenBy: which predecessor.
+    var es={},ef={},driven={},drivenBy={},state={};
     function fwd(id){
       if(ef[id]!==undefined)return ef[id];
       var r=byId[id],p=sp[id];
       if(state[id]===1)return p?p.start+p.dur:0;            // cycle guard
       state[id]=1;
       var start=p?p.start:0;driven[id]=false;
-      if(r.afterId&&byId[r.afterId]){
-        var after=fwd(r.afterId)+lagOf(r);
-        if(!p||after>=start){start=after;driven[id]=true;}
-      }
+      var best=-1,bestId="";
+      predsOf(r).forEach(function(pr){
+        if(!byId[pr.id])return;
+        var after=fwd(pr.id)+pr.lag;
+        if(after>best){best=after;bestId=pr.id;}
+      });
+      if(bestId&&(!p||best>=start)){start=best;driven[id]=true;drivenBy[id]=bestId;}
       es[id]=start;ef[id]=start+dur(id);state[id]=2;
       return ef[id];
     }
@@ -2060,9 +2097,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     // predecessors that drive it.
     function chainOf(id){
       var path=[id],cur=byId[id],guard=0;
-      while(cur&&driven[cur.id]&&cur.afterId&&byId[cur.afterId]&&guard++<5000){
-        if(path.indexOf(cur.afterId)>=0)break;
-        path.unshift(cur.afterId);cur=byId[cur.afterId];
+      while(cur&&driven[cur.id]&&drivenBy[cur.id]&&byId[drivenBy[cur.id]]&&guard++<5000){
+        var nx=drivenBy[cur.id];
+        if(path.indexOf(nx)>=0)break;
+        path.unshift(nx);cur=byId[nx];
       }
       return path;
     }
@@ -2081,7 +2119,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     // working weeks. Zero float means the task IS critical, even outside the chain shown.
     var successors={};
     rows.forEach(function(r){
-      if(r.afterId&&byId[r.afterId])(successors[r.afterId]=successors[r.afterId]||[]).push(r);
+      predsOf(r).forEach(function(pr){if(byId[pr.id])(successors[pr.id]=successors[pr.id]||[]).push({r:r,lag:pr.lag});});
     });
     var lateMemo={},lateState={};
     function lateFinish(id){
@@ -2089,8 +2127,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       if(lateState[id]===1)return finish;                   // cycle guard
       lateState[id]=1;
       var v=finish;
-      (successors[id]||[]).forEach(function(sr){
-        var ls=lateFinish(sr.id)-dur(sr.id)-lagOf(sr);      // latest this one may finish
+      (successors[id]||[]).forEach(function(sx){
+        var sr=sx.r;
+        var ls=lateFinish(sr.id)-dur(sr.id)-sx.lag;         // latest this one may finish
         if(ls<v)v=ls;
       });
       lateState[id]=2;lateMemo[id]=v;
@@ -2194,6 +2233,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         weekProgress:{},
         progress:"",
         afterId:idMap[r.afterId]||r.afterId||"",    // links between the copied tasks are kept
+        moreAfter:(r.moreAfter||[]).map(function(p){return{id:idMap[p.id]||p.id,lag:p.lag||0};}),
         roomId:newRm&&(r.roomId===srcRoom||bi===0)?newRm.id:r.roomId||""
       });
     });
@@ -2207,7 +2247,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var idMap={};
     (sc.rows||[]).forEach(function(r){idMap[r.id]=uuid();});
     var rows=(sc.rows||[]).map(function(r){
-      return Object.assign({},r,{id:idMap[r.id],cells:Object.assign({},r.cells||{}),afterId:idMap[r.afterId]||""});
+      return Object.assign({},r,{id:idMap[r.id],cells:Object.assign({},r.cells||{}),afterId:idMap[r.afterId]||"",
+        moreAfter:(r.moreAfter||[]).filter(function(p){return idMap[p.id];}).map(function(p){return{id:idMap[p.id],lag:p.lag||0};})});
     });
     var ns=newSchedule({zone:targetZone,title:sc.title+" (from "+curZone+")",startDate:sc.startDate,weeks:sc.weeks,rows:rows,holidayWeeks:(sc.holidayWeeks||[]).slice()});
     saveSchedules([...(schedules||[]),ns]);
@@ -2402,7 +2443,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       return Object.assign({},r,{cells:moved},spanFromCells(moved,wksList,r));
     });
     // cascade to dependents
-    var deps=out.filter(function(r){return r.afterId===rowId;});
+    var deps=out.filter(function(r){return predIdsOf(r).indexOf(rowId)>=0;});
     deps.forEach(function(d){out=shiftRowCascade(out,d.id,deltaWeeks,wksList,visited,holidays);});
     return out;
   }
@@ -2486,20 +2527,31 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // Where a linked task stands against its predecessor: its first planned week compared with
   // the first week it may start (end of the predecessor + 1 + gap), in working weeks.
   //   null when either has no planned bar; .weeks < 0 means it starts too early.
+  //   With several predecessors: the one that allows the LATEST start sets it (.pred), and
+  //   .all lists each of them with its own slack (.weeks), for the side panel.
   function linkState(row){
-    if(!sc||!row||!row.afterId)return null;
-    var pred=rowById(row.afterId);
-    if(!pred)return null;
+    if(!sc||!row)return null;
+    var plist=predsOf(row);
+    if(!plist.length)return null;
     var wl=scheduleWeeks(sc);
-    var ps=spanFromCells(pred.cells,wl,null),ss=spanFromCells(row.cells,wl,null);
-    if(!ps.endWeek||!ss.startWeek)return null;
+    var ss=spanFromCells(row.cells,wl,null);
+    if(!ss.startWeek)return null;
     var hol=sc.holidayWeeks||[];
     var working=wl.filter(function(w){return hol.indexOf(w)<0;});
-    var lag=Number(row.lagWeeks)||0;
-    var ie=working.indexOf(ps.endWeek),is=working.indexOf(ss.startWeek);
-    if(ie<0||is<0)return null;
-    var earliest=ie+1+lag;
-    return{pred:pred,earliestIdx:earliest,earliestWeek:working[earliest]||"",weeks:is-earliest,overlap:ss.startWeek<=ps.endWeek};
+    var is=working.indexOf(ss.startWeek);
+    if(is<0)return null;
+    var all=[],best=null;
+    plist.forEach(function(pl){
+      var pred=rowById(pl.id);if(!pred)return;
+      var ps=spanFromCells(pred.cells,wl,null);if(!ps.endWeek)return;
+      var ie=working.indexOf(ps.endWeek);if(ie<0)return;
+      var earliest=ie+1+pl.lag;
+      var it={pred:pred,lag:pl.lag,earliestIdx:earliest,earliestWeek:working[earliest]||"",weeks:is-earliest,overlap:ss.startWeek<=ps.endWeek};
+      all.push(it);
+      if(!best||earliest>best.earliestIdx)best=it;
+    });
+    if(!best)return null;
+    return Object.assign({},best,{all:all});
   }
   // Moves the task (and whatever follows it) so it starts right when its predecessor allows.
   function moveAfterPredecessor(row){
@@ -2516,33 +2568,38 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(!pred||!succ||predId===succId)return;
     var hdr=function(r){return r.kind==="category"||r.kind==="section";};
     if(hdr(pred)||hdr(succ)){safeAlert("A link joins two tasks — not a room or section header.");return;}
-    if(succ.afterId===predId)return;
+    if(predIdsOf(succ).indexOf(predId)>=0)return;
     if(linkMakesLoop(sc.rows||[],predId,succId)){
       safeAlert("Not linked: “"+(succ.label||"untitled")+"” already comes before “"+(pred.label||"untitled")+"” in the chain.\n\nThis link would make a loop.");
       return;
     }
-    // a task has one predecessor: the new link replaces the old one (Ctrl+Z to undo)
-    updRow(succId,{afterId:predId});
+    // A task may wait for several tasks: the new link is ADDED to its predecessors
+    // (the side panel or the arrow menu removes one; Ctrl+Z undoes).
+    updRow(succId,predsPatch(predsOf(succ).concat([{id:predId,lag:0}])));
   }
   // No browser dialogs: Chrome can block them silently. Ctrl+Z undoes any of these.
-  function removeLink(succId){
+  // removeLink(succ): every predecessor; removeLink(succ, pred): only that one.
+  function removeLink(succId,predId){
     var succ=rowById(succId);
-    if(!succ||!succ.afterId)return;
-    updRow(succId,{afterId:""});
+    if(!succ||!predsOf(succ).length)return;
+    updRow(succId,predsPatch(predId?predsOf(succ).filter(function(p){return p.id!==predId;}):[]));
   }
   // Moves the END of an arrow: "succ starts after pred" becomes "target starts after pred".
   // ONE write for both rows.
-  function relinkTo(succId,targetId){
+  function relinkTo(succId,targetId,predIdIn){
     if(!sc)return;
     if(canEdit===false){safeAlert("Only the zone leaders can modify this schedule.");return;}
     var succ=rowById(succId),tgt=rowById(targetId);
-    if(!succ||!tgt||!succ.afterId)return;
-    var predId=succ.afterId;
+    var predId=predIdIn||(succ?succ.afterId:"");
+    if(!succ||!tgt||!predId||predIdsOf(succ).indexOf(predId)<0)return;
     if(tgt.kind==="category"||tgt.kind==="section"){safeAlert("A link joins two tasks — not a room or section header.");return;}
-    if(targetId===predId)return;
-    var rows=(sc.rows||[]).map(function(r){return r.id===succId?Object.assign({},r,{afterId:""}):r;});
+    if(targetId===predId||targetId===succId)return;
+    var rows=(sc.rows||[]).map(function(r){return r.id===succId?Object.assign({},r,predsPatch(predsOf(r).filter(function(p){return p.id!==predId;}))):r;});
     if(linkMakesLoop(rows,predId,targetId)){safeAlert("Not moved: this link would make a loop.");return;}
-    upd(sc.id,{rows:rows.map(function(r){return r.id===targetId?Object.assign({},r,{afterId:predId}):r;})});
+    upd(sc.id,{rows:rows.map(function(r){
+      if(r.id!==targetId||predIdsOf(r).indexOf(predId)>=0)return r;
+      return Object.assign({},r,predsPatch(predsOf(r).concat([{id:predId,lag:0}])));
+    })});
   }
   // Neutralising a week pushes every planned bar from that week onwards one week later
   // (and re-activating pulls them back), so the plan reflows around a shutdown automatically.
@@ -2898,8 +2955,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     else if(d.type==="link"&&d.target)linkRows(row.id,d.target);
     else if(d.type==="relink"){
       var moved=Math.abs((d.x||0)-(d.x0||0))+Math.abs((d.y||0)-(d.y0||0));
-      if(moved<6||!d.target){if(moved<6)setLinkMenu({succId:row.id,x:d.x0,y:d.y0});return;}
-      relinkTo(row.id,d.target);
+      if(moved<6||!d.target){if(moved<6)setLinkMenu({succId:row.id,predId:d.predId,x:d.x0,y:d.y0});return;}
+      relinkTo(row.id,d.target,d.predId);
     }
   };
   // Keyboard, while a task is open in the side panel (never while typing in a field):
@@ -3014,19 +3071,19 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       var byId={};(sc.rows||[]).forEach(function(r){byId[r.id]=r;});
       var trs={};box.querySelectorAll("tr[data-rowid]").forEach(function(tr){trs[tr.getAttribute("data-rowid")]=tr;});
       function cell(id,wk){var tr=trs[id];return tr?tr.querySelector('td[data-wk="'+wk+'"]'):null;}
-      (sc.rows||[]).forEach(function(r){
-        if(!r.afterId||!byId[r.afterId])return;
-        var p=byId[r.afterId];
+      (sc.rows||[]).forEach(function(r){predsOf(r).forEach(function(pl){
+        var p=byId[pl.id];
+        if(!p)return;
         if(!trs[p.id]||!trs[r.id])return;
         var ps=spanFromCells(p.cells,wl,null),ss=spanFromCells(r.cells,wl,null);
         if(!ps.endWeek||!ss.startWeek)return;
         var pc=cell(p.id,ps.endWeek),scl=cell(r.id,ss.startWeek);
         if(!pc||!scl)return;
         var a=pc.getBoundingClientRect(),c=scl.getBoundingClientRect();
-        out.push({id:r.id,x1:Math.round(a.right-b.left),y1:Math.round(a.top+a.height/2-b.top),
+        out.push({id:r.id,predId:p.id,x1:Math.round(a.right-b.left),y1:Math.round(a.top+a.height/2-b.top),
           x2:Math.round(c.left-b.left),y2:Math.round(c.top+c.height/2-b.top),bad:ss.startWeek<=ps.endWeek,
           label:(p.label||"untitled")+" → "+(r.label||"untitled")});
-      });
+      });});
     }
     var key=JSON.stringify(out);
     if(key!==arrowKeyRef.current){arrowKeyRef.current=key;setArrowGeo(out);}
@@ -3477,6 +3534,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               :<b style={{fontSize:13,color:"var(--brand-ink)",padding:"0 4px"}}>{sc.title}</b>}
             <button className="btn btn-sm" onClick={addSchedule} title="New schedule in this zone" style={{padding:"2px 8px"}}>＋</button>
           </span>
+          {canEdit!==false&&<button className="btn btn-sm" onClick={function(){setProgDraft({});setProgOpen(true);}}
+            title="Weekly update: the tasks of last week and this week, answered in a click (not started / in progress % / done)">✓ Update progress</button>}
           {canEdit!==false&&<span style={{position:"relative",display:"inline-block"}}>
             <button className={"btn btn-sm"+(addMenu?" btn-pri":"")} onClick={function(){setAddMenu(!addMenu);}} title="Add a task, a room or a section — or use “＋ Add a task” at the end of each room">＋ Add ▾</button>
             {addMenu&&<React.Fragment>
@@ -4242,15 +4301,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             </defs>
             {arrowGeo.map(function(g){
               var d=arrowPath(g);
-              return <g key={g.id}>
+              return <g key={g.id+"<"+g.predId}>
                 <path className="sched-link-hit" d={d} fill="none" stroke="transparent" strokeWidth={14}
                   style={{pointerEvents:canEdit?"stroke":"none",cursor:"grab",touchAction:"none"}}
                   onPointerDown={function(e){
                     if(e.button!==undefined&&e.button!==0)return;
                     e.stopPropagation();e.preventDefault();
                     setLinkMenu(null);
-                    var succ=rowById(g.id);
-                    startDrag({type:"relink",rowId:g.id,predId:succ?succ.afterId:"",x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,target:""});
+                    startDrag({type:"relink",rowId:g.id,predId:g.predId,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,target:""});
                   }}>
                   <title>{g.label+(g.bad?"\n⚠ starts before the previous task ends":"")+(canEdit?"\nClick: options · Drag onto another task: move the link to it":"")}</title>
                 </path>
@@ -4401,6 +4459,86 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             groups={companyGroups(prow)} value={prow.group||""}
             create={{label:function(q){return "Use “"+q+"” as a new company";},run:function(q){setRowCompany(prow,q);setPop(null);}}}
             onPick={function(id){setRowCompany(prow,id);setPop(null);}} onClose={function(){setPop(null);}}/>;
+        })()}
+        {progOpen&&(function(){
+          // ---- Weekly progress update ------------------------------------------------
+          // The tasks planned last week or this week, and those started but not finished.
+          // Each answer is recorded as the progress of THIS week (weekProgress) and marks the
+          // week as actual work, exactly like the "% Progress" fill mode — in ONE write.
+          var wl=scheduleWeeks(sc),cw=curWkKey||"";
+          var ci=wl.indexOf(cw),pw=ci>0?wl[ci-1]:"";
+          var list=[],sec="",cat="";
+          (sc.rows||[]).forEach(function(r){
+            if(r.kind==="section"){sec=r.label||"";cat="";return;}
+            if(r.kind==="category"){cat=r.label||"";return;}
+            var c=r.cells||{},pr=rowProgress(r);
+            var planNow=(cw&&(c[cw]==="plan"||c[cw]==="both"))||(pw&&(c[pw]==="plan"||c[pw]==="both"));
+            var open=pr!==null&&pr>0&&pr<100;
+            if(!planNow&&!open)return;
+            var sp=spanFromCells(c,wl,null);
+            var late=sp.endWeek&&cw&&sp.endWeek<cw&&(pr===null||pr<100);
+            list.push({row:r,room:cat||sec,pr:pr,span:sp,late:late});
+          });
+          list.sort(function(a,b){return (a.span.startWeek||"").localeCompare(b.span.startWeek||"");});
+          function stOf(it){
+            var d=progDraft[it.row.id];if(d)return d;
+            return it.pr===null||it.pr===0?{st:"none",pct:""}:it.pr>=100?{st:"done",pct:100}:{st:"wip",pct:it.pr};
+          }
+          function set(it,patch){var n=Object.assign({},progDraft);n[it.row.id]=Object.assign({},stOf(it),patch);setProgDraft(n);}
+          var answered=Object.keys(progDraft).length;
+          function save(){
+            if(!cw){setProgOpen(false);return;}
+            var rows=(sc.rows||[]).map(function(r){
+              var d=progDraft[r.id];if(!d)return r;
+              var wp=Object.assign({},r.weekProgress||{}),cells=Object.assign({},r.cells||{});
+              var cur=cells[cw]||"",isPlan=cur==="plan"||cur==="both";
+              if(d.st==="none"){delete wp[cw];if(cur==="actual")delete cells[cw];else if(cur==="both")cells[cw]="plan";}
+              else{
+                var pct=d.st==="done"?100:Math.max(1,Math.min(99,Math.round(Number(d.pct)||0)||50));
+                wp[cw]=pct;cells[cw]=isPlan?"both":"actual";
+              }
+              return Object.assign({},r,{weekProgress:wp,cells:cells});
+            });
+            upd(sc.id,{rows:rows});
+            setProgOpen(false);setProgDraft({});
+          }
+          var pill=function(on){return{border:"1px solid "+(on?"var(--brand)":"var(--rule)"),background:on?"var(--brand)":"#fff",color:on?"#fff":"var(--ink-2)",
+            borderRadius:14,padding:"4px 10px",fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"};};
+          var lateN=list.filter(function(it){var st=stOf(it);return it.late&&st.st!=="done";}).length;
+          return <div className="overlay sched-noprint" style={{zIndex:2100}} onMouseDown={function(e){if(e.target===e.currentTarget)setProgOpen(false);}}>
+            <div className="modal" style={{maxWidth:880,width:"96vw",maxHeight:"88vh"}}>
+              <div className="modal-hdr" style={{background:"var(--brand)",color:"#fff",borderRadius:"8px 8px 0 0"}}>
+                <div className="modal-title" style={{color:"#fff"}}>Update progress — week of {cw?fmtDate(cw):"?"}</div>
+                <span style={{marginLeft:"auto",marginRight:12,fontFamily:"var(--font-mono)",fontSize:11,background:"rgba(255,255,255,.15)",padding:"3px 8px",borderRadius:6}}>{answered} / {list.length} answered</span>
+                <button onClick={function(){setProgOpen(false);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#fff"}}>×</button>
+              </div>
+              <div className="modal-body" style={{padding:0}}>
+                {!cw&&<div style={{padding:16,fontSize:13,color:"var(--ink-3)"}}>This schedule has no week covering today.</div>}
+                {cw&&list.length===0&&<div style={{padding:16,fontSize:13,color:"var(--ink-3)"}}>Nothing planned last week or this week, and no task in progress.</div>}
+                {list.map(function(it){
+                  var st=stOf(it),r=it.row,touched=!!progDraft[r.id];
+                  return <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 16px",borderBottom:"1px solid var(--rule-2)",background:touched?"#fbfcfe":"#fff",flexWrap:"wrap"}}>
+                    <div style={{flex:"1 1 230px",minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.label||"(untitled)"}</div>
+                      <div style={{fontSize:11,color:"var(--ink-3)"}}>{it.room}{it.span.startWeek?" · planned "+fmtDate(it.span.startWeek)+" → "+fmtDate(it.span.endWeek):""}</div>
+                    </div>
+                    <button type="button" style={pill(st.st==="none")} onClick={function(){set(it,{st:"none",pct:""});}}>Not started</button>
+                    <button type="button" style={pill(st.st==="wip")} onClick={function(){set(it,{st:"wip",pct:st.pct&&st.pct<100?st.pct:50});}}>In progress</button>
+                    {st.st==="wip"&&<span style={{display:"flex",alignItems:"center",gap:3}}>
+                      <input type="number" min={1} max={99} value={st.pct} onChange={function(e){set(it,{st:"wip",pct:e.target.value});}} style={{width:56,padding:"3px 6px",fontSize:12}}/>%</span>}
+                    <button type="button" style={pill(st.st==="done")} onClick={function(){set(it,{st:"done",pct:100});}}>Done</button>
+                    <span style={{width:110,textAlign:"right",fontSize:11.5,fontWeight:700,color:it.late&&st.st!=="done"?"var(--amber)":"var(--ink-4)"}}>
+                      {it.late&&st.st!=="done"?"⚠ planned end "+fmtDate(it.span.endWeek):touched?"answered":it.pr!==null?it.pr+" % so far":""}</span>
+                  </div>;
+                })}
+              </div>
+              <div className="modal-footer" style={{alignItems:"center"}}>
+                {lateN>0&&<span style={{fontSize:12,color:"var(--amber)",fontWeight:600,marginRight:"auto"}}>⚠ {lateN} task{lateN!==1?"s":""} past their planned end and not done — extend them on the plan (drag the end of the bar).</span>}
+                <button className="btn" onClick={function(){setProgOpen(false);}}>Cancel</button>
+                <button className="btn btn-pri" disabled={!answered} onClick={save}>Save {answered||""} answer{answered!==1?"s":""}</button>
+              </div>
+            </div>
+          </div>;
         })()}
         {instrOpen&&<SchedInstructionModal rows={sc.rows||[]} weeks={scheduleWeeks(sc)} holidays={sc.holidayWeeks||[]} shift={shiftRowCascade}
           onApply={function(rows){upd(sc.id,{rows:rows});setInstrOpen(false);}} onClose={function(){setInstrOpen(false);}}/>}
@@ -4608,7 +4746,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           var tenderVal=isCat?(row.tenderRef||""):inherits&&inh?"__inherit__":row.tenderFromHeader==="-"?"__none__":(row.tenderRef||"");
           var tdCur=row.tenderRef?tenderById[row.tenderRef]:null;
           var ls=isCat?null:linkState(row);
-          var followers=isCat?[]:allRows.filter(function(r){return r.afterId===row.id;});
+          var followers=isCat?[]:allRows.filter(function(r){return predIdsOf(r).indexOf(row.id)>=0;});
           // tasks under a header, for its summary line
           var below=[];
           if(isCat){
@@ -4807,47 +4945,55 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   </div>;
                 })()}
 
-                <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <label style={lbl}>Starts after</label>
-                    {/* The predecessor is picked on the plan itself (SchedTaskPicker): bars, rooms, search. */}
-                    {(function(){
-                      var pr=row.afterId?allRows.find(function(x){return x.id===row.afterId;}):null;
-                      return <div style={{display:"flex",gap:4,alignItems:"stretch"}}>
-                        <button className="btn btn-sm" disabled={!canEdit} onClick={function(){setPickAfter(true);}}
-                          title={canEdit?"Pick the task on the plan":""}
-                          style={{flex:1,minWidth:0,justifyContent:"flex-start",height:"auto",minHeight:30,padding:"4px 8px",textAlign:"left",whiteSpace:"normal",
-                            color:pr?"var(--brand-ink)":"var(--ink-4)",fontWeight:pr?600:500}}>
-                          {pr?"🔗 "+(pr.label||"(untitled)"):"— nothing (free start) —"}
-                          <span style={{marginLeft:"auto",paddingLeft:6,fontSize:10,color:"var(--ink-3)",flexShrink:0}}>{canEdit?"✎ pick on plan":""}</span>
-                        </button>
-                        {canEdit&&pr&&<button className="btn btn-sm" title="Remove the link (free start)" onClick={function(){updRow(row.id,{afterId:""});}}>✕</button>}
+                {/* Predecessors: every task this one waits for, each with its gap; the one that sets
+                    the start is flagged. Picked on the plan itself (SchedTaskPicker). */}
+                {(function(){
+                  var plist=predsOf(row);
+                  var states={};((ls&&ls.all)||[]).forEach(function(x){states[x.pred.id]=x;});
+                  function setList(l){updRow(row.id,predsPatch(l));}
+                  return <div>
+                    <label style={lbl}>Starts after{plist.length>1?" — all of them":""}</label>
+                    {plist.length===0&&<div style={{fontSize:12,color:"var(--ink-4)",padding:"4px 0 6px"}}>— nothing (free start) —</div>}
+                    {plist.map(function(pl,i){
+                      var pr=allRows.find(function(x){return x.id===pl.id;});
+                      var st=states[pl.id];
+                      var drives=ls&&ls.pred&&ls.pred.id===pl.id&&plist.length>1;
+                      return <div key={pl.id} style={{display:"flex",alignItems:"center",gap:6,border:"1px solid var(--brand-line)",borderRadius:8,padding:"5px 8px",background:"var(--brand-soft)",marginBottom:5}}>
+                        <a onClick={function(){if(pr)setPanelRowId(pr.id);}} style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"var(--brand-ink)",cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
+                          title="Open this task">🔗 {pr?(pr.label||"(untitled)"):"(deleted task)"}</a>
+                        {st&&<span style={{fontSize:10,fontWeight:700,whiteSpace:"nowrap",color:st.weeks<0?"var(--red)":st.weeks===0?"var(--green)":"var(--ink-3)"}}>
+                          {st.weeks<0?(-st.weeks)+" wk early":st.weeks===0?"right after":st.weeks+" wk slack"}</span>}
+                        {drives&&<span title="This one sets the start" style={{fontSize:9.5,fontWeight:700,color:"var(--red)",background:"var(--red-soft)",borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap"}}>sets the date</span>}
+                        <span style={{fontSize:10,color:"var(--ink-3)"}}>+</span>
+                        {canEdit
+                          ?<SchedBufInput type="number" value={pl.lag||""} placeholder="0" title="Weeks to wait after it ends (curing, drying…)"
+                            onCommit={function(v){setList(plist.map(function(x,j){return j===i?{id:x.id,lag:Math.max(0,Math.round(Number(v)||0))}:x;}));}}
+                            style={{padding:"3px 4px",fontSize:11.5,width:40}}/>
+                          :<span style={{fontSize:11.5}}>{pl.lag||0}</span>}
+                        <span style={{fontSize:10,color:"var(--ink-3)"}}>wk</span>
+                        {canEdit&&<button type="button" title="Remove this link" onClick={function(){setList(plist.filter(function(x){return x.id!==pl.id;}));}}
+                          style={{border:"none",background:"none",color:"var(--ink-4)",cursor:"pointer",fontSize:13,padding:"0 2px"}}>✕</button>}
                       </div>;
-                    })()}
-                    {pickAfter&&<SchedTaskPicker rows={allRows} weeks={wks} value={row.afterId||""}
-                      title={"“"+(row.label||"untitled")+"” starts after…"} noneLabel="Nothing (free start)"
+                    })}
+                    {canEdit&&<button className="btn btn-sm" onClick={function(){setPickAfter(true);}} title="Pick on the plan a task this one must wait for">
+                      ＋ {plist.length?"Add a predecessor":"Starts after…"} <span style={{fontSize:10,color:"var(--ink-3)",marginLeft:4}}>pick on plan</span></button>}
+                    {pickAfter&&<SchedTaskPicker rows={allRows} weeks={wks} value={""}
+                      title={"“"+(row.label||"untitled")+"” also starts after…"}
                       blockedReason={function(r){
                         if(r.id===row.id)return "this task";
-                        if(r.id!==row.afterId&&linkMakesLoop(allRows,r.id,row.id))return "would make a loop";
+                        if(predIdsOf(row).indexOf(r.id)>=0)return "already linked";
+                        if(linkMakesLoop(allRows,r.id,row.id))return "would make a loop";
                         return "";
                       }}
-                      onPick={function(id){updRow(row.id,{afterId:id});setPickAfter(false);}}
+                      onPick={function(id){if(id)setList(plist.concat([{id:id,lag:0}]));setPickAfter(false);}}
                       onClose={function(){setPickAfter(false);}}/>}
-                  </div>
-                  <div style={{width:74}}>
-                    <label style={lbl} title="Weeks to wait after the previous task ends (curing, drying…)">Gap (wk)</label>
-                    {canEdit
-                      ?<SchedBufInput type="number" value={row.lagWeeks||""} placeholder="0"
-                        onCommit={function(v){updRow(row.id,{lagWeeks:Math.max(0,Math.round(Number(v)||0))});}}
-                        style={{padding:"5px 6px",fontSize:12,width:"100%"}}/>
-                      :<div style={{fontSize:12}}>{row.lagWeeks||0}</div>}
-                  </div>
-                </div>
+                  </div>;
+                })()}
                 {ls&&<div style={{marginTop:7,padding:"6px 8px",borderRadius:6,fontSize:10.5,display:"flex",alignItems:"center",gap:6,
                   background:ls.weeks<0?"#fbe6e8":ls.weeks===0?"#e6f2e9":"#f5f4f0",color:ls.weeks<0?"#b3302a":ls.weeks===0?"#1e6b3a":"#6f6b62"}}>
                   <span style={{flex:1}}>
                     {ls.weeks<0
-                      ?"🔴 Starts "+(-ls.weeks)+" week"+(-ls.weeks!==1?"s":"")+" too early: “"+(ls.pred.label||"untitled")+"”"+(Number(row.lagWeeks)?" + "+row.lagWeeks+" wk gap":"")+" allows "+(ls.earliestWeek?fmtDate(ls.earliestWeek):"a later week")
+                      ?"🔴 Starts "+(-ls.weeks)+" week"+(-ls.weeks!==1?"s":"")+" too early: “"+(ls.pred.label||"untitled")+"”"+(ls.lag?" + "+ls.lag+" wk gap":"")+" allows "+(ls.earliestWeek?fmtDate(ls.earliestWeek):"a later week")
                       :ls.weeks===0
                         ?"✅ Starts right after “"+(ls.pred.label||"untitled")+"”"
                         :"⏸ "+ls.weeks+" week"+(ls.weeks!==1?"s":"")+" of slack after “"+(ls.pred.label||"untitled")+"”"}
@@ -5018,9 +5164,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
 
         {linkMenu&&(function(){
           var succ=rowById(linkMenu.succId);
-          var pred=succ&&succ.afterId?rowById(succ.afterId):null;
+          var lmPred=linkMenu.predId||(succ?succ.afterId:"");
+          var pred=succ&&lmPred?rowById(lmPred):null;
           if(!succ||!pred)return null;
-          var ls=linkState(succ);
+          var lsAll=linkState(succ);
+          var ls=lsAll?((lsAll.all||[]).find(function(x){return x.pred.id===pred.id;})||null):null;
           var W=300;
           var item={padding:"7px 12px",fontSize:12,cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"};
           function hov(e,on){e.currentTarget.style.background=on?"#f5f4f0":"transparent";}
@@ -5037,9 +5185,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 onClick={function(){setLinkMenu(null);moveAfterPredecessor(succ);}}>
                 {ls.weeks<0?"⇢ Move “"+(succ.label||"task")+"” right after it":"⇠ Pull “"+(succ.label||"task")+"” back right after it"}</div>}
               <div style={item} onMouseEnter={function(e){hov(e,true);}} onMouseLeave={function(e){hov(e,false);}}
-                onClick={function(){setLinkMenu(null);setPanelRowId(succ.id);}}>↻ Change the previous task… (details panel)</div>
+                onClick={function(){setLinkMenu(null);setPanelRowId(succ.id);}}>↻ Its previous tasks… (details panel)</div>
               <div style={Object.assign({},item,{color:"#b3302a"})} onMouseEnter={function(e){hov(e,true);}} onMouseLeave={function(e){hov(e,false);}}
-                onClick={function(){setLinkMenu(null);removeLink(succ.id);}}>⛌ Remove the link</div>
+                onClick={function(){setLinkMenu(null);removeLink(succ.id,pred.id);}}>⛌ Remove this link</div>
               <div style={{fontSize:10,color:"#9b968b",padding:"5px 12px 2px",borderTop:"1px solid #f0ede6",marginTop:4}}>Tip: drag the arrow onto another task to move the link to it · Ctrl+Z undoes</div>
             </div>
           </React.Fragment>;
@@ -5059,7 +5207,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             items.push({k:"e",t:"◀ 1 week earlier",f:function(){shiftRow(row.id,-1);}});
             items.push({k:"l",t:"1 week later ▶",f:function(){shiftRow(row.id,1);}});
             if(ls&&ls.weeks<0&&ls.earliestWeek)items.push({k:"fix",t:"⇢ Move after “"+(ls.pred.label||"untitled")+"”",f:function(){moveAfterPredecessor(row);}});
-            if(row.afterId)items.push({k:"unl",t:"⛌ Remove the link to the previous task",f:function(){removeLink(row.id);}});
+            if(predsOf(row).length)items.push({k:"unl",t:predsOf(row).length>1?"⛌ Remove the links to the previous tasks":"⛌ Remove the link to the previous task",f:function(){removeLink(row.id);}});
           }else{
             items.push({k:"col",t:collapsedCats[row.id]?"▾ Expand":"▸ Collapse",f:function(){toggleCat(row.id);}});
           }
