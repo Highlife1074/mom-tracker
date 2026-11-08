@@ -323,6 +323,11 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
   text-align:center;font-size:8px;font-weight:800;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.5);
   user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .sched-wk.sched-wk-nc{cursor:default}
+/* Zoom months / quarters: narrow week columns, no text inside the cells */
+.sched-z-m td.sched-wk,.sched-z-q td.sched-wk{font-size:0!important;padding:0!important}
+.sched-z-m td.sched-wk *,.sched-z-q td.sched-wk *{font-size:9px}
+.sched-z-q .sched-rh,.sched-z-q .sched-link-handle{display:none}
+.sched-bar-lbl{position:absolute;top:50%;transform:translateY(-50%);white-space:nowrap;font-size:10px!important;font-weight:600;color:var(--brand-ink);pointer-events:none;z-index:1;text-shadow:0 0 2px #fff,0 0 2px #fff}
 /* Resize handles at both ends of a bar, shown on the row under the mouse */
 .sched-rh{position:absolute;top:3px;bottom:3px;width:6px;border-radius:2px;background:var(--brand-deep);cursor:ew-resize;z-index:2;opacity:0;transition:opacity .1s;touch-action:none}
 tr:hover>td>.sched-rh{opacity:.85}

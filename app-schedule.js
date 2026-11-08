@@ -1381,6 +1381,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // Simple / advanced view: a per-person choice, remembered in this browser, never in Firebase.
   const [advanced,setAdvancedRaw]=useState(function(){try{return localStorage.getItem("pp_sched_advanced")==="1";}catch(e){return false;}});
   function setAdvanced(v){setAdvancedRaw(v);try{localStorage.setItem("pp_sched_advanced",v?"1":"0");}catch(e){}}
+  // Zoom of the grid: one column per week, drawn 40 px (weeks), 14 px (months) or 7 px (quarters)
+  // wide — the whole job fits on one screen. A per-person choice (localStorage pp_sched_zoom).
+  const [zoom,setZoomRaw]=useState(function(){try{var z=localStorage.getItem("pp_sched_zoom");return z==="m"||z==="q"?z:"w";}catch(e){return "w";}});
+  function setZoom(z){setZoomRaw(z);try{localStorage.setItem("pp_sched_zoom",z);}catch(e){}}
+  // Optional columns of the grid (per person, localStorage pp_sched_cols): Status and Company.
+  const [cols,setColsRaw]=useState(function(){try{var c=JSON.parse(localStorage.getItem("pp_sched_cols")||"null");if(c&&typeof c==="object")return c;}catch(e){}return {};});
+  function setCol(k,v){var n=Object.assign({},cols);n[k]=v;setColsRaw(n);try{localStorage.setItem("pp_sched_cols",JSON.stringify(n));}catch(e){}}
+  var colStatus=cols.status!==false,colCompany=cols.company!==false;
+  const [colsMenu,setColsMenu]=useState(false);
   const [showLinks,setShowLinksRaw]=useState(function(){try{return localStorage.getItem("pp_sched_links")!=="0";}catch(e){return true;}});
   function setShowLinks(v){setShowLinksRaw(v);try{localStorage.setItem("pp_sched_links",v?"1":"0");}catch(e){}}
   // Simplified toolbar: the rarely used controls sit behind ⚙ Settings, ⋯ More and 🔍 Analyse & view.
@@ -2980,6 +2989,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     return function(){window.cancelAnimationFrame(raf);clearTimeout(t);};
   },[gridId,gridFull]);
   var gridRows=gridFull?visibleRows:visibleRows.slice(0,GRID_FIRST_ROWS);
+  // the current week: a red line down the grid, on every row
+  var curWkKey=(function(){var t=today();for(var i=0;i<wks.length;i++){if(wks[i]<=t&&t<=addCalDays(wks[i],6))return wks[i];}return "";})();
   // "＋ Add a task" line at the end of each open room: last visible row of the room → the room.
   // Not while a company filter or the critical path hides rows (the new task would vanish).
   var addAfter={};
@@ -3510,6 +3521,30 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             }} title="Jump to the current week" style={{padding:"2px 8px",fontSize:11}}>Today</button>
             <button className="btn btn-sm" onClick={function(){var el=document.querySelector(".sched-wrap");if(el)el.scrollLeft+=400;}} title="Scroll forward in time" style={{padding:"2px 8px",fontSize:11}}>▶▶</button>
           </span>
+          {!monthView&&<span style={{position:"relative",display:"inline-block"}}>
+            <button className={"btn btn-sm"+(colsMenu?" btn-pri":"")} onClick={function(){setColsMenu(!colsMenu);}} title="Columns shown in the grid — your choice only">Columns ▾</button>
+            {colsMenu&&<React.Fragment>
+              <div onClick={function(){setColsMenu(false);}} style={{position:"fixed",inset:0,zIndex:1290}}></div>
+              <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:1300,minWidth:230,background:"#fff",border:"1px solid var(--brand-line)",borderRadius:9,boxShadow:"0 10px 32px rgba(15,41,69,.22)",padding:8,display:"flex",flexDirection:"column",gap:2}}>
+                {[["status","Status (alerts, progress, float)",colStatus,function(v){setCol("status",v);}],
+                  ["company","Company",colCompany,function(v){setCol("company",v);}],
+                  ["adv","Quantity · rate",advanced,setAdvanced],
+                  ["float","Float (weeks of slack)",showFloat,function(v){setShowFloat(v);if(v&&!critOn){setCritOnly(false);setCritOn(true);}if(v&&!colStatus)setCol("status",true);}],
+                  ["links","Link arrows",showLinks,setShowLinks]].map(function(c){
+                  return <label key={c[0]} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",fontSize:12.5,cursor:"pointer",textTransform:"none",letterSpacing:0,fontFamily:"var(--font-body)",fontWeight:500,color:"var(--ink)",margin:0}}>
+                    <input type="checkbox" checked={!!c[2]} onChange={function(e){c[3](e.target.checked);}} style={{width:14,height:14,margin:0}}/>{c[1]}</label>;
+                })}
+                <span style={{fontSize:10.5,color:"var(--ink-3)",padding:"5px 6px 2px",borderTop:"1px solid var(--rule-2)"}}>Remembered for you only</span>
+              </div>
+            </React.Fragment>}
+          </span>}
+          {!monthView&&<span style={{display:"flex",border:"1px solid var(--rule)",borderRadius:7,overflow:"hidden"}} title="Zoom: column width of a week">
+            {[["w","Weeks"],["m","Months"],["q","Quarters"]].map(function(z){
+              return <button key={z[0]} onClick={function(){setZoom(z[0]);}}
+                style={{border:"none",borderLeft:z[0]!=="w"?"1px solid var(--rule)":"none",padding:"4px 9px",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",
+                  background:zoom===z[0]?"var(--brand-2)":"#fff",color:zoom===z[0]?"#fff":"var(--brand-ink)"}}>{z[1]}</button>;
+            })}
+          </span>}
           <button className="btn btn-sm" onClick={function(e){setPop({kind:"find",rowId:"",rect:e.currentTarget.getBoundingClientRect()});}}
             title="Find a task and jump to it (Ctrl+F)" style={{color:"var(--ink-3)",minWidth:150,justifyContent:"flex-start"}}>🔍 Find a task… <span style={{marginLeft:"auto",fontFamily:"var(--font-mono)",fontSize:9.5,border:"1px solid var(--rule)",borderRadius:4,padding:"0 4px"}}>Ctrl F</span></button>
           <span style={{display:"flex",alignItems:"center",gap:4,paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
@@ -3761,7 +3796,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         {!monthView&&<div className="sched-wrap" ref={wrapRef} onScroll={function(){syncScroll("wrap");}} style={{overflowX:"auto",overflowY:"auto",maxHeight:fullScreen?"calc(100vh - 175px)":"62vh",border:"1px solid #e8e6df",borderRadius:"8px 8px 0 0",background:"#fff"}}>
           <style>{".sched-row .sched-link-handle{opacity:0;transition:opacity .12s}.sched-row:hover .sched-link-handle,.sched-row.sched-row-on .sched-link-handle{opacity:1}.sched-link-hit{cursor:pointer}.sched-link-hit:hover+.sched-link-line{stroke-width:2.6}"}</style>
           <div ref={tableBoxRef} style={{position:"relative",width:"max-content",minWidth:"100%"}}>
-          <table style={{borderCollapse:"collapse",width:"max-content",minWidth:"100%",fontSize:11}}>
+          <table className={"sched-z-"+zoom} style={{borderCollapse:"collapse",width:"max-content",minWidth:"100%",fontSize:11}}>
             <thead>
               <tr>
                 <th style={{position:"sticky",left:0,top:0,background:"#f5f4f0",zIndex:4,width:320,minWidth:320,maxWidth:320,textAlign:"left",padding:"6px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>
@@ -3769,25 +3804,33 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     onChange={function(e){setSelRows(e.target.checked?selectableIds.slice():[]);}}
                     title="Select every task" style={{width:12,height:12,marginRight:6,verticalAlign:"middle",cursor:"pointer"}}/>}
                   Task</th>
-                <th className="sched-noprint" title="Alert, progress, float, prerequisites and procurement delivery for the row" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:190,minWidth:190,maxWidth:190,textAlign:"left",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Status</th>
-                <th style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:120,minWidth:120,maxWidth:120,textAlign:"left",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Subcont.</th>
+                {colStatus&&<th className="sched-noprint" title="Alert, progress, float, prerequisites and procurement delivery for the row" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:190,minWidth:190,maxWidth:190,textAlign:"left",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Status</th>}
+                {colCompany&&<th style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:120,minWidth:120,maxWidth:120,textAlign:"left",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Subcont.</th>}
                 {advanced&&<th title="Quantity of work on the row — typed here or in the side panel" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Qty</th>}
                 {advanced&&<th title={"Quantity divided by the working weeks of the row, and by "+WORK_DAYS_PER_WEEK+" working days a week"} style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888",borderRight:"1.5px solid #e8e6df"}}>Rate</th>}
-                {wks.map(function(wk){
+                {wks.map(function(wk,wi){
                   var isCur=wk<=todayStr&&todayStr<=addCalDays(wk,6);
                   var hol=isHoliday(wk);
+                  var cw=zoom==="q"?7:zoom==="m"?14:40;
+                  // Months / quarters: the month name on its first week, written across the next columns
+                  var MN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                  var newMonth=wi===0||wks[wi-1].slice(5,7)!==wk.slice(5,7);
+                  var mIdx=Number(wk.slice(5,7))-1;
+                  var lbl=zoom==="w"?(hol?"⊘":fmtDate(wk).slice(0,5))
+                    :newMonth&&(zoom==="m"||mIdx%3===0||wi===0)?(zoom==="q"?"Q"+(Math.floor(mIdx/3)+1)+" "+wk.slice(2,4):MN[mIdx]+" "+wk.slice(2,4)):"";
                   return <th key={wk} data-wk={wk} onClick={function(){toggleHolidayWeek(wk);}}
-                    title={hol?"Neutralised week (holiday/shutdown) — click to re-activate":"Click to neutralise this week (holiday/shutdown)"}
-                    style={{position:"sticky",top:0,zIndex:3,width:40,minWidth:40,maxWidth:40,padding:"4px 2px",borderBottom:"1.5px solid #e8e6df",borderLeft:"1px solid #f0ede6",cursor:"pointer",
-                      background:hol?"#d5d1c8":isCur?"#faf3e0":"#f5f4f0",
-                      fontSize:8,color:hol?"#fff":isCur?"#b35c00":"#888",fontWeight:(isCur||hol)?800:600}}>
-                    {hol?"⊘":fmtDate(wk).slice(0,5)}
+                    title={(zoom!=="w"?fmtDate(wk)+" — ":"")+(hol?"Neutralised week (holiday/shutdown) — click to re-activate":"Click to neutralise this week (holiday/shutdown)")}
+                    style={{position:"sticky",top:0,zIndex:3,width:cw,minWidth:cw,maxWidth:cw,padding:zoom==="w"?"4px 2px":"4px 0",borderBottom:"1.5px solid #e8e6df",
+                      borderLeft:zoom==="w"||newMonth?"1px solid "+(zoom==="w"?"#f0ede6":"#c7d5e6"):"none",cursor:"pointer",
+                      background:hol?"#d5d1c8":isCur?"#faf3e0":"#f5f4f0",overflow:"visible",whiteSpace:"nowrap",textAlign:zoom==="w"?"center":"left",
+                      fontSize:zoom==="w"?8:9,color:hol?"#fff":isCur?"#b35c00":zoom==="w"?"#888":"var(--brand-ink)",fontWeight:(isCur||hol||zoom!=="w")?800:600}}>
+                    {lbl}
                   </th>;
                 })}
                               </tr>
             </thead>
             <tbody>
-              {(sc.rows||[]).length===0&&<tr><td colSpan={wks.length+(advanced?5:3)} style={{padding:"14px",textAlign:"center",color:"#bbb",fontSize:12}}>No rows yet. Add a category or a task below.</td></tr>}
+              {(sc.rows||[]).length===0&&<tr><td colSpan={wks.length+1+(colStatus?1:0)+(colCompany?1:0)+(advanced?2:0)} style={{padding:"14px",textAlign:"center",color:"#bbb",fontSize:12}}>No rows yet. Add a category or a task below.</td></tr>}
               {gridRows.map(function(row){
                 var pqRows=(row.kind==="category")?[]:prereqsOf(row.id);
                 var isSection=row.kind==="section";
@@ -3842,8 +3885,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           background:ok?"#e6f2e9":"#faf3e0",color:ok?"#1e6b3a":"#b35c00",border:"1px solid "+(ok?"#cfe3d5":"#e6d9b4")}}>
                         {ok?"✓":"TBC"}</span>
                     </td>
-                    <td className="sched-noprint" style={{borderBottom:"1px dashed #e8e6df",borderRight:"1.5px solid #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>
-                    <td style={{padding:"1px 6px",borderBottom:"1px dashed #e8e6df",background:ok?"#f3f8f3":"#fffdf3",fontSize:9,color:"#aaa",whiteSpace:"nowrap"}}>prerequisite{pq.due?" · "+fmtDate(pq.due):""}</td>
+                    {colStatus&&<td className="sched-noprint" style={{borderBottom:"1px dashed #e8e6df",borderRight:"1.5px solid #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>}
+                    {colCompany&&<td style={{padding:"1px 6px",borderBottom:"1px dashed #e8e6df",background:ok?"#f3f8f3":"#fffdf3",fontSize:9,color:"#aaa",whiteSpace:"nowrap"}}>prerequisite{pq.due?" · "+fmtDate(pq.due):""}</td>}
                     {advanced&&<td style={{borderBottom:"1px dashed #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>}
                     {advanced&&<td style={{borderBottom:"1px dashed #e8e6df",borderRight:"1.5px solid #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>}
                     {wks.map(function(w){
@@ -3860,8 +3903,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     e.preventDefault();
                     setCtxMenu({rowId:row.id,x:e.clientX,y:e.clientY});
                   }}
-                  style={{background:isSection?"#2b2e36":isCat?"#f0ede6":"#fff"}}>
-                  <td style={{position:"sticky",left:0,zIndex:1,background:(drag&&drag.type==="link"&&drag.target===row.id)?"#d6e6fb":panelRowId===row.id?(isSection?"#3a3f4b":"#fff3cd"):focusRow===row.id?"#faf3e0":isSel?"#e8f0fe":isSection?"var(--ink,#16181d)":isCat?"#f0ede6":"#fff",padding:isSection?"5px 10px":"3px 10px",borderBottom:isSection?"1.5px solid var(--ink,#16181d)":"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",boxShadow:focusRow===row.id?"inset 3px 0 0 #b35c00":onCrit?"inset 3px 0 0 var(--amber,#b35c00)":(critPath&&critPath.zeroFloat[row.id])?"inset 3px 0 0 #e6c48c":"none"}}>
+                  style={{background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff"}}>
+                  <td style={{position:"sticky",left:0,zIndex:1,background:(drag&&drag.type==="link"&&drag.target===row.id)?"#d6e6fb":panelRowId===row.id?(isSection?"#d3deec":"#fff3cd"):focusRow===row.id?"#faf3e0":isSel?"#e8f0fe":isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",padding:isSection?"5px 10px":"3px 10px",borderBottom:isSection?"1.5px solid var(--brand-line)":"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",boxShadow:focusRow===row.id?"inset 3px 0 0 #b35c00":onCrit?"inset 3px 0 0 var(--amber,#b35c00)":(critPath&&critPath.zeroFloat[row.id])?"inset 3px 0 0 #e6c48c":"none"}}>
                     <div style={{display:"flex",alignItems:"center",gap:3}}>
                       {canEdit&&!isCat&&<input type="checkbox" className="sched-noprint" checked={isSel}
                         onChange={function(){}} onClick={function(e){clickSelRow(row.id,e);}}
@@ -3876,7 +3919,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       {(function(){
                         var nameStyle={flex:1,minWidth:120,fontSize:isSection?12.5:isCat?12:11,fontWeight:isSection?800:isCat?700:500,
                           letterSpacing:isSection?".08em":"normal",textTransform:isCat?"uppercase":"none",
-                          color:isSection?"#fff":rowDocs.length>0?"#0f5299":isCat?"#555":"#333",
+                          color:isSection?"var(--brand-ink)":rowDocs.length>0?"#0f5299":isCat?"#555":"#333",
                           padding:"2px 0",paddingLeft:isCat?0:12,fontFamily:"inherit"};
                         if(canEdit&&editRowId===row.id){
                           return <SchedBufInput type="text" value={row.label||""}
@@ -3934,7 +3977,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       })()}
                     </div>
                   </td>
-                  <td className="sched-noprint" style={{padding:"3px 6px",borderBottom:"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",background:isSection?"#2b2e36":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap"}}>
+                  {colStatus&&<td className="sched-noprint" style={{padding:"3px 6px",borderBottom:"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"nowrap"}}>
                       {activeBl&&(function(){
                         if(isCat){
@@ -4012,17 +4055,17 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         </span>;
                       })()}
                     </div>
-                  </td>
-                  <td style={{padding:"3px 6px",borderBottom:"1px solid #f5f4f0",background:isSection?"#2b2e36":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap"}}>
+                  </td>}
+                  {colCompany&&<td style={{padding:"3px 6px",borderBottom:"1px solid #f5f4f0",background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap"}}>
                     {isCat
                       ?(function(){
                         var td0=row.tenderRef?tenderById[row.tenderRef]:null;
-                        if(!td0)return <span style={{color:isSection?"#555":"#ddd",fontSize:10}}>—</span>;
+                        if(!td0)return <span style={{color:isSection?"#9aa3b5":"#ddd",fontSize:10}}>—</span>;
                         var aw0=tenderAwardees(td0);
                         return <span onClick={function(){setPanelRowId(row.id);}}
                           title={"Tender of this "+(isSection?"section":"room")+": "+td0.title+"\nUsed by every task below that has no tender of its own"+(aw0.length?"\nAwarded to "+aw0.join(", "):"\nNot awarded yet")}
                           style={{display:"inline-block",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",verticalAlign:"middle",
-                            fontSize:9.5,fontWeight:700,cursor:"pointer",color:isSection?"#cfcac0":"#00695c"}}>📑 {aw0.length?aw0.join(" / "):td0.title}</span>;
+                            fontSize:9.5,fontWeight:700,cursor:"pointer",color:isSection?"var(--brand-ink)":"#00695c"}}>📑 {aw0.length?aw0.join(" / "):td0.title}</span>;
                       })()
                       :canEdit
                         ?<div style={{display:"flex",alignItems:"center",gap:3}}>
@@ -4034,15 +4077,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         :<span style={{fontSize:10,fontWeight:rowGroup(row)?700:400,color:rowGroup(row)?"#00695c":"#ddd",fontStyle:rowSub(row).source==="pending"?"italic":"normal"}}>
                           <span style={{display:"inline-block",width:9,height:9,borderRadius:2,background:planColor(row),marginRight:4,border:"1px solid rgba(0,0,0,.15)"}}></span>
                           {rowGroup(row)||(rowSub(row).source==="pending"?"Tender pending":"—")}</span>}
-                  </td>
-                  {advanced&&<td style={{padding:"3px 6px",borderBottom:"1px solid #f5f4f0",background:isSection?"#2b2e36":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap",textAlign:"right"}}>
+                  </td>}
+                  {advanced&&<td style={{padding:"3px 6px",borderBottom:"1px solid #f5f4f0",background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap",textAlign:"right"}}>
                     {isCat
                       ?(function(){
                         var t=catQty(row);
-                        if(!t)return <span style={{color:isSection?"#555":"#ddd",fontSize:10}}>—</span>;
+                        if(!t)return <span style={{color:isSection?"#9aa3b5":"#ddd",fontSize:10}}>—</span>;
                         return <span title="Total of the tasks under this room — shown only when they all share the same unit"
-                          style={{fontSize:10,fontWeight:800,cursor:"help",color:isSection?"#cfcac0":"#8d6e63"}}>
-                          {fmtQty(t.qty)}<span style={{fontSize:8,fontWeight:600,color:isSection?"#8a867e":"#aaa"}}>{t.unit?" "+t.unit:""}</span>
+                          style={{fontSize:10,fontWeight:800,cursor:"help",color:isSection?"var(--brand-ink)":"#8d6e63"}}>
+                          {fmtQty(t.qty)}<span style={{fontSize:8,fontWeight:600,color:isSection?"#5f6b7d":"#aaa"}}>{t.unit?" "+t.unit:""}</span>
                         </span>;
                       })()
                       :canEdit
@@ -4058,10 +4101,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     {!isCat&&canEdit&&<span className="sched-printcell" style={{fontSize:10,fontWeight:700,color:"#b45309"}}>
                       {row.qty?fmtQty(Number(row.qty))+(row.unit?" "+row.unit:""):"—"}</span>}
                   </td>}
-                  {advanced&&<td style={{padding:"3px 8px",borderBottom:"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",background:isSection?"#2b2e36":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap",textAlign:"right"}}>
+                  {advanced&&<td style={{padding:"3px 8px",borderBottom:"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap",textAlign:"right"}}>
                     {(function(){
                       var sp=rowSpan(row);
-                      if(isCat||!sp||sp.rate===null)return <span style={{color:isSection?"#555":"#ddd",fontSize:10}}>—</span>;
+                      if(isCat||!sp||sp.rate===null)return <span style={{color:isSection?"#9aa3b5":"#ddd",fontSize:10}}>—</span>;
                       return <span title={"Quantity "+row.qty+" "+(row.unit||"")+" over "+sp.workingWeeks+" working week"+(sp.workingWeeks!==1?"s":"")+" ("+WORK_DAYS_PER_WEEK+" working days a week)"+(sp.derived?" — span read from the planned bars ("+fmtDate(sp.startWeek)+" → "+fmtDate(sp.endWeek)+")":"")}
                         style={{display:"inline-block",lineHeight:1.2,cursor:"help",color:sp.derived?"#8d6e63":"#b45309",borderBottom:sp.derived?"1px dotted #bcaaa4":"none"}}>
                         <span style={{display:"block",fontSize:10,fontWeight:800}}>
@@ -4144,9 +4187,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(v==="plan"||v==="both")?(paintMode==="plan"?"Drag the bar to move the task (the tasks after it follow) · drag its ends to change the dates · Alt+drag to erase weeks":"Drag along the row to paint or erase"):"Click, or drag along the row to paint several weeks")}
                       className={(isCat||hol)?"sched-wk sched-wk-nc":"sched-wk"}
                       style={Object.assign({},
-                        hol?{background:"repeating-linear-gradient(45deg,#e8e4da,#e8e4da 3px,#dcd8ce 3px,#dcd8ce 6px)"}:cellStyle(v,row),
+                        hol?{background:"repeating-linear-gradient(45deg,#e8e4da,#e8e4da 3px,#dcd8ce 3px,#dcd8ce 6px)"}:
+                          (row.milestone&&!isCat&&(v==="plan"||v==="both"))?{background:"transparent"}:cellStyle(v,row),
                         beforeDelivery?{background:"repeating-linear-gradient(45deg,#ef9a9a,#ef9a9a 3px,#e57373 3px,#e57373 6px)"}:null,
+                        wk===curWkKey?{boxShadow:"inset 2px 0 0 rgba(179,48,42,.6)"}:null,
                         isFeasible?{boxShadow:"inset 0 0 0 2px "+featCol}:null)}>
+                      {row.milestone&&!isCat&&(v==="plan"||v==="both")&&<span title={"Milestone — "+(row.label||"")+" · week of "+fmtDate(wk)}
+                        style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-52%)",fontSize:zoom==="w"?17:13,lineHeight:1,color:planColor(row),pointerEvents:"none",textShadow:"0 0 1px rgba(0,0,0,.35)"}}>◆</span>}
+                      {zoom!=="w"&&!isCat&&wk===lastPlanWk&&<span className="sched-bar-lbl" style={{left:"calc(100% + 10px)"}}>{row.label||""}</span>}
                       {hasWp?wpVal:isFeasible?<span title={"🚚 Delivery "+fmtDate(rowRisk.delivery)+" — earliest possible start"} style={{color:v?"#fff":featCol,fontSize:10,fontWeight:900,textShadow:v?"0 0 3px rgba(0,0,0,.7)":"none"}}>▶</span>:""}
                       {activeBl&&!isCat&&blWeekSet[row.id]&&blWeekSet[row.id][wk]&&<span className="sched-noprint" title={"Baseline “"+activeBl.name+"”"}
                         style={{position:"absolute",left:0,right:0,bottom:1,height:4,background:"#546e7a",opacity:.75,pointerEvents:"none"}}></span>}
@@ -4176,7 +4224,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   })}
                 </tr>
                 {addAfter[row.id]&&<tr className="sched-noprint sched-addrow">
-                  <td colSpan={wks.length+(advanced?5:3)} style={{padding:"2px 0 3px 34px",borderBottom:"1px solid #f5f4f0",background:"#fff"}}>
+                  <td colSpan={wks.length+1+(colStatus?1:0)+(colCompany?1:0)+(advanced?2:0)} style={{padding:"2px 0 3px 34px",borderBottom:"1px solid #f5f4f0",background:"#fff"}}>
                     <button type="button" onClick={function(){insertTaskAfter(row.id);}}
                       title={"New task at the end of "+(addAfter[row.id].label||"this room")+" — it starts after the task above (Enter on its name adds the next one)"}
                       style={{border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:600,color:"var(--brand-2)",padding:"2px 4px",position:"sticky",left:34}}>
@@ -4607,17 +4655,17 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             {pop&&pop.rowId===row.id&&pop.kind==="owner"&&<SchedSearchPop anchor={pop.rect} title="Owner of the new action" placeholder="Search a person…"
               groups={[{label:"",items:[{id:"",label:"No owner",icon:"—",muted:true}].concat((people||[]).map(function(p){return{id:p,label:p,sub:deptOf(p)||""};}))}]}
               value={newActionOwner} onPick={function(id){setNewActionOwner(id);setPop(null);}} onClose={function(){setPop(null);}}/>}
-            <div style={{padding:"12px 14px",borderBottom:"1.5px solid #e8e6df",background:isSection?"#2b2e36":isCat?"#f0ede6":"#faf9f7",display:"flex",alignItems:"flex-start",gap:8}}>
+            <div style={{padding:"12px 14px",borderBottom:"1.5px solid #e8e6df",background:isSection?"#e3e9f2":isCat?"#f0ede6":"#faf9f7",display:"flex",alignItems:"flex-start",gap:8}}>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:9,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:isSection?"#cfcac0":"#9b968b",marginBottom:3}}>
+                <div style={{fontSize:9,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:isSection?"#5f6b7d":"#9b968b",marginBottom:3}}>
                   {isSection?"Section":isCat?"Room / category":"Task"}{!isCat&&myCat?" · "+(myCat.label||"room"):""}{mySec&&!isSection?" · "+(mySec.label||"section"):""}
                 </div>
                 {canEdit
                   ?<SchedBufInput type="text" value={row.label||""} onCommit={function(v){updRow(row.id,{label:v});}}
                     placeholder={isCat?"Room name…":"Task name…"}
                     style={{width:"100%",fontSize:15,fontWeight:700,padding:"3px 6px",border:"1px solid #e0ddd6",borderRadius:5,
-                      background:isSection?"#3a3f4b":"#fff",color:isSection?"#fff":"#16181d",fontFamily:"inherit"}}/>
-                  :<div style={{fontSize:15,fontWeight:700,color:isSection?"#fff":"#16181d"}}>{row.label||"(untitled)"}</div>}
+                      background:"#fff",color:isSection?"var(--brand-ink)":"#16181d",fontFamily:"inherit"}}/>
+                  :<div style={{fontSize:15,fontWeight:700,color:isSection?"var(--brand-ink)":"#16181d"}}>{row.label||"(untitled)"}</div>}
               </div>
               <button className="btn btn-sm" onClick={function(){setPanelRowId(null);}} title="Close (Esc)">✕</button>
             </div>
@@ -4729,10 +4777,19 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       </div>
                       <div style={{flex:1}}>
                         <label style={lbl}>End (week of)</label>
-                        <input type="date" disabled={!canEdit} value={spn.endWeek||""} min={wks[0]} max={wks[wks.length-1]}
+                        <input type="date" disabled={!canEdit||!!row.milestone} value={spn.endWeek||""} min={wks[0]} max={wks[wks.length-1]}
                           onChange={function(e){var w=weekOf(e.target.value);if(w)applySpan(row,{endWeek:w});}} style={{padding:"4px 6px",fontSize:11.5,width:"100%"}}/>
                       </div>
                     </div>
+                    <label style={{display:"flex",alignItems:"center",gap:7,marginTop:8,fontSize:12,fontWeight:500,textTransform:"none",letterSpacing:0,fontFamily:"var(--font-body)",color:"var(--ink-2)",cursor:canEdit?"pointer":"default"}}
+                      title="A milestone is an event (handover, pour, client approval): one week, drawn ◆">
+                      <input type="checkbox" disabled={!canEdit} checked={!!row.milestone} style={{width:14,height:14,margin:0}}
+                        onChange={function(e){
+                          if(!e.target.checked){updRow(row.id,{milestone:false});return;}
+                          var w=spn.startWeek||wks[Math.max(0,ti)]||wks[0];
+                          applySpan(row,{milestone:true,startWeek:w,endWeek:w});
+                        }}/>
+                      ◆ Milestone (one week, drawn as a diamond)</label>
                   </div>;
                 })()}
                 {canEdit&&<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:10}}>
