@@ -569,59 +569,42 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
     return{subject:subject,body:body,to:to,cc:cc,missing:missing};
   }
 
+  // One-line zone bar: zone, its figures, its tabs and its reports. It used to take a title
+  // block, a button row, a zone row and a tab row — the schedule then started half-way down.
+  var _open=zoneTasks.filter(function(a){return a.status!=="done";});
+  var _blk=_open.filter(function(a){return (a.tags||[]).indexOf("Blocking Point")>=0;}).length;
+  var _ovd=_open.filter(function(a){return a.due&&a.due<today();}).length;
+  var _leaders=zoneLeadersOf(zoneOwners,curZone);
   return <div>
-    {/* Same title block as the tender sheet: the zone reads as a document too. */}
-    <div className="titleblock" style={{display:"flex",alignItems:"stretch",overflow:"hidden",
-      border:"1.5px solid var(--ink,#16181d)",borderRadius:8,background:"#fff",marginBottom:16}}>
-      <div className="tb-main" style={{flex:1,minWidth:0,padding:"12px 16px"}}>
-        <div className="tb-eyebrow" style={{fontSize:11,fontWeight:600,letterSpacing:".09em",
-          textTransform:"uppercase",color:"var(--ink-3,#6f6b62)",marginBottom:3}}>Zone workspace</div>
-        <h2 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-page,24px)",
-          lineHeight:1.08,letterSpacing:"-.01em"}}>{curZone||"—"}</h2>
-        <div className="tb-sub" style={{fontSize:12,color:"var(--ink-3,#6f6b62)",marginTop:3}}>
-          {zoneLeadersOf(zoneOwners,curZone).length>0
-            ?"Led by "+zoneLeadersOf(zoneOwners,curZone).map(function(p){return p.split(",")[0];}).join(", ")
-            :"No zone leader set"}</div>
+    <div className="zone-bar">
+      <div className="zone-pick" title={_leaders.length?"Led by "+_leaders.map(function(p){return p.split(",")[0];}).join(", "):"No zone leader set"}>
+        {(zones||[]).length>1
+          ?(zones||[]).map(function(z){return <button key={z} className={"zone-chip"+(curZone===z?" on":"")} onClick={function(){setCurZone(z);}}>{z}</button>;})
+          :<b className="zone-name">{curZone||"—"}</b>}
       </div>
-      <div className="tb-cells" style={{display:"flex",borderLeft:"1.5px solid var(--ink,#16181d)",flexShrink:0}}>
-        {(function(){
-          var open=zoneTasks.filter(function(a){return a.status!=="done";});
-          var cells=[
-            {k:"Open",v:String(open.length),c:"#16181d"},
-            {k:"Blocking",v:String(open.filter(function(a){return (a.tags||[]).indexOf("Blocking Point")>=0;}).length),c:"var(--red,#b3302a)"},
-            {k:"Overdue",v:String(open.filter(function(a){return a.due&&a.due<today();}).length),c:"var(--amber,#b35c00)"},
-            {k:"Rooms",v:String(zoneRooms.length),c:"#16181d"}
-          ];
-          return cells.map(function(c){
-            return <div className="tb-cell" key={c.k} style={{padding:"10px 15px",borderRight:"1px solid var(--rule,#ddd9cf)",minWidth:82}}>
-              <span className="k" style={{display:"block",fontSize:9.5,fontWeight:600,letterSpacing:".09em",
-                textTransform:"uppercase",color:"var(--ink-3,#6f6b62)",marginBottom:2}}>{c.k}</span>
-              <span className="v" style={{display:"block",fontSize:17,fontWeight:700,color:c.c,lineHeight:1.1}}>{c.v}</span>
-            </div>;
-          });
-        })()}
-      </div>
-    </div>
-    <div className="page-hdr" style={{marginBottom:12,justifyContent:"flex-end"}}>
-      {subTab==="actions"&&filteredActions.length>0&&<button className="btn btn-gold" onClick={function(){setShowEmail(true);}}>Report</button>}
-      <button className="btn btn-pri" title="Friday pack: programme progress, room by room, procurement delays, the readiness questionnaire for the next 3 weeks and the actions"
-        onClick={function(){openReport("Weekly Zone Report — "+curZone,buildZoneWeeklyReport(curZone,schedules,rooms,tasks,tenders,{readiness:readiness}));}}>🗓 Weekly pack</button>
-    </div>
-
-    {showEmail&&<EmailModal em={buildZoneReport()} onClose={function(){setShowEmail(false);}}/>}
-
-    {(zones||[]).length>1&&<div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-      {(zones||[]).map(function(z){return <button key={z} className={"fchip"+(curZone===z?" on gold":"")} onClick={function(){setCurZone(z);}} style={curZone===z?{background:"#c9a84c",borderColor:"#c9a84c",color:"#1c1c1e"}:{}}>{z}</button>;})}
-    </div>}
-
-    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+      <span className="zone-kpis">
+        <span>{_open.length} open</span>
+        {_blk>0&&<span style={{color:"var(--red)",fontWeight:700}}>{_blk} blocking</span>}
+        {_ovd>0&&<span style={{color:"var(--amber)",fontWeight:700}}>{_ovd} overdue</span>}
+        <span>{zoneRooms.length} rooms</span>
+      </span>
+      <span className="zone-sep"></span>
+      <div className="zone-tabs">
       <button className={"fchip"+(subTab==="actions"?" on":"")} onClick={function(){setSubTab("actions");}}>📋 Actions</button>
       <button className={"fchip"+(subTab==="rooms"?" on":"")} onClick={function(){setSubTab("rooms");}}>🚪 Rooms {zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length>0&&<span style={{marginLeft:4,color:"#b3302a",fontWeight:700}}>({zoneRooms.filter(function(r){return roomBlockers(r.id).length>0;}).length} blocked)</span>}</button>
       <button className={"fchip"+(subTab==="ppi"?" on":"")} onClick={function(){setSubTab("ppi");}}>📈 PPI Tracker {avgPPI!==null&&<span style={{marginLeft:4,fontWeight:800,color:ppiColor(avgPPI)}}>{avgPPI}%</span>}</button>
       <button className={"fchip"+(subTab==="kpi"?" on":"")} onClick={function(){setSubTab("kpi");}}>📊 KPI Tracker</button>
       <button className={"fchip"+(subTab==="schedule"?" on":"")} onClick={function(){setSubTab("schedule");}}>📅 Schedule</button>
       <button className={"fchip"+(subTab==="readiness"?" on":"")} onClick={function(){setSubTab("readiness");}} title="Friday meeting: readiness of the tasks starting in the next 3 weeks">✅ Readiness</button>
+      </div>
+      <div className="page-actions" style={{marginLeft:"auto"}}>
+        {subTab==="actions"&&filteredActions.length>0&&<button className="btn btn-sm" onClick={function(){setShowEmail(true);}}>Report</button>}
+        <button className="btn btn-sm" title="Friday pack: programme progress, room by room, procurement delays, the readiness questionnaire for the next 3 weeks and the actions"
+          onClick={function(){openReport("Weekly Zone Report — "+curZone,buildZoneWeeklyReport(curZone,schedules,rooms,tasks,tenders,{readiness:readiness}));}}>🗓 Weekly pack</button>
+      </div>
     </div>
+
+    {showEmail&&<EmailModal em={buildZoneReport()} onClose={function(){setShowEmail(false);}}/>}
 
     {subTab==="actions"&&<div>
       <div className="card" style={{marginBottom:14}}>
