@@ -3979,7 +3979,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     setCtxMenu({rowId:row.id,x:e.clientX,y:e.clientY});
                   }}
                   style={{background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff"}}>
-                  <td style={{position:"sticky",left:0,zIndex:1,background:(drag&&drag.type==="link"&&drag.target===row.id)?"#d6e6fb":panelRowId===row.id?(isSection?"#d3deec":"#fff3cd"):focusRow===row.id?"#faf3e0":isSel?"#e8f0fe":isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",padding:isSection?"5px 10px":"3px 10px",borderBottom:isSection?"1.5px solid var(--brand-line)":"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",boxShadow:focusRow===row.id?"inset 3px 0 0 #b35c00":onCrit?"inset 3px 0 0 var(--amber,#b35c00)":(critPath&&critPath.zeroFloat[row.id])?"inset 3px 0 0 #e6c48c":"none"}}>
+                  <td style={{position:"sticky",left:0,zIndex:1,background:(drag&&drag.type==="link"&&drag.target===row.id)?"#d6e6fb":panelRowId===row.id?(isSection?"#d3deec":"#fff"):focusRow===row.id?"#faf3e0":isSel?"#e8f0fe":isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",padding:isSection?"5px 10px":"3px 10px",borderBottom:isSection?"1.5px solid var(--brand-line)":"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",boxShadow:focusRow===row.id?"inset 3px 0 0 #b35c00":onCrit?"inset 3px 0 0 var(--amber,#b35c00)":(critPath&&critPath.zeroFloat[row.id])?"inset 3px 0 0 #e6c48c":"none"}}>
                     <div style={{display:"flex",alignItems:"center",gap:3}}>
                       {canEdit&&!isCat&&<input type="checkbox" className="sched-noprint" checked={isSel}
                         onChange={function(){}} onClick={function(e){clickSelRow(row.id,e);}}
