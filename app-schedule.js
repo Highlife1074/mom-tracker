@@ -601,6 +601,7 @@ function SchedTaskPicker({rows,weeks,title,value,allowHeaders,blockedReason,sugg
             <div style={{width:LW,flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"0 10px 0 "+(isSec?10:isCat?18:30)+"px",position:"sticky",left:0,background:bg,zIndex:1,
               fontSize:isSec?12:12,fontWeight:isSec||isCat?700:500,color:w&&!m.head?"var(--ink-4)":isSec?"var(--brand-ink)":"var(--ink)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
               {isSec?"■":isCat?"▸":""} <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{r.label||"untitled"}</span>
+              {!m.head&&m.path&&!on&&!(w&&w!=="header")&&<span title={m.path} style={{marginLeft:"auto",fontSize:10,fontWeight:500,color:"var(--ink-4)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:1}}>{m.path.split(" › ").reverse().join(" · ")}</span>}
               {on&&<span style={{marginLeft:"auto",fontSize:10,color:"var(--gold-ink)",fontWeight:700}}>current</span>}
               {w&&w!=="header"&&<span style={{marginLeft:"auto",fontSize:9.5,color:"var(--ink-4)",fontWeight:500}}>{w}</span>}
             </div>
@@ -1720,7 +1721,22 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // Per-render caches. A render asks the same questions about a row several times (risk banner,
   // grid cell, panel…) and the grid colours every week cell: answer each once per render.
   // Rebuilt on every render, so they can never be stale.
-  var _rm={risk:{},acts:{},pq:{},color:{},idx:null};
+  var _rm={risk:{},acts:{},pq:{},color:{},idx:null,place:null};
+  // Where a task sits: "Room · Section". Task names repeat from one room to the next
+  // ("Formwork slab" in every zone), so every linked task is named with its place.
+  function placeOf(id){
+    if(!_rm.place){
+      var m={},sec="",cat="";
+      ((sc&&sc.rows)||[]).forEach(function(r){
+        if(r.kind==="section"){sec=r.label||"";cat="";return;}
+        if(r.kind==="category"){cat=r.label||"";m[r.id]=sec;return;}
+        m[r.id]=[cat,sec].filter(Boolean).join(" · ");
+      });
+      _rm.place=m;
+    }
+    return _rm.place[id]||"";
+  }
+  function nameWithPlace(r){if(!r)return "untitled";var pl=placeOf(r.id);return (r.label||"untitled")+(pl?" ("+pl+")":"");}
   function _taskIdx(){
     if(_rm.idx)return _rm.idx;
     // Only the tasks that can concern a row: linked to one, or a blocking point of this zone.
@@ -3082,7 +3098,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         var a=pc.getBoundingClientRect(),c=scl.getBoundingClientRect();
         out.push({id:r.id,predId:p.id,x1:Math.round(a.right-b.left),y1:Math.round(a.top+a.height/2-b.top),
           x2:Math.round(c.left-b.left),y2:Math.round(c.top+c.height/2-b.top),bad:ss.startWeek<=ps.endWeek,
-          label:(p.label||"untitled")+" → "+(r.label||"untitled")});
+          label:nameWithPlace(p)+" → "+nameWithPlace(r)});
       });});
     }
     var key=JSON.stringify(out);
@@ -4960,7 +4976,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       var drives=ls&&ls.pred&&ls.pred.id===pl.id&&plist.length>1;
                       return <div key={pl.id} style={{display:"flex",alignItems:"center",gap:6,border:"1px solid var(--brand-line)",borderRadius:8,padding:"5px 8px",background:"var(--brand-soft)",marginBottom:5}}>
                         <a onClick={function(){if(pr)setPanelRowId(pr.id);}} style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"var(--brand-ink)",cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
-                          title="Open this task">🔗 {pr?(pr.label||"(untitled)"):"(deleted task)"}</a>
+                          title={"Open this task"+(pr&&placeOf(pr.id)?" — "+placeOf(pr.id):"")}>🔗 {pr?(pr.label||"(untitled)"):"(deleted task)"}
+                          {pr&&placeOf(pr.id)&&<span style={{display:"block",fontSize:10.5,fontWeight:500,color:"var(--ink-3)",overflow:"hidden",textOverflow:"ellipsis"}}>{placeOf(pr.id)}</span>}</a>
                         {st&&<span style={{fontSize:10,fontWeight:700,whiteSpace:"nowrap",color:st.weeks<0?"var(--red)":st.weeks===0?"var(--green)":"var(--ink-3)"}}>
                           {st.weeks<0?(-st.weeks)+" wk early":st.weeks===0?"right after":st.weeks+" wk slack"}</span>}
                         {drives&&<span title="This one sets the start" style={{fontSize:9.5,fontWeight:700,color:"var(--red)",background:"var(--red-soft)",borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap"}}>sets the date</span>}
@@ -4993,17 +5010,17 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   background:ls.weeks<0?"#fbe6e8":ls.weeks===0?"#e6f2e9":"#f5f4f0",color:ls.weeks<0?"#b3302a":ls.weeks===0?"#1e6b3a":"#6f6b62"}}>
                   <span style={{flex:1}}>
                     {ls.weeks<0
-                      ?"🔴 Starts "+(-ls.weeks)+" week"+(-ls.weeks!==1?"s":"")+" too early: “"+(ls.pred.label||"untitled")+"”"+(ls.lag?" + "+ls.lag+" wk gap":"")+" allows "+(ls.earliestWeek?fmtDate(ls.earliestWeek):"a later week")
+                      ?"🔴 Starts "+(-ls.weeks)+" week"+(-ls.weeks!==1?"s":"")+" too early: “"+nameWithPlace(ls.pred)+"”"+(ls.lag?" + "+ls.lag+" wk gap":"")+" allows "+(ls.earliestWeek?fmtDate(ls.earliestWeek):"a later week")
                       :ls.weeks===0
-                        ?"✅ Starts right after “"+(ls.pred.label||"untitled")+"”"
-                        :"⏸ "+ls.weeks+" week"+(ls.weeks!==1?"s":"")+" of slack after “"+(ls.pred.label||"untitled")+"”"}
+                        ?"✅ Starts right after “"+nameWithPlace(ls.pred)+"”"
+                        :"⏸ "+ls.weeks+" week"+(ls.weeks!==1?"s":"")+" of slack after “"+nameWithPlace(ls.pred)+"”"}
                   </span>
                   {canEdit&&ls.weeks!==0&&ls.earliestWeek&&<button className="btn btn-sm" style={{padding:"1px 7px",fontSize:10,flexShrink:0}}
                     onClick={function(){moveAfterPredecessor(row);}}>{ls.weeks<0?"⇢ Move after it":"⇠ Pull back"}</button>}
                 </div>}
                 {followers.length>0&&<div style={{marginTop:7,fontSize:10.5,color:"#6f6b62"}}>
                   Followed by: {followers.map(function(f,fi){
-                    return <span key={f.id}>{fi>0?", ":""}<a onClick={function(){setPanelRowId(f.id);}} style={{color:"#0f5299",cursor:"pointer"}}>{f.label||"(untitled)"}</a></span>;
+                    return <span key={f.id}>{fi>0?", ":""}<a onClick={function(){setPanelRowId(f.id);}} style={{color:"#0f5299",cursor:"pointer"}}>{f.label||"(untitled)"}</a>{placeOf(f.id)&&placeOf(f.id)!==placeOf(row.id)?<span style={{color:"var(--ink-4)"}}> ({placeOf(f.id)})</span>:null}</span>;
                   })}
                 </div>}
               </div>}
@@ -5177,7 +5194,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <div className="sched-noprint" style={{position:"fixed",zIndex:1300,left:Math.max(6,Math.min(linkMenu.x+8,window.innerWidth-W-6)),top:Math.max(6,Math.min(linkMenu.y+8,window.innerHeight-210)),
               width:W,background:"#fff",border:"1px solid #e0ddd6",borderRadius:9,boxShadow:"0 10px 32px rgba(0,0,0,.22)",padding:"6px 0"}}>
               <div style={{fontSize:11,color:"#6f6b62",padding:"3px 12px 6px",lineHeight:1.4}}>
-                <b style={{color:"#16181d"}}>{succ.label||"(untitled)"}</b> starts after <b style={{color:"#16181d"}}>{pred.label||"(untitled)"}</b>
+                <b style={{color:"#16181d"}}>{succ.label||"(untitled)"}</b>{placeOf(succ.id)?<span> ({placeOf(succ.id)})</span>:null} starts after <b style={{color:"#16181d"}}>{pred.label||"(untitled)"}</b>{placeOf(pred.id)?<span> ({placeOf(pred.id)})</span>:null}
                 {ls&&ls.weeks<0&&<div style={{color:"#b3302a",fontWeight:700}}>⚠ starts {-ls.weeks} week{-ls.weeks!==1?"s":""} too early</div>}
                 {ls&&ls.weeks>0&&<div>{ls.weeks} week{ls.weeks!==1?"s":""} of slack</div>}
               </div>
