@@ -569,7 +569,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
     return{subject:subject,body:body,to:to,cc:cc,missing:missing};
   }
 
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+  return <div>
     {/* Same title block as the tender sheet: the zone reads as a document too. */}
     <div className="titleblock" style={{display:"flex",alignItems:"stretch",overflow:"hidden",
       border:"1.5px solid var(--ink,#16181d)",borderRadius:8,background:"#fff",marginBottom:16}}>

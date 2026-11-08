@@ -206,7 +206,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-11-07-a";
+var APP_BUILD="2026-11-08-a";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -702,13 +702,15 @@ var NAV_VIEWS={
   settings:{icon:"⚙️",label:"Settings",kw:"people access durations zones tags backup parametres"}
 };
 // Sections of the rail, views in order of use. A view listed in no section has no tab bar.
+// color = the section's muted accent (section label and active tab of the top bar, phone menu);
+// the rest of the chrome stays navy (--brand) with the gold accent.
 var NAV_SECTIONS=[
-  {id:"follow",icon:"✅",label:"Follow-up",views:["global","moms","notes","submissions","trackers","timeline"]},
-  {id:"proc",icon:"📦",label:"Procurement",views:["myprocurement","tenders","procplan","procflow","materials","qadocs","packages"]},
-  {id:"site",icon:"🏗️",label:"Site",views:["zone","manpower","concrete","steel","inventory"]},
-  {id:"contract",icon:"📋",label:"Contract",views:["contracts","awn","contractors"]},
-  {id:"dash",icon:"📈",label:"Dashboard",views:["dashboard"]},
-  {id:"settings",icon:"⚙️",label:"Settings",views:["settings"],bottom:true}
+  {id:"follow",icon:"✅",label:"Follow-up",color:"#2f6fb0",views:["global","moms","notes","submissions","trackers","timeline"]},
+  {id:"proc",icon:"📦",label:"Procurement",color:"#a86f12",views:["myprocurement","tenders","procplan","procflow","materials","qadocs","packages"]},
+  {id:"site",icon:"🏗️",label:"Site",color:"#2e7a57",views:["zone","manpower","concrete","steel","inventory"]},
+  {id:"contract",icon:"📋",label:"Contract",color:"#74508f",views:["contracts","awn","contractors"]},
+  {id:"dash",icon:"📈",label:"Dashboard",color:"#0f7584",views:["dashboard"]},
+  {id:"settings",icon:"⚙️",label:"Settings",color:"#55657a",views:["settings"],bottom:true}
 ];
 function navView(id,label){var v=NAV_VIEWS[id];return v?Object.assign({id:id},v,label?{label:label}:{}):null;}
 function navSectionOf(view){
@@ -795,7 +797,7 @@ function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras,p
   if(bar.length<4)flat.forEach(function(n){if(bar.length<4&&bar.indexOf(n)<0)bar.push(n);});
   var inBar=bar.some(function(n){return n.id===view;});
   function go(id){setView(id);setOpen(false);try{document.querySelector(".content").scrollTop=0;}catch(e){}}
-  var groups=NAV_SECTIONS.map(function(g){return [g.label,g.views.map(byId).filter(Boolean)];}).filter(function(g){return g[1].length;});
+  var groups=NAV_SECTIONS.map(function(g){return [g.label,g.views.map(byId).filter(Boolean),g.color];}).filter(function(g){return g[1].length;});
   var listed=[];groups.forEach(function(g){g[1].forEach(function(n){listed.push(n.id);});});
   var other=flat.filter(function(n){return listed.indexOf(n.id)<0;});
   if(other.length)groups.push(["Other",other]);
@@ -820,7 +822,7 @@ function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras,p
         <div style={{fontSize:11,color:"var(--ink-3)",margin:"0 4px"}}>★ = favourite: on the bottom bar here, at the top of the left rail on a computer (4 max).</div>
         {groups.map(function(g){
           return <div key={g[0]}>
-            <div className="grp">{g[0]}</div>
+            <div className="grp" style={g[2]?{"--sec":g[2]}:null}>{g[0]}</div>
             <div className="grid">{g[1].map(function(n){
               var pinned=(pins||[]).indexOf(n.id)>=0;
               return <div key={n.id} className={"item"+(view===n.id?" on":"")} onClick={function(){go(n.id);}}>
@@ -988,7 +990,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
 
   return <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
     <div style={{padding:"14px 14px 10px",borderBottom:"1.5px solid #e8e6df"}}>
-      <div style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:15,marginBottom:2}}>Quick Add</div>
+      <div style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:15,marginBottom:2,color:"var(--brand-ink)"}}>Quick Add</div>
       <div style={{fontSize:11,color:"#bbb"}}>Enter to add · {today().split("-").reverse().join("/")}</div>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:12}} className="sform">
@@ -1438,7 +1440,7 @@ function ActionsView({tasks,setTasks,people,packages,tags,tenders,contractors,tr
         {STATUS_OPTS.map(s=><option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>)}
       </select>
       <select value={filterPkg} onChange={e=>setFilterPkg(e.target.value)} style={{width:"auto",padding:"5px 8px",fontSize:11}}>
-        <option value="all">All packages</option>
+        <option value="all">All departments</option>
         {allPkgs.map(p=><option key={p} value={p}>{p}</option>)}
       </select>
       <select value={filterOwner} onChange={e=>setFilterOwner(e.target.value)} style={{width:"auto",padding:"5px 8px",fontSize:11}}>
@@ -1959,11 +1961,11 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
 
   return <div>
     <div className="page-hdr">
-      <div><div className="page-title">Settings</div><div className="page-sub">Manage tags, people, packages and CC rules</div></div>
+      <div><div className="page-title">Settings</div><div className="page-sub">Manage tags, people, departments, zones, access and CC rules</div></div>
     </div>
 
     <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-      {["tags","people","packages","zones","subcontractors","tender-rules","pkg-owners","cc-rules","report-cc","access","my-prefs","improvements","backup"].concat(isAdmin?["durations"]:[]).map(function(t){return <button key={t} className={"fchip"+(tab===t?" on":"")} onClick={function(){setTab(t);}} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t==="improvements"?"💡 Improvements":t==="pkg-owners"?"📦 Pkg Owners":t==="backup"?"💾 Backup":t==="my-prefs"?"👤 My Prefs":t==="tender-rules"?"🔗 Tender rules":t==="subcontractors"?"👷 Subcontractors":t==="zones"?"🏢 Zones":t==="report-cc"?"📧 Report CC":t==="access"?"🔐 Access":t==="durations"?"⏱ Durations":t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
+      {["tags","people","packages","zones","subcontractors","tender-rules","pkg-owners","cc-rules","report-cc","access","my-prefs","improvements","backup"].concat(isAdmin?["durations"]:[]).map(function(t){return <button key={t} className={"fchip"+(tab===t?" on":"")} onClick={function(){setTab(t);}} style={{textTransform:"capitalize"}}>{t==="cc-rules"?"CC Rules":t==="improvements"?"💡 Improvements":t==="pkg-owners"?"🗂️ Department owners":t==="packages"?"🗂️ Departments":t==="backup"?"💾 Backup":t==="my-prefs"?"👤 My Prefs":t==="tender-rules"?"🔗 Package rules":t==="subcontractors"?"👷 Subcontractors":t==="zones"?"🏢 Zones":t==="report-cc"?"📧 Report CC":t==="access"?"🔐 Access":t==="durations"?"⏱ Durations":t.charAt(0).toUpperCase()+t.slice(1)}</button>;})}
     </div>
 
     {tab==="tags"&&<div className="card">
@@ -2018,7 +2020,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
     {tab==="packages"&&<div className="card">
       <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>🗂️ Departments ({packages.length}) <span style={{fontSize:11,fontWeight:400,color:"var(--ink-3,#6f6b62)"}}>— formerly “Packages”; each package (ex-tender) belongs to one</span></div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>
-        <input type="text" value={newPackage} onChange={e=>setNewPackage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPackage()} placeholder="Package name…" style={{flex:1}}/>
+        <input type="text" value={newPackage} onChange={e=>setNewPackage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPackage()} placeholder="Department name…" style={{flex:1}}/>
         <button className="btn btn-pri" onClick={addPackage}>＋ Add</button>
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
@@ -2030,12 +2032,12 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
     </div>}
 
     {tab==="tender-rules"&&<div className="card">
-      <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🔗 Tender rules ({(tenderRules||[]).length})</div>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🔗 Package rules ({(tenderRules||[]).length})</div>
       <div style={{fontSize:12,color:"var(--ink-3,#6f6b62)",marginBottom:14}}>
-        “Every schedule task of <b>this subcontractor</b> in <b>this zone</b> belongs to <b>this tender</b>.”
-        A rule fills the tender in as soon as the subcontractor is set on a task, and the schedule has a
+        “Every schedule task of <b>this subcontractor</b> in <b>this zone</b> belongs to <b>this package</b>.”
+        A rule fills the package in as soon as the subcontractor is set on a task, and the schedule has a
         <b> 🔗 Apply rules</b> button to sweep the existing ones. A task that already points at another
-        tender is never overwritten.
+        package is never overwritten.
       </div>
 
       {(tenderRules||[]).length===0&&<div style={{fontSize:12,color:"var(--ink-4,#9b968b)",marginBottom:12}}>No rule yet.</div>}
@@ -2057,10 +2059,10 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           <span style={{fontSize:11,color:"var(--ink-3,#6f6b62)"}}>→</span>
           <select value={r.tenderId||""} onChange={function(e){var d=(tenderRules||[]).slice();d[i]=Object.assign({},r,{tenderId:e.target.value});saveTenderRules(d);}}
             style={{flex:1,minWidth:180,fontSize:11,padding:"4px 7px",fontWeight:600,color:r.tenderId?"var(--blue,#0f5299)":"var(--ink-4,#9b968b)"}}>
-            <option value="">— tender —</option>
+            <option value="">— package —</option>
             {(function(){
               var byPkg={};
-              (tenders||[]).forEach(function(t){var p=t.package||"— no package —";(byPkg[p]=byPkg[p]||[]).push(t);});
+              (tenders||[]).forEach(function(t){var p=t.package||"— no department —";(byPkg[p]=byPkg[p]||[]).push(t);});
               return Object.keys(byPkg).sort().map(function(p){
                 return <optgroup key={p} label={p}>
                   {byPkg[p].slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");})
@@ -2406,8 +2408,8 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
     </div>}
 
     {tab==="pkg-owners"&&<div className="card">
-      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📦 Package Owners &amp; Subcontractors</div>
-      <div style={{fontSize:12,color:"#888",marginBottom:10}}>Assign a default owner (auto-fills new tenders) and the subcontractor name for each package.</div>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>🗂️ Department owners &amp; subcontractors</div>
+      <div style={{fontSize:12,color:"#888",marginBottom:10}}>Assign a default owner (auto-fills new packages) and the subcontractor name for each department.</div>
       {(packages||[]).map(function(pkg){return <div key={pkg} style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
         <div style={{flex:1,fontWeight:600,fontSize:13}}>{pkg}</div>
         <select value={(pkgOwners||{})[pkg]||""} onChange={function(e){var u=Object.assign({},pkgOwners||{});u[pkg]=e.target.value;savePkgOwners(u);}} style={{flex:2,padding:"4px 8px",fontSize:12,fontFamily:"inherit",border:"1px solid #e8e6df",borderRadius:6}}>
@@ -3154,7 +3156,7 @@ function NotesView({notes,saveNotes,tasks,saveTasks,people,zones,packages,tender
       .slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"")||(b.updatedAt||"").localeCompare(a.updatedAt||"");});
     return <div>
       <div className="page-hdr">
-        <div><div className="page-title">🗒 Notes</div><div className="page-sub">Informal meetings — type bullets, turn them into actions</div></div>
+        <div><div className="page-title">Notes</div><div className="page-sub">Informal meetings — type bullets, turn them into actions</div></div>
         <button className="btn btn-gold" onClick={create}>＋ New note</button>
       </div>
       <input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Search title or text…" style={{width:"100%",maxWidth:420,marginBottom:12,padding:"6px 10px",border:"1.5px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}/>
@@ -3326,6 +3328,9 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   const [fCC,setFCC]=useState(mem.fCC||"all");
   const [fScore,setFScore]=useState(mem.fScore||"all");
   const [showInfo,setShowInfo]=useState(mem.showInfo||false);
+  // Advanced filter panel open / closed, remembered in this browser.
+  const [filtersOpen,setFiltersOpenRaw]=useState(function(){try{return localStorage.getItem("pp_actions_filters_open")==="1";}catch(e){return false;}});
+  function setFiltersOpen(v){setFiltersOpenRaw(v);try{localStorage.setItem("pp_actions_filters_open",v?"1":"0");}catch(e){}}
   const [showPoint,setShowPoint]=useState(false);
   const [sortBy,setSortBy]=useState(mem.sortBy||"none");
   const [sortDir,setSortDir]=useState(mem.sortDir||"asc");
@@ -3599,6 +3604,20 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   var inprog=filtered.filter(function(a){return a.status==="in progress";}).length;
   var done=allActions.filter(function(a){return a.status==="done";}).length;
 
+  // Filters held in the panel: counted on its button and listed when it is closed.
+  var advLabels=[];
+  if(fPkg!=="all")advLabels.push("Department: "+fPkg);
+  if(fTender!=="all"){var _ftd=(tenders||[]).find(function(t){return t.id===fTender;});advLabels.push("Package: "+(_ftd?_ftd.title:"?"));}
+  if(fContractor!=="all"){var _fc=(contractors||[]).find(function(c){return c.id===fContractor;});advLabels.push("Subcontractor: "+(_fc?_fc.name:"?"));}
+  if(fCC!=="all")advLabels.push("CC: "+fCC.split(",")[0]);
+  if(fScore!=="all")advLabels.push("Score: "+fScore);
+  if(fAddedBy!=="all")advLabels.push("Added by: "+(fAddedBy==="__team__"?"team":fAddedBy==="__auto__"?"auto":fAddedBy.split(",")[0]));
+  fOwners.forEach(function(o){advLabels.push("Owner: "+o.split(",")[0]);});
+  fTags.forEach(function(t){advLabels.push("Tag: "+t);});
+  var advCount=advLabels.length;
+  var anyFilter=advCount>0||fStatus!=="all"||!!q||!!preset;
+  function resetFilters(){setFStatus("all");setFOwners([]);setFTags([]);setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setFScore("all");setQ("");setPreset("");setFAddedBy("all");}
+
   return <div>
     {showDupes&&<DuplicateFinder tasks={tasks} saveTasks={saveTasks} tenders={tenders}
       canDelete={isAppAdmin(currentUser||(window._currentUser?window._currentUser.name:""))}
@@ -3631,8 +3650,15 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
       {fOwners.length===0&&<button className="btn btn-sm" onClick={function(){setFOwners([currentUser]);}}>Back to my actions only</button>}
     </div>}
 
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
-      <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Quick:</span>
+    {/* Filters: the everyday ones stay on one line; the rest live in a panel that opens on demand.
+        The button shows how many of the panel's filters are on, so nothing is ever hidden silently. */}
+    <div className="flt-bar">
+      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search…" style={{width:190,padding:"5px 10px",fontSize:12}}/>
+      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+        <option value="all">All status</option>
+        {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
+      </select>
+      <span className="flt-sep"></span>
       {[
         {k:"blocking",label:"🔴 Blocking",activeBg:"#fbe6e8",activeColor:"#b3302a"},
         {k:"topmgmt",label:"👔 Top Mgmt",activeBg:"#ede7f6",activeColor:"#5e35b1"},
@@ -3641,66 +3667,74 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         var on=preset===p.k;
         return <button key={p.k} onClick={function(){setPreset(on?"":p.k);}} style={{padding:"3px 11px",borderRadius:20,border:"1.5px solid "+(on?p.activeColor:"#ddd"),background:on?p.activeBg:"#fff",color:on?p.activeColor:"#888",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{p.label}</button>;
       })}
-      <span style={{width:1,height:18,background:"#e0ddd6",margin:"0 4px"}}></span>
-      <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Added by:</span>
-      <select value={fAddedBy} onChange={function(e){setFAddedBy(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">Everyone</option>
-        <option value="__team__">✍️ Team (manual)</option>
-        <option value="__auto__">🤖 Auto (System)</option>
-        {[...new Set(allActions.map(function(a){return a.addedBy;}).filter(function(x){return x&&x!=="System"&&!x.startsWith("Email");}))].sort().map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
-      </select>
-    </div>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:4,alignItems:"center"}}>
-      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search…" style={{width:160,padding:"5px 10px",fontSize:12}}/>
-      <select value={fStatus} onChange={function(e){setFStatus(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All status</option>
-        {STATUS_OPTS.map(function(s){return <option key={s} value={s}>{STATUS_ICONS[s]} {s}</option>;})}
-      </select>
-      <select value={fPkg} onChange={function(e){
-        var newPkg=e.target.value;
-        setFPkg(newPkg);
-        if(fTender!=="all"&&newPkg!=="all"){var td=(tenders||[]).find(function(t){return t.id===fTender;});if(td&&td.package!==newPkg)setFTender("all");}
-        if(fContractor!=="all"&&newPkg!=="all"){var ctr=(contractors||[]).find(function(c){return c.id===fContractor;});if(ctr&&ctr.package!==newPkg&&!(ctr.contracts||[]).some(function(ct){return ct.package===newPkg;}))setFContractor("all");}
-      }} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All packages</option>
-        {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
-      </select>
-      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All tenders</option>
-        {(tenders||[]).filter(function(t){
-          if(fPkg==="all")return true;
-          return t.package===fPkg;
-        }).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
-      </select>
-      <select value={fContractor} onChange={function(e){setFContractor(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All subcontractors</option>
-        {(contractors||[]).filter(function(ctr){
-          if(fPkg==="all")return true;
-          return ctr.package===fPkg||(ctr.contracts||[]).some(function(ct){return ct.package===fPkg;});
-        }).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
-      </select>
-      <select value={fCC} onChange={function(e){setFCC(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All CC</option>
-        {allCCs.map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
-      </select>
-      <select value={fScore} onChange={function(e){setFScore(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-        <option value="all">All scores</option>
-        <option value="high">🔴 High (7-9)</option>
-        <option value="mid">🟠 Medium (4-6)</option>
-        <option value="low">Low (1-3)</option>
-      </select>
-    </div>
-    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
-      <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px"}}>Owners:</span>
-      {allOwners.map(function(o){var on=fOwners.includes(o);var col=ownerColor(o);return <button key={o} onClick={function(){setFOwners(function(prev){return prev.includes(o)?prev.filter(function(x){return x!==o;}):[...prev,o];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?col.accent:"#ddd"),background:on?col.bg:"#fff",color:on?col.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{o.split(",")[0]}</button>;})}
-      <span style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",letterSpacing:".4px",marginLeft:8}}>Tags:</span>
-      {(tags||[]).map(function(tg){var on=fTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){setFTags(function(prev){return prev.includes(tg)?prev.filter(function(x){return x!==tg;}):[...prev,tg];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+      <span className="flt-sep"></span>
+      <button className={"fchip"+(filtersOpen||advCount>0?" on":"")} onClick={function(){setFiltersOpen(!filtersOpen);}}
+        title="Owners, tags, department, package, subcontractor, CC, score, added by">
+        ⚙ Filters{advCount>0?" · "+advCount:""} {filtersOpen?"▴":"▾"}</button>
       <button onClick={function(){setShowInfo(!showInfo);}} style={{padding:"3px 10px",borderRadius:10,border:"1.5px solid "+(showInfo?"#0f5299":"#ddd"),background:showInfo?"#f4f6f9":"#fff",color:showInfo?"#0f5299":"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>ℹ️ Info</button>
-      {(fStatus!=="all"||fOwners.length>0||fTags.length>0||fPkg!=="all"||fTender!=="all"||fContractor!=="all"||fCC!=="all"||fScore!=="all"||q||preset||fAddedBy!=="all")&&
-        <button className="btn btn-sm" style={{marginLeft:8}} onClick={function(){setFStatus("all");setFOwners([]);setFTags([]);setFPkg("all");setFTender("all");setFContractor("all");setFCC("all");setFScore("all");setQ("");setPreset("");setFAddedBy("all");}}>✕ Reset all</button>}
+      {anyFilter&&<button className="btn btn-sm" onClick={resetFilters}>✕ Reset all</button>}
     </div>
+    {filtersOpen&&<div className="flt-panel">
+      <div className="flt-row">
+        <span className="flt-l">Scope</span>
+        <select value={fPkg} onChange={function(e){
+          var newPkg=e.target.value;
+          setFPkg(newPkg);
+          if(fTender!=="all"&&newPkg!=="all"){var td=(tenders||[]).find(function(t){return t.id===fTender;});if(td&&td.package!==newPkg)setFTender("all");}
+          if(fContractor!=="all"&&newPkg!=="all"){var ctr=(contractors||[]).find(function(c){return c.id===fContractor;});if(ctr&&ctr.package!==newPkg&&!(ctr.contracts||[]).some(function(ct){return ct.package===newPkg;}))setFContractor("all");}
+        }} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+          <option value="all">All departments</option>
+          {allPkgs.map(function(p){return <option key={p} value={p}>{p}</option>;})}
+        </select>
+        <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+          <option value="all">All packages</option>
+          {(tenders||[]).filter(function(t){
+            if(fPkg==="all")return true;
+            return t.package===fPkg;
+          }).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
+        </select>
+        <select value={fContractor} onChange={function(e){setFContractor(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+          <option value="all">All subcontractors</option>
+          {(contractors||[]).filter(function(ctr){
+            if(fPkg==="all")return true;
+            return ctr.package===fPkg||(ctr.contracts||[]).some(function(ct){return ct.package===fPkg;});
+          }).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");}).map(function(c){return <option key={c.id} value={c.id}>{c.name}</option>;})}
+        </select>
+        <select value={fCC} onChange={function(e){setFCC(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+          <option value="all">All CC</option>
+          {allCCs.map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+        </select>
+        <select value={fScore} onChange={function(e){setFScore(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+          <option value="all">All scores</option>
+          <option value="high">🔴 High (7-9)</option>
+          <option value="mid">🟠 Medium (4-6)</option>
+          <option value="low">Low (1-3)</option>
+        </select>
+      </div>
+      <div className="flt-row">
+        <span className="flt-l">Added by</span>
+        <select value={fAddedBy} onChange={function(e){setFAddedBy(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
+          <option value="all">Everyone</option>
+          <option value="__team__">✍️ Team (manual)</option>
+          <option value="__auto__">🤖 Auto (System)</option>
+          {[...new Set(allActions.map(function(a){return a.addedBy;}).filter(function(x){return x&&x!=="System"&&!x.startsWith("Email");}))].sort().map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
+        </select>
+      </div>
+      <div className="flt-row">
+        <span className="flt-l">Owners</span>
+        {allOwners.map(function(o){var on=fOwners.includes(o);var col=ownerColor(o);return <button key={o} onClick={function(){setFOwners(function(prev){return prev.includes(o)?prev.filter(function(x){return x!==o;}):[...prev,o];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?col.accent:"#ddd"),background:on?col.bg:"#fff",color:on?col.accent:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{o.split(",")[0]}</button>;})}
+      </div>
+      <div className="flt-row">
+        <span className="flt-l">Tags</span>
+        {(tags||[]).map(function(tg){var on=fTags.includes(tg);var tc=tagColor(tg);return <button key={tg} onClick={function(){setFTags(function(prev){return prev.includes(tg)?prev.filter(function(x){return x!==tg;}):[...prev,tg];});}} style={{padding:"2px 9px",borderRadius:20,border:"1.5px solid "+(on?tc.color:"#ddd"),background:on?tc.bg:"#fff",color:on?tc.color:"#aaa",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>{tg}</button>;})}
+      </div>
+    </div>}
+    {!filtersOpen&&advCount>0&&<div className="flt-summary">
+      {advLabels.map(function(l){return <span key={l} className="flt-tag">{l}</span>;})}
+      <button className="btn btn-sm" onClick={function(){setFiltersOpen(true);}}>Edit</button>
+    </div>}
 
-    {selIds.length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"10px 14px",background:"#1c1c1e",borderRadius:10,marginBottom:10,position:"sticky",top:0,zIndex:40}}>
+    {selIds.length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"10px 14px",background:"var(--brand-deep)",borderRadius:10,marginBottom:10,position:"sticky",top:0,zIndex:40}}>
       <span style={{color:"#fff",fontWeight:700,fontSize:13}}>{selIds.length} selected</span>
       <button className="btn btn-sm" onClick={clearSel} style={{background:"transparent",color:"#bbb",border:"1px solid #444"}}>✕ Clear</button>
       <span style={{width:1,height:20,background:"#444"}}></span>
@@ -3739,11 +3773,11 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
             <th>Action</th>
             <th className="sortable" onClick={function(){toggleSort("status");}}>Status{sortIcon("status")}</th>
             <th className="sortable" onClick={function(){toggleSort("owner");}}>Owner{sortIcon("owner")}</th>
-            <th className="sortable" onClick={function(){toggleSort("package");}}>Package{sortIcon("package")}</th>
+            <th className="sortable" onClick={function(){toggleSort("package");}}>Department{sortIcon("package")}</th>
             <th className="sortable" onClick={function(){toggleSort("due");}}>Due{sortIcon("due")}</th>
             <th className="sortable" onClick={function(){toggleSort("score");}}>Score{sortIcon("score")}</th>
             <th>Source</th>
-            <th className="sortable" onClick={function(){toggleSort("tender");}}>Tender{sortIcon("tender")}</th>
+            <th className="sortable" onClick={function(){toggleSort("tender");}}>Package{sortIcon("tender")}</th>
           </tr></thead>
           <tbody>{filtered.map(function(a,idx){
             var sc=calcScore(a.importance||1,a.urgence||1);
@@ -3795,7 +3829,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   </select>
                   :<span onClick={function(e){e.stopPropagation();}}><BallChip task={a} onHandBack={a._source==="task"?function(tr){updateMulti(a,ownerChangePatch(a,tr));}:null}/></span>}
               </td>
-              <td data-l="Package">
+              <td data-l="Department">
                 {isEdit
                   ?<div style={{display:"flex",flexDirection:"column",gap:3}}>
                     <select value={a.package||""} onChange={function(e){updateField(a,"package",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
@@ -3825,7 +3859,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
                   :<span>{sc>1&&<span className="chip" style={{background:ss.bg,color:ss.color,fontSize:10}}>{ss.label}</span>}</span>}
               </td>
               <td data-l="Source"><span className="badge" style={{background:"#f0ede6",color:"#666",fontSize:10}}>{a._source==="task"?"📋 Task":"📊 "+a._sourceTitle}</span></td>
-              <td data-l="Tender" style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
+              <td data-l="Package" style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{a._source==="tracker"?<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",fontSize:10}}>📊 {a._sourceTitle}</span>:a.trackerRef?(trackers||[]).find(function(tr){return tr.id===a.trackerRef;})?<span className="badge" style={{background:"#e8f0fe",color:"#0f5299",fontSize:10}}>📊 {((trackers||[]).find(function(tr){return tr.id===a.trackerRef;})||{}).title}</span>:null:null}</td>
               <td>
                 {isEdit
                   ?<select value={a.tenderRef||""} onChange={function(e){updateField(a,"tenderRef",e.target.value);}} style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #ddd",fontFamily:"inherit"}}>
@@ -4025,10 +4059,11 @@ function UserLogin({people,onLogin}){
     });
   }
 
-  return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#1c1c1e"}}>
+  return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#0f2945 0%,#173b63 60%,#21508a 100%)"}}>
     <div style={{marginBottom:24,textAlign:"center"}}>
-      <div style={{fontWeight:700,color:"#f97316",fontSize:20,letterSpacing:"2px",fontFamily:"var(--font-display)",marginBottom:2}}>RIVIERA TOWER TRACKER</div>
-      <div style={{fontWeight:700,color:"#f97316",fontSize:13,letterSpacing:"1.5px",fontFamily:"var(--font-display)"}}>MAGIC TEAM</div>
+      <div style={{width:52,height:52,borderRadius:13,background:"#c9a84c",color:"#0f2945",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--font-display)",fontWeight:700,fontSize:21,margin:"0 auto 12px",boxShadow:"0 4px 14px rgba(0,0,0,.3)"}}>RT</div>
+      <div style={{fontWeight:700,color:"#fff",fontSize:20,letterSpacing:"2px",fontFamily:"var(--font-display)",marginBottom:2}}>RIVIERA TOWER TRACKER</div>
+      <div style={{fontWeight:700,color:"#c9a84c",fontSize:13,letterSpacing:"1.5px",fontFamily:"var(--font-display)"}}>MAGIC TEAM</div>
     </div>
     <div style={{background:"#fff",borderRadius:16,padding:"28px 32px",width:340,boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
       {step==="pick"&&<div>
@@ -4089,10 +4124,10 @@ function MyProcurementView({myPkgs,myTenders,tenders,tasks,onNavTender}){
   });
   var orphanTenders=myTenders.filter(function(t){return!myPkgs.includes(t.package);});
 
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+  return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">📦 My Procurement</div>
+        <div className="page-title">My Procurement</div>
         <div className="page-sub">Tenders and packages assigned to you</div>
       </div>
     </div>
@@ -4173,10 +4208,10 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
 
   var overdueCount=docs.filter(function(d){return d.overdue;}).length;
 
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+  return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">⚠️ Overdue</div>
+        <div className="page-title">Overdue</div>
         <div className="page-sub">Overdue submissions by client — RFI, FCR, ACC/ACONEX, MAR, MSS, ITP, WMS, SD</div>
       </div>
       {overdueCount>0&&<div style={{padding:"8px 16px",background:"#fbe6e8",border:"1.5px solid #f5c6cb",borderRadius:10,color:"#b3302a",fontWeight:700,fontSize:13}}>
@@ -4190,19 +4225,19 @@ function DocumentsView({tasks,tenders,contractors,packages,people,saveTasks,onNa
         <option value="all">All documents</option>
         <option value="ok">On track</option>
       </select>
-      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fStage} onChange={function(e){setFStage(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All stages</option>
         {STAGES.map(function(s){return <option key={s.key} value={s.key}>{s.label}</option>;})}
       </select>
-      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All packages</option>
+      <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All departments</option>
         {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
       </select>
-      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
-        <option value="all">All tenders</option>
+      <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+        <option value="all">All packages</option>
         {(tenders||[]).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
       </select>
-      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
+      <select value={fOwner} onChange={function(e){setFOwner(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All owners</option>
         {(people||[]).map(function(p){return <option key={p} value={p}>{p.split(",")[0]}</option>;})}
       </select>
@@ -4509,7 +4544,9 @@ function App(){
   const [schedules,setSchedules]=useState([]);
   const saveSchedules=d=>{setSchedules(d);queuedListSave(KEYS_SCHEDULES,schedulesRef,schedulesQueue,d);};
   const [pdfGlobal,setPdfGlobal]=useState(null);
-  const [sidebarOpen,setSidebarOpen]=useState(true);
+  // Quick Add sidebar open / closed: remembered in this browser (localStorage pp_sidebar_open).
+  const [sidebarOpen,setSidebarOpenRaw]=useState(function(){try{return localStorage.getItem("pp_sidebar_open")!=="0";}catch(e){return true;}});
+  function setSidebarOpen(v){setSidebarOpenRaw(v);try{localStorage.setItem("pp_sidebar_open",v?"1":"0");}catch(e){}}
   const [mobileQAOpen,setMobileQAOpen]=useState(false);
   const phone=usePhone();
   const [impSignal,setImpSignal]=useState(0);
@@ -5130,13 +5167,12 @@ function App(){
   if(!currentUser)return <UserLogin people={people} onLogin={function(name){setCurrentUser(name);window._currentUser={name:name};}}/>;  return <div className="layout">
 
     <nav className="leftnav">
-      <div className="logo" style={{fontSize:11,lineHeight:1.2,textAlign:"center",letterSpacing:".5px"}}>Project<br/>Tracker</div>
+      <div className="rail-logo" title="Riviera Tower — Project Tracker"><span className="mono">RT</span><span className="nm">Project<br/>Tracker</span></div>
       {/* Deployment is a manual copy-paste, so the running build must be visible without
           opening the console — otherwise "it doesn't work" and "it isn't deployed" look alike. */}
-      <div title={"Running build "+APP_BUILD+"\nIf this is not the build you just uploaded, GitHub Pages is still serving the old file: hard-reload with Ctrl+Shift+R."}
-        style={{fontSize:7,color:"#c9a84c",fontFamily:"monospace",letterSpacing:0,marginTop:-8,marginBottom:6,cursor:"help"}}>{APP_BUILD}</div>
+      <div className="rail-build" title={"Running build "+APP_BUILD+"\nIf this is not the build you just uploaded, GitHub Pages is still serving the old file: hard-reload with Ctrl+Shift+R."}>{APP_BUILD}</div>
       {favs.length>0&&<React.Fragment>
-        <div className="nav-cap" title="Favourites — pin a view with ☆ in the bar above the page (same list as the phone bottom bar)">★</div>
+        <div className="nav-cap" title="Favourites — pin a view with ☆ in the bar above the page (same list as the phone bottom bar)">★ Fav.</div>
         {favs.map(function(n){
           return <button key={"f:"+n.id} className={"navbtn navfav"+(view===n.id?" on":"")} title={(n.long||n.label)+" (favourite)"} onClick={function(){setView(n.id);}}>
             <span style={{fontSize:15}}>{n.icon}</span>
@@ -5167,7 +5203,7 @@ function App(){
 
     <div className="main-area">
       <div className="main-col">
-      <div className="topbar phone-hide">
+      <div className="topbar phone-hide" style={curSec&&curSec.color?{"--sec":curSec.color}:null}>
         {curSec&&<div className="tb-sec">{curSec.label}</div>}
         <div className="tb-tabs">
           {curSecItems.map(function(n){
@@ -5184,9 +5220,10 @@ function App(){
           return <button key={t.key} className="tb-tool" onClick={t.run} title={t.long}><span>{t.icon}</span> <span className="t-lbl">{t.label}</span></button>;
         })}
         <div className="tb-user">
-          {syncDot}
-          <span className="tb-sync">{syncStatus==="syncing"?"saving…":syncStatus==="ok"?"saved":"error"}</span>
+          <span className="tb-avatar" title={currentUser+" — "+(syncStatus==="syncing"?"saving…":syncStatus==="ok"?"all changes saved":"sync error")}>
+            {String(currentUser).split(/[ ,]+/).filter(Boolean).slice(0,2).map(function(w){return w[0];}).join("").toUpperCase()}{syncDot}</span>
           <b title={currentUser}>{String(currentUser).split(",")[0]}</b>
+          <span className="tb-sync">{syncStatus==="syncing"?"saving…":syncStatus==="ok"?"saved":"error"}</span>
           <button className="tb-change" onClick={logout} title="Change user">change</button>
         </div>
       </div>

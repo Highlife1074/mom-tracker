@@ -416,7 +416,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
   return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">👷 Manpower</div>
+        <div className="page-title">Manpower</div>
         <div className="page-sub">Budget (€ ÷ hourly rate, spread over the duration) · planned (workers week by week) · real hours per week by company and activity → variances.</div>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>

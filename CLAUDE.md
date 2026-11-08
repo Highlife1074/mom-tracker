@@ -50,7 +50,8 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
   dernière vue (localStorage `pp_nav_last`, noté par `setView`). Les sections sans vue autorisée sont masquées.
 - **Barre du haut** (`.topbar`, dans `.main-col` au-dessus de `.content`, masquée sur téléphone, à l'impression et en plein écran
   planning) : onglets de la section, outils (Weekly actions, Certification PDF, Improvement idea — plus de boutons flottants),
-  utilisateur et synchro. Le numéro de build reste sous le logo du rail.
+  utilisateur (pastille d'initiales + point de synchro) et synchro. Le numéro de build reste sous le logo du rail.
+  Panneau Quick Add ouvert / fermé mémorisé (localStorage `pp_sidebar_open`).
 - **Ctrl+K / Cmd+K** (`NavPalette`, `navSearch`) : aller à n'importe quelle vue autorisée ou outil, recherche sans accents.
 - Ajouter une vue : l'entrée dans `NAV_VIEWS`, son id dans une section de `NAV_SECTIONS`, le rendu `view==="…"` dans `App`.
 
@@ -116,6 +117,20 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
   `addCalDays`, `toISO` (heure locale).
 - Couleurs / typo : utiliser les variables CSS de `:root` dans `index.html` (`--gold` est une couleur
   de fond ; pour du texte doré utiliser `--gold-ink`).
+- **Charte corporate** : bleu marine `--brand` (rail, boutons principaux `.btn-gold` / `.btn-pri`, filtres actifs `.fchip.on`,
+  en-têtes de tableau teintés `--brand-soft`), `--brand-2` au survol, `--brand-ink` pour du texte marine, `--brand-deep`
+  pour le rail ; l'or reste l'accent (marque active du rail, favoris, logo « RT »). **Jamais de noir** pour l'interface :
+  `--ink` est un marine très sombre. Chaque section a une couleur d'accent discrète (`color` dans `NAV_SECTIONS` →
+  variable `--sec` : étiquette et onglet actif de la barre du haut, titres du menu téléphone). Les couleurs de statut
+  (`--red`, `--amber`, `--green`, `--blue`) ne changent pas. Icônes en couleur (plus de filtre gris).
+- **En-tête de page commun** : `.page-hdr` = titre `.page-title` (sans emoji : l'icône est dans l'onglet) + `.page-sub`
+  à gauche, actions à droite dans `.page-actions` (boutons secondaires d'abord, le bouton principal marine en dernier),
+  filet en dessous. Pas de marge propre à une vue (`.content` gère le cadre).
+- **Terminologie dans les filtres et colonnes** : « Department » pour `package` / `pp_packages`, « Package » pour un tender.
+- **Filtres de la vue Actions** : barre d'usage courant (recherche, statut, Blocking / Top Mgmt / Overdue, Info) +
+  panneau « ⚙ Filters » (département, package, sous-traitant, CC, score, added by, owners, tags) ; le bouton affiche le
+  nombre de filtres actifs du panneau, listés en pastilles quand il est fermé ; ouvert / fermé en localStorage
+  `pp_actions_filters_open`.
 - Rapports imprimables : HTML autonome ouvert dans un nouvel onglet, imprimé via le navigateur.
 - Les fichiers sont gros (jusqu'à ~430 KB) : chercher avec grep plutôt que tout lire.
 

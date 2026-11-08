@@ -516,7 +516,7 @@ function ProcReportButton({tenders,tasks,packages}){
     setOpen(false);
   }
   return <React.Fragment>
-    <button className="btn btn-gold" title="One printable PDF per package: procurement status, and optionally awards, open actions, MAR and WMS/ITP"
+    <button className="btn" title="One printable PDF per package: procurement status, and optionally awards, open actions, MAR and WMS/ITP"
       onClick={function(){setOpen(true);}}>📑 Procurement report</button>
     {open&&<div className="overlay" onClick={function(e){if(e.target===e.currentTarget)setOpen(false);}}>
       <div className="modal" style={{maxWidth:420}}>
@@ -825,7 +825,7 @@ function DashboardView({tasks,trackers,people,tenders,contractors,packages,tags,
     </div>;
   }
 
-  return <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>
+  return <div>
     <div className="page-hdr" style={{marginBottom:12}}>
       <div><div className="page-title">Dashboard</div><div className="page-sub">Team overview · {active.length} active · {overdue.length} overdue</div></div>
     </div>
@@ -1408,11 +1408,11 @@ function MomView({moms,saveMoms,tenders,packages,people,contractors,tasks,saveTa
           {subs.map(function(x){return <option key={x} value={x}>{x}</option>;})}
         </select>
         <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",fontSize:11,padding:"4px 8px"}}>
-          <option value="all">All packages</option>
+          <option value="all">All departments</option>
           {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
         </select>
         <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",fontSize:11,padding:"4px 8px"}}>
-          <option value="all">All tenders</option>
+          <option value="all">All packages</option>
           {(tenders||[]).map(function(t){return <option key={t.id} value={t.id}>{t.title}</option>;})}
         </select>
         <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔎 Search…" style={{width:170,padding:"4px 9px",fontSize:11}}/>

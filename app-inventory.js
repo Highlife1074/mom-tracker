@@ -285,7 +285,7 @@ function InventoryView({items,saveItems,pos,savePos,dockets,saveDockets,issues,s
   return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">🗃️ Inventory</div>
+        <div className="page-title">Inventory</div>
         <div className="page-sub">Ordered → delivered → issued, and counted once a month. Opening count + delivered − closing count = real consumption, against what was issued and where.</div>
       </div>
       {!edit&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Inventory editor”"}</span>}

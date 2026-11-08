@@ -325,7 +325,7 @@ function SteelView({dockets,saveDockets,wbs,saveWbs,periods,savePeriods,zones,ta
   return <div>
     <div className="page-hdr">
       <div>
-        <div className="page-title">🔩 Steel</div>
+        <div className="page-title">Steel</div>
         <div className="page-sub">Delivered − site stock = consumed, against the theoretical earned on the steel WBS. Rebar and welded mesh, in tonnes.</div>
       </div>
       {!edit&&<span className="pill" style={{background:"#eceae3",color:"#555"}}>👁 read only{canEdit?"":" — ask the admin for “Steel editor”"}</span>}
