@@ -323,6 +323,10 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
   text-align:center;font-size:8px;font-weight:800;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.5);
   user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .sched-wk.sched-wk-nc{cursor:default}
+/* Resize handles at both ends of a bar, shown on the row under the mouse */
+.sched-rh{position:absolute;top:3px;bottom:3px;width:6px;border-radius:2px;background:var(--brand-deep);cursor:ew-resize;z-index:2;opacity:0;transition:opacity .1s;touch-action:none}
+tr:hover>td>.sched-rh{opacity:.85}
+.sched-rh:hover{opacity:1!important}
 /* Pinned mirror of the schedule scrollbar: same look, always within reach */
 /* Only the pinned bar shows a horizontal scrollbar — the one inside the box is hidden
    so there is never a second, unreachable bar. Vertical scrolling is untouched. */
@@ -340,6 +344,16 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 @keyframes tdocflash{0%{box-shadow:inset 0 0 0 2px var(--gold,#c9a84c);background:#fff8e1}100%{box-shadow:inset 0 0 0 0 transparent}}
 .tdoc-flash>td{animation:tdocflash 1.8s ease-out}
 .filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+/* Zone bar: zone, figures, tabs and reports on one line (app-zone.js) */
+.zone-bar{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-md);padding:7px 10px;margin-bottom:12px}
+.zone-pick{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.zone-name{font-family:var(--font-display);font-size:16px;color:var(--brand-ink);padding:0 4px}
+.zone-chip{height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--rule);background:var(--surface);font-family:var(--font-body);font-size:12.5px;font-weight:700;color:var(--ink-3);cursor:pointer}
+.zone-chip.on{background:var(--gold);border-color:var(--gold);color:var(--brand-deep)}
+.zone-kpis{display:flex;gap:10px;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.zone-sep{width:1px;height:22px;background:var(--rule)}
+.zone-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.zone-tabs .fchip{height:28px}
 /* Actions view filters: one line of everyday filters + a panel for the rest */
 .flt-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 .flt-sep{width:1px;height:20px;background:var(--rule);margin:0 4px}
@@ -466,7 +480,7 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 .sched-print-only{display:none;}
 .sched-printcell{display:none;}
 @media print{
-  body.printing-schedule .leftnav,body.printing-schedule .rsidebar,body.printing-schedule .page-hdr,
+  body.printing-schedule .leftnav,body.printing-schedule .rsidebar,body.printing-schedule .page-hdr,body.printing-schedule .zone-bar,
   body.printing-schedule .fchip,body.printing-schedule .btn{display:none!important;}
   body.printing-schedule .sched-wrap{overflow:visible!important;max-height:none!important;height:auto!important;width:auto!important;}
   body.printing-schedule .content{overflow:visible!important;height:auto!important;}
@@ -530,7 +544,7 @@ body.printing-tenders .tbl-tenders th,body.printing-tenders .tbl-tenders td:not(
 body.printing-tenders .tbl-tenders td textarea{border:none!important;resize:none!important;font-size:10px!important;}
 /* Full-screen schedule: only the plan, its filter and its toolbar stay on screen */
 .sched-fs .sched-fs-hide{display:none!important;}
-body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .mobile-qa-btn,body:has(.sched-fs) .topbar{display:none!important;}
+body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .mobile-qa-btn,body:has(.sched-fs) .topbar,body:has(.sched-fs) .zone-bar{display:none!important;}
 /* ---------------------------------------------------------------------------
    Title block — the signature device.
    Borrowed from a drawing sheet: the same strip heads a tender on screen and a

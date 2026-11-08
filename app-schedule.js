@@ -590,6 +590,85 @@ function SchedTaskPicker({rows,weeks,title,value,allowHeaders,blockedReason,sugg
     </div>
   </div>;
 }
+// ---------------------------------------------------------------------------
+// Search pop-over: replaces the drop-down lists of the schedule (company, package, room,
+// owner…). Opens under the element clicked, with a search field and a short list; arrows
+// and Enter pick, Esc or a click outside closes.
+//   anchor   the clicked element's getBoundingClientRect()
+//   groups   [{label, items:[{id, label, sub, color, icon, muted}]}] — id "" is allowed
+//   value    the id picked now
+//   create   optional {label: function(q){…}, run: function(q){…}}: offers to use the typed text
+// ---------------------------------------------------------------------------
+function SchedSearchPop({anchor,groups,value,placeholder,title,create,onPick,onClose,width}){
+  const [q,setQ]=useState("");
+  const [sel,setSel]=useState(0);
+  var W=width||300;
+  var words=siNorm(q).split(" ").filter(Boolean);
+  var flat=[],shown=[];
+  (groups||[]).forEach(function(g){
+    var items=(g.items||[]).filter(function(it){
+      if(!words.length)return true;
+      var hay=siNorm((it.label||"")+" "+(it.sub||""));
+      return words.every(function(w){return hay.indexOf(w)>=0;});
+    });
+    if(items.length){shown.push({label:g.label,items:items});items.forEach(function(it){flat.push(it);});}
+  });
+  var canCreate=!!(create&&q.trim()&&!flat.some(function(it){return siNorm(it.label)===siNorm(q.trim());}));
+  var total=flat.length+(canCreate?1:0);
+  var cur=Math.min(sel,Math.max(0,total-1));
+  function pickAt(i){
+    if(i<flat.length){onPick(flat[i].id,flat[i]);return;}
+    if(canCreate)create.run(q.trim());
+  }
+  function onKey(e){
+    if(e.key==="ArrowDown"){e.preventDefault();setSel(Math.min(cur+1,total-1));}
+    else if(e.key==="ArrowUp"){e.preventDefault();setSel(Math.max(cur-1,0));}
+    else if(e.key==="Enter"){e.preventDefault();if(total)pickAt(cur);}
+    else if(e.key==="Escape"){e.preventDefault();onClose();}
+  }
+  var a=anchor||{left:200,top:200,bottom:220,right:300};
+  var vw=window.innerWidth||1200,vh=window.innerHeight||800;
+  var left=Math.max(8,Math.min(a.left,vw-W-8));
+  var below=vh-a.bottom>320||a.top<320;
+  var pos=below?{top:a.bottom+4}:{bottom:vh-a.top+4};
+  var idx=-1;
+  return <div className="sched-noprint" style={{position:"fixed",inset:0,zIndex:2200}} onMouseDown={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div role="dialog" aria-label={title||placeholder||"Pick"} onMouseDown={function(e){e.stopPropagation();}}
+      style={Object.assign({position:"fixed",left:left,width:W,maxHeight:340,display:"flex",flexDirection:"column",background:"#fff",
+        border:"1px solid var(--brand-line)",borderRadius:10,boxShadow:"0 16px 40px rgba(15,41,69,.28)",overflow:"hidden"},pos)}>
+      {title&&<div style={{padding:"8px 12px 0",fontFamily:"var(--font-mono)",fontSize:9.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"var(--ink-3)"}}>{title}</div>}
+      <div style={{padding:8}}>
+        <input type="text" autoFocus value={q} placeholder={placeholder||"Search…"} onKeyDown={onKey}
+          onChange={function(e){setQ(e.target.value);setSel(0);}}
+          style={{width:"100%",boxSizing:"border-box",padding:"6px 9px",fontSize:13,border:"2px solid var(--brand-2)",borderRadius:7}}/>
+      </div>
+      <div style={{overflowY:"auto",paddingBottom:4}}>
+        {shown.map(function(g,gi){
+          return <div key={gi}>
+            {g.label&&<div style={{padding:"4px 12px 2px",fontFamily:"var(--font-mono)",fontSize:9.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"var(--ink-4)"}}>{g.label}</div>}
+            {g.items.map(function(it){
+              idx++;var i=idx,on=i===cur,isVal=it.id===value;
+              return <div key={g.label+"|"+it.id} onMouseMove={function(){if(!on)setSel(i);}} onClick={function(){pickAt(i);}}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",fontSize:13,cursor:"pointer",
+                  background:on?"var(--brand-soft)":"transparent",boxShadow:on?"inset 3px 0 0 var(--brand)":"none",
+                  color:it.muted?"var(--ink-3)":"var(--ink)",fontWeight:isVal?700:400}}>
+                {it.color&&<span style={{width:9,height:9,borderRadius:"50%",background:it.color,flexShrink:0}}></span>}
+                {it.icon&&<span style={{flexShrink:0}}>{it.icon}</span>}
+                <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.label}</span>
+                {it.sub&&<span style={{fontSize:10.5,color:"var(--ink-4)",flexShrink:0,maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.sub}</span>}
+                {isVal&&<span style={{fontSize:10,color:"var(--gold-ink)",fontWeight:700}}>current</span>}
+              </div>;
+            })}
+          </div>;
+        })}
+        {canCreate&&(function(){var on=cur===flat.length;return <div onMouseMove={function(){if(!on)setSel(flat.length);}} onClick={function(){pickAt(flat.length);}}
+          style={{padding:"8px 12px",fontSize:13,color:"var(--brand-2)",fontWeight:600,cursor:"pointer",borderTop:"1px solid var(--rule-2)",background:on?"var(--brand-soft)":"transparent"}}>
+          ＋ {create.label(q.trim())}</div>;})()}
+        {total===0&&<div style={{padding:"10px 12px",fontSize:12,color:"var(--ink-3)"}}>Nothing matches “{q}”.</div>}
+      </div>
+    </div>
+  </div>;
+}
 function SchedInstructionModal({rows,weeks,holidays,shift,onApply,onClose}){
   const [text,setText]=useState(function(){try{return localStorage.getItem("pp_sched_instr")||"";}catch(e){return "";}});
   const [clauses,setClauses]=useState(null);       // [{text, succText, predText, lag, succ, pred, succAlts, predAlts, on}]
@@ -1136,7 +1215,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     try{return window.innerWidth<=768;}catch(e){return false;}
   });
   const [phoneWeeks,setPhoneWeeks]=useState(4);   // weeks shown by the phone view
-  const [qTender,setQTender]=useState("");
   const [printPlan,setPrintPlan]=useState(null);
   const [fullScreen,setFullScreen]=useState(false);
   // Esc leaves full screen — a fixed overlay with no way out is a trap.
@@ -1157,9 +1235,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     window.requestAnimationFrame(function(){syncingRef.current=false;});
   }
   const [selRows,setSelRows]=useState([]);          // multi-selection for bulk editing
-  const [bulkTender,setBulkTender]=useState("");
-  const [bulkGroup,setBulkGroup]=useState("");
-  const [bulkRoom,setBulkRoom]=useState("");
   const [newGroup,setNewGroup]=useState("");
   const [hoverInfo,setHoverInfo]=useState(null);
   const [newActionText,setNewActionText]=useState("");
@@ -1191,9 +1266,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var t=setTimeout(function(){setFocusRow("");},6000);
     return function(){clearTimeout(t);};
   },[focusRow]);
-  const [newRowLabel,setNewRowLabel]=useState("");
-  const [newRowKind,setNewRowKind]=useState("task");
-  const [newRowAfter,setNewRowAfter]=useState("");
   const [paintMode,setPaintMode]=useState("plan");
   // Painting by dragging: press on a week, slide along the row, release. Nothing is saved
   // until the release, and then in one write. The stroke is previewed meanwhile.
@@ -1264,6 +1336,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [panelRowId,setPanelRowId]=useState(null);   // the task/header shown in the side panel
   const [ctxMenu,setCtxMenu]=useState(null);         // {rowId, x, y}
   const [pickAfter,setPickAfter]=useState(false);   // "Starts after" picker on the plan
+  const [pop,setPop]=useState(null);                // {kind, rowId, rect}: the search pop-over open
+  const [addMenu,setAddMenu]=useState(false);
+  const kbRef=useRef(null);                         // what the keyboard shortcuts act on, refreshed each render       // "＋ Add ▾" menu of the toolbar
+  const [spanPick,setSpanPick]=useState(null);      // {rowId, start}: first click on the side panel's week strip
+  const spanPickRef=useRef(null);spanPickRef.current=spanPick;
   const [blMenu,setBlMenu]=useState(false);
   const [linkMenu,setLinkMenu]=useState(null);
   const [procOpen,setProcOpenRaw]=useState(function(){try{return localStorage.getItem("pp_sched_procOpen")==="1";}catch(e){return false;}});
@@ -1432,44 +1509,27 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     justInsertedRef.current=nr.id;
     setEditRowId(nr.id);            // straight into the label field
   }
-  function addRow(){
-    if(!sc||!newRowLabel.trim())return;
-    var rows=(sc.rows||[]).slice();
-    var nr=newScheduleRow(newRowKind,newRowLabel.trim());
-    if(!newRowAfter){
-      if(newRowKind==="task")nr.afterId=taskBeforeIndex(rows,rows.length);
-      rows.push(nr);   // end of schedule
-    }else{
-      var anchor=rows.findIndex(function(r){return r.id===newRowAfter;});
-      if(anchor<0){
-        if(newRowKind==="task")nr.afterId=taskBeforeIndex(rows,rows.length);
-        rows.push(nr);
-      }
-      else if(newRowKind==="section"){
-        // a section opens a new block: drop it after everything the anchor owns
-        var e2=anchor+1;
-        while(e2<rows.length&&rows[e2].kind!=="section")e2++;
-        rows.splice(e2,0,nr);
-      }
-      else if(rows[anchor].kind==="category"&&newRowKind==="task"){
-        // Adding a task under a category: place it at the end of that category's block
-        var end=anchor+1;
-        while(end<rows.length&&rows[end].kind!=="category")end++;
-        nr.afterId=taskBeforeIndex(rows,end);
-        rows.splice(end,0,nr);
-      }else{
-        if(newRowKind==="task")nr.afterId=taskBeforeIndex(rows,anchor+1);
-        rows.splice(anchor+1,0,nr);   // right after the chosen row
-      }
+  // "＋ Add ▾" of the toolbar. A task opens a named line at the end (Enter: the next one);
+  // a room or a section asks for its name first, so no empty header is ever saved.
+  function quickAdd(kind){
+    if(!sc)return;
+    if(canEdit===false){safeAlert("Only the zone leaders can modify this schedule.");return;}
+    var rows=sc.rows||[];
+    if(kind==="task"){
+      if(rows.length){insertTaskAfter(rows[rows.length-1].id);return;}
+      var nr0=newScheduleRow("task","");
+      upd(sc.id,{rows:[nr0]});justInsertedRef.current=nr0.id;setEditRowId(nr0.id);return;
     }
-    // A new category mirrors into a Room (rooms and categories are kept 1:1)
-    if(newRowKind==="category"&&saveRooms){
-      var rm=newRoom({name:newRowLabel.trim(),zone:curZone});
-      nr.roomId=rm.id;
-      saveRooms([...(rooms||[]),rm]);
-    }
-    upd(sc.id,{rows:rows});
-    setNewRowLabel("");
+    ppPrompt({title:kind==="section"?"New section":"New room / category",placeholder:kind==="section"?"e.g. LEVEL 5 or EXTERNAL WORKS":"e.g. Zone 4 lobby",okLabel:"Add"}).then(function(v){
+      v=(v||"").trim();if(!v)return;
+      var nr=newScheduleRow(kind,v);
+      if(kind==="category"&&saveRooms){
+        var rm=newRoom({name:v,zone:curZone});
+        nr.roomId=rm.id;
+        saveRooms([...(rooms||[]),rm]);
+      }
+      upd(sc.id,{rows:(sc.rows||[]).concat([nr])});
+    });
   }
   function updRow(rowId,fields){
     if(!sc)return;
@@ -2822,6 +2882,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(!row)return;
     if(d.type==="paint")paintRange(row,d.from,d.to,d.erase);
     else if(d.type==="move"){var dl=workingDelta(d.from,d.to);if(dl)shiftRows([row.id],dl);}
+    else if(d.type==="resizeS"||d.type==="resizeE"){
+      if(d.to===d.from)return;
+      if(d.type==="resizeS")applySpan(row,{startWeek:d.to});else applySpan(row,{endWeek:d.to});
+    }
     else if(d.type==="link"&&d.target)linkRows(row.id,d.target);
     else if(d.type==="relink"){
       var moved=Math.abs((d.x||0)-(d.x0||0))+Math.abs((d.y||0)-(d.y0||0));
@@ -2829,12 +2893,56 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       relinkTo(row.id,d.target);
     }
   };
+  // Keyboard, while a task is open in the side panel (never while typing in a field):
+  //   ↑ ↓  previous / next row      Enter  rename        Alt+← →  shift one week
+  //   Ctrl+D  duplicate              Delete  delete (asks first)
+  kbRef.current={rows:visibleRows,panel:panelRowId,canEdit:canEdit!==false,
+    go:function(id){setPanelRowId(id);setFocusRow(id);var tr=document.querySelector('tr[data-rowid="'+id+'"]');if(tr)try{tr.scrollIntoView({block:"nearest"});}catch(e){}},
+    rename:function(id){setEditRowId(id);},shift:shiftRow,dup:duplicateRow,del:delRow};
+  useEffect(function(){
+    function onKey(e){
+      var k=kbRef.current;if(!k||!k.panel)return;
+      var t=e.target||{},tag=(t.tagName||"").toLowerCase();
+      if(tag==="input"||tag==="textarea"||tag==="select"||t.isContentEditable)return;
+      var i=k.rows.findIndex(function(r){return r.id===k.panel;});
+      if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+        if(e.altKey||e.ctrlKey||e.metaKey)return;
+        var j=i+(e.key==="ArrowDown"?1:-1);
+        if(i>=0&&j>=0&&j<k.rows.length){e.preventDefault();k.go(k.rows[j].id);}
+        return;
+      }
+      if(!k.canEdit)return;
+      var row=i>=0?k.rows[i]:null;if(!row)return;
+      var isHead=row.kind==="category"||row.kind==="section";
+      if(e.key==="Enter"&&!e.altKey&&!e.ctrlKey){e.preventDefault();k.rename(row.id);}
+      else if(e.altKey&&(e.key==="ArrowLeft"||e.key==="ArrowRight")&&!isHead){e.preventDefault();k.shift(row.id,e.key==="ArrowRight"?1:-1);}
+      else if((e.ctrlKey||e.metaKey)&&(e.key==="d"||e.key==="D")&&!isHead){e.preventDefault();k.dup(row.id);}
+      else if(e.key==="Delete"){e.preventDefault();k.del(row.id);}
+    }
+    window.addEventListener("keydown",onKey);
+    return function(){window.removeEventListener("keydown",onKey);};
+  },[]);
+  // Ctrl+F (Cmd+F): find a task in this schedule instead of the browser's page search,
+  // which cannot see the rows not drawn yet nor open a collapsed room.
+  useEffect(function(){
+    function onKey(e){
+      if(!(e.ctrlKey||e.metaKey)||e.altKey||e.shiftKey||(e.key!=="f"&&e.key!=="F"))return;
+      var box=document.querySelector(".sched-toolbar");if(!box)return;
+      e.preventDefault();
+      var r=box.getBoundingClientRect();
+      setPop({kind:"find",rowId:"",rect:{left:r.left+200,top:r.top,bottom:r.bottom,right:r.left+580}});
+    }
+    window.addEventListener("keydown",onKey);
+    return function(){window.removeEventListener("keydown",onKey);};
+  },[]);
   // Esc closes the side panel and the menu (inside a text box, Esc only undoes the typing).
   useEffect(function(){
     function onKey(e){
       if(e.key!=="Escape")return;
       var t=e.target||{};var tag=(t.tagName||"").toLowerCase();
       if(tag==="input"||tag==="textarea")return;
+      // a half-picked span on the week strip is cancelled first, the panel stays open
+      if(spanPickRef.current){setSpanPick(null);return;}
       setCtxMenu(null);setPanelRowId(null);setBlMenu(false);setLinkMenu(null);
     }
     window.addEventListener("keydown",onKey);
@@ -2872,6 +2980,19 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     return function(){window.cancelAnimationFrame(raf);clearTimeout(t);};
   },[gridId,gridFull]);
   var gridRows=gridFull?visibleRows:visibleRows.slice(0,GRID_FIRST_ROWS);
+  // "＋ Add a task" line at the end of each open room: last visible row of the room → the room.
+  // Not while a company filter or the critical path hides rows (the new task would vanish).
+  var addAfter={};
+  if(sc&&canEdit!==false&&!fGroup&&!critFocus&&!monthView){
+    var _cat=null,_last=null;
+    var _close=function(){if(_cat&&_last)addAfter[_last.id]=_cat;};
+    visibleRows.forEach(function(r){
+      if(r.kind==="section"){_close();_cat=null;_last=null;return;}
+      if(r.kind==="category"){_close();_cat=collapsedCats[r.id]?null:r;_last=r;return;}
+      _last=r;
+    });
+    _close();
+  }
   var visKey=gridRows.map(function(r){return r.id;}).join(",");
   useEffect(function(){
     var box=tableBoxRef.current;
@@ -2918,33 +3039,43 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                             :rs.source==="pending"?"Linked to a tender that has no subcontractor in its Awarded section yet. It fills itself as soon as one is entered there."
                             :rs.forced?"Set on this task by hand — the tender is awarded to "+rs.options.join(" / ")+". Pick “Follow the tender” to use it."
                             :"Subcontractor / company doing this task — drives the colour, the filter and the printed schedule";
-                          var others=allGroups.filter(function(g){return rs.options.indexOf(g)<0;});
-                          return <select value={row.group||""} onChange={function(e){
-                              var g=e.target.value;
-                              var patch={group:g};
-                              // A rule fills the tender in the same write, unless one is already set.
-                              if(g&&!row.tenderRef){
-                                var rule=tenderRuleFor(window._ppTenderRules,g,curZone);
-                                if(rule){patch.tenderRef=rule.tenderId;patch.tenderFromHeader="";}
-                              }
-                              updRow(row.id,patch);
-                              // The row you just reassigned would otherwise vanish the instant it no
-                              // longer matches the active Subcont. filter — looking exactly like the
-                              // change was refused. Drop back to "All subcontractors" so it stays visible.
-                              var eff=g||(rs.options.length===1?rs.options[0]:"");
-                              if(fGroup&&eff!==fGroup)setFGroup("");
-                            }}
-                            title={tip}
-                            style={{width:"100%",padding:big?"5px 7px":"2px 4px",fontSize:big?12:10,border:"1px solid "+look.b,borderRadius:4,fontFamily:"inherit",
+                          var shown=row.group||rs.name||"";
+                          var col=shown?planColor(row):"";
+                          // A chip, not a drop-down: one list per row was heavy to scan and to draw.
+                          return <button type="button" disabled={canEdit===false} title={tip}
+                            onClick={function(e){setPop({kind:"company",rowId:row.id,rect:e.currentTarget.getBoundingClientRect()});}}
+                            style={{display:"flex",alignItems:"center",gap:5,width:"100%",minWidth:0,padding:big?"5px 9px":"2px 7px",fontSize:big?12.5:10.5,
+                              border:"1px solid "+look.b,borderRadius:20,fontFamily:"inherit",cursor:canEdit===false?"default":"pointer",textAlign:"left",
                               color:look.c,fontWeight:look.w,background:look.bg,fontStyle:rs.source==="pending"?"italic":"normal"}}>
-                            <option value="">{emptyLabel}</option>
-                            {rs.options.length>0&&<optgroup label="Awarded on the tender">
-                              {rs.options.map(function(g){return <option key={"aw"+g} value={g}>{g}</option>;})}
-                            </optgroup>}
-                            <optgroup label={rs.options.length?"Other companies":"Companies"}>
-                              {others.map(function(g){return <option key={g} value={g}>{g}</option>;})}
-                            </optgroup>
-                          </select>;
+                            {col&&<span style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0}}></span>}
+                            <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.group||emptyLabel}</span>
+                          </button>;
+  }
+  // The company picked for a task (chip or side panel), with the tender rule applied in the same write.
+  function setRowCompany(row,g){
+    var rs=rowSub(row);
+    var patch={group:g};
+    if(g&&!row.tenderRef){
+      var rule=tenderRuleFor(window._ppTenderRules,g,curZone);
+      if(rule){patch.tenderRef=rule.tenderId;patch.tenderFromHeader="";}
+    }
+    updRow(row.id,patch);
+    // The row you just reassigned would otherwise vanish the instant it no longer matches the
+    // active company filter — looking exactly like the change was refused.
+    var eff=g||(rs.options.length===1?rs.options[0]:"");
+    if(fGroup&&eff!==fGroup)setFGroup("");
+  }
+  function companyGroups(row){
+    var rs=rowSub(row);
+    var gc=(sc&&sc.groupColors)||{},glob=window._ppSubColors||{};
+    function item(g){return{id:g,label:g,color:gc[g]||glob[g]||""};}
+    var first=rs.source==="tender"?"Follow the package: "+rs.name
+      :rs.options.length?"Follow the package ("+rs.options.join(" / ")+")"
+      :"No company";
+    var out=[{label:"",items:[{id:"",label:first,icon:rs.options.length?"↺":"—",muted:true}]}];
+    if(rs.options.length)out.push({label:"Awarded on the package",items:rs.options.map(item)});
+    out.push({label:rs.options.length?"Other companies":"Companies",items:allGroups.filter(function(g){return rs.options.indexOf(g)<0;}).map(item)});
+    return out;
   }
   // ---- Baseline in use: weeks per task, variances, roll-up per room/section ----
   var baselines=(sc&&sc.baselines)||[];
@@ -3133,42 +3264,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     </div>}
     {/* Header: which schedule, and the actions on the whole schedule. Print is the main one,
         styled like the zone's Weekly pack; the rarely used ones sit in Settings and More. */}
-    <div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
-      {zoneScheds.map(function(s){
-        return <button key={s.id} className={"fchip"+(sc&&sc.id===s.id?" on":"")} onClick={function(){setSelId(s.id);}}>{s.title}</button>;
-      })}
+    {!sc&&<div className={"sched-noprint"+(fullScreen?" sched-fs-hide":"")} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
       <button className="btn btn-sm btn-gold" onClick={addSchedule}>＋ New schedule</button>
-      {sc&&<span style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        {sc.updatedAt&&<span style={{fontSize:10,color:"#aaa"}}>Last update {fmtDate(sc.updatedAt)}{sc.updatedBy?" by "+sc.updatedBy.split(",")[0]:""}</span>}
-        <button className={"btn btn-sm"+(showSettings?" btn-pri":"")} onClick={function(){setShowSettings(!showSettings);}}
-          title="Title, start week, number of weeks, subcontractors, copy to another zone">⚙ Settings</button>
-        <span style={{position:"relative",display:"inline-block"}}>
-          <button className={"btn btn-sm"+(moreMenu?" btn-pri":"")} onClick={function(){setMoreMenu(!moreMenu);}}
-            title="Documents, Primavera export and the other actions on this schedule">⋯ More ▾</button>
-          {moreMenu&&<React.Fragment>
-            <div onClick={function(){setMoreMenu(false);}} style={{position:"fixed",inset:0,zIndex:1290}}></div>
-            <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:1300,minWidth:250,background:"#fff",border:"1px solid var(--rule,#ddd9cf)",borderRadius:9,
-              boxShadow:"0 10px 32px rgba(0,0,0,.2)",padding:6}}>
-              {[
-                {k:"docs",label:"📄 Documents"+(scDocs.length>0?" ("+scDocs.length+")":""),title:"Reference documents: setting-out plans, sections, details. Attach one to a room and its name becomes clickable in the schedule.",run:function(){setShowDocs(true);}},
-                {k:"xer",label:"⬇ Export to Primavera P6 (.xer)",title:"WBS section › room, activities, links, calendar with neutralised weeks, subcontractor and tender codes, progress",run:exportXer},
-                canEdit&&{k:"sort",label:"🔤 Sort rooms A→Z",title:"Sort categories A→Z. Each one keeps its own tasks.",run:sortCategories},
-                canEdit&&{k:"rules",label:"🔗 Apply tender rules",title:"Apply the subcontractor → tender rules (Settings › Tender rules) to every task of this schedule",run:applyTenderRules},
-                isAdmin&&{k:"clean",label:"🧹 Clean auto-actions",title:"Remove the duplicate 'Procurement late for…' actions created by the old auto-rule, keeping one per task",run:cleanAutoActions,danger:true},
-                isAdmin&&{k:"del",label:"🗑 Delete this schedule",title:"Delete this schedule (admin only)",run:function(){delSchedule(sc.id);},danger:true}
-              ].filter(Boolean).map(function(it){
-                return <button key={it.k} title={it.title} onClick={function(){setMoreMenu(false);it.run();}}
-                  onMouseEnter={function(e){e.currentTarget.style.background="var(--rule-2,#efece5)";}} onMouseLeave={function(e){e.currentTarget.style.background="none";}}
-                  style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",background:"none",borderRadius:6,cursor:"pointer",
-                    fontFamily:"inherit",fontSize:12,color:it.danger?"var(--red,#b3302a)":"var(--ink,#16181d)"}}>{it.label}</button>;
-              })}
-            </div>
-          </React.Fragment>}
-        </span>
-        <button className="btn btn-pri" onClick={openPrint}
-          title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">Print / PDF</button>
-      </span>}
-    </div>
+    </div>}
 
     {!sc
       ?<div className="empty"><div className="empty-ico">📅</div><div className="empty-txt">No schedule for {curZone} yet. Create one to plan work week by week.</div></div>
@@ -3205,32 +3303,35 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         {canEdit&&selRows.length>0&&<div className="sched-noprint" style={{padding:"8px 12px",background:"#e8f0fe",border:"1.5px solid #0f5299",borderRadius:8,marginBottom:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <span style={{fontSize:12,fontWeight:800,color:"#0f5299"}}>{selRows.length} task{selRows.length!==1?"s":""} selected</span>
 
-          <select value={bulkTender} onChange={function(e){
-            var v=e.target.value;setBulkTender("");
-            if(!v)return;
-            if(v==="__inherit__")bulkPatch({tenderRef:"",tenderFromHeader:""});
-            else if(v==="__none__")bulkPatch({tenderRef:"",tenderFromHeader:"-"});
-            else bulkPatch({tenderRef:v,tenderFromHeader:""});
-          }} title="Link every selected task to one tender" style={{width:"auto",padding:"4px 8px",fontSize:11}}>
-            <option value="">🔗 Link to tender…</option>
-            <option value="__inherit__">↳ Follow the room / section tender</option>
-            <option value="__none__">— no tender —</option>
-            {(tenders||[]).slice().sort(function(a,b){return(a.title||"").localeCompare(b.title||"");}).map(function(t){return <option key={t.id} value={t.id}>{t.title}{t.package?" ("+t.package+")":""}</option>;})}
-          </select>
-
-          <select value={bulkGroup} onChange={function(e){var v=e.target.value;setBulkGroup("");if(v){bulkPatch({group:v==="__none__"?"":v});if(fGroup&&v!==fGroup)setFGroup("");}}}
-            title="Assign a subcontractor to every selected task" style={{width:"auto",padding:"4px 8px",fontSize:11}}>
-            <option value="">👷 Set subcontractor…</option>
-            <option value="__none__">— clear —</option>
-            {allGroups.map(function(g){return <option key={g} value={g}>{g}</option>;})}
-          </select>
-
-          <select value={bulkRoom} onChange={function(e){var v=e.target.value;setBulkRoom("");if(v)bulkPatch({roomId:v==="__none__"?"":v});}}
-            title="Move every selected task to one room" style={{width:"auto",padding:"4px 8px",fontSize:11}}>
-            <option value="">🚪 Set room…</option>
-            <option value="__none__">— clear —</option>
-            {(rooms||[]).filter(function(rm){return rm.zone===curZone;}).map(function(rm){return <option key={rm.id} value={rm.id}>{rm.name}</option>;})}
-          </select>
+          {/* Bulk edits open the same search pop-overs as the side panel (no drop-down lists). */}
+          {[{k:"bulkTender",label:"🔗 Package…",title:"Link every selected task to one package"},
+            {k:"bulkGroup",label:"👷 Company…",title:"Assign a company to every selected task"},
+            {k:"bulkRoom",label:"🚪 Room…",title:"Move every selected task to one room"}].map(function(b){
+            return <button key={b.k} className="btn btn-sm" title={b.title}
+              onClick={function(e){setPop({kind:b.k,rowId:"",rect:e.currentTarget.getBoundingClientRect()});}}>{b.label}</button>;
+          })}
+          {pop&&pop.kind==="bulkTender"&&(function(){
+            var byPkg={};(tenders||[]).slice().sort(function(a,b){return(a.title||"").localeCompare(b.title||"");})
+              .forEach(function(t){var p=t.package||"— no department —";(byPkg[p]=byPkg[p]||[]).push(t);});
+            var groups=[{label:"",items:[{id:"__inherit__",label:"Follow the room / section package",icon:"↳",muted:true},{id:"__none__",label:"No package",icon:"—",muted:true}]}];
+            Object.keys(byPkg).sort().forEach(function(p){groups.push({label:p,items:byPkg[p].map(function(t){return{id:t.id,label:t.title||"untitled",sub:tenderAwardees(t).join(" / ")};})});});
+            return <SchedSearchPop anchor={pop.rect} width={380} title={"Package for "+selRows.length+" task"+(selRows.length!==1?"s":"")} placeholder="Search a package, department or company…"
+              groups={groups} onClose={function(){setPop(null);}}
+              onPick={function(v){setPop(null);
+                if(v==="__inherit__")bulkPatch({tenderRef:"",tenderFromHeader:""});
+                else if(v==="__none__")bulkPatch({tenderRef:"",tenderFromHeader:"-"});
+                else bulkPatch({tenderRef:v,tenderFromHeader:""});}}/>;
+          })()}
+          {pop&&pop.kind==="bulkGroup"&&<SchedSearchPop anchor={pop.rect} title={"Company for "+selRows.length+" task"+(selRows.length!==1?"s":"")} placeholder="Search a company…"
+            groups={[{label:"",items:[{id:"__none__",label:"No company",icon:"—",muted:true}].concat(allGroups.map(function(g){
+              return{id:g,label:g,color:(sc.groupColors||{})[g]||(window._ppSubColors||{})[g]||""};}))}]}
+            create={{label:function(q){return "Use “"+q+"” as a new company";},run:function(q){setPop(null);bulkPatch({group:q});if(fGroup&&q!==fGroup)setFGroup("");}}}
+            onClose={function(){setPop(null);}}
+            onPick={function(v){setPop(null);bulkPatch({group:v==="__none__"?"":v});if(fGroup&&v!==fGroup)setFGroup("");}}/>}
+          {pop&&pop.kind==="bulkRoom"&&<SchedSearchPop anchor={pop.rect} title={"Room for "+selRows.length+" task"+(selRows.length!==1?"s":"")} placeholder="Search a room…"
+            groups={[{label:"",items:[{id:"__none__",label:"No room",icon:"—",muted:true}].concat((rooms||[]).filter(function(rm){return rm.zone===curZone;}).map(function(rm){return{id:rm.id,label:rm.name};}))}]}
+            onClose={function(){setPop(null);}}
+            onPick={function(v){setPop(null);bulkPatch({roomId:v==="__none__"?"":v});}}/>}
 
           <span style={{display:"flex",gap:3,alignItems:"center"}}>
             <button className="btn btn-sm" onClick={function(){bulkShift(-1);}} title="Shift every selected task 1 week earlier">◀ 1wk</button>
@@ -3355,24 +3456,31 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           <div style={{fontSize:11,color:"#555"}}>{curZone} · {fmtDate(wks[0]||sc.startDate)} → {fmtDate(wks[wks.length-1]||sc.startDate)} · printed {fmtDate(todayStr)}{fGroup?" · subcontractor: "+fGroup:""}</div>
         </div>
 
-        {canEdit!==false&&<div className="sched-noprint" style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#faf9f7",border:"1px solid #f0e2b8",borderRadius:8}}>
-          <select value={newRowKind} onChange={function(e){setNewRowKind(e.target.value);}} style={{width:"auto",padding:"5px 8px",fontSize:12}}>
-            <option value="task">Task</option>
-            <option value="category">Category / Room</option>
-            <option value="section">Section (groups rooms)</option>
-          </select>
-          <input type="text" value={newRowLabel} onChange={function(e){setNewRowLabel(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addRow();}} placeholder={newRowKind==="section"?"Section name, e.g. EXTERNAL WORKS":newRowKind==="category"?"Room name, e.g. POOL":"Task name, e.g. Slab"} style={{flex:1,minWidth:180,padding:"5px 10px",fontSize:12}}/>
-          <select value={newRowAfter} onChange={function(e){setNewRowAfter(e.target.value);}} style={{width:"auto",maxWidth:200,padding:"5px 8px",fontSize:12}} title="Where to insert the new row">
-            <option value="">At the end</option>
-            {(sc.rows||[]).map(function(o){
-              return <option key={o.id} value={o.id}>{o.kind==="category"?"In ▸ "+(o.label||"(untitled)"):"After: "+(o.label||"(untitled)")}</option>;
-            })}
-          </select>
-          <button className="btn btn-sm btn-gold" onClick={addRow} disabled={!newRowLabel.trim()}>＋ Add row</button>
-        </div>}
+
 
         {/* Everyday tools on one line; the analysis and display options fold away. */}
-        <div className="sched-noprint" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+        <div className={"sched-noprint sched-toolbar"} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+          <span style={{display:"flex",gap:4,alignItems:"center",paddingRight:6,borderRight:"1px solid #e0ddd6"}}>
+            {zoneScheds.length>1
+              ?zoneScheds.map(function(s2){return <button key={s2.id} className={"fchip"+(sc.id===s2.id?" on":"")} onClick={function(){setSelId(s2.id);}}>{s2.title}</button>;})
+              :<b style={{fontSize:13,color:"var(--brand-ink)",padding:"0 4px"}}>{sc.title}</b>}
+            <button className="btn btn-sm" onClick={addSchedule} title="New schedule in this zone" style={{padding:"2px 8px"}}>＋</button>
+          </span>
+          {canEdit!==false&&<span style={{position:"relative",display:"inline-block"}}>
+            <button className={"btn btn-sm"+(addMenu?" btn-pri":"")} onClick={function(){setAddMenu(!addMenu);}} title="Add a task, a room or a section — or use “＋ Add a task” at the end of each room">＋ Add ▾</button>
+            {addMenu&&<React.Fragment>
+              <div onClick={function(){setAddMenu(false);}} style={{position:"fixed",inset:0,zIndex:1290}}></div>
+              <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:1300,minWidth:220,background:"#fff",border:"1px solid var(--rule)",borderRadius:9,boxShadow:"0 10px 32px rgba(0,0,0,.2)",padding:6}}>
+                {[{k:"task",label:"＋ Task at the end",title:"A new task under the last row (Enter on its name adds the next one)"},
+                  {k:"category",label:"🚪 Room / category…",title:"A new room at the end of the schedule (it is also created in Rooms)"},
+                  {k:"section",label:"■ Section…",title:"A section groups rooms, e.g. LEVEL 3 or EXTERNAL WORKS"}].map(function(it){
+                  return <button key={it.k} title={it.title} onClick={function(){setAddMenu(false);quickAdd(it.k);}}
+                    onMouseEnter={function(e){e.currentTarget.style.background="var(--rule-2)";}} onMouseLeave={function(e){e.currentTarget.style.background="none";}}
+                    style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",background:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontSize:12,color:"var(--ink)"}}>{it.label}</button>;
+                })}
+              </div>
+            </React.Fragment>}
+          </span>}
           {canEdit!==false&&<span style={{display:"flex",gap:3,alignItems:"center",paddingRight:6,borderRight:"1px solid #e0ddd6"}}>
             <button className="btn btn-sm" disabled={undoRef.current.past.length===0} onClick={function(){undoRedo(-1);}}
               title={"Undo the last change to this schedule (Ctrl+Z)"+(undoRef.current.past.length?" — "+undoRef.current.past.length+" step"+(undoRef.current.past.length!==1?"s":"")+" available":"")}
@@ -3402,13 +3510,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             }} title="Jump to the current week" style={{padding:"2px 8px",fontSize:11}}>Today</button>
             <button className="btn btn-sm" onClick={function(){var el=document.querySelector(".sched-wrap");if(el)el.scrollLeft+=400;}} title="Scroll forward in time" style={{padding:"2px 8px",fontSize:11}}>▶▶</button>
           </span>
+          <button className="btn btn-sm" onClick={function(e){setPop({kind:"find",rowId:"",rect:e.currentTarget.getBoundingClientRect()});}}
+            title="Find a task and jump to it (Ctrl+F)" style={{color:"var(--ink-3)",minWidth:150,justifyContent:"flex-start"}}>🔍 Find a task… <span style={{marginLeft:"auto",fontFamily:"var(--font-mono)",fontSize:9.5,border:"1px solid var(--rule)",borderRadius:4,padding:"0 4px"}}>Ctrl F</span></button>
           <span style={{display:"flex",alignItems:"center",gap:4,paddingRight:8,borderRight:"1px solid var(--rule,#ddd9cf)"}}>
-            <span style={{fontSize:9,fontWeight:800,color:"#aaa",textTransform:"uppercase"}}>Subcont.</span>
-            <select value={fGroup} onChange={function(e){setFGroup(e.target.value);}} title="Show only the tasks of one subcontractor — room headers stay visible"
-              style={{width:"auto",padding:"2px 6px",fontSize:10,fontWeight:fGroup?700:400,color:fGroup?"#00695c":"inherit",border:"1px solid "+(fGroup?"#00695c":"#e8e6df"),borderRadius:6}}>
-              <option value="">All subcontractors</option>
-              {allGroups.map(function(g){return <option key={g} value={g}>{g}</option>;})}
-            </select>
+            <button className={"btn btn-sm"+(fGroup?" btn-pri":"")} title="Show only the tasks of one company — room headers stay visible"
+              onClick={function(e){setPop({kind:"filter",rowId:"",rect:e.currentTarget.getBoundingClientRect()});}}>
+              {fGroup?"👷 "+fGroup:"👷 All companies"} ▾</button>
+            {fGroup&&<button className="btn btn-sm" title="Show every company" onClick={function(){setFGroup("");}} style={{padding:"2px 7px"}}>✕</button>}
             {fGroup&&<span style={{fontSize:10,color:"#00695c",fontWeight:700}}>{groupRows.filter(function(r){return r.kind!=="category";}).length} task(s)</span>}
           </span>
           <button className={"btn btn-sm"+(monthView?" btn-pri":"")} onClick={function(){setMonthView(!monthView);}}
@@ -3419,11 +3527,38 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             style={{padding:"2px 10px",fontSize:10}}>{fullScreen?"⤡ Exit":"⤢ Expand"}</button>
           <span style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
             <span style={{fontSize:10,color:"#888",cursor:"help"}}
-              title={"Click a task name: details panel · Double-click: rename · Right-click: quick menu\nDrag along a row: paint · Shift+drag a bar: move it (linked tasks follow)\nDrag the ● at the end of a bar onto another task: link · Click an arrow: remove the link\nClick a week header to neutralise it (holiday)\nCtrl+Z / Ctrl+Y: undo / redo"}>
+              title={"Click a task name: details panel · Double-click: rename · Right-click: quick menu\nDrag along a row: paint · Drag a bar: move it (linked tasks follow) · Drag its ends: change the dates · Alt+drag: erase\nDrag the ● at the end of a bar onto another task: link · Click an arrow: remove the link\nClick a week header to neutralise it (holiday)\nCtrl+Z / Ctrl+Y: undo / redo · Ctrl+F: find a task\nTask open in the panel: ↑ ↓ previous / next · Enter rename · Alt+← → shift a week · Ctrl+D duplicate · Delete"}>
               ⓘ Tips</span>
             <button className={"btn btn-sm"+(showTools?" btn-pri":"")} onClick={function(){setShowTools(!showTools);}}
               title="Baseline, critical path, link arrows, advanced columns, collapse / expand the rooms"
               style={{padding:"2px 10px",fontSize:10}}>Analyse & view {showTools?"▴":"▾"}{!showTools&&(activeBl||critPath)?" ●":""}</button>
+        <button className={"btn btn-sm"+(showSettings?" btn-pri":"")} onClick={function(){setShowSettings(!showSettings);}}
+          title={"Title, start week, number of weeks, subcontractors, copy to another zone"+(sc.updatedAt?"\nLast update "+fmtDate(sc.updatedAt)+(sc.updatedBy?" by "+sc.updatedBy.split(",")[0]:""):"")}>⚙ Settings</button>
+        <span style={{position:"relative",display:"inline-block"}}>
+          <button className={"btn btn-sm"+(moreMenu?" btn-pri":"")} onClick={function(){setMoreMenu(!moreMenu);}}
+            title="Documents, Primavera export and the other actions on this schedule">⋯ More ▾</button>
+          {moreMenu&&<React.Fragment>
+            <div onClick={function(){setMoreMenu(false);}} style={{position:"fixed",inset:0,zIndex:1290}}></div>
+            <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:1300,minWidth:250,background:"#fff",border:"1px solid var(--rule,#ddd9cf)",borderRadius:9,
+              boxShadow:"0 10px 32px rgba(0,0,0,.2)",padding:6}}>
+              {[
+                {k:"docs",label:"📄 Documents"+(scDocs.length>0?" ("+scDocs.length+")":""),title:"Reference documents: setting-out plans, sections, details. Attach one to a room and its name becomes clickable in the schedule.",run:function(){setShowDocs(true);}},
+                {k:"xer",label:"⬇ Export to Primavera P6 (.xer)",title:"WBS section › room, activities, links, calendar with neutralised weeks, subcontractor and tender codes, progress",run:exportXer},
+                canEdit&&{k:"sort",label:"🔤 Sort rooms A→Z",title:"Sort categories A→Z. Each one keeps its own tasks.",run:sortCategories},
+                canEdit&&{k:"rules",label:"🔗 Apply tender rules",title:"Apply the subcontractor → tender rules (Settings › Tender rules) to every task of this schedule",run:applyTenderRules},
+                isAdmin&&{k:"clean",label:"🧹 Clean auto-actions",title:"Remove the duplicate 'Procurement late for…' actions created by the old auto-rule, keeping one per task",run:cleanAutoActions,danger:true},
+                isAdmin&&{k:"del",label:"🗑 Delete this schedule",title:"Delete this schedule (admin only)",run:function(){delSchedule(sc.id);},danger:true}
+              ].filter(Boolean).map(function(it){
+                return <button key={it.k} title={it.title} onClick={function(){setMoreMenu(false);it.run();}}
+                  onMouseEnter={function(e){e.currentTarget.style.background="var(--rule-2,#efece5)";}} onMouseLeave={function(e){e.currentTarget.style.background="none";}}
+                  style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",background:"none",borderRadius:6,cursor:"pointer",
+                    fontFamily:"inherit",fontSize:12,color:it.danger?"var(--red,#b3302a)":"var(--ink,#16181d)"}}>{it.label}</button>;
+              })}
+            </div>
+          </React.Fragment>}
+        </span>
+        <button className="btn btn-sm btn-pri" onClick={openPrint}
+          title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">Print / PDF</button>
           </span>
         </div>
 
@@ -3679,7 +3814,20 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   var mdl=workingDelta(drag.from,drag.to);
                   if(mdl)shownCells=(shiftRowCascade([row],row.id,mdl,wks,{},sc.holidayWeeks||[])[0]||{}).cells||{};
                 }
+                // While an end of the bar is dragged, the bar is drawn at its new length.
+                if(drag&&(drag.type==="resizeS"||drag.type==="resizeE")&&drag.rowId===row.id){
+                  var rsp=spanFromCells(row.cells,wks,null);
+                  var rs0=drag.type==="resizeS"?drag.to:rsp.startWeek,re0=drag.type==="resizeE"?drag.to:rsp.endWeek;
+                  if(rs0&&re0){
+                    if(re0<rs0){var rtmp=rs0;rs0=re0;re0=rtmp;}
+                    var rhol=sc.holidayWeeks||[],rc={};
+                    Object.keys(row.cells||{}).forEach(function(w){var cv=row.cells[w];if(cv==="actual"||cv==="both")rc[w]="actual";});
+                    wks.forEach(function(w){if(w>=rs0&&w<=re0&&rhol.indexOf(w)<0)rc[w]=rc[w]==="actual"?"both":"plan";});
+                    shownCells=rc;
+                  }
+                }
                 var lastPlanWk=isCat?"":(spanFromCells(shownCells,wks,null).endWeek||"");
+                var firstPlanWk=isCat?"":(spanFromCells(shownCells,wks,null).startWeek||"");
                 return <React.Fragment key={row.id}>
                 {pqRows.map(function(pq){
                   var ok=pq.status==="done"||!!pq.dateConfirmed;
@@ -3975,8 +4123,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         }
                         e.preventDefault();     // no text selection while dragging
                         var real=(row.cells||{})[wk];
-                        if(e.shiftKey&&(real==="plan"||real==="both")){startDrag({type:"move",rowId:row.id,from:wk,to:wk});return;}
-                        startDrag({type:"paint",rowId:row.id,from:wk,to:wk,erase:strokeErases(row,wk)});
+                        var onBar=real==="plan"||real==="both";
+                        // Planned mode: dragging the bar moves the task (the tasks after it follow);
+                        // Alt+drag erases weeks of it. Shift+drag still moves, as before.
+                        if(onBar&&!e.altKey&&(e.shiftKey||paintMode==="plan")){startDrag({type:"move",rowId:row.id,from:wk,to:wk});return;}
+                        startDrag({type:"paint",rowId:row.id,from:wk,to:wk,erase:onBar&&e.altKey?true:strokeErases(row,wk)});
                       }}
                       onPointerMove={function(e){
                         var lp=longPressRef.current;
@@ -3990,7 +4141,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       }}
                       onPointerCancel={clearLongPress}
                       data-wk={wk}
-                      title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(v==="plan"||v==="both")?"Drag along the row to paint or erase · Shift+drag to move the whole task":"Click, or drag along the row to paint several weeks")}
+                      title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(v==="plan"||v==="both")?(paintMode==="plan"?"Drag the bar to move the task (the tasks after it follow) · drag its ends to change the dates · Alt+drag to erase weeks":"Drag along the row to paint or erase"):"Click, or drag along the row to paint several weeks")}
                       className={(isCat||hol)?"sched-wk sched-wk-nc":"sched-wk"}
                       style={Object.assign({},
                         hol?{background:"repeating-linear-gradient(45deg,#e8e4da,#e8e4da 3px,#dcd8ce 3px,#dcd8ce 6px)"}:cellStyle(v,row),
@@ -3999,6 +4150,18 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       {hasWp?wpVal:isFeasible?<span title={"🚚 Delivery "+fmtDate(rowRisk.delivery)+" — earliest possible start"} style={{color:v?"#fff":featCol,fontSize:10,fontWeight:900,textShadow:v?"0 0 3px rgba(0,0,0,.7)":"none"}}>▶</span>:""}
                       {activeBl&&!isCat&&blWeekSet[row.id]&&blWeekSet[row.id][wk]&&<span className="sched-noprint" title={"Baseline “"+activeBl.name+"”"}
                         style={{position:"absolute",left:0,right:0,bottom:1,height:4,background:"#546e7a",opacity:.75,pointerEvents:"none"}}></span>}
+                      {canEdit&&!drag&&!isCat&&paintMode==="plan"&&(wk===firstPlanWk||wk===lastPlanWk)&&<React.Fragment>
+                        {[wk===firstPlanWk?"S":null,wk===lastPlanWk?"E":null].filter(Boolean).map(function(side){
+                          return <span key={side} className="sched-noprint sched-rh"
+                            title={side==="S"?"Drag to change the start":"Drag to change the end"}
+                            onPointerDown={function(e){
+                              if(e.button!==undefined&&e.button!==0)return;
+                              e.stopPropagation();e.preventDefault();clearLongPress();
+                              startDrag({type:side==="S"?"resizeS":"resizeE",rowId:row.id,from:wk,to:wk});
+                            }}
+                            style={side==="S"?{left:0}:{right:7}}></span>;
+                        })}
+                      </React.Fragment>}
                       {canEdit&&!drag&&wk===lastPlanWk&&<span className="sched-noprint sched-link-handle"
                         onPointerDown={function(e){
                           e.stopPropagation();e.preventDefault();clearLongPress();
@@ -4011,7 +4174,16 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           background:"#fff",border:"2.5px solid #0f5299",cursor:"crosshair",zIndex:1,boxSizing:"border-box",touchAction:"none"}}></span>}
                     </td>;
                   })}
-                </tr></React.Fragment>;
+                </tr>
+                {addAfter[row.id]&&<tr className="sched-noprint sched-addrow">
+                  <td colSpan={wks.length+(advanced?5:3)} style={{padding:"2px 0 3px 34px",borderBottom:"1px solid #f5f4f0",background:"#fff"}}>
+                    <button type="button" onClick={function(){insertTaskAfter(row.id);}}
+                      title={"New task at the end of "+(addAfter[row.id].label||"this room")+" — it starts after the task above (Enter on its name adds the next one)"}
+                      style={{border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:600,color:"var(--brand-2)",padding:"2px 4px",position:"sticky",left:34}}>
+                      ＋ Add a task in {addAfter[row.id].label||"this room"}</button>
+                  </td>
+                </tr>}
+                </React.Fragment>;
               })}
             </tbody>
           </table>
@@ -4159,6 +4331,28 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               })}
             </div>}
           </div>;
+        })()}
+        {pop&&pop.kind==="find"&&(function(){
+          var items=[],sec="",cat="";
+          (sc.rows||[]).forEach(function(r){
+            if(r.kind==="section"){sec=r.label||"";cat="";items.push({id:r.id,label:r.label||"untitled",icon:"■",sub:"section"});return;}
+            if(r.kind==="category"){cat=r.label||"";items.push({id:r.id,label:r.label||"untitled",icon:"▸",sub:sec});return;}
+            items.push({id:r.id,label:r.label||"untitled",sub:cat||sec});
+          });
+          return <SchedSearchPop anchor={pop.rect} width={380} title="Find a task — Enter jumps to it" placeholder="Task, room or section…"
+            groups={[{label:"",items:items}]} onPick={function(id){setPop(null);goToRow(id);}} onClose={function(){setPop(null);}}/>;
+        })()}
+        {pop&&pop.kind==="filter"&&<SchedSearchPop anchor={pop.rect} title="Show the tasks of…" placeholder="Search a company…"
+          groups={[{label:"",items:[{id:"",label:"All companies",icon:"—",muted:true}].concat(allGroups.map(function(g){
+            var gc=(sc.groupColors||{})[g]||(window._ppSubColors||{})[g]||"";return{id:g,label:g,color:gc};}))}]}
+          value={fGroup} onPick={function(id){setFGroup(id);setPop(null);}} onClose={function(){setPop(null);}}/>}
+        {pop&&pop.kind==="company"&&(function(){
+          var prow=(sc.rows||[]).find(function(r){return r.id===pop.rowId;});
+          if(!prow)return null;
+          return <SchedSearchPop anchor={pop.rect} title={"Company — "+(prow.label||"task")} placeholder="Search a company…"
+            groups={companyGroups(prow)} value={prow.group||""}
+            create={{label:function(q){return "Use “"+q+"” as a new company";},run:function(q){setRowCompany(prow,q);setPop(null);}}}
+            onPick={function(id){setRowCompany(prow,id);setPop(null);}} onClose={function(){setPop(null);}}/>;
         })()}
         {instrOpen&&<SchedInstructionModal rows={sc.rows||[]} weeks={scheduleWeeks(sc)} holidays={sc.holidayWeeks||[]} shift={shiftRowCascade}
           onApply={function(rows){upd(sc.id,{rows:rows});setInstrOpen(false);}} onClose={function(){setInstrOpen(false);}}/>}
@@ -4381,22 +4575,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           var sec={padding:"11px 14px",borderBottom:"1px solid #eee9dd"};
           var secH={fontSize:10,fontWeight:800,color:"#6f6b62",textTransform:"uppercase",letterSpacing:".07em",marginBottom:8};
           var roomsOfZone=(rooms||[]).filter(function(rm){return rm.zone===curZone;});
-          function tenderOptions(){
-            var q=qTender.trim().toLowerCase();
-            var list=(tenders||[]).filter(function(t){
-              if(!q)return true;
-              var aw=tenderAwardees(t).join(" ");
-              return ((t.title||"")+" "+(t.package||"")+" "+aw).toLowerCase().indexOf(q)>=0;
-            });
-            var byPkg={};
-            list.forEach(function(t){var p=t.package||"— no package —";(byPkg[p]=byPkg[p]||[]).push(t);});
-            return Object.keys(byPkg).sort().map(function(p){
-              return <optgroup key={p} label={p+" ("+byPkg[p].length+")"}>
-                {byPkg[p].slice().sort(function(a,b2){return(a.title||"").localeCompare(b2.title||"");})
-                  .map(function(t){var aw=tenderAwardees(t);return <option key={t.id} value={t.id}>{t.title}{aw.length?" — "+aw.join(" / "):""}</option>;})}
-              </optgroup>;
-            });
-          }
           function setTender(v){
             if(isCat){updRow(row.id,{tenderRef:v==="__none__"?"":v});return;}
             if(v==="__inherit__"||v==="")updRow(row.id,{tenderRef:"",tenderFromHeader:""});
@@ -4406,6 +4584,29 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           return <div className="sched-noprint" onClick={function(e){e.stopPropagation();}}
             style={{position:"fixed",top:0,right:0,bottom:0,width:400,maxWidth:"100vw",zIndex:800,background:"#fff",
               borderLeft:"1.5px solid #e0ddd6",boxShadow:"-10px 0 36px rgba(0,0,0,.18)",display:"flex",flexDirection:"column"}}>
+            {pop&&pop.rowId===row.id&&pop.kind==="tender"&&(function(){
+              var list=(tenders||[]).slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");});
+              var byPkg={};list.forEach(function(t){var p=t.package||"— no department —";(byPkg[p]=byPkg[p]||[]).push(t);});
+              var groups=[{label:"",items:[].concat(!isCat&&inh?[{id:"__inherit__",label:"From "+(inh.header.label||"header")+": "+((tenderById[inh.tenderId]||{}).title||"package"),icon:"↳",muted:true}]:[])
+                .concat([{id:!isCat&&inh?"__none__":"",label:"No package",icon:"—",muted:true}])}];
+              Object.keys(byPkg).sort().forEach(function(p){
+                groups.push({label:p,items:byPkg[p].map(function(t){var aw=tenderAwardees(t);return{id:t.id,label:t.title||"untitled",sub:aw.join(" / ")};})});
+              });
+              return <SchedSearchPop anchor={pop.rect} width={380} title={isCat?"Package for the tasks below":"Package"} placeholder="Search a package, department or company…"
+                groups={groups} value={tenderVal} onPick={function(id){setTender(id);setPop(null);}} onClose={function(){setPop(null);}}/>;
+            })()}
+            {pop&&pop.rowId===row.id&&(pop.kind==="room"||pop.kind==="copyseq")&&(function(){
+              var copy=pop.kind==="copyseq";
+              var items=roomsOfZone.filter(function(rm){return !copy||rm.id!==row.roomId;}).map(function(rm){return{id:rm.id,label:rm.name};});
+              if(!copy)items.unshift({id:"",label:"No room",icon:"—",muted:true});
+              return <SchedSearchPop anchor={pop.rect} title={copy?"Copy this sequence to…":"Room"} placeholder="Search a room…"
+                groups={[{label:"",items:items}]} value={copy?null:(row.roomId||"")}
+                onPick={function(id){setPop(null);if(copy){if(id)copySequenceToRoom(row.id,id);}else updRow(row.id,{roomId:id});}}
+                onClose={function(){setPop(null);}}/>;
+            })()}
+            {pop&&pop.rowId===row.id&&pop.kind==="owner"&&<SchedSearchPop anchor={pop.rect} title="Owner of the new action" placeholder="Search a person…"
+              groups={[{label:"",items:[{id:"",label:"No owner",icon:"—",muted:true}].concat((people||[]).map(function(p){return{id:p,label:p,sub:deptOf(p)||""};}))}]}
+              value={newActionOwner} onPick={function(id){setNewActionOwner(id);setPop(null);}} onClose={function(){setPop(null);}}/>}
             <div style={{padding:"12px 14px",borderBottom:"1.5px solid #e8e6df",background:isSection?"#2b2e36":isCat?"#f0ede6":"#faf9f7",display:"flex",alignItems:"flex-start",gap:8}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:9,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:isSection?"#cfcac0":"#9b968b",marginBottom:3}}>
@@ -4425,14 +4626,16 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               {/* ---- Tender & company ---- */}
               <div style={sec}>
                 <div style={secH}>{isCat?"Tender for the tasks below":"Tender & subcontractor"}</div>
-                <input type="text" value={qTender} onChange={function(e){setQTender(e.target.value);}}
-                  placeholder="🔎 search tender, package or company…" style={{padding:"4px 8px",fontSize:11,marginBottom:4,width:"100%"}}/>
-                <select value={tenderVal} disabled={!canEdit} onChange={function(e){setTender(e.target.value);}}
-                  size={qTender.trim()?8:1} style={{padding:"5px 7px",fontSize:12,width:"100%"}}>
-                  {!isCat&&inh&&<option value="__inherit__">↳ From {inh.header.label||"header"}: {(tenderById[inh.tenderId]||{}).title||"tender"}</option>}
-                  <option value={!isCat&&inh?"__none__":""}>— no tender —</option>
-                  {tenderOptions()}
-                </select>
+                <button type="button" disabled={!canEdit} title="Pick the package (search by name, department or company)"
+                  onClick={function(e){setPop({kind:"tender",rowId:row.id,rect:e.currentTarget.getBoundingClientRect()});}}
+                  style={{display:"flex",alignItems:"center",gap:6,width:"100%",textAlign:"left",padding:"6px 10px",fontSize:12.5,fontFamily:"inherit",cursor:canEdit?"pointer":"default",
+                    border:"1px solid var(--brand-line)",background:"var(--brand-soft)",color:"var(--brand-ink)",fontWeight:600,borderRadius:8}}>
+                  <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {tenderVal==="__inherit__"?"↳ From "+(inh.header.label||"header")+": "+((tenderById[inh.tenderId]||{}).title||"package")
+                      :tenderVal&&tenderVal!=="__none__"?"📑 "+((tenderById[tenderVal]||{}).title||"package")
+                      :<span style={{color:"var(--ink-4)",fontWeight:500}}>— no package —</span>}</span>
+                  {canEdit&&<span style={{fontSize:10,color:"var(--ink-3)",fontWeight:500}}>▾</span>}
+                </button>
                 {isCat&&<div style={{fontSize:10,color:"#888",marginTop:5,lineHeight:1.45}}>
                   {row.tenderRef
                     ?"Used by every task below that has no tender of its own"+(below.length?" — "+below.filter(function(r){return r.tenderFromHeader===row.id;}).length+" of "+below.length+" task"+(below.length!==1?"s":"")+" follow it.":".")
@@ -4459,38 +4662,79 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               {/* ---- Where ---- */}
               {(row.kind!=="section")&&<div style={sec}>
                 <div style={secH}>Room</div>
-                <select value={row.roomId||""} disabled={!canEdit} onChange={function(e){updRow(row.id,{roomId:e.target.value});}}
-                  style={{padding:"5px 7px",fontSize:12,width:"100%",color:row.roomId?"#4a4740":"#888"}}>
-                  <option value="">🚪 — no room —</option>
-                  {roomsOfZone.map(function(rm){return <option key={rm.id} value={rm.id}>{rm.name}</option>;})}
-                </select>
-                {row.kind==="category"&&canEdit&&<select value="" onChange={function(e){if(e.target.value){copySequenceToRoom(row.id,e.target.value);e.target.value="";}}}
+                <button type="button" disabled={!canEdit} onClick={function(e){setPop({kind:"room",rowId:row.id,rect:e.currentTarget.getBoundingClientRect()});}}
+                  style={{display:"flex",alignItems:"center",gap:6,width:"100%",textAlign:"left",padding:"6px 10px",fontSize:12.5,fontFamily:"inherit",cursor:canEdit?"pointer":"default",
+                    border:"1px solid var(--brand-line)",background:"var(--brand-soft)",color:"var(--brand-ink)",fontWeight:600,borderRadius:8}}>
+                  <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {row.roomId?"🚪 "+((roomsOfZone.find(function(rm){return rm.id===row.roomId;})||{}).name||"room"):<span style={{color:"var(--ink-4)",fontWeight:500}}>🚪 — no room —</span>}</span>
+                  {canEdit&&<span style={{fontSize:10,color:"var(--ink-3)",fontWeight:500}}>▾</span>}
+                </button>
+                {row.kind==="category"&&canEdit&&<button type="button" className="btn btn-sm" style={{marginTop:6}}
                   title="Copy this whole sequence onto another room (keeps links, clears durations)"
-                  style={{padding:"5px 7px",fontSize:12,width:"100%",marginTop:6,color:"#0f5299"}}>
-                  <option value="">⧉ Copy this sequence to another room…</option>
-                  {roomsOfZone.filter(function(rm){return rm.id!==row.roomId;}).map(function(rm){return <option key={rm.id} value={rm.id}>{rm.name}</option>;})}
-                </select>}
+                  onClick={function(e){setPop({kind:"copyseq",rowId:row.id,rect:e.currentTarget.getBoundingClientRect()});}}>⧉ Copy this sequence to another room…</button>}
               </div>}
 
               {/* ---- Timing ---- */}
               {!isCat&&<div style={sec}>
                 <div style={secH}>Timing & links</div>
-                <div style={{display:"flex",gap:8,marginBottom:8}}>
-                  <div style={{flex:1}}>
-                    <label style={lbl}>Start week</label>
-                    <select value={row.startWeek||spanFromCells(row.cells,wks,null).startWeek||""} disabled={!canEdit} onChange={function(e){applySpan(row,{startWeek:e.target.value});}} style={{padding:"4px 6px",fontSize:11,width:"100%"}}>
-                      <option value="">—</option>
-                      {wks.map(function(w){return <option key={w} value={w}>{fmtDate(w)}</option>;})}
-                    </select>
-                  </div>
-                  <div style={{flex:1}}>
-                    <label style={lbl}>End week</label>
-                    <select value={row.endWeek||spanFromCells(row.cells,wks,null).endWeek||""} disabled={!canEdit} onChange={function(e){applySpan(row,{endWeek:e.target.value});}} style={{padding:"4px 6px",fontSize:11,width:"100%"}}>
-                      <option value="">—</option>
-                      {wks.map(function(w){return <option key={w} value={w}>{fmtDate(w)}</option>;})}
-                    </select>
-                  </div>
-                </div>
+                {/* Dates: a strip of the schedule's weeks (click the start, then the end) and
+                    start / duration / end that can be typed — no 50-week drop-downs. */}
+                {(function(){
+                  var hol=sc.holidayWeeks||[];
+                  var spn=spanFromCells(row.cells,wks,row);
+                  var si=wks.indexOf(spn.startWeek),ei=wks.indexOf(spn.endWeek);
+                  var td=today(),ti=-1;wks.forEach(function(w,i){if(w<=td)ti=i;});
+                  var picking=spanPick&&spanPick.rowId===row.id;
+                  var dur=si>=0&&ei>=0?wks.slice(si,ei+1).filter(function(w){return hol.indexOf(w)<0;}).length:"";
+                  function weekOf(iso){var k=-1;wks.forEach(function(w,i){if(w<=iso)k=i;});return k>=0?wks[k]:"";}
+                  function setDur(n){
+                    n=Math.max(1,Math.round(Number(n)||0));if(si<0||!n)return;
+                    var c=0,end="";
+                    for(var i=si;i<wks.length;i++){if(hol.indexOf(wks[i])>=0)continue;c++;end=wks[i];if(c>=n)break;}
+                    if(end)applySpan(row,{startWeek:wks[si],endWeek:end});
+                  }
+                  function clickW(w){
+                    if(!canEdit)return;
+                    if(!picking){setSpanPick({rowId:row.id,start:w});return;}
+                    var a=spanPick.start,b=w;if(b<a){var t=a;a=b;b=t;}
+                    setSpanPick(null);applySpan(row,{startWeek:a,endWeek:b});
+                  }
+                  var col=planColor(row);
+                  return <div style={{marginBottom:10}}>
+                    <div style={{display:"flex",gap:1,marginBottom:3}}>
+                      {wks.map(function(w,i){
+                        var inBar=i>=si&&i<=ei&&si>=0,isHol=hol.indexOf(w)>=0,isStart=picking&&spanPick.start===w;
+                        return <div key={w} onClick={function(){clickW(w);}} title={fmtDate(w)+(isHol?" — neutralised week":"")}
+                          style={{flex:1,height:22,borderRadius:2,cursor:canEdit?"pointer":"default",
+                            background:isStart?"var(--brand)":inBar?col:isHol?"repeating-linear-gradient(45deg,#e8e6df 0 3px,#f5f4f0 3px 6px)":"#f1f3f6",
+                            boxShadow:i===ti?"inset 0 0 0 1.5px var(--red)":"none",opacity:picking&&!isStart?.85:1}}></div>;
+                      })}
+                    </div>
+                    <div style={{display:"flex",fontFamily:"var(--font-mono)",fontSize:8.5,color:"var(--ink-4)",marginBottom:6}}>
+                      {wks.map(function(w,i){return <span key={w} style={{flex:1,overflow:"visible",whiteSpace:"nowrap"}}>{i%4===0?w.slice(8,10)+"/"+w.slice(5,7):""}</span>;})}
+                    </div>
+                    {canEdit&&<div style={{fontSize:10.5,color:picking?"var(--brand-2)":"var(--ink-3)",fontWeight:picking?700:400,marginBottom:6}}>
+                      {picking?"Now click the end week ("+fmtDate(spanPick.start)+" picked) — Esc to cancel":"Click the start week, then the end week — or type below"}</div>}
+                    <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                      <div style={{flex:1}}>
+                        <label style={lbl}>Start</label>
+                        <input type="date" disabled={!canEdit} value={spn.startWeek||""} min={wks[0]} max={wks[wks.length-1]}
+                          onChange={function(e){var w=weekOf(e.target.value);if(w)applySpan(row,{startWeek:w});}} style={{padding:"4px 6px",fontSize:11.5,width:"100%"}}/>
+                      </div>
+                      <div style={{width:74}}>
+                        <label style={lbl} title="Working weeks (neutralised weeks not counted)">Weeks</label>
+                        {canEdit&&si>=0
+                          ?<SchedBufInput type="number" value={dur} placeholder="—" onCommit={setDur} style={{padding:"4px 6px",fontSize:12,width:"100%",fontWeight:700}}/>
+                          :<div style={{fontSize:12,padding:"5px 0"}}>{dur||"—"}</div>}
+                      </div>
+                      <div style={{flex:1}}>
+                        <label style={lbl}>End (week of)</label>
+                        <input type="date" disabled={!canEdit} value={spn.endWeek||""} min={wks[0]} max={wks[wks.length-1]}
+                          onChange={function(e){var w=weekOf(e.target.value);if(w)applySpan(row,{endWeek:w});}} style={{padding:"4px 6px",fontSize:11.5,width:"100%"}}/>
+                      </div>
+                    </div>
+                  </div>;
+                })()}
                 {canEdit&&<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:10}}>
                   <button className="btn btn-sm" onClick={function(){shiftRow(row.id,-1);}} title="Shift 1 week earlier — the tasks after it follow">◀ 1 wk</button>
                   <button className="btn btn-sm" onClick={function(){shiftRow(row.id,1);}} title="Shift 1 week later — the tasks after it follow">1 wk ▶</button>
@@ -4671,20 +4915,20 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               })}
               <button className="btn btn-sm btn-gold" disabled={!newActionText.trim()}
                 onClick={function(){createLinkedAction(row.id,row.label,newActionText,newActionSeverity,newActionOwner,newActionDue);setNewActionText("");setNewActionDue("");}}>＋ Create</button>
-              <select value={newActionOwner} onChange={function(e){setNewActionOwner(e.target.value);}} title="Who owns it" style={{width:"auto",padding:"4px 7px",fontSize:11}}>
-                <option value="">👤 owner…</option>
-                {(people||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
-              </select>
+              <button type="button" className="btn btn-sm" title="Who owns it"
+                onClick={function(e){setPop({kind:"owner",rowId:row.id,rect:e.currentTarget.getBoundingClientRect()});}}
+                style={{color:newActionOwner?"var(--brand-ink)":"var(--ink-3)"}}>👤 {newActionOwner?newActionOwner.split(",")[0]:"owner…"}</button>
               <input type="date" min="1990-01-01" max="2200-12-31" value={newActionDue} onChange={function(e){setNewActionDue(e.target.value);}}
                 title={newActionSeverity==="prereq"?"Expected date — leave it and tick TBC later if unknown":"Due date"} style={{width:130,padding:"4px 6px",fontSize:11}}/>
             </div>
 
             {candidates.length>0&&<div style={{marginBottom:10}}>
               <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:4}}>Or link an existing {curZone} action</div>
-              <select value="" onChange={function(e){if(e.target.value)linkTaskToRow(e.target.value,row.id);}} style={{width:"100%",padding:"5px 8px",fontSize:12}}>
-                <option value="">— pick an action to link —</option>
-                {candidates.map(function(t){return <option key={t.id} value={t.id}>{t.text}{t.owner?" ("+t.owner.split(",")[0]+")":""}</option>;})}
-              </select>
+              <button type="button" className="btn btn-sm" style={{width:"100%",justifyContent:"flex-start"}}
+                onClick={function(e){setPop({kind:"linkaction",rowId:row.id,rect:e.currentTarget.getBoundingClientRect()});}}>🔗 Pick an action to link…</button>
+              {pop&&pop.kind==="linkaction"&&pop.rowId===row.id&&<SchedSearchPop anchor={pop.rect} width={360} title="Link an existing action" placeholder="Search an action…"
+                groups={[{label:"",items:candidates.map(function(t){return{id:t.id,label:t.text,sub:t.owner?t.owner.split(",")[0]:""};})}]}
+                onPick={function(id){linkTaskToRow(id,row.id);setPop(null);}} onClose={function(){setPop(null);}}/>}
             </div>}
 
             <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:4}}>Linked actions ({linked.length})</div>
