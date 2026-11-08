@@ -459,10 +459,142 @@ function siApplyLinks(rows,links,mode,wl,hol,shift){
   return{rows:out,res:res};
 }
 // The text box, the proposed chain to check and correct, the moves it makes; Apply = one save.
+// ---------------------------------------------------------------------------
+// Task picker for links: the schedule itself, as a read-only Gantt, with a search field.
+// Click a row to pick it. Rows that cannot be picked (the task itself, a link that would make
+// a loop, or a header when only tasks are allowed) are greyed with the reason on hover.
+//   rows          the schedule rows (sections, rooms/categories, tasks)
+//   weeks         the schedule weeks (Monday ISO dates)
+//   value         the row picked now (highlighted, scrolled into view)
+//   allowHeaders  a room or section may be picked (Links from text)
+//   blockedReason function(row) → "" or why it cannot be picked
+//   suggestions   [{id, score}] shown as chips above the plan (best matches of a typed name)
+//   noneLabel     when set, a button to pick nothing (onPick(""))
+// ---------------------------------------------------------------------------
+function SchedTaskPicker({rows,weeks,title,value,allowHeaders,blockedReason,suggestions,noneLabel,onPick,onClose}){
+  const [q,setQ]=useState("");
+  const listRef=useRef(null);
+  var wl=weeks||[];
+  var N=Math.max(1,wl.length);
+  var byId={};(rows||[]).forEach(function(r){byId[r.id]=r;});
+  // every row with its path, its bar (week indexes) and whether it can be picked
+  var model=React.useMemo(function(){
+    var sec=null,cat=null,out=[];
+    (rows||[]).forEach(function(r){
+      if(r.kind==="section"){sec=r;cat=null;}
+      else if(r.kind==="category"){cat=r;}
+      var sp=r.kind==="task"||!r.kind?spanFromCells(r.cells,wl,null):{};
+      out.push({row:r,head:r.kind==="section"||r.kind==="category",
+        path:r.kind==="section"?"":r.kind==="category"?(sec?sec.label||"":""):[sec&&sec.label,cat&&cat.label].filter(Boolean).join(" › "),
+        secId:sec?sec.id:"",catId:r.kind==="category"?r.id:(cat?cat.id:""),
+        s:sp.startWeek?wl.indexOf(sp.startWeek):-1,e:sp.endWeek?wl.indexOf(sp.endWeek):-1});
+    });
+    // a header's bar spans the tasks under it
+    out.forEach(function(m,i){
+      if(!m.head)return;
+      for(var k=i+1;k<out.length;k++){
+        var o=out[k];
+        if(o.row.kind==="section")break;
+        if(m.row.kind==="category"&&o.row.kind==="category")break;
+        if(o.head||o.s<0)continue;
+        if(m.s<0||o.s<m.s)m.s=o.s;
+        if(o.e>m.e)m.e=o.e;
+      }
+    });
+    return out;
+  },[rows,wl.length]);
+  function why(m){
+    if(m.head&&!allowHeaders)return "header";
+    return blockedReason?blockedReason(m.row)||"":"";
+  }
+  // search: every word in the label, its room or its section; the headers of a match stay
+  var words=siNorm(q).split(" ").filter(Boolean);
+  var shown=model;
+  if(words.length){
+    var keep={};
+    model.forEach(function(m){
+      var hay=siNorm((m.row.label||"")+" "+m.path);
+      if(words.every(function(w){return hay.indexOf(w)>=0;})){keep[m.row.id]=1;if(m.secId)keep[m.secId]=1;if(m.catId)keep[m.catId]=1;}
+    });
+    shown=model.filter(function(m){return keep[m.row.id];});
+  }
+  var firstPick=shown.find(function(m){
+    if(why(m))return false;
+    if(!words.length)return false;
+    return words.every(function(w){return siNorm((m.row.label||"")+" "+m.path).indexOf(w)>=0;});
+  });
+  useEffect(function(){
+    if(!value||!listRef.current)return;
+    var el=listRef.current.querySelector("[data-pick='"+value+"']");
+    if(el&&el.scrollIntoView)try{el.scrollIntoView({block:"center"});}catch(e){}
+  },[]);
+  // month ticks and today line on the timeline
+  var ticks=[],lastM="";
+  wl.forEach(function(w,i){var m=w.slice(0,7);if(m!==lastM){ticks.push({i:i,l:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(w.slice(5,7))-1]+" "+w.slice(2,4)});lastM=m;}});
+  var td=today(),ti=-1;wl.forEach(function(w,i){if(w<=td)ti=i;});
+  function pct(i){return (i/N*100)+"%";}
+  function pick(m){if(why(m))return;onPick(m.row.id);}
+  var LW=320;
+  return <div className="overlay sched-noprint" style={{zIndex:2100}} onMouseDown={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:1180,width:"96vw",height:"86vh",maxHeight:"86vh"}}>
+      <div className="modal-hdr" style={{gap:10,flexWrap:"wrap"}}>
+        <div className="modal-title" style={{fontSize:15}}>{title||"Pick a task"}</div>
+        <input type="text" autoFocus value={q} onChange={function(e){setQ(e.target.value);}}
+          onKeyDown={function(e){if(e.key==="Enter"&&firstPick){e.preventDefault();pick(firstPick);}else if(e.key==="Escape"){e.preventDefault();onClose();}}}
+          placeholder="🔍 Search a task, a room, a section…  (Enter = first match)" style={{flex:"1 1 280px",maxWidth:460,padding:"6px 10px",fontSize:13}}/>
+        {noneLabel&&<button className="btn btn-sm" onClick={function(){onPick("");}}>{noneLabel}</button>}
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+      </div>
+      {(suggestions||[]).length>0&&<div style={{padding:"8px 16px",borderBottom:"1px solid var(--rule)",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <span className="flt-l" style={{minWidth:0}}>Best matches</span>
+        {suggestions.map(function(a){
+          var m=model.find(function(x){return x.row.id===a.id;});if(!m)return null;var w=why(m);
+          return <button key={a.id} className={"fchip"+(value===a.id?" on":"")} disabled={!!w} title={w||m.path} onClick={function(){pick(m);}}>
+            {m.head?"▸ ":""}{m.row.label||"untitled"} <span style={{opacity:.6,marginLeft:4}}>{Math.round(a.score*100)}%</span></button>;
+        })}
+      </div>}
+      <div ref={listRef} style={{flex:1,overflow:"auto",position:"relative"}}>
+        <div style={{display:"flex",position:"sticky",top:0,zIndex:3,background:"var(--brand-soft)",borderBottom:"1.5px solid var(--brand-line)",height:24}}>
+          <div style={{width:LW,flexShrink:0,padding:"4px 12px",fontFamily:"var(--font-mono)",fontSize:10,fontWeight:600,color:"var(--brand-ink)",textTransform:"uppercase",letterSpacing:".06em",position:"sticky",left:0,background:"var(--brand-soft)"}}>
+            {shown.filter(function(m){return !m.head;}).length} task{shown.filter(function(m){return !m.head;}).length!==1?"s":""}{words.length?" found":""}</div>
+          <div style={{flex:1,minWidth:520,position:"relative"}}>
+            {ticks.map(function(t){return <span key={t.i} style={{position:"absolute",left:pct(t.i),top:5,fontSize:9.5,fontFamily:"var(--font-mono)",color:"var(--brand-ink)",paddingLeft:3,borderLeft:"1px solid var(--brand-line)",whiteSpace:"nowrap"}}>{t.l}</span>;})}
+          </div>
+        </div>
+        {shown.length===0&&<div className="empty"><div className="empty-txt">No row matches “{q}”.</div></div>}
+        {shown.map(function(m){
+          var r=m.row,w=why(m),on=value===r.id,isSec=r.kind==="section",isCat=r.kind==="category";
+          var bg=on?"var(--gold-soft)":isSec?"#e3e9f2":isCat?"#f1f4f8":"#fff";
+          return <div key={r.id} data-pick={r.id} onClick={function(){pick(m);}}
+            title={w==="header"?"A room or section cannot be picked here: pick one of its tasks":w?w:(r.label||"untitled")+(m.path?" — "+m.path:"")}
+            className={"stp-row"+(w?" off":"")} style={{display:"flex",height:isSec?26:24,background:bg,borderBottom:"1px solid var(--rule-2)",cursor:w?"default":"pointer",
+              boxShadow:on?"inset 3px 0 0 var(--gold)":"none"}}>
+            <div style={{width:LW,flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"0 10px 0 "+(isSec?10:isCat?18:30)+"px",position:"sticky",left:0,background:bg,zIndex:1,
+              fontSize:isSec?12:12,fontWeight:isSec||isCat?700:500,color:w&&!m.head?"var(--ink-4)":isSec?"var(--brand-ink)":"var(--ink)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
+              {isSec?"■":isCat?"▸":""} <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{r.label||"untitled"}</span>
+              {on&&<span style={{marginLeft:"auto",fontSize:10,color:"var(--gold-ink)",fontWeight:700}}>current</span>}
+              {w&&w!=="header"&&<span style={{marginLeft:"auto",fontSize:9.5,color:"var(--ink-4)",fontWeight:500}}>{w}</span>}
+            </div>
+            <div style={{flex:1,minWidth:520,position:"relative"}}>
+              {ti>=0&&<div style={{position:"absolute",left:pct(ti+0.5),top:0,bottom:0,width:1.5,background:"var(--red)",opacity:.5}}/>}
+              {m.s>=0&&<div style={{position:"absolute",left:pct(m.s),width:"calc("+pct(m.e-m.s+1)+" - 2px)",top:m.head?9:6,height:m.head?6:12,borderRadius:3,
+                background:m.head?"transparent":w?"#c9ced6":on?"var(--gold)":"var(--brand-2)",border:m.head?"1.5px solid var(--brand-ink)":"none",opacity:m.head?.6:1}}/>}
+            </div>
+          </div>;
+        })}
+      </div>
+      <div className="modal-footer" style={{justifyContent:"space-between",fontSize:11,color:"var(--ink-3)"}}>
+        <span>Click a row to pick it · greyed rows cannot be picked (hover for why) · red line = today</span>
+        <button className="btn btn-sm" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  </div>;
+}
 function SchedInstructionModal({rows,weeks,holidays,shift,onApply,onClose}){
   const [text,setText]=useState(function(){try{return localStorage.getItem("pp_sched_instr")||"";}catch(e){return "";}});
   const [clauses,setClauses]=useState(null);       // [{text, succText, predText, lag, succ, pred, succAlts, predAlts, on}]
   const [mode,setMode]=useState("snap");
+  const [picker,setPicker]=useState(null);        // {i, side:"succ"|"pred"} while picking a row on the plan
   var cands=React.useMemo(function(){return siCandidates(rows);},[rows]);
   var byId=React.useMemo(function(){var m={};(rows||[]).forEach(function(r){m[r.id]=r;});return m;},[rows]);
   var working=React.useMemo(function(){return weeks.filter(function(w){return holidays.indexOf(w)<0;});},[weeks,holidays]);
@@ -542,19 +674,15 @@ function SchedInstructionModal({rows,weeks,holidays,shift,onApply,onClose}){
     return lines;
   },[active,result]);
 
-  function rowOptions(alts){
-    return <React.Fragment>
-      <option value="">— choose —</option>
-      {alts.length>0&&<optgroup label="Best matches">
-        {alts.map(function(a){return <option key={"a"+a.id} value={a.id}>{(siIsHeader(byId[a.id])?"▸ ":"")+rowName(a.id)+" · "+Math.round(a.score*100)+"%"}</option>;})}
-      </optgroup>}
-      <optgroup label="All rows">
-        {(rows||[]).map(function(r){
-          var pre=r.kind==="section"?"■ ":r.kind==="category"?"▸ ":"    ";
-          return <option key={r.id} value={r.id}>{pre+(r.label||"untitled")}</option>;
-        })}
-      </optgroup>
-    </React.Fragment>;
+  // A link end is picked on the plan (SchedTaskPicker), not in a long drop-down.
+  function pickBtn(id,open){
+    var r=byId[id];
+    return <button className="btn btn-sm" onClick={open} title="Pick on the plan"
+      style={{width:"100%",justifyContent:"flex-start",height:"auto",minHeight:30,padding:"4px 8px",textAlign:"left",whiteSpace:"normal",
+        color:r?"var(--brand-ink)":"var(--red)",fontWeight:r?600:500}}>
+      <span style={{flex:1,minWidth:0}}>{r?((siIsHeader(r)?"▸ ":"")+rowName(id)):"— choose on the plan —"}</span>
+      <span style={{fontSize:10,color:"var(--ink-3)",flexShrink:0,paddingLeft:6}}>✎ pick</span>
+    </button>;
   }
   function conf(alts,id){
     var a=(alts||[]).find(function(x){return x.id===id;});
@@ -577,6 +705,15 @@ function SchedInstructionModal({rows,weeks,holidays,shift,onApply,onClose}){
           “X starts after Y”. A room or section name stands for the whole room: as the second part, its last task; as the first part,
           the room moves as a block. Nothing changes until you apply.
         </div>
+        {picker&&clauses&&clauses[picker.i]&&(function(){
+          var c=clauses[picker.i],isS=picker.side==="succ";
+          return <SchedTaskPicker rows={rows} weeks={weeks} allowHeaders={true}
+            value={isS?c.succ:c.pred} suggestions={isS?c.succAlts:c.predAlts}
+            title={isS?"Which task (or room) starts after… — you wrote “"+c.succText+"”":"…after which task (or room)? — you wrote “"+c.predText+"”"}
+            blockedReason={function(r){var other=isS?c.pred:c.succ;return r.id===other?"other end of this link":"";}}
+            onPick={function(id){var p={};p[picker.side]=id;setCl(picker.i,p);setPicker(null);}}
+            onClose={function(){setPicker(null);}}/>;
+        })()}
         <textarea value={text} onChange={function(e){setText(e.target.value);}} rows={4}
           onKeyDown={function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();analyse();}}}
           placeholder={"Je veux que la zone 3 tennis soit liée à la démolition du transformateur. Le stabilized earth lié à la conclusion de la zone 3 et la zone basket liée au stabilized earth"}
@@ -602,12 +739,12 @@ function SchedInstructionModal({rows,weeks,holidays,shift,onApply,onClose}){
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
                   <div style={{flex:"1 1 220px",minWidth:0}}>
-                    <select value={c.succ} onChange={function(e){setCl(i,{succ:e.target.value});}} style={{width:"100%",fontSize:12,padding:"4px 6px"}}>{rowOptions(c.succAlts)}</select>
+                    {pickBtn(c.succ,function(){setPicker({i:i,side:"succ"});})}
                     {conf(c.succAlts,c.succ)}
                   </div>
                   <span style={{fontSize:11,fontWeight:700,color:"var(--ink-3,#5d5a52)",whiteSpace:"nowrap"}}>starts after</span>
                   <div style={{flex:"1 1 220px",minWidth:0}}>
-                    <select value={c.pred} onChange={function(e){setCl(i,{pred:e.target.value});}} style={{width:"100%",fontSize:12,padding:"4px 6px"}}>{rowOptions(c.predAlts)}</select>
+                    {pickBtn(c.pred,function(){setPicker({i:i,side:"pred"});})}
                     {conf(c.predAlts,c.pred)}
                   </div>
                   <span style={{display:"flex",alignItems:"center",gap:3,fontSize:11,whiteSpace:"nowrap"}} title="Gap in working weeks between the end of the predecessor and the start">
@@ -1126,7 +1263,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // ---- Side panel, menus, view options -------------------------------------
   const [panelRowId,setPanelRowId]=useState(null);   // the task/header shown in the side panel
   const [ctxMenu,setCtxMenu]=useState(null);         // {rowId, x, y}
-  const [qAfter,setQAfter]=useState("");
+  const [pickAfter,setPickAfter]=useState(false);   // "Starts after" picker on the plan
   const [blMenu,setBlMenu]=useState(false);
   const [linkMenu,setLinkMenu]=useState(null);
   const [procOpen,setProcOpenRaw]=useState(function(){try{return localStorage.getItem("pp_sched_procOpen")==="1";}catch(e){return false;}});
@@ -4266,21 +4403,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             else if(v==="__none__")updRow(row.id,{tenderRef:"",tenderFromHeader:"-"});
             else updRow(row.id,{tenderRef:v,tenderFromHeader:""});
           }
-          // "Starts after" candidates: tasks only, never one that would close a loop
-          var afterOpts=(function(){
-            var q=qAfter.trim().toLowerCase();
-            var groups=[],cur=null,room="";
-            allRows.forEach(function(r){
-              if(r.kind==="section"){room="";cur=null;return;}
-              if(r.kind==="category"){room=r.label||"(room)";cur=null;return;}
-              if(r.id===row.id)return;
-              if(r.id!==row.afterId&&linkMakesLoop(allRows,r.id,row.id))return;
-              if(q&&((r.label||"")+" "+room).toLowerCase().indexOf(q)<0&&r.id!==row.afterId)return;
-              if(!cur||cur.room!==room){cur={room:room,items:[]};groups.push(cur);}
-              cur.items.push(r);
-            });
-            return groups;
-          })();
           return <div className="sched-noprint" onClick={function(e){e.stopPropagation();}}
             style={{position:"fixed",top:0,right:0,bottom:0,width:400,maxWidth:"100vw",zIndex:800,background:"#fff",
               borderLeft:"1.5px solid #e0ddd6",boxShadow:"-10px 0 36px rgba(0,0,0,.18)",display:"flex",flexDirection:"column"}}>
@@ -4387,23 +4509,29 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <label style={lbl}>Starts after</label>
-                    <input type="text" value={qAfter} onChange={function(e){setQAfter(e.target.value);}} placeholder="🔎 search a task…"
-                      style={{padding:"4px 8px",fontSize:11,marginBottom:4,width:"100%"}}/>
-                    <select value={row.afterId||""} disabled={!canEdit} size={qAfter.trim()?8:1}
-                      onChange={function(e){
-                        var v=e.target.value;
-                        if(v&&linkMakesLoop(allRows,v,row.id)){safeAlert("This link would make a loop.");return;}
-                        updRow(row.id,{afterId:v});
-                        setQAfter("");
+                    {/* The predecessor is picked on the plan itself (SchedTaskPicker): bars, rooms, search. */}
+                    {(function(){
+                      var pr=row.afterId?allRows.find(function(x){return x.id===row.afterId;}):null;
+                      return <div style={{display:"flex",gap:4,alignItems:"stretch"}}>
+                        <button className="btn btn-sm" disabled={!canEdit} onClick={function(){setPickAfter(true);}}
+                          title={canEdit?"Pick the task on the plan":""}
+                          style={{flex:1,minWidth:0,justifyContent:"flex-start",height:"auto",minHeight:30,padding:"4px 8px",textAlign:"left",whiteSpace:"normal",
+                            color:pr?"var(--brand-ink)":"var(--ink-4)",fontWeight:pr?600:500}}>
+                          {pr?"🔗 "+(pr.label||"(untitled)"):"— nothing (free start) —"}
+                          <span style={{marginLeft:"auto",paddingLeft:6,fontSize:10,color:"var(--ink-3)",flexShrink:0}}>{canEdit?"✎ pick on plan":""}</span>
+                        </button>
+                        {canEdit&&pr&&<button className="btn btn-sm" title="Remove the link (free start)" onClick={function(){updRow(row.id,{afterId:""});}}>✕</button>}
+                      </div>;
+                    })()}
+                    {pickAfter&&<SchedTaskPicker rows={allRows} weeks={wks} value={row.afterId||""}
+                      title={"“"+(row.label||"untitled")+"” starts after…"} noneLabel="Nothing (free start)"
+                      blockedReason={function(r){
+                        if(r.id===row.id)return "this task";
+                        if(r.id!==row.afterId&&linkMakesLoop(allRows,r.id,row.id))return "would make a loop";
+                        return "";
                       }}
-                      style={{padding:"5px 7px",fontSize:12,width:"100%",color:row.afterId?"#0f5299":"#888"}}>
-                      <option value="">— nothing (free start) —</option>
-                      {afterOpts.map(function(g,gi){
-                        return <optgroup key={gi} label={g.room||"(no room)"}>
-                          {g.items.map(function(r){return <option key={r.id} value={r.id}>{r.label||"(untitled)"}</option>;})}
-                        </optgroup>;
-                      })}
-                    </select>
+                      onPick={function(id){updRow(row.id,{afterId:id});setPickAfter(false);}}
+                      onClose={function(){setPickAfter(false);}}/>}
                   </div>
                   <div style={{width:74}}>
                     <label style={lbl} title="Weeks to wait after the previous task ends (curing, drying…)">Gap (wk)</label>
