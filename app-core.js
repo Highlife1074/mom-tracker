@@ -206,7 +206,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-10-15-n";
+var APP_BUILD="2026-11-07-a";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -669,21 +669,121 @@ function usePhone(){
   window._ppPhone=p;
   return p;
 }
-var PHONE_GROUPS=[
-  ["Follow-up",["global","moms","notes","timeline","trackers","dashboard","submissions"]],
-  ["Procurement",["myprocurement","tenders","packages","procplan","procflow","materials","qadocs"]],
-  ["Site",["zone","manpower","steel","inventory","concrete"]],
-  ["Contract",["contracts","awn","contractors"]],
-  ["Admin",["settings"]]
+// ---------------------------------------------------------------------------
+// Navigation. ONE definition shared by the desktop rail (sections + favourites), the section
+// tab bar above the content, the phone menu and the Ctrl+K search. View ids are the stored
+// ones (pp_view, jumps between views): never rename an id, only its label.
+// Interface renames: "tenders" = Package, "packages" (pp_packages) = Department.
+// kw = extra words the Ctrl+K search matches (English and French).
+// ---------------------------------------------------------------------------
+var NAV_VIEWS={
+  global:{icon:"🌐",label:"Actions",kw:"tasks to do my actions taches"},
+  moms:{icon:"📝",label:"MoM",kw:"minutes of meeting reunion compte rendu cr"},
+  notes:{icon:"🗒",label:"Notes",kw:"note point with"},
+  submissions:{icon:"📬",label:"Client F-up",long:"Client follow-up",kw:"client follow up submissions suivi client"},
+  trackers:{icon:"📊",label:"Trackers",kw:"tracker suivi"},
+  timeline:{icon:"🗓",label:"Timeline",kw:"chronologie"},
+  myprocurement:{icon:"📦",label:"My Procurement",kw:"my packages mes achats"},
+  tenders:{icon:"📦",label:"Package",kw:"packages tender tenders sheet submissions achats appel offres"},
+  procplan:{icon:"📅",label:"Proc. plan",long:"Procurement plan",kw:"procurement plan planning achats"},
+  procflow:{icon:"🧭",label:"Proc. flow",long:"Procurement flow",kw:"procurement flow board"},
+  materials:{icon:"🏗️",label:"Materials",kw:"material mar materiaux"},
+  qadocs:{icon:"🛡️",label:"WMS/ITP",kw:"quality method statement itp wms qualite"},
+  packages:{icon:"🗂️",label:"Department",kw:"departments departement"},
+  zone:{icon:"🏢",label:"Zone",kw:"schedule planning rooms ppi kpi readiness pieces"},
+  manpower:{icon:"👷",label:"Manpower",kw:"workers hours effectifs heures main oeuvre"},
+  concrete:{icon:"🧱",label:"Concrete",kw:"pours beton coulage"},
+  steel:{icon:"🔩",label:"Steel",kw:"rebar mesh dockets acier ferraillage"},
+  inventory:{icon:"🗃️",label:"Inventory",kw:"stock inventaire"},
+  contracts:{icon:"📋",label:"Contracts",kw:"contract contrats"},
+  awn:{icon:"✉️",label:"Letters",kw:"awn letter courriers lettres"},
+  contractors:{icon:"🤝",label:"Subcontractors",kw:"contractors companies sous traitants entreprises"},
+  dashboard:{icon:"📈",label:"Dashboard",kw:"overview tableau de bord"},
+  settings:{icon:"⚙️",label:"Settings",kw:"people access durations zones tags backup parametres"}
+};
+// Sections of the rail, views in order of use. A view listed in no section has no tab bar.
+var NAV_SECTIONS=[
+  {id:"follow",icon:"✅",label:"Follow-up",views:["global","moms","notes","submissions","trackers","timeline"]},
+  {id:"proc",icon:"📦",label:"Procurement",views:["myprocurement","tenders","procplan","procflow","materials","qadocs","packages"]},
+  {id:"site",icon:"🏗️",label:"Site",views:["zone","manpower","concrete","steel","inventory"]},
+  {id:"contract",icon:"📋",label:"Contract",views:["contracts","awn","contractors"]},
+  {id:"dash",icon:"📈",label:"Dashboard",views:["dashboard"]},
+  {id:"settings",icon:"⚙️",label:"Settings",views:["settings"],bottom:true}
 ];
+function navView(id,label){var v=NAV_VIEWS[id];return v?Object.assign({id:id},v,label?{label:label}:{}):null;}
+function navSectionOf(view){
+  for(var i=0;i<NAV_SECTIONS.length;i++)if(NAV_SECTIONS[i].views.indexOf(view)>=0)return NAV_SECTIONS[i];
+  return null;
+}
+// Last view opened in each section (localStorage pp_nav_last): a click on a section in the
+// rail goes back to it, so returning to a view stays one click.
+function navLastGet(){try{var v=JSON.parse(localStorage.getItem("pp_nav_last")||"null");if(v&&typeof v==="object")return v;}catch(e){}return {};}
+function navLastNote(view){
+  var sec=navSectionOf(view);if(!sec)return;
+  var m=navLastGet();if(m[sec.id]===view)return;
+  m[sec.id]=view;try{localStorage.setItem("pp_nav_last",JSON.stringify(m));}catch(e){}
+}
+// Favourites: the same list on the phone bottom bar and at the top of the desktop rail.
 var PHONE_DEFAULT_PINS=["global","zone","tenders","notes"];
-function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras}){
-  const [open,setOpen]=useState(false);
-  const [pins,setPinsRaw]=useState(function(){
-    try{var v=JSON.parse(localStorage.getItem("pp_phone_pins")||"null");if(Array.isArray(v))return v;}catch(e){}
-    return PHONE_DEFAULT_PINS;
+var NAV_MAX_PINS=4;
+function navPinsLoad(){
+  try{var v=JSON.parse(localStorage.getItem("pp_phone_pins")||"null");if(Array.isArray(v))return v;}catch(e){}
+  return PHONE_DEFAULT_PINS;
+}
+function _navNorm(x){return String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
+// Ctrl+K: every word typed must appear in the label, the section or the keywords.
+// Items whose label starts with the text come first, then label matches, then the rest.
+function navSearch(items,q){
+  var words=_navNorm(q).split(/\s+/).filter(Boolean);
+  if(!words.length)return items;
+  var out=[];
+  items.forEach(function(it,i){
+    var lbl=_navNorm(it.label+" "+(it.long||"")),hay=lbl+" "+_navNorm((it.section||"")+" "+(it.kw||"")+" "+it.id);
+    if(!words.every(function(w){return hay.indexOf(w)>=0;}))return;
+    var score=lbl.indexOf(words[0])===0?0:words.every(function(w){return lbl.indexOf(w)>=0;})?1:2;
+    out.push({it:it,score:score,i:i});
   });
-  function setPins(v){setPinsRaw(v);try{localStorage.setItem("pp_phone_pins",JSON.stringify(v));}catch(e){}}
+  out.sort(function(a,b){return a.score-b.score||a.i-b.i;});
+  return out.map(function(x){return x.it;});
+}
+function NavPalette({items,onClose}){
+  const [q,setQ]=useState("");
+  const [sel,setSel]=useState(0);
+  const listRef=useRef(null);
+  var res=navSearch(items,q);
+  var cur=Math.min(sel,Math.max(0,res.length-1));
+  useEffect(function(){
+    var el=listRef.current&&listRef.current.children[cur];
+    if(el&&el.scrollIntoView)try{el.scrollIntoView({block:"nearest"});}catch(e){}
+  },[cur,q]);
+  function pick(it){onClose();if(it)it.run();}
+  function onKey(e){
+    if(e.key==="ArrowDown"){e.preventDefault();setSel(Math.min(cur+1,res.length-1));}
+    else if(e.key==="ArrowUp"){e.preventDefault();setSel(Math.max(cur-1,0));}
+    else if(e.key==="Enter"){e.preventDefault();pick(res[cur]);}
+    else if(e.key==="Escape"){e.preventDefault();onClose();}
+  }
+  return <div className="overlay nav-pal-ov" style={{zIndex:3000}} onMouseDown={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div className="nav-pal">
+      <input autoFocus value={q} placeholder="Go to… (view or tool)" onKeyDown={onKey}
+        onChange={function(e){setQ(e.target.value);setSel(0);}}/>
+      <div className="nav-pal-list" ref={listRef}>
+        {res.length===0&&<div className="nav-pal-empty">Nothing matches “{q}”.</div>}
+        {res.map(function(it,i){
+          return <div key={it.key} className={"nav-pal-item"+(i===cur?" on":"")}
+            onMouseMove={function(){if(i!==cur)setSel(i);}} onClick={function(){pick(it);}}>
+            <span className="ico">{it.icon}</span>
+            <span className="lbl">{it.long||it.label}</span>
+            <span className="sec">{it.section||""}</span>
+          </div>;
+        })}
+      </div>
+      <div className="nav-pal-foot">↑ ↓ to move · Enter to open · Esc to close · Ctrl+K anywhere</div>
+    </div>
+  </div>;
+}
+function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras,pins,togglePin}){
+  const [open,setOpen]=useState(false);
   // Every reachable view once, children of a grouped entry included.
   var flat=[];
   (nav||[]).forEach(function(n){
@@ -695,12 +795,7 @@ function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras})
   if(bar.length<4)flat.forEach(function(n){if(bar.length<4&&bar.indexOf(n)<0)bar.push(n);});
   var inBar=bar.some(function(n){return n.id===view;});
   function go(id){setView(id);setOpen(false);try{document.querySelector(".content").scrollTop=0;}catch(e){}}
-  function togglePin(id){
-    var cur=bar.map(function(n){return n.id;});
-    if(cur.indexOf(id)>=0)setPins(cur.filter(function(x){return x!==id;}));
-    else{if(cur.length>=4)cur=cur.slice(0,3);setPins(cur.concat([id]));}
-  }
-  var groups=PHONE_GROUPS.map(function(g){return [g[0],g[1].map(byId).filter(Boolean)];}).filter(function(g){return g[1].length;});
+  var groups=NAV_SECTIONS.map(function(g){return [g.label,g.views.map(byId).filter(Boolean)];}).filter(function(g){return g[1].length;});
   var listed=[];groups.forEach(function(g){g[1].forEach(function(n){listed.push(n.id);});});
   var other=flat.filter(function(n){return listed.indexOf(n.id)<0;});
   if(other.length)groups.push(["Other",other]);
@@ -722,12 +817,12 @@ function PhoneNav({nav,view,setView,currentUser,onChangeUser,syncStatus,extras})
           <span style={{marginLeft:"auto",fontFamily:"var(--font-mono)",fontSize:10,color:"var(--ink-4)"}}>{APP_BUILD}</span>
           <button className="btn btn-sm" onClick={function(){setOpen(false);}}>✕</button>
         </div>
-        <div style={{fontSize:11,color:"var(--ink-3)",margin:"0 4px"}}>★ pins a tab to the bottom bar (4 max).</div>
+        <div style={{fontSize:11,color:"var(--ink-3)",margin:"0 4px"}}>★ = favourite: on the bottom bar here, at the top of the left rail on a computer (4 max).</div>
         {groups.map(function(g){
           return <div key={g[0]}>
             <div className="grp">{g[0]}</div>
             <div className="grid">{g[1].map(function(n){
-              var pinned=bar.some(function(b){return b.id===n.id;});
+              var pinned=(pins||[]).indexOf(n.id)>=0;
               return <div key={n.id} className={"item"+(view===n.id?" on":"")} onClick={function(){go(n.id);}}>
                 <button className={"pin"+(pinned?" on":"")} title={pinned?"Unpin from the bar":"Pin to the bar"} onClick={function(e){e.stopPropagation();togglePin(n.id);}}>{pinned?"★":"☆"}</button>
                 <span className="ico">{n.icon}</span>{n.label}
@@ -758,9 +853,10 @@ function ImprovementBox({improvements,saveImprovements,currentPage,openSignal,ph
     setText("");setOpen(false);
   }
 
-  if(phone&&!open)return null;
-  return <div className="imp-btn-wrap" style={phone?{position:"fixed",left:10,right:10,bottom:84,zIndex:900}:{position:"fixed",bottom:16,right:276,zIndex:500}}>
-    {open&&<div style={{position:phone?"static":"absolute",bottom:44,right:0,width:phone?"auto":280,background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",border:"1.5px solid #e8e6df",padding:14}}>
+  // Opened from the 💡 of the top bar (desktop) or the phone menu: no floating button any more.
+  if(!open)return null;
+  return <div className="imp-btn-wrap" style={phone?{position:"fixed",left:10,right:10,bottom:84,zIndex:900}:{position:"fixed",top:54,right:276,zIndex:900}}>
+    {open&&<div style={{position:"static",width:phone?"auto":300,background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",border:"1.5px solid #e8e6df",padding:14}}>
       <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>💡 Improvement idea</div>
       <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Page: <strong>{currentPage}</strong></div>
       <textarea ref={ref} autoFocus value={text} onChange={function(e){setText(e.target.value);}}
@@ -771,10 +867,6 @@ function ImprovementBox({improvements,saveImprovements,currentPage,openSignal,ph
         <button className="btn btn-gold" style={{flex:1}} onClick={submit}>✓ Add</button>
       </div>
     </div>}
-    {!phone&&<button onClick={function(){setOpen(!open);}} title="Suggest an improvement"
-      style={{width:36,height:36,borderRadius:"50%",background:"#c9a84c",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#1c1c1e",transition:"all .15s"}}>
-      💡
-    </button>}
   </div>;
 }
 
@@ -4299,7 +4391,7 @@ function App(){
   // rights and the "updated by" stamps read it, and they saw nobody until a fresh login.
   const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");if(u)window._currentUser={name:u};return u||null;}catch(e){return null;}});
   const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
-  function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}}
+  function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}navLastNote(v);}
   const [jumpOwner,setJumpOwner]=useState(null);
   window._navToTender=navToTender;
   const [newTasksPopup,setNewTasksPopup]=useState(null);
@@ -4400,10 +4492,20 @@ function App(){
   const saveMoms=d=>{setMoms(d);queuedListSave(KEYS_MOMS,momsRef,momsQueue,d);};
   const [notes,setNotes]=useState([]);
   const saveNotes=d=>{setNotes(d);queuedListSave(KEYS_NOTES,notesRef,notesQueue,d);};
-  // Which grouped nav entry is expanded. Declared here with the other hooks: App has an
-  // early "if(!loaded) return" further down, so any hook after it would be skipped on the
+  // Navigation state. Declared here with the other hooks: App has an early
+  // "if(!loaded) return" further down, so any hook after it would be skipped on the
   // first render and appear on the next — React error #310.
-  const [navGroup,setNavGroup]=useState("");
+  const [navPins,setNavPinsState]=useState(navPinsLoad);
+  function setNavPins(v){setNavPinsState(v);try{localStorage.setItem("pp_phone_pins",JSON.stringify(v));}catch(e){}}
+  const [paletteOpen,setPaletteOpen]=useState(false);
+  // Ctrl+K (Cmd+K on a Mac) opens the "Go to…" search from anywhere.
+  useEffect(function(){
+    function onKey(e){
+      if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&(e.key==="k"||e.key==="K")){e.preventDefault();setPaletteOpen(function(o){return !o;});}
+    }
+    window.addEventListener("keydown",onKey);
+    return function(){window.removeEventListener("keydown",onKey);};
+  },[]);
   const [schedules,setSchedules]=useState([]);
   const saveSchedules=d=>{setSchedules(d);queuedListSave(KEYS_SCHEDULES,schedulesRef,schedulesQueue,d);};
   const [pdfGlobal,setPdfGlobal]=useState(null);
@@ -4942,36 +5044,10 @@ function App(){
   window._ppSubColors=subColors;
   window._ppTenderRules=tenderRules;
   window._ppRooms=rooms;
-  const NAV=[
-    // Renamed in the interface only (ids and stored data unchanged):
-    // the old "Packages" (pp_packages) are now Departments, the old "Tenders" are now Packages.
-    {id:"packages",icon:"🗂️",label:"Department"},
-    {id:"zone",icon:"🏢",label:"Zone"},
-    {id:"tenders",icon:"📦",label:"Package"},
-    {id:"procplan",icon:"📅",label:"Proc. plan"},
-    {id:"procflow",icon:"🧭",label:"Proc. flow"},
-    {id:"materials",icon:"🏗️",label:"Materials"},
-    {id:"steel",icon:"🔩",label:"Steel"},
-    {id:"inventory",icon:"🗃️",label:"Inventory"},
-    {id:"concrete",icon:"🧱",label:"Concrete"},
-    {id:"manpower",icon:"👷",label:"Manpower"},
-    {id:"qadocs",icon:"🛡️",label:"WMS/ITP"},
-    {id:"timeline",icon:"🗓",label:"Timeline"},
-    {id:"moms",icon:"📝",label:"MoM"},
-    {id:"notes",icon:"🗒",label:"Notes"},
-    {id:"global",icon:"🌐",label:"Actions"},
-    {id:"submissions",icon:"📬",label:"Client F-up"},
-    {id:"trackers",icon:"📊",label:"Trackers"},
-    // Commercial group: three views that all deal with what has been signed.
-    {id:"contracts",icon:"📋",label:"Contract",group:"contract",
-      children:[
-        {id:"contracts",icon:"📋",label:"Contracts"},
-        {id:"awn",icon:"✉️",label:"Letters"},
-        {id:"contractors",icon:"🤝",label:"Subcontractors"}
-      ]},
-    {id:"dashboard",icon:"📈",label:"Dashboard"},
-    {id:"settings",icon:"⚙️",label:"Settings"},
-  ];
+  // Every view of a full-access user, in section order (see NAV_SECTIONS / NAV_VIEWS).
+  // "myprocurement" is the restricted users' version of the procurement list.
+  var NAV=[];
+  NAV_SECTIONS.forEach(function(sec){sec.views.forEach(function(id){if(id!=="myprocurement")NAV.push(navView(id));});});
 
   // Access model: a person is restricted ONLY if they have an explicit entry in Settings > Access
   // with fullAccess unchecked. People never configured keep full access (safe default, no accidental lockout).
@@ -4993,35 +5069,61 @@ function App(){
     // Actions-only profile: no package/tender ownership and not a zone pilot → they just need their task list
     actionsOnly=myPkgs.length===0&&myTenders.length===0&&!myAccess.zonePilot&&!myAccess.steelEditor&&!myAccess.inventoryEditor&&!myAccess.concreteEditor&&!myAccess.manpowerEditor;
     effectiveNAV=actionsOnly
-      ?[
-        {id:"global",icon:"🌐",label:"My Actions"},
-        {id:"settings",icon:"⚙️",label:"Settings"},
-      ]
+      ?[navView("global","My Actions"),navView("settings")]
       :[
-        {id:"myprocurement",icon:"📦",label:"My Procurement"},
-        ...(myAccess.zonePilot?[{id:"zone",icon:"🏢",label:"Zone"}]:[]),
-        ...(myAccess.steelEditor?[{id:"steel",icon:"🔩",label:"Steel"}]:[]),
-        ...(myAccess.inventoryEditor?[{id:"inventory",icon:"🗃️",label:"Inventory"}]:[]),
-        ...(myAccess.concreteEditor?[{id:"concrete",icon:"🧱",label:"Concrete"}]:[]),
-        ...(myAccess.manpowerEditor?[{id:"manpower",icon:"👷",label:"Manpower"}]:[]),
-        {id:"global",icon:"🌐",label:"Actions"},
-        {id:"notes",icon:"🗒",label:"Notes"},
-        {id:"settings",icon:"⚙️",label:"Settings"},
+        navView("myprocurement"),
+        ...(myAccess.zonePilot?[navView("zone")]:[]),
+        ...(myAccess.steelEditor?[navView("steel")]:[]),
+        ...(myAccess.inventoryEditor?[navView("inventory")]:[]),
+        ...(myAccess.concreteEditor?[navView("concrete")]:[]),
+        ...(myAccess.manpowerEditor?[navView("manpower")]:[]),
+        navView("global"),
+        navView("notes"),
+        navView("settings"),
       ];
     // "tenders" isn't shown as a nav button, but must stay reachable so clicking a tender from My Procurement works
-    // A grouped entry contributes its children too, otherwise a sub-view would be treated
-    // as forbidden and the person bounced back to the first tab.
-    var allowedViews=[];
-    effectiveNAV.forEach(function(n){
-      allowedViews.push(n.id);
-      (n.children||[]).forEach(function(k){allowedViews.push(k.id);});
-    });
+    var allowedViews=effectiveNAV.map(function(n){return n.id;});
     if(!actionsOnly)allowedViews.push("tenders");
     // If the last-restored view isn't allowed for this person, fall back to their first available tab
     if(allowedViews.indexOf(view)===-1){
       setTimeout(function(){setView(effectiveNAV[0].id);},0);
     }
   }
+
+  // Sections this person can see, each with its allowed views (empty sections hidden).
+  var navById={};effectiveNAV.forEach(function(n){navById[n.id]=n;});
+  var navSecs=NAV_SECTIONS.map(function(sec){
+    return Object.assign({},sec,{items:sec.views.map(function(id){return navById[id];}).filter(Boolean)});
+  }).filter(function(sec){return sec.items.length>0;});
+  var curSec=navSectionOf(view);
+  var curSecItems=curSec?((navSecs.find(function(x){return x.id===curSec.id;})||{}).items||[]):[];
+  // A view reached by a jump but not listed for this person (e.g. Package from My Procurement)
+  // still gets its tab while it is on screen.
+  if(curSec&&!curSecItems.some(function(n){return n.id===view;})&&NAV_VIEWS[view])curSecItems=curSecItems.concat([navView(view)]);
+  function openSection(sec){
+    var last=navLastGet()[sec.id];
+    var target=sec.items.some(function(n){return n.id===last;})?last:sec.items[0].id;
+    setView(target);
+  }
+  var favs=navPins.map(function(id){return navById[id];}).filter(Boolean).slice(0,NAV_MAX_PINS);
+  function togglePin(id){
+    var cur=navPins.filter(function(x){return !!navById[x];});
+    if(cur.indexOf(id)>=0)setNavPins(cur.filter(function(x){return x!==id;}));
+    else{if(cur.length>=NAV_MAX_PINS)cur=cur.slice(0,NAV_MAX_PINS-1);setNavPins(cur.concat([id]));}
+  }
+  function logout(){try{localStorage.removeItem("pp_current_user");}catch(e){}setCurrentUser(null);}
+  // Tools that are not views: in the top bar, the phone menu and Ctrl+K.
+  var navTools=[
+    {key:"weekly",icon:"📋",label:"Weekly",long:"Weekly actions",kw:"weekly actions semaine",run:function(){setShowWeeklyPopup(true);}},
+  ].concat(actionsOnly?[]:[
+    {key:"cert",icon:"📄",label:"Cert. PDF",long:"Import certification from PDF",kw:"certification pdf import",run:function(){setPdfGlobal({open:true});}}
+  ]).concat([
+    {key:"idea",icon:"💡",label:"Idea",long:"Improvement idea",kw:"improvement suggestion idee amelioration",run:function(){setImpSignal(Date.now());}}
+  ]);
+  var paletteItems=effectiveNAV.map(function(n){
+    var sec=navSectionOf(n.id);
+    return Object.assign({},n,{key:"v:"+n.id,section:sec&&sec.label!==n.label?sec.label:"",run:function(){setView(n.id);}});
+  }).concat(navTools.map(function(t){return Object.assign({},t,{section:"Tool"});}));
 
   const syncDot=<div className={"sync-dot sync-"+syncStatus} title={syncStatus==="ok"?"Synced":syncStatus==="syncing"?"Syncing…":"Sync error"}/>;
 
@@ -5033,44 +5135,61 @@ function App(){
           opening the console — otherwise "it doesn't work" and "it isn't deployed" look alike. */}
       <div title={"Running build "+APP_BUILD+"\nIf this is not the build you just uploaded, GitHub Pages is still serving the old file: hard-reload with Ctrl+Shift+R."}
         style={{fontSize:7,color:"#c9a84c",fontFamily:"monospace",letterSpacing:0,marginTop:-8,marginBottom:6,cursor:"help"}}>{APP_BUILD}</div>
-      {currentUser&&<div style={{marginTop:4,padding:"4px 2px",textAlign:"center"}}>
-        <div style={{fontSize:9,color:"#c9a84c",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:52}}>{currentUser}</div>
-        <button onClick={function(){try{localStorage.removeItem("pp_current_user");}catch(e){}setCurrentUser(null);}} title="Change user" style={{background:"none",border:"1px solid #444",borderRadius:4,color:"#888",cursor:"pointer",fontSize:8,padding:"1px 3px",fontFamily:"inherit",marginTop:2}}>change</button>
-      </div>}
-
-      <div style={{marginBottom:4,display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>{syncDot}<span style={{fontSize:7,color:"#888",textAlign:"center"}}>{syncStatus==="syncing"?"saving...":syncStatus==="ok"?"saved":"err"}</span></div>
-      {effectiveNAV.map(function(n){
-        var kids=n.children||null;
-        var activeHere=kids?kids.some(function(k){return view===k.id;}):view===n.id;
-        // navGroup holds "id" for forced-open and "-id" for forced-closed, so a click can
-        // always collapse the group even while one of its views is on screen.
-        var groupOpen=kids?(navGroup===n.id?true:navGroup==="-"+n.id?false:activeHere):false;
-        return <React.Fragment key={n.id}>
-          <button className={"navbtn"+(activeHere?" on":"")} title={kids?n.label+" — "+kids.map(function(k){return k.label;}).join(", "):n.label}
-            onClick={function(){
-              if(kids){
-                setNavGroup(groupOpen?"-"+n.id:n.id);
-                if(!activeHere&&!groupOpen)setView(kids[0].id);
-              }
-              else setView(n.id);
-            }}>
-            <span style={{fontSize:20}}>{n.icon}</span>
-            <span className="lbl">{n.label}</span>
-            {kids&&<span style={{fontSize:8,lineHeight:1,marginTop:-1,opacity:.7}}>{groupOpen?"▾":"▸"}</span>}
-          </button>
-          {kids&&groupOpen&&kids.map(function(k){
-            return <button key={k.id} className={"navbtn navsub"+(view===k.id?" on":"")} title={k.label}
-              onClick={function(){setView(k.id);}}>
-              <span style={{fontSize:14}}>{k.icon}</span>
-              <span className="lbl" style={{fontSize:7}}>{k.label.length>9?k.label.slice(0,8)+"…":k.label}</span>
-            </button>;
-          })}
-        </React.Fragment>;
+      {favs.length>0&&<React.Fragment>
+        <div className="nav-cap" title="Favourites — pin a view with ☆ in the bar above the page (same list as the phone bottom bar)">★</div>
+        {favs.map(function(n){
+          return <button key={"f:"+n.id} className={"navbtn navfav"+(view===n.id?" on":"")} title={(n.long||n.label)+" (favourite)"} onClick={function(){setView(n.id);}}>
+            <span style={{fontSize:15}}>{n.icon}</span>
+            <span className="lbl">{n.label.length>10?n.label.slice(0,9)+"…":n.label}</span>
+          </button>;
+        })}
+        <div className="nav-sep"/>
+      </React.Fragment>}
+      {navSecs.filter(function(sec){return !sec.bottom;}).map(function(sec){
+        return <button key={sec.id} className={"navbtn navsec"+(curSec&&curSec.id===sec.id?" on":"")}
+          title={sec.label+" — "+sec.items.map(function(n){return n.label;}).join(", ")} onClick={function(){openSection(sec);}}>
+          <span style={{fontSize:20}}>{sec.icon}</span>
+          <span className="lbl">{sec.label}</span>
+        </button>;
       })}
-      <div className="nav-sep"/>
+      <div style={{flex:1}}/>
+      <button className="navbtn navsec" title="Go to any view or tool (Ctrl+K)" onClick={function(){setPaletteOpen(true);}}>
+        <span style={{fontSize:18}}>🔍</span>
+        <span className="lbl">Search</span>
+      </button>
+      {navSecs.filter(function(sec){return sec.bottom;}).map(function(sec){
+        return <button key={sec.id} className={"navbtn navsec"+(curSec&&curSec.id===sec.id?" on":"")} title={sec.label} onClick={function(){openSection(sec);}}>
+          <span style={{fontSize:20}}>{sec.icon}</span>
+          <span className="lbl">{sec.label}</span>
+        </button>;
+      })}
     </nav>
 
     <div className="main-area">
+      <div className="main-col">
+      <div className="topbar phone-hide">
+        {curSec&&<div className="tb-sec">{curSec.label}</div>}
+        <div className="tb-tabs">
+          {curSecItems.map(function(n){
+            return <button key={n.id} className={"tb-tab"+(view===n.id?" on":"")} onClick={function(){setView(n.id);}} title={n.long||n.label}>
+              <span className="ico">{n.icon}</span>{n.label}
+            </button>;
+          })}
+          {NAV_VIEWS[view]&&!!navById[view]&&<button className={"tb-pin"+(navPins.indexOf(view)>=0?" on":"")} onClick={function(){togglePin(view);}}
+            title={navPins.indexOf(view)>=0?"Remove this view from the favourites":"Add this view to the favourites (top of the left rail and phone bottom bar, "+NAV_MAX_PINS+" max)"}>
+            {navPins.indexOf(view)>=0?"★":"☆"}</button>}
+        </div>
+        <button className="tb-tool tb-search" onClick={function(){setPaletteOpen(true);}} title="Go to any view or tool">🔍 <span className="t-lbl">Search</span> <kbd>Ctrl K</kbd></button>
+        {navTools.map(function(t){
+          return <button key={t.key} className="tb-tool" onClick={t.run} title={t.long}><span>{t.icon}</span> <span className="t-lbl">{t.label}</span></button>;
+        })}
+        <div className="tb-user">
+          {syncDot}
+          <span className="tb-sync">{syncStatus==="syncing"?"saving…":syncStatus==="ok"?"saved":"error"}</span>
+          <b title={currentUser}>{String(currentUser).split(",")[0]}</b>
+          <button className="tb-change" onClick={logout} title="Change user">change</button>
+        </div>
+      </div>
       <div className="content">
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules} tasks={tasks} saveTasks={saveT} zones={zones}/>}
@@ -5099,6 +5218,7 @@ function App(){
         {view==="settings"&&<SettingsView subList={subList} saveSubList={saveSubList} subColors={subColors} saveSubColors={saveSubColors} contractors={contractors} tenderRules={tenderRules} saveTenderRules={saveTenderRules} tenders={tenders} tags={tags} saveTags={saveTags} people={people} savePeople={savePeople} packages={packages} savePackages={savePackages} tagrules={tagrules} saveTagrules={saveTagrules} pkgrules={pkgrules} savePkgrules={savePkgrules} apiKey={apiKey} saveApiKey={saveApiKey} improvements={improvements} saveImprovements={saveImprovements} pkgOwners={pkgOwners} savePkgOwners={savePkgOwners} pkgSubcontractors={pkgSubcontractors} savePkgSubcontractors={savePkgSubcontractors} peopleEmails={peopleEmails} savePeopleEmails={savePeopleEmails} defaultCC={defaultCC} saveDefaultCC={saveDefaultCC} peopleAccess={peopleAccess} savePeopleAccess={savePeopleAccess} durations={durations} saveDurations={saveDurations} isAdmin={isAppAdmin(currentUser)} zones={zones} zoneOwners={zoneOwners} saveZoneOwners={saveZoneOwners} saveZones={saveZones} userPrefs={userPrefs} saveUserPrefs={saveUserPrefs} departments={departments} saveDepartments={saveDepartments} allData={{tasks,trackers,tenders,contractors,people,packages,tags,tagrules,pkgrules,improvements,correspondences,awns,pkgOwners,schedules,rooms,moms,meetings,kpis,zones,zoneOwners,subList,subColors,pkgSubcontractors,tenderRules,peopleAccess,peopleEmails,defaultCC,durations,userPrefs,departments,notes,readiness,steelDockets,steelWbs,steelPeriods,conTypes,conWbs,conPours,conCutoffs,manpower,mpPlan,mpMeta}} onImport={function(d){if(d.tasks)saveT(d.tasks);if(d.trackers)saveX(d.trackers);if(d.tenders)saveTenders(d.tenders);if(d.contractors)saveContractors(d.contractors);if(d.people)savePeople(d.people);if(d.packages)savePackages(d.packages);if(d.tags)saveTags(d.tags);if(d.steelDockets)saveSteelDockets(d.steelDockets);if(d.steelWbs)saveSteelWbs(d.steelWbs);if(d.steelPeriods)saveSteelPeriods(d.steelPeriods);if(d.conTypes)saveConTypes(d.conTypes);if(d.conWbs)saveConWbs(d.conWbs);if(d.conPours)saveConPours(d.conPours);if(d.conCutoffs)saveConCutoffs(d.conCutoffs);if(d.manpower)saveManpower(d.manpower);if(d.mpPlan)saveMpPlan(d.mpPlan);if(d.mpMeta)saveMpMeta(d.mpMeta);}}/>}
       </div>
 
+      </div>
       <aside className={"rsidebar "+(sidebarOpen?"open":"closed")}>
         <div style={{display:"flex",alignItems:"center",justifyContent:sidebarOpen?"flex-end":"center",padding:"8px 8px 0",flexShrink:0}}>
           <button onClick={function(){setSidebarOpen(!sidebarOpen);}} title={sidebarOpen?"Collapse sidebar":"Expand sidebar"}
@@ -5110,24 +5230,13 @@ function App(){
       </aside>
     <ImprovementBox improvements={improvements} saveImprovements={saveImprovements} currentPage={view} openSignal={impSignal} phone={phone}/>
     {phone&&<PhoneNav nav={effectiveNAV} view={view} setView={setView} currentUser={currentUser} syncStatus={syncStatus}
-      onChangeUser={function(){try{localStorage.removeItem("pp_current_user");}catch(e){}setCurrentUser(null);}}
-      extras={[
-        {icon:"🗓",label:"Weekly actions",onClick:function(){setShowWeeklyPopup(true);}},
-        {icon:"💡",label:"Improvement idea",onClick:function(){setImpSignal(Date.now());}}
-      ].concat(actionsOnly?[]:[{icon:"📄",label:"Certification PDF",onClick:function(){setPdfGlobal({open:true});}}])}/>}
-    <div className="phone-hide" style={{position:"fixed",bottom:16,right:360,zIndex:490}}>
-      <button onClick={function(){setShowWeeklyPopup(true);}} title="Weekly Actions" style={{width:36,height:36,borderRadius:"50%",background:"#3949ab",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>📋</button>
-    </div>
+      pins={navPins} togglePin={togglePin} onChangeUser={logout}
+      extras={navTools.map(function(t){return {icon:t.icon,label:t.long,onClick:t.run};})}/>}
+    {paletteOpen&&<NavPalette items={paletteItems} onClose={function(){setPaletteOpen(false);}}/>}
     {newTasksPopup&&<NewTasksPopup tasks={newTasksPopup} tenders={tenders} contractors={contractors} onClose={function(){setNewTasksPopup(null);}}/> }
     {showWeeklyPopup&&<WeeklyPopup tasks={tasks} trackers={trackers} people={people} tags={tags} tagrules={tagrules} pkgrules={pkgrules} tenders={tenders} contractors={contractors} saveT={saveT} saveX={saveX} onClose={function(){setShowWeeklyPopup(false);}}/>}
     <div className="mobile-qa-btn" onClick={function(){setMobileQAOpen(true);}} title="Quick Add Task" style={{display:"none",position:"fixed",bottom:62,right:16,zIndex:490,width:44,height:44,borderRadius:"50%",background:"#c9a84c",boxShadow:"0 2px 8px rgba(0,0,0,.2)",alignItems:"center",justifyContent:"center",fontSize:22,cursor:"pointer",color:"#1c1c1e"}}>＋</div>
     {mobileQAOpen&&<div className="overlay" style={{zIndex:600}} onClick={function(e){if(e.target===e.currentTarget)setMobileQAOpen(false);}}><div style={{background:"#fff",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",position:"absolute",bottom:0}}><QuickAdd people={people} packages={packages} tenders={tenders} contractors={contractors} trackers={trackers} tags={tags} zones={zones} tasks={tasks} onAdd={function(t){addTask(t);setMobileQAOpen(false);}} improvements={improvements} saveImprovements={saveImprovements} currentPage={view}/></div></div>}
-    <div className="phone-hide" style={{position:"fixed",bottom:16,right:318,zIndex:500}}>
-      <button onClick={function(){setPdfGlobal({open:true});}} title="Import certification from PDF"
-        style={{width:36,height:36,borderRadius:"50%",background:"#0f5299",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"all .15s"}}>
-        📄
-      </button>
-    </div>
     {pdfGlobal&&pdfGlobal.open&&<GlobalPdfModal contractors={contractors} saveContractors={saveContractors} onClose={function(){setPdfGlobal(null);}}/>}
     </div>
   </div>;
