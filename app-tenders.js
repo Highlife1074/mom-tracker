@@ -659,8 +659,7 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,foc
     var d=flowDocOf(td,id);if(!d)return null;
     var st=docSummary(d).state;
     return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-      <button type="button" onClick={function(){toggleRev(id);}} title="Show or edit the revisions"
-        style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{revOpen[id]?"▾":"▸"}</button>
+      <RevToggle open={revOpen[id]} onClick={function(){toggleRev(id);}}/>
       <FlowDocBadge td={td} id={id}/>
       {st==="none"&&<button type="button" className="btn btn-sm" style={{fontSize:10,padding:"1px 7px"}}
         onClick={function(){recordDocSubmission(td,d,updTd,afterSave).then(function(p){if(p)setRevOpen(function(o){var n=Object.assign({},o);n[id]=true;return n;});});}}>＋ Record</button>}
@@ -716,7 +715,7 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,foc
         <th style={{minWidth:120}}>Transmission ref</th>
         <th style={{minWidth:180}}>Description</th>
         <th style={{textAlign:"center",minWidth:112}}>Target</th>
-        <th style={{minWidth:220}} title="▸ opens the revisions (R0, R1…, codes A/B/C/D)">Submissions</th>
+        <th style={{minWidth:220}} title="+ opens the revisions (R0, R1…, codes A/B/C/D)">Submissions</th>
         <th style={{width:34}}></th>
       </tr></thead>
       <tbody>{list.map(function(t,i){
@@ -808,6 +807,13 @@ function matDoc(td,m,i,kd,marSub){
 }
 // Status cell: before the submission, the only choice is "under preparation"; after it,
 // the state comes from the revisions and is read-only.
+// Visible "+ / −" toggle that opens the revisions under a document row (replaces the small ▸ arrow).
+function RevToggle({open,onClick,title,style}){
+  return <button type="button" onClick={onClick} title={title||(open?"Hide the revisions":"Show or edit the revisions")} aria-expanded={!!open}
+    style={Object.assign({display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,width:20,height:20,padding:0,
+      borderRadius:5,border:"1.5px solid var(--brand,#1f3a5f)",background:open?"var(--brand,#1f3a5f)":"var(--brand-soft,#e9eef5)",
+      color:open?"#fff":"var(--brand-ink,#1f3a5f)",fontSize:15,fontWeight:800,lineHeight:1,cursor:"pointer",fontFamily:"inherit"},style||{})}>{open?"−":"+"}</button>;
+}
 function MatDocStatus({doc,prep,onPrep}){
   var s=docSummary(doc);var l=doc.cycles;var last=l[l.length-1];
   if(s.state==="none"){
@@ -820,7 +826,7 @@ function MatDocStatus({doc,prep,onPrep}){
   }
   var lab={pending:"With client"+(last&&last.rev?" · R"+last.rev:""),returned:"To resubmit"+(last&&last.rev?" · R"+last.rev:""),approved:"Approved"+(last&&last.rev?" · R"+last.rev:"")}[s.state];
   var col={pending:"#0f5299",returned:"#b35c00",approved:"#1e6b3a"}[s.state];
-  return <span title="Edit the revisions with the ▸ arrow on this row" style={{fontSize:11,fontWeight:700,color:col,whiteSpace:"nowrap"}}>{lab}</span>;
+  return <span title="Edit the revisions with the + button on this row" style={{fontSize:11,fontWeight:700,color:col,whiteSpace:"nowrap"}}>{lab}</span>;
 }
 // Approval cell: the client's code and its date, or when the answer is expected.
 function MatDocApproval({doc}){
@@ -830,7 +836,7 @@ function MatDocApproval({doc}){
     var k=FLOW_CODE_COL[last.code]||["#f5f3ee","#6f6b62"];var info=cycleCodeInfo(last.code)||{};
     return <span title={(info.label||"")+(last.comment?" — "+last.comment:"")} style={{display:"inline-flex",gap:5,alignItems:"center",fontSize:11,whiteSpace:"nowrap"}}>
       <span style={{background:k[0],color:k[1],border:"1px solid "+k[1],borderRadius:3,fontSize:10,fontWeight:700,padding:"0 4px"}}>{last.code}</span>
-      {last.returned?fmtDate(last.returned):<i style={{color:"#b35c00"}} title="Code recorded without a date: open ▸ and fill in the returned date">no date</i>}
+      {last.returned?fmtDate(last.returned):<i style={{color:"#b35c00"}} title="Code recorded without a date: open + and fill in the returned date">no date</i>}
     </span>;
   }
   var due=addCalDays(last.submitted,getDur("clientResponse"));
@@ -1059,8 +1065,7 @@ function PurchasesPanel({td,updTd,afterSave,focus}){
               return <React.Fragment key={d.x.k}>
                 <tr id={"tdoc-"+doc.id} style={{opacity:d.listed?1:.55}}>
                   <td style={{whiteSpace:"nowrap"}}>
-                    {d.listed&&<button type="button" onClick={function(){toggleRow(doc.id);}} title="Show or edit the revisions"
-                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{isOpen?"▾":"▸"}</button>}
+                    {d.listed&&<RevToggle open={isOpen} onClick={function(){toggleRow(doc.id);}} style={{marginRight:5,verticalAlign:"middle"}}/>}
                     <span className="badge" style={{background:"var(--blue-soft,#e8f0fe)",color:"var(--blue,#0f5299)"}}>{d.x.label}</span>
                   </td>
                   <td style={{textAlign:"center"}}>{d.listed&&<input type="date" min="1990-01-01" max="2200-12-31" value={tgt} disabled={ro}
@@ -1154,7 +1159,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
     <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Materials</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
-        MAR is due after the contract is signed · ▸ opens the revisions (R0, R1…, codes A/B/C/D){mats.length>0?" · "+mats.length+" material"+(mats.length!==1?"s":""):""}</span>
+        MAR is due after the contract is signed · + opens the revisions (R0, R1…, codes A/B/C/D){mats.length>0?" · "+mats.length+" material"+(mats.length!==1?"s":""):""}</span>
       <button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(e){e.stopPropagation();
         var ms=[...mats,{id:uuid(),name:"",specified:"",proposed:"",leadTime:"",
           mssStatus:"",mssTarget:"",mssDone:"",mssApprovalStatus:"",mssApprovalTarget:"",mssApprovalDone:"",mssReview:"",mssLink:"",mssLinkLabel:"",mssNumber:"",
@@ -1209,8 +1214,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
                     title={cyclesOfMat(mat,"mss").length&&!mat.hasMSS?"This MSS already has submissions, so it stays listed":"This material requires an MSS"} style={{width:14,height:14,cursor:"pointer"}}/>
                 </td>}
                 <td style={{whiteSpace:"nowrap"}}>
-                  <button type="button" onClick={function(){toggleRow(doc.id);}} title="Show or edit the revisions"
-                    style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{isOpen?"▾":"▸"}</button>
+                  <RevToggle open={isOpen} onClick={function(){toggleRow(doc.id);}} style={{marginRight:5,verticalAlign:"middle"}}/>
                   <span className="badge" style={{background:kind==="MSS"?"var(--blue-soft,#e8f0fe)":"var(--gold-soft,#faf3e0)",
                     color:kind==="MSS"?"var(--blue,#0f5299)":"var(--gold-ink,#8a6a1e)"}}>{kind}</span>
                 </td>
@@ -2453,7 +2457,7 @@ function FlowDocBadge({td,id,mode}){
   if(!d)return <span style={{color:"#ddd"}}>—</span>;
   var s=docSummary(d);var l=d.cycles;var last=l[l.length-1];
   var col={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"}[s.state];
-  var tip=(id==="acc"||id==="wms"||id==="itp")?"Edit the revisions with the ▸ arrow on this row":"Edit in Flow & history → Submissions, at the top of this tender";
+  var tip=(id==="acc"||id==="wms"||id==="itp")?"Edit the revisions with the + button on this row":"Edit in Flow & history → Submissions, at the top of this tender";
   if(mode==="sent"){
     if(!last||!last.submitted)return <span title={tip} style={{color:"#ccc",fontSize:11}}>—</span>;
     return <span title={tip} style={{fontSize:11,whiteSpace:"nowrap"}}>{fmtDate(last.submitted)}
@@ -7386,7 +7390,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     return st!=="none"?st:(r.mat[k+"Status"]==="under preparation"?"prep":"none");
   }
   // One cell: status, submission (date, revision, reference) and the client's answer.
-  // ＋ Record asks the reference; ▸ opens the revisions underneath (dates, code, resubmission).
+  // ＋ Record asks the reference; + opens the revisions underneath (dates, code, resubmission).
   function docCell(r,k){
     if(matDocKinds(r.mat).indexOf(k)<0)return <span style={{color:"#ddd",fontSize:10}} title="No MSS required for this material — tick MSS in the Material column">n/a</span>;
     var doc=matDoc(r.td,r.mat,r.mi,k);
@@ -7395,8 +7399,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     var ro=isReadOnly();
     return <div style={{display:"flex",flexDirection:"column",gap:3}}>
       <div style={{display:"flex",alignItems:"center",gap:4}}>
-        <button type="button" onClick={function(){toggleDoc(key);}} title="Revisions: real submission date, returned date, code, reference, resubmission"
-          style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{openDoc[key]?"▾":"▸"}</button>
+        <RevToggle open={openDoc[key]} onClick={function(){toggleDoc(key);}} title="Revisions: real submission date, returned date, code, reference, resubmission"/>
         <div style={{flex:1}}><MatDocStatus doc={doc} prep={r.mat[k+"Status"]==="under preparation"} onPrep={ro?null:function(v){setPrep(r,k,v);}}/></div>
       </div>
       {last&&last.submitted&&<div style={{fontSize:10.5,color:"#555",whiteSpace:"nowrap"}}>sent {fmtDate(last.submitted)}{last.rev>0&&<b style={{color:"#b35c00",marginLeft:3}}>R{last.rev}</b>}
