@@ -206,7 +206,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-11-09-a";
+var APP_BUILD="2026-11-09-b";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -684,7 +684,8 @@ var NAV_VIEWS={
   trackers:{icon:"📊",label:"Trackers",kw:"tracker suivi"},
   timeline:{icon:"🗓",label:"Timeline",kw:"chronologie"},
   myprocurement:{icon:"📦",label:"My Procurement",kw:"my packages mes achats"},
-  tenders:{icon:"📦",label:"Package",kw:"packages tender tenders sheet submissions achats appel offres"},
+  tenders:{icon:"📦",label:"Package",kw:"packages tender tenders sheet submissions achats appel offres procurement plan planning milestones jalons"},
+  // Merged into Package (same table, Plan columns): kept so old links, pins and pp_view land there.
   procplan:{icon:"📅",label:"Proc. plan",long:"Procurement plan",kw:"procurement plan planning achats"},
   procflow:{icon:"🧭",label:"Proc. flow",long:"Procurement flow",kw:"procurement flow board"},
   materials:{icon:"🏗️",label:"Materials",kw:"material mar materiaux"},
@@ -706,7 +707,7 @@ var NAV_VIEWS={
 // the rest of the chrome stays navy (--brand) with the gold accent.
 var NAV_SECTIONS=[
   {id:"follow",icon:"✅",label:"Follow-up",color:"#2f6fb0",views:["global","moms","notes","submissions","trackers","timeline"]},
-  {id:"proc",icon:"📦",label:"Procurement",color:"#a86f12",views:["myprocurement","tenders","procplan","procflow","materials","qadocs","packages"]},
+  {id:"proc",icon:"📦",label:"Procurement",color:"#a86f12",views:["myprocurement","tenders","procflow","materials","qadocs","packages"]},
   {id:"site",icon:"🏗️",label:"Site",color:"#2e7a57",views:["zone","manpower","concrete","steel","inventory"]},
   {id:"contract",icon:"📋",label:"Contract",color:"#74508f",views:["contracts","awn","contractors"]},
   {id:"dash",icon:"📈",label:"Dashboard",color:"#0f7584",views:["dashboard"]},
@@ -729,7 +730,9 @@ function navLastNote(view){
 var PHONE_DEFAULT_PINS=["global","zone","tenders","notes"];
 var NAV_MAX_PINS=4;
 function navPinsLoad(){
-  try{var v=JSON.parse(localStorage.getItem("pp_phone_pins")||"null");if(Array.isArray(v))return v;}catch(e){}
+  try{var v=JSON.parse(localStorage.getItem("pp_phone_pins")||"null");
+    // Proc. plan is now the Package view: an old pin points there, once.
+    if(Array.isArray(v))return v.map(function(x){return x==="procplan"?"tenders":x;}).filter(function(x,i,a){return a.indexOf(x)===i;});}catch(e){}
   return PHONE_DEFAULT_PINS;
 }
 function _navNorm(x){return String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
@@ -4425,8 +4428,9 @@ function App(){
   // A login restored from this browser must also set window._currentUser: the schedule's edit
   // rights and the "updated by" stamps read it, and they saw nobody until a fresh login.
   const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");if(u)window._currentUser={name:u};return u||null;}catch(e){return null;}});
-  const [view,setViewState]=useState(function(){try{return localStorage.getItem("pp_view")||"global";}catch(e){return "global";}});
-  function setView(v){setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}navLastNote(v);}
+  // "procplan" (Procurement plan) is merged into the Package view: old ids land there.
+  const [view,setViewState]=useState(function(){try{var v=localStorage.getItem("pp_view")||"global";return v==="procplan"?"tenders":v;}catch(e){return "global";}});
+  function setView(v){if(v==="procplan")v="tenders";setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}navLastNote(v);}
   const [jumpOwner,setJumpOwner]=useState(null);
   window._navToTender=navToTender;
   const [newTasksPopup,setNewTasksPopup]=useState(null);
@@ -5229,7 +5233,6 @@ function App(){
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules} tasks={tasks} saveTasks={saveT} zones={zones}/>}
         {view==="procflow"&&<ProcFlowView tenders={tenders} onNavTender={navToTender}/>}
-        {view==="procplan"&&<ProcPlanView tenders={hasFullAccess?tenders:myTenders} saveTenders={saveTenders} packages={packages} tasks={tasks} saveTasks={saveT} onNavTender={navToTender} onNavZone={function(){setView("zone");}}/>}
         {view==="tenders"&&<TendersView tenders={hasFullAccess?tenders:myTenders} saveTenders={saveTenders} packages={hasFullAccess?packages:myPkgs} people={people} tasks={tasks} saveTasks={saveT} contractors={contractors} saveContractors={saveContractors} onNavContracts={hasFullAccess?function(){setView("contracts");}:null} pkgOwners={pkgOwners} jumpTender={jumpTender} clearJumpTender={function(){setJumpTender(null);}} jumpFrom={jumpFrom} clearJumpFrom={function(){setJumpFrom(null);}} onBack={jumpFrom?function(){setView(jumpFrom);setJumpTender(null);setJumpFrom(null);}:null} onNavZone={function(){setView("zone");}}/>}
         {view==="contractors"&&<ContractorsView contractors={contractors} saveContractors={saveContractors} packages={packages} people={people} tasks={tasks} tenders={tenders} apiKey={apiKey} correspondences={correspondences} saveCorrespondences={saveCorrespondences} saveT={saveT} onNavTender={navToTender} memory={memoryFor("contractors")} setMemory={function(p){setMemoryFor("contractors",p);}}/>}
         {view==="contracts"&&<ContractsView contractors={contractors} saveContractors={saveContractors} tenders={tenders} packages={packages} tasks={tasks} saveTasks={saveT}/>}

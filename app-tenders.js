@@ -3713,6 +3713,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [showTl,setShowTl]=useState(true);
   const [showGaps,setShowGaps]=useState(false);
   const [showPrint,setShowPrint]=useState(false);
+  // The list is the merged Package / Procurement plan table (ProcPlanView); the former table
+  // stays reachable as "Classic list" for a while (localStorage pp_pkg_classic).
+  const [classic,setClassicRaw]=useState(function(){return lsGet("pp_pkg_classic","0")==="1";});
+  function setClassic(v){setClassicRaw(v);lsSet("pp_pkg_classic",v?"1":"0");}
   const [linkedOpen,setLinkedOpen]=useState(true);
   // Package sheet tabs: each document is edited in ONE place (Submissions); the rest is read
   // or linked from the other tabs. Remembered per browser.
@@ -3804,7 +3808,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     });
     return c;
   })();
-  var listRange=showTl&&!selTender?tenderListRange(filtered):null;
+  var listRange=showTl&&!selTender&&classic?tenderListRange(filtered):null;
 
   function openNew(){var nt=newTender();var d=[nt,...(tenders||[])];saveTenders(d);setSelTender(nt);}
   function openEdit(td){setFormData(JSON.parse(JSON.stringify(td)));setShowForm(true);}
@@ -4534,15 +4538,30 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     </div>;
   }
 
+  var gapsBtn=(function(){
+    var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
+    return <button className="btn" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
+      style={n?{borderColor:"#ecc3c7",color:"#b3302a"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
+  })();
+  var gapsModal=showGaps&&<TenderGapsModal tenders={tenders} saveTenders={saveTenders} packages={packages} people={people}
+    onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>;
+  if(!classic)return <div>
+    {gapsModal}
+    <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} tasks={tasks} saveTasks={saveTasks} onNavZone={onNavZone}
+      onOpenTender={function(t){setSelTender(t);}}
+      actions={<React.Fragment>
+        <button className="btn" onClick={function(){setClassic(true);}} title="The former Package table (Submission steps, Stage…), kept for a few weeks">Classic list</button>
+        {gapsBtn}
+        <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
+      </React.Fragment>}
+      primary={<button className="btn btn-gold" onClick={openNew}>＋ New Package</button>}/>
+  </div>;
   return <div>
     <div className="page-hdr">
       <div><div className="page-title">Packages</div><div className="page-sub">Submissions, contracts and addendums — by department</div></div>
       <div className="page-actions">
-        {(function(){
-          var n=(tenders||[]).filter(function(t){return tenderGaps(t).length;}).length;
-          return <button className="btn" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
-            style={n?{borderColor:"#ecc3c7",color:"#b3302a"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
-        })()}
+        <button className="btn" onClick={function(){setClassic(false);}} title="Back to the merged Package / Procurement plan table">New view</button>
+        {gapsBtn}
         <button className="btn" onClick={function(){setShowPrint(true);}} title="Choose the sections to print">Print</button>
         <ProcReportButton tenders={tenders} tasks={tasks} packages={packages}/>
         <button className="btn btn-gold" onClick={openNew}>＋ New Package</button>
@@ -4550,8 +4569,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     </div>
     {showPrint&&<TenderPrintModal onClose={function(){setShowPrint(false);}}
       onPrint={function(o){setShowPrint(false);setTimeout(function(){tenderPrint(o);},50);}}/>}
-    {showGaps&&<TenderGapsModal tenders={tenders} saveTenders={saveTenders} packages={packages} people={people}
-      onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>}
+    {gapsModal}
     <div className="tp-noprint" style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <input type="text" value={searchQ} onChange={function(e){setSearchQ(e.target.value);}} placeholder="🔍 Search package, owner..." style={{width:200,padding:"5px 10px",fontSize:12}}/>
       <button className={"fchip"+(pkgFilter==="all"?" on":"")} onClick={function(){setPkgFilter("all");}}>All departments</button>
