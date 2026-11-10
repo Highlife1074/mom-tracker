@@ -1045,19 +1045,19 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   }
   var model=withTl&&vis.length?ppNowModel(vis,now):null;
   // Finance alone: no Next deadline column (and no timeline strip)
-  var dl=plan||fol,nb=dl?3:2;
+  var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
   if(!dl)model=null;
   var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
   var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=470+(plan?880:0)+(fin?330:0)+(fol?780:0);
+  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?880:0)+(fin?330:0)+(fol?780:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
     '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="6" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
     (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
-    '<th>Package</th><th class="r">Budget</th>'+(dl?'<th>Next deadline</th>':'')+
+    '<th>Package</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th>':'')+
     (plan?PP_TABLE_MS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(PP_MS_LABEL[m])+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
     (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
@@ -1069,7 +1069,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     var a=acts[td.id]||{next:[],block:[]};
     var h='<tr class="ppt-main'+(soon?' s21':'')+'"><td><b>'+esc(td.title||"(untitled)")+'</b><div class="sm">'+esc(td.package||"No department")+' · '+esc(ppTypeLabel(ppType(td)))+'</div>'+
       (soon?'<div class="sm" style="color:#b35c00;font-weight:700">starts on site ≤ 21 d</div>':'')+'</td>'+
-      '<td class="r mono">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>'+
+      (fin?'<td class="r mono">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>':'')+
       (dl?'<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
         (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>':'');
     if(plan){
@@ -1577,7 +1577,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   }
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
-  var dl=plan||fol,nb=dl?3:2;
+  var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
   var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
   var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
@@ -1639,7 +1639,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
           {onQuickUpdate&&<button className="btn btn-sm" onClick={function(){onQuickUpdate(td.id);}} title="Quick update (meeting): target dates of the running steps, document status and return dates, next steps, blocking points, notes — in one window"
             style={{fontSize:10.5,padding:"1px 8px",marginTop:4}}>⚡ Update</button>}
         </td>
-        <td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,whiteSpace:"nowrap"}}>{bud?bud.toLocaleString():"—"}</td>
+        {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,whiteSpace:"nowrap"}}>{bud?bud.toLocaleString():"—"}</td>}
         {dl&&<td style={{minWidth:160}}>
           {ppNextAct(p)&&<div style={{fontSize:9.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b"}}>To do</div>}
           <span className="badge" style={{background:st.bg,color:st.fg}} title={ppNextAct(p)?"Next thing to do on this package, and its latest date (worked back from the need on site)":st.label}>{ppNextAct(p)||st.label}</span>
@@ -1766,7 +1766,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
           </tr>
           <tr>
             {th("title","Package",{minWidth:200})}
-            {th("budget","Budget",{textAlign:"right"})}
+            {fin&&th("budget","Budget",{textAlign:"right"})}
             {dl&&th("deadline","Next deadline",{minWidth:160},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
             {plan&&PP_TABLE_MS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,PP_MS_LABEL[m],null,"Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[m]+" — sorted by that latest date",i===0?"sep":"")}</React.Fragment>;})}
             {plan&&th("need","Need on site",{minWidth:132},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
