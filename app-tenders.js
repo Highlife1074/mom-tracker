@@ -3779,6 +3779,21 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [showTl,setShowTl]=useState(true);
   const [showGaps,setShowGaps]=useState(false);
   const [quickId,setQuickId]=useState(null);       // package open in the Quick update window (meeting)
+  // Where the open sheet was opened from, for its "↩ Back" button: the list (and its scroll)
+  // or the Quick update window, which then opens again.
+  const [sheetFrom,setSheetFrom]=useState(null);   // {kind:"list"|"quick", id, scroll}
+  function openSheetFrom(t,kind){
+    var c=document.querySelector(".content");
+    setSheetFrom({kind:kind,id:t.id,scroll:c?c.scrollTop:0,winY:window.scrollY||0});
+    setSelTender(t);
+  }
+  function backFromSheet(){
+    var b=sheetFrom;setSheetFrom(null);setSelTender(null);
+    if(b&&b.kind==="quick")setQuickId(b.id);
+    if(b)[60,300,800].forEach(function(ms){setTimeout(function(){
+      var c=document.querySelector(".content");if(c&&b.scroll)c.scrollTop=b.scroll;if(b.winY)window.scrollTo(0,b.winY);
+    },ms);});
+  }
   const [showPrint,setShowPrint]=useState(false);
   // The list is the merged Package / Procurement plan table (ProcPlanView); the former table
   // stays reachable as "Classic list" for a while (localStorage pp_pkg_classic).
@@ -4073,7 +4088,10 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
         <div style={{position:"sticky",top:0,zIndex:30,background:"#f4f3f0",display:"flex",gap:6,paddingBottom:6,paddingTop:2,marginBottom:6}}>
           {onBack&&<button className="btn btn-sm" onClick={onBack} style={{flexShrink:0,color:"var(--blue)",borderColor:"var(--blue)"}}>← Back to {jumpFrom}</button>}
-          <button className="btn btn-sm" onClick={function(){setSelTender(null);onBack?null:null;}} style={{flexShrink:0}}>← All packages</button>
+          {sheetFrom&&sheetFrom.kind==="quick"&&<button className="btn btn-pri" onClick={backFromSheet} style={{flexShrink:0,fontSize:13,padding:"5px 14px"}}
+            title="Back to the Quick update window of this package">↩ Back to Quick update</button>}
+          <button className={sheetFrom&&sheetFrom.kind==="quick"?"btn":"btn btn-pri"} onClick={backFromSheet} style={{flexShrink:0,fontSize:13,padding:"5px 14px"}}
+            title="Back to the Package list, same filters and position">{sheetFrom&&sheetFrom.kind==="quick"?"↩ Package list":"↩ Back to the Package list"}</button>
         </div>
         <div className="page-hdr" style={{marginBottom:12}}>
           <div style={{flex:1}}>
@@ -4587,13 +4605,13 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       style={n?{borderColor:"#ecc3c7",color:"#b3302a"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
   })();
   var quickModal=quickId&&<PpQuickUpdateModal tdId={quickId} tenders={tenders} saveTenders={saveTenders} tasks={tasks} saveTasks={saveTasks}
-    updateStep={updateStep} onOpenSheet={function(t){setSelTender(t);}} onClose={function(){setQuickId(null);}}/>;
+    updateStep={updateStep} onOpenSheet={function(t){openSheetFrom(t,"quick");}} onClose={function(){setQuickId(null);}}/>;
   var gapsModal=showGaps&&<TenderGapsModal tenders={tenders} saveTenders={saveTenders} packages={packages} people={people}
     onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>;
   if(!classic)return <div>
     {gapsModal}{quickModal}
     <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} tasks={tasks} saveTasks={saveTasks} onNavZone={onNavZone}
-      onOpenTender={function(t){setSelTender(t);}} onQuickUpdate={setQuickId}
+      onOpenTender={function(t){openSheetFrom(t,"list");}} onQuickUpdate={setQuickId}
       actions={<React.Fragment>
         <button className="btn" onClick={function(){setClassic(true);}} title="The former Package table (Submission steps, Stage…), kept for a few weeks">Classic list</button>
         {gapsBtn}
@@ -4737,7 +4755,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           {_phaseHead&&<tr className="tphase-hdr"><td colSpan={99}>
             <span style={{background:_ph.bg,color:_ph.fg,fontWeight:700,borderRadius:8,padding:"2px 10px"}}>{_ph.label}</span>
             <span style={{marginLeft:8,color:"#888"}}>{_phaseN} tender{_phaseN===1?"":"s"}</span></td></tr>}
-          <tr style={{cursor:"pointer",background:rowBg}} onClick={function(){setSelTender(td);}}>
+          <tr style={{cursor:"pointer",background:rowBg}} onClick={function(){openSheetFrom(td,"list");}}>
             <td style={{fontWeight:600}}>
               {/* Fixed-width badge and dot slot: every tender name starts at the same x. */}
               <div style={{display:"flex",alignItems:"center",gap:6,textAlign:"left"}}>
@@ -4862,7 +4880,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               <textarea value={td.nextStep||""} onChange={function(e){var el=e.target;el.style.height="auto";el.style.height=el.scrollHeight+"px";var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{nextStep:e.target.value});});saveTenders(d);}} ref={function(el){if(el){el.style.height="auto";el.style.height=el.scrollHeight+"px";}}} placeholder="Next step…" rows={1} style={{width:"100%",fontSize:11,padding:"3px 7px",border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",boxSizing:"border-box",resize:"none",overflow:"hidden",lineHeight:1.4,minWidth:160,whiteSpace:"pre-wrap"}}/>
             </td>
           </tr>
-          {_now&&<tr className="tp-tl" style={{cursor:"pointer",background:rowBg}} onClick={function(){setSelTender(td);}}>
+          {_now&&<tr className="tp-tl" style={{cursor:"pointer",background:rowBg}} onClick={function(){openSheetFrom(td,"list");}}>
             <td colSpan={99} style={{paddingTop:0,paddingBottom:6,borderTop:"none"}}>
               <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:12,alignItems:"center"}}>
                 <span style={{fontSize:11,color:_whoCol[_now.who]||"#6f6b62",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={_now.text}>
