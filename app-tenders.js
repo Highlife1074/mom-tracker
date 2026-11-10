@@ -1894,8 +1894,9 @@ function openScheduleStart(f,td,onNavZone){
   try{
     localStorage.setItem("pp_zone_cur",f.sc.zone||"");localStorage.setItem("pp_zone_subtab","schedule");
     localStorage.setItem("pp_sched_selId",f.sc.id);localStorage.setItem("pp_sched_focusRow",f.r.id);
-    localStorage.setItem("pp_back_tender",td.id);localStorage.setItem("pp_back_label",td.title||"the tender");
   }catch(e){}
+  // App notes where we were (view, package sheet or list, scroll) for its "↩ Back" bar.
+  try{window.dispatchEvent(new CustomEvent("pp-back-nav",{detail:{tenderId:td.id,title:td.title||""}}));}catch(e){}
   if(onNavZone)onNavZone();
 }
 // A Package's start on site as a cell: a green 🗓 link to its schedule task when one drives

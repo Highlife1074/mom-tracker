@@ -1281,17 +1281,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     try{var f=localStorage.getItem("pp_sched_focusRow");if(f){localStorage.removeItem("pp_sched_focusRow");return f;}}catch(e){}
     return "";
   });
-  // Where we came from, if the tender sheet sent us here. Kept until the user goes back or
-  // leaves the schedule, so the trail never dead-ends.
-  const [backTo,setBackTo]=useState(function(){
-    try{
-      var id=localStorage.getItem("pp_back_tender");
-      if(!id)return null;
-      var lbl=localStorage.getItem("pp_back_label")||"the tender";
-      localStorage.removeItem("pp_back_tender");localStorage.removeItem("pp_back_label");
-      return{id:id,label:lbl};
-    }catch(e){return null;}
-  });
+  // "↩ Back" after a jump from a package date: the App's back bar (BackNavBar in app-core.js).
   useEffect(function(){
     if(!focusRow)return;
     var t=setTimeout(function(){setFocusRow("");},6000);
@@ -3322,13 +3312,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       <span style={{fontSize:11,color:"#aaa"}}>press Esc to leave full screen</span>
       {sc&&<button className="btn btn-pri" onClick={openPrint} style={{marginLeft:"auto"}}
         title="Print the schedule or save it as a PDF: choose the weeks, the paper size and the number of sheets">Print / PDF</button>}
-    </div>}
-    {backTo&&<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,
-      padding:"8px 12px",borderRadius:8,background:"var(--blue-soft,#e8f0fe)",border:"1.5px solid #c6d9f5"}}>
-      <span style={{fontSize:12,color:"var(--blue,#0f5299)"}}>You came here from <b>{backTo.label}</b></span>
-      <button className="btn btn-sm" style={{marginLeft:"auto"}}
-        onClick={function(){var id=backTo.id;setBackTo(null);if(onNavTender)onNavTender(id);}}>↩ Back to the tender</button>
-      <button className="btn btn-sm" onClick={function(){setBackTo(null);}} title="Stay in the schedule">✕</button>
     </div>}
     {/* Header: which schedule, and the actions on the whole schedule. Print is the main one,
         styled like the zone's Weekly pack; the rarely used ones sit in Settings and More. */}
