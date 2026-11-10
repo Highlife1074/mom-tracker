@@ -206,7 +206,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-11-10-c";
+var APP_BUILD="2026-11-10-d";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -5151,6 +5151,7 @@ function App(){
   window._ppPkgOwners=pkgOwners;
   window._ppTenders=tenders;
   window._ppSchedules=schedules;
+  window._ppSaveSchedules=saveSchedules;   // the Package list moves a schedule task (PpMoveStartModal)
   window._ppSubList=allSubcontractors(subList,contractors);
   window._ppSubColors=subColors;
   window._ppTenderRules=tenderRules;

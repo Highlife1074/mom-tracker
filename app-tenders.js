@@ -58,22 +58,59 @@ function tenderNotesOf(td){
 function newTenderNote(o){
   return Object.assign({id:uuid(),title:"",content:"",at:today(),by:window._currentUser?window._currentUser.name:""},o||{});
 }
-// Short notes summary, shown above the tabs of the package sheet so the notes are seen
-// whatever the tab; a click opens the Actions & notes tab where they are edited.
-function TenderNotesStrip({td,onOpen}){
+// Follow-up summary above the tabs of the package sheet, whatever the tab: blocking points,
+// next steps and notes — the same ones as the Follow-up columns of the Package list. A click
+// opens the Actions & notes tab where they are edited (TenderFollowUpCard).
+function TenderFollowStrip({td,tasks,onOpen}){
+  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[]};
   var notes=tenderNotesOf(td).filter(function(n){return String(n.title||"").trim()||String(n.content||"").trim();});
-  if(!notes.length)return null;
-  return <div onClick={onOpen} title="Open the notes (Actions & notes tab)"
-    style={{display:"flex",gap:8,alignItems:"flex-start",flexWrap:"wrap",margin:"0 0 8px",padding:"7px 12px",border:"1px solid #ece3c8",
-      borderLeft:"3px solid var(--gold,#c9a84c)",borderRadius:6,background:"#fffdf6",cursor:"pointer",fontSize:12,lineHeight:1.4}}>
-    <span style={{fontWeight:700,color:"var(--gold-ink,#8a6a1e)",whiteSpace:"nowrap"}}>📝 Notes ({notes.length})</span>
-    <div style={{flex:1,minWidth:200,display:"flex",flexDirection:"column",gap:2}}>
-      {notes.slice(0,3).map(function(n,i){
-        var c=String(n.content||"").trim();
-        return <div key={n.id||i} style={{color:"#4a4740",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={(n.title||"")+(c?"\n"+c:"")}>
-          {n.title&&<b style={{color:"var(--ink,#16181d)"}}>{n.title}</b>}{n.title&&c?" — ":""}{c}</div>;
-      })}
-      {notes.length>3&&<span style={{fontSize:10.5,color:"#9b968b"}}>+ {notes.length-3} more</span>}
+  var next=(td.nextStep?[String(td.nextStep)]:[]).concat(a.next.map(function(t){return t.text||"";}));
+  if(!a.block.length&&!next.length&&!notes.length)return null;
+  function part(icon,label,n,items,col){
+    if(!n)return null;
+    return <div style={{flex:"1 1 220px",minWidth:0}}>
+      <div style={{fontWeight:700,color:col,whiteSpace:"nowrap"}}>{icon} {label} ({n})</div>
+      {items.slice(0,2).map(function(x,i){return <div key={i} style={{color:"#4a4740",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={x}>{x}</div>;})}
+      {n>2&&<div style={{fontSize:10.5,color:"#9b968b"}}>+ {n-2} more</div>}
+    </div>;
+  }
+  return <div onClick={onOpen} title="Open the follow-up (Actions & notes tab) — the same as the Follow-up columns of the Package list"
+    style={{display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap",margin:"0 0 8px",padding:"7px 12px",border:"1px solid #e6e2d8",
+      borderLeft:"3px solid "+(a.block.length?"#b3302a":"var(--gold,#c9a84c)"),borderRadius:6,background:"#fffdf6",cursor:"pointer",fontSize:12,lineHeight:1.4}}>
+    {part("⛔","Blocking points",a.block.length,a.block.map(function(t){return t.text||"";}),"#b3302a")}
+    {part("▸","Next steps",next.length,next,"var(--brand-ink,#173b63)")}
+    {part("📝","Notes",notes.length,notes.map(function(n){var c=String(n.content||"").trim();return (n.title||"")+(n.title&&c?" — ":"")+c;}),"var(--gold-ink,#8a6a1e)")}
+  </div>;
+}
+// The Follow-up of a package in its sheet (Actions & notes tab): Next steps (the Next Step
+// text + open actions), Blocking points (open actions tagged Blocking Point) and Notes — the
+// very same components and data as the Follow-up columns of the Package list, so whatever is
+// added, ticked or edited in one shows in the other.
+function TenderFollowUpCard({td,tasks,saveTasks,updTd}){
+  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[]};
+  var ro=isReadOnly();
+  var h={fontWeight:700,fontSize:13,marginBottom:6};
+  var col={flex:"1 1 260px",minWidth:0,padding:"0 12px",borderLeft:"1px solid #eceae4"};
+  return <div className="card" style={{marginBottom:10}}>
+    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:10}}>
+      <div style={{fontWeight:700,fontSize:14}}>Follow-up</div>
+      <span style={{fontSize:11,color:"#9b968b"}}>the same next steps, blocking points and notes as the Follow-up columns of the Package list</span>
+    </div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:"12px 0",margin:"0 -12px"}}>
+      <div style={Object.assign({},col,{borderLeft:"none"})}>
+        <div style={Object.assign({},h,{color:"var(--brand-ink,#173b63)"})}>▸ Next steps ({(td.nextStep?1:0)+a.next.length})</div>
+        <textarea value={td.nextStep||""} disabled={ro} onChange={function(e){updTd("nextStep",e.target.value);}} placeholder="Next step of the package (free text)…"
+          style={{width:"100%",minHeight:48,padding:"6px 8px",fontSize:12,border:"1.5px solid #ddd9cf",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:6}}/>
+        <PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} noNextStep wide/>
+      </div>
+      <div style={col}>
+        <div style={Object.assign({},h,{color:"#b3302a"})}>⛔ Blocking points ({a.block.length})</div>
+        <PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks} wide/>
+      </div>
+      <div style={col}>
+        <div style={Object.assign({},h,{color:"var(--gold-ink,#8a6a1e)"})}>📝 Notes ({tenderNotesOf(td).length})</div>
+        <PpNotesCell td={td} upd={function(t,patch){updTd(patch);}} wide/>
+      </div>
     </div>
   </div>;
 }
@@ -4255,11 +4292,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   // Driven by the schedules: earliest start week among the tasks linked to this tender.
                   var f=tenderScheduleStart(td);
                   if(f){
-                    return <span onClick={function(){openScheduleStart(f,td,onNavZone);}}
+                    return <React.Fragment><span onClick={function(){openScheduleStart(f,td,onNavZone);}}
                       title={"Driven by \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+f.sc.title+")\nClick to open that task in the schedule."}
                       style={{fontSize:11,fontWeight:800,color:"#00695c",background:"#e6f2e9",border:"1px solid #cfe3d5",borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>
                       🗓 {fmtDate(td.startOnSite||f.r.startWeek)} <span style={{fontSize:9,fontWeight:600,color:"#4caf50"}}>· {f.r.label||"task"} ↗</span>
-                    </span>;
+                    </span><PpMoveStartBtn td={td} f={f} onNavZone={onNavZone}/></React.Fragment>;
                   }
                   return <DraftDateInput value={td.startOnSite||""} onCommit={function(v){updTd("startOnSite",v);}}
                     title="No schedule task is linked to this tender yet — you can set the date by hand. As soon as a task is linked, the schedule takes over."
@@ -4330,7 +4367,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>}
         </div>
 
-        {tdTab!=="actions"&&<TenderNotesStrip td={td} onOpen={function(){setTdTab("actions");}}/>}
+        {tdTab!=="actions"&&<TenderFollowStrip td={td} tasks={tasks} onOpen={function(){setTdTab("actions");}}/>}
 
         {/* One tab per job. Submissions = every document, edited in one place each;
             Contract = contract circuit + contracts and addendums; Flow = read-only history. */}
@@ -4492,10 +4529,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         {tdTab==="flow"&&<TenderFlowPanel td={td} updTd={updTd} afterSave={flowAfterSave} onJump={jumpToDoc}/>}
 
         {tdTab==="actions"&&<React.Fragment>
-        <div className="card" style={{marginBottom:10}}>
-          <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#4a4740"}}>🎯 Next Step</div>
-          <textarea value={td.nextStep||""} onChange={function(e){updTd("nextStep",e.target.value);}} placeholder="Describe the next step or action required for this tender…" style={{width:"100%",minHeight:60,padding:"7px 10px",fontSize:12,border:"1.5px solid #ddd9cf",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-        </div>
+        <TenderFollowUpCard td={td} tasks={tasks} saveTasks={saveTasks} updTd={updTd}/>
 
         <div className="card" style={{marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
@@ -4531,30 +4565,6 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           />}
         </div>
 
-
-        {(function(){
-          var notes=tenderNotesOf(td);
-          return <div className="card" style={{marginBottom:10}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:notes.length>0?10:0}}>
-              <div style={{fontWeight:700,fontSize:13}}>📝 Notes ({notes.length})</div>
-              <button className="btn btn-sm" onClick={function(){var ns=[...notes,newTenderNote({title:"Note "+(notes.length+1),open:true})];updTd("tenderNotes",ns);}}>＋ Note</button>
-            </div>
-            {notes.map(function(note,ni){
-              function updNote(field,val){var ns=notes.map(function(n,j){return j!==ni?n:Object.assign({},n,{[field]:val});});updTd("tenderNotes",ns);}
-              return <div key={note.id||ni} style={{border:"1px solid #e8e6df",borderRadius:8,marginBottom:8,overflow:"hidden"}}>
-                <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
-                  <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
-                  <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-                  {(note.by||note.at)&&<span style={{fontSize:10,color:"#9b968b",whiteSpace:"nowrap"}}>{[note.by?String(note.by).split(",")[0]:"",note.at?fmtDate(note.at):""].filter(Boolean).join(" · ")}</span>}
-                  <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
-                </div>
-                {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
-                  <textarea value={note.content||""} onChange={function(e){updNote("content",e.target.value);}} placeholder="Write your note here..." style={{width:"100%",minHeight:80,padding:"6px 8px",fontSize:12,border:"1px solid #e8e6df",borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-                </div>}
-              </div>;
-            })}
-          </div>;
-        })()}
 
         </React.Fragment>}
       </div>

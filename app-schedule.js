@@ -137,6 +137,71 @@ function plannedCellCount(rows){
   (rows||[]).forEach(function(r){var c=r.cells||{};Object.keys(c).forEach(function(w){if(c[w]==="plan"||c[w]==="both")n++;});});
   return n;
 }
+// ---- Dependency-aware shifting (shared by the grid and the Package list) ------------------
+// Shifts a row's PLANNED cells by n working weeks, then cascades to every row that declared
+// "after: this row". Actual cells are never moved — they record what really happened.
+function schedShiftCascade(rows,rowId,deltaWeeks,wksList,visited,holidays){
+  visited=visited||{};
+  if(visited[rowId])return rows;   // guards against circular links
+  visited[rowId]=true;
+  holidays=holidays||[];
+  // Shifting happens in WORKING weeks: neutralised (holiday) weeks are skipped over,
+  // so a bar never lands on a shutdown period and the plan simply jumps past it.
+  var working=wksList.filter(function(w){return holidays.indexOf(w)===-1;});
+  var wIdxOf={};working.forEach(function(w,i){wIdxOf[w]=i;});
+  var out=rows.map(function(r){
+    if(r.id!==rowId)return r;
+    var cells=Object.assign({},r.cells||{});
+    var moved={};
+    Object.keys(cells).forEach(function(wk){
+      var v=cells[wk];
+      var hasPlan=(v==="plan"||v==="both");
+      var hasActual=(v==="actual"||v==="both");
+      if(hasActual)moved[wk]=moved[wk]==="plan"?"both":(moved[wk]||"actual");
+      if(hasPlan){
+        var i=wIdxOf[wk];
+        // planned cell sitting on a holiday week: leave it where it is (it used to be deleted)
+        if(i===undefined){moved[wk]=moved[wk]==="actual"?"both":"plan";return;}
+        var tgt=working[i+deltaWeeks];
+        if(tgt===undefined)return;   // pushed off the board: shiftRows() refuses the move first
+        moved[tgt]=moved[tgt]==="actual"?"both":(moved[tgt]==="both"?"both":"plan");
+      }
+    });
+    // start/end weeks follow the bars, so the procurement checks see the new dates
+    return Object.assign({},r,{cells:moved},spanFromCells(moved,wksList,r));
+  });
+  // cascade to dependents
+  var deps=out.filter(function(r){return predIdsOf(r).indexOf(rowId)>=0;});
+  deps.forEach(function(d){out=schedShiftCascade(out,d.id,deltaWeeks,wksList,visited,holidays);});
+  return out;
+}
+// Moves a task so that it starts in the week of `date` (its planned weeks keep their length,
+// the tasks linked after it follow), as dragging its bar in the grid does. Used by the
+// Package list to change a start on site that comes from the schedule.
+// Returns {ok, schedules, weeks, msg}; nothing is saved here.
+function schedMoveTaskStart(schedules,scId,rowId,date){
+  var sc=(schedules||[]).find(function(x){return x.id===scId;});
+  if(!sc)return {ok:false,msg:"Schedule not found."};
+  var row=(sc.rows||[]).find(function(r){return r.id===rowId;});
+  if(!row||!row.startWeek)return {ok:false,msg:"This task has no planned bar."};
+  if(!isValidDate(date))return {ok:false,msg:"Not a valid date."};
+  var wl=scheduleWeeks(sc),hol=sc.holidayWeeks||[];
+  var working=wl.filter(function(w){return hol.indexOf(w)<0;});
+  var d=parseISODate(date),dow=d.getDay();
+  d.setDate(d.getDate()-(dow===0?6:dow-1));
+  var wk=toISO(d);
+  var tgt=working.find(function(w){return w>=wk;});
+  if(!tgt||wk>wl[wl.length-1])return {ok:false,msg:"The week of "+fmtDate(date)+" is not on this schedule ("+fmtDate(wl[0])+" → "+fmtDate(wl[wl.length-1])+"). Extend the schedule first."};
+  if(wk<wl[0])return {ok:false,msg:"The week of "+fmtDate(date)+" is before the first week of this schedule ("+fmtDate(wl[0])+")."};
+  var from=working.indexOf(row.startWeek)>=0?row.startWeek:working.find(function(w){return w>=row.startWeek;});
+  var delta=working.indexOf(tgt)-working.indexOf(from);
+  if(!delta)return {ok:true,schedules:schedules,weeks:0,msg:"Already starts that week."};
+  var before=sc.rows||[];
+  var rows=schedShiftCascade(before.slice(),rowId,delta,wl,{},hol);
+  var lost=plannedCellCount(before)-plannedCellCount(rows);
+  if(lost>0)return {ok:false,msg:"Not moved: "+lost+" planned week"+(lost!==1?"s":"")+" would fall "+(delta>0?"after the last":"before the first")+" week of the schedule (this task or the tasks linked after it). Extend the schedule first."};
+  return {ok:true,weeks:delta,schedules:(schedules||[]).map(function(x){return x.id!==scId?x:Object.assign({},x,{rows:rows});})};
+}
 function scheduleWeeks(sc){
   if(!sc||!isValidDate(sc.startDate))return[];
   // Local midnight (parseISODate), not new Date("YYYY-MM-DD") = UTC midnight: west of
@@ -2402,41 +2467,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // ---- Dependency-aware shifting -------------------------------------
   // Shifts a row's PLANNED cells by n weeks, then cascades to every row that declared "after: this row".
   // Actual cells are never moved — they record what really happened.
-  function shiftRowCascade(rows,rowId,deltaWeeks,wksList,visited,holidays){
-    visited=visited||{};
-    if(visited[rowId])return rows;   // guards against circular links
-    visited[rowId]=true;
-    holidays=holidays||[];
-    // Shifting happens in WORKING weeks: neutralised (holiday) weeks are skipped over,
-    // so a bar never lands on a shutdown period and the plan simply jumps past it.
-    var working=wksList.filter(function(w){return holidays.indexOf(w)===-1;});
-    var wIdxOf={};working.forEach(function(w,i){wIdxOf[w]=i;});
-    var out=rows.map(function(r){
-      if(r.id!==rowId)return r;
-      var cells=Object.assign({},r.cells||{});
-      var moved={};
-      Object.keys(cells).forEach(function(wk){
-        var v=cells[wk];
-        var hasPlan=(v==="plan"||v==="both");
-        var hasActual=(v==="actual"||v==="both");
-        if(hasActual)moved[wk]=moved[wk]==="plan"?"both":(moved[wk]||"actual");
-        if(hasPlan){
-          var i=wIdxOf[wk];
-          // planned cell sitting on a holiday week: leave it where it is (it used to be deleted)
-          if(i===undefined){moved[wk]=moved[wk]==="actual"?"both":"plan";return;}
-          var tgt=working[i+deltaWeeks];
-          if(tgt===undefined)return;   // pushed off the board: shiftRows() refuses the move first
-          moved[tgt]=moved[tgt]==="actual"?"both":(moved[tgt]==="both"?"both":"plan");
-        }
-      });
-      // start/end weeks follow the bars, so the procurement checks see the new dates
-      return Object.assign({},r,{cells:moved},spanFromCells(moved,wksList,r));
-    });
-    // cascade to dependents
-    var deps=out.filter(function(r){return predIdsOf(r).indexOf(rowId)>=0;});
-    deps.forEach(function(d){out=shiftRowCascade(out,d.id,deltaWeeks,wksList,visited,holidays);});
-    return out;
-  }
+  function shiftRowCascade(rows,rowId,deltaWeeks,wksList,visited,holidays){return schedShiftCascade(rows,rowId,deltaWeeks,wksList,visited,holidays);}
   // ---- Actions linked to schedule rows -------------------------------
   // The link lives on the task (scheduleRowRef), so it stays the same single action
   // that also shows up in the Zone action list, Packages, Global view, etc.
