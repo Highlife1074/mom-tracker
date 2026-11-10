@@ -967,16 +967,26 @@ var PP_TABLE_CSS=
   '.ppt th.sep,.ppt td.sep{border-left:1.5px solid #c7d5e6}'+
   '.ppt td{vertical-align:top}'+
   '.ppt tr.ppt-g th{background:#f4f6fa;font-size:10px;letter-spacing:.08em;padding:5px 10px;border-bottom:1px solid #c7d5e6}'+
-  '.ppt td.ms{padding:4px 5px;min-width:118px}'+
+  '.ppt td.ms{padding:4px 5px;min-width:96px;max-width:124px}'+
+  // the screen table scrolls inside its own box: the sideways scrollbar stays at the bottom
+  // of the window and the headers stay on top (ppt-wrap; not in print)
+  '.ppt-wrap{overflow:auto;max-height:calc(100vh - 170px);border:1px solid #e6e2d9;border-radius:6px}'+
+  '.ppt-wrap .ppt{margin:0}'+
+  '.ppt-wrap .ppt thead{position:sticky;top:0;z-index:5}'+
+  '.ppt-wrap .ppt thead th,.ppt-wrap .ppt thead td{background:#eef2f8}'+
+  '.ppt-wrap .ppt thead tr.ppt-g th{background:#f4f6fa}'+
+  '.ppt-wrap .ppt thead tr.ppt-scale td{background:#fafaf8}'+
+  '@media(max-width:768px){.ppt-wrap{max-height:none}}'+
   '.ppt.ppt-tl tr.ppt-main td{border-bottom:none}'+
   '.ppt tr.ppt-strip td{border-right:none;border-left:none;padding-top:0;padding-bottom:7px}'+
   '.ppt tr.ppt-strip td.nx{font-size:11px;color:#6f6b62;line-height:1.35}'+
   '.ppt tr.ppt-scale td{background:#fafaf8;border-right:none;border-left:none;padding-top:4px;padding-bottom:4px}'+
   '.ppc{padding:3px 6px;border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;border:1.5px solid transparent}'+
   '.ppc .l1{font-size:11.5px;font-weight:600;color:#6f6b62}'+
-  '.ppc .l2{font-size:10.5px;color:#6f6b62;white-space:nowrap}'+
-  '.ppc-done .l1{color:#1e6b3a;white-space:nowrap}'+
-  '.ppc-doneLate .l1{color:#b35c00;white-space:nowrap}'+
+  '.ppc .l1{overflow-wrap:anywhere}'+
+  '.ppc .l2{font-size:10.5px;color:#6f6b62}'+
+  '.ppc-done .l1{color:#1e6b3a}'+
+  '.ppc-doneLate .l1{color:#b35c00}'+
   '.ppc-next .l1,.ppc-next .l2{color:inherit;font-weight:700}'+
   '.ppc-overdue .l2{color:#b3302a;font-weight:700}'+
   '.ppc-none .l1{color:#b9b4a8}'+
@@ -1123,7 +1133,7 @@ function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide}){
     saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,{status:"done",completedAt:now}));}));
   }
   var col=block?"#b3302a":"#16181d";
-  return <div style={{minWidth:190,maxWidth:wide?"none":280,fontSize:wide?12:11,lineHeight:1.35}}>
+  return <div style={{minWidth:wide?190:140,maxWidth:wide?"none":210,fontSize:wide?12:11,lineHeight:1.35,overflowWrap:"anywhere"}}>
     {!block&&!noNextStep&&td.nextStep&&<div title="Next Step of the package (Follow-up)" style={{color:"#4a4740",fontStyle:"italic",marginBottom:3,whiteSpace:"pre-wrap"}}>{td.nextStep}</div>}
     {shown.map(function(t){
       var late=t.due&&t.due<now;
@@ -1182,7 +1192,7 @@ function PpNotesCell({td,upd,wide}){
     if(edit.id==="legacy-note")patch.notes="";
     upd(td,patch);setEdit(null);
   }
-  return <div style={{minWidth:180,maxWidth:wide?"none":280,fontSize:wide?12:11,lineHeight:1.35}}>
+  return <div style={{minWidth:wide?180:140,maxWidth:wide?"none":210,fontSize:wide?12:11,lineHeight:1.35,overflowWrap:"anywhere"}}>
     {shown.map(function(n,i){
       var c=String(n.content||"").trim();
       return <div key={n.id||i} onClick={function(){if(!ro)setEdit({id:n.id,title:n.title||"",content:n.content||""});}}
@@ -1627,7 +1637,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
     var prop=ppProposed(td),bud=ppBudget(td),vr=ppVariance(td);
     return <React.Fragment key={td.id}>
       <tr className="ppt-main" style={hl}>
-        <td style={Object.assign({minWidth:200},soon?{boxShadow:"inset 3px 0 0 var(--amber,#b35c00)"}:{})}>
+        <td style={Object.assign({minWidth:160,maxWidth:220},soon?{boxShadow:"inset 3px 0 0 var(--amber,#b35c00)"}:{})}>
           <span style={{fontWeight:600,cursor:"pointer",color:"var(--ink,#16181d)"}} onClick={function(){openTd(td.id);}} title="Open the package">{td.title||"(untitled)"}</span>
           <div style={{fontSize:11,color:"#6f6b62",marginTop:2,display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
             <span>{td.package||"No department"}</span><span>·</span>
@@ -1640,7 +1650,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             style={{fontSize:10.5,padding:"1px 8px",marginTop:4}}>⚡ Update</button>}
         </td>
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,whiteSpace:"nowrap"}}>{bud?bud.toLocaleString():"—"}</td>}
-        {dl&&<td style={{minWidth:160}}>
+        {dl&&<td style={{minWidth:150,maxWidth:190}}>
           {ppNextAct(p)&&<div style={{fontSize:9.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b"}}>To do</div>}
           <span className="badge" style={{background:st.bg,color:st.fg}} title={ppNextAct(p)?"Next thing to do on this package, and its latest date (worked back from the need on site)":st.label}>{ppNextAct(p)||st.label}</span>
           {ppNextAct(p)?<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppNextBy(p)}</div>
@@ -1650,7 +1660,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         {plan&&PP_TABLE_MS.map(function(m,i){
           return <td key={m} className={"ms"+(i===0?" sep":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppMsCell(td,p,m,now))}}></td>;
         })}
-        {plan&&<td className="sep" style={{minWidth:132}}>{needCell(td,p)}</td>}
+        {plan&&<td className="sep" style={{minWidth:112}}>{needCell(td,p)}</td>}
         {fin&&<td className="sep" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,color:"#0f5299",whiteSpace:"nowrap"}}>{prop?prop.toLocaleString():"—"}</td>}
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,color:"#1e6b3a",whiteSpace:"nowrap"}}>{ppInstructed(td)?ppInstructed(td).toLocaleString():"—"}</td>}
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",color:vr===null?"#ccc":vr<0?"#b3302a":"#1e6b3a"}}
@@ -1754,7 +1764,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
     {leg&&(mode==="timeline"||model)&&<div style={{marginBottom:10}} dangerouslySetInnerHTML={{__html:ppLegendHtml(mode==="timeline"?"gantt":"strip")}}></div>}
     {mode==="timeline"
       ?(vis.length>0&&<ProcPlanGantt vis={vis} grouped={grouped} onNavTender={function(id){openTd(id);}}/>)
-      :<div className="phone-scroll" style={{overflowX:"auto"}}>
+      :<div className="phone-scroll ppt-wrap">
       <table className={"tbl ppt"+(model?" ppt-tl":"")} style={{fontSize:12}}>
         <thead>
           <tr className="ppt-g">
@@ -1765,11 +1775,11 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {fol&&<th colSpan={4} className="sep">Follow-up</th>}
           </tr>
           <tr>
-            {th("title","Package",{minWidth:200})}
+            {th("title","Package",{minWidth:160})}
             {fin&&th("budget","Budget",{textAlign:"right"})}
-            {dl&&th("deadline","Next deadline",{minWidth:160},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
+            {dl&&th("deadline","Next deadline",{minWidth:150},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
             {plan&&PP_TABLE_MS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,PP_MS_LABEL[m],null,"Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[m]+" — sorted by that latest date",i===0?"sep":"")}</React.Fragment>;})}
-            {plan&&th("need","Need on site",{minWidth:132},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
+            {plan&&th("need","Need on site",{minWidth:112},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
             {fin&&th("proposed","Proposed",{textAlign:"right"},"ACC / Aconex amount proposed (subcontract + other)","sep")}
             {fin&&th("instructed","Instructed",{textAlign:"right"},"Amount instructed by the client")}
             {fin&&th("variance","Var. budget − instructed",{textAlign:"right"},"Budget − instructed: positive = under budget (green), negative = over budget (red). Empty until the package is instructed.")}
