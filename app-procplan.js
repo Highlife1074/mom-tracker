@@ -971,12 +971,24 @@ var PP_TABLE_CSS=
   // the screen table scrolls inside its own box: the sideways scrollbar stays at the bottom
   // of the window and the headers stay on top (ppt-wrap; not in print)
   '.ppt-wrap{overflow:auto;max-height:calc(100vh - 170px);border:1px solid #e6e2d9;border-radius:6px}'+
-  '.ppt-wrap .ppt{margin:0}'+
+  '.ppt-wrap .ppt{margin:0;overflow:visible!important}'+
   '.ppt-wrap .ppt thead{position:sticky;top:0;z-index:5}'+
   '.ppt-wrap .ppt thead th,.ppt-wrap .ppt thead td{background:#eef2f8}'+
   '.ppt-wrap .ppt thead tr.ppt-g th{background:#f4f6fa}'+
   '.ppt-wrap .ppt thead tr.ppt-scale td{background:#fafaf8}'+
   '@media(max-width:768px){.ppt-wrap{max-height:none}}'+
+  // thicker scrollbars on the table box and on the bar fixed at the bottom of the screen
+  '.ppt-wrap::-webkit-scrollbar,.pp-fscroll::-webkit-scrollbar{height:16px;width:12px}'+
+  '.ppt-wrap::-webkit-scrollbar-track,.pp-fscroll::-webkit-scrollbar-track{background:#eef2f8}'+
+  '.ppt-wrap::-webkit-scrollbar-thumb,.pp-fscroll::-webkit-scrollbar-thumb{background:#8ea6c4;border-radius:8px;border:3px solid #eef2f8}'+
+  '.ppt-wrap::-webkit-scrollbar-thumb:hover,.pp-fscroll::-webkit-scrollbar-thumb:hover{background:#5f7ea6}'+
+  '.ppt-wrap,.pp-fscroll{scrollbar-color:#8ea6c4 #eef2f8}'+
+  // the Package column stays on the left while the table scrolls sideways
+  '.ppt-wrap .ppt tr>:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:inset -1px 0 0 #d9d5ca}'+
+  '.ppt-wrap .ppt tbody tr[style]>:first-child{background:inherit}'+
+  '.ppt-wrap .ppt thead tr>:first-child{z-index:6;background:#eef2f8}'+
+  '.ppt-wrap .ppt thead tr.ppt-g>:first-child{background:#f4f6fa}'+
+  '.ppt-wrap .ppt thead tr.ppt-scale>:first-child{background:#fafaf8}'+
   '.ppt.ppt-tl tr.ppt-main td{border-bottom:none}'+
   '.ppt tr.ppt-strip td{border-right:none;border-left:none;padding-top:0;padding-bottom:7px}'+
   '.ppt tr.ppt-strip td.nx{font-size:11px;color:#6f6b62;line-height:1.35}'+
@@ -1041,10 +1053,10 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     var l=vis.filter(function(r){return ppKpiOf(r,k.k);});
     var b=l.reduce(function(s,r){return s+ppBudget(r.td);},0);
     var col=k.cls==="bad"?PP_STATUS.late.fg:k.cls==="warn"?PP_STATUS.soon.fg:k.cls==="good"?PP_STATUS.ok.fg:"#14171c";
-    return '<div class="k">'+esc(k.label)+'<b style="color:'+col+'">'+l.length+'</b><small>'+ppMoney(b)+'</small></div>';
+    return '<div class="k">'+esc(k.label)+'<b style="color:'+col+'">'+l.length+'</b>'+(fin?'<small>'+ppMoney(b)+'</small>':'')+'</div>';
   }).join("")+'</div>';
   var ft=ppFinanceTotals(vis);
-  html+='<div class="fin"><span>Budget <b>'+ppNum(ft.budget)+'</b></span><span>Proposed <b style="color:#0f5299">'+ppNum(ft.proposed)+'</b></span>'+
+  if(fin)html+='<div class="fin"><span>Budget <b>'+ppNum(ft.budget)+'</b></span><span>Proposed <b style="color:#0f5299">'+ppNum(ft.proposed)+'</b></span>'+
     '<span>Instructed <b style="color:#1e6b3a">'+ppNum(ft.instructed)+'</b></span><span>Var. budget − instructed <b style="color:'+(ft.variance<0?'#b3302a':'#1e6b3a')+'">'+(ft.nVar?ppSigned(ft.variance):'—')+'</b>'+
     (ft.nVar?' on '+ft.nVar+' instructed package'+(ft.nVar>1?'s':''):'')+'</span></div>';
   if(mode==="timeline"){
@@ -1102,7 +1114,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     return h;
   }
   if(grouped)ppGroups(vis).forEach(function(g){
-    html+='<tr class="g"><td colspan="'+nCols+'">'+esc(g.dept||"No department")+' · '+g.rows.length+' · '+ppMoney(g.rows.reduce(function(s,r){return s+ppBudget(r.td);},0))+'</td></tr>';
+    html+='<tr class="g"><td colspan="'+nCols+'">'+esc(g.dept||"No department")+' · '+g.rows.length+(fin?' · '+ppMoney(g.rows.reduce(function(s,r){return s+ppBudget(r.td);},0)):'')+'</td></tr>';
     g.rows.forEach(function(r){html+=line(r);});
   });
   else vis.forEach(function(r){html+=line(r);});
@@ -1514,6 +1526,43 @@ function PpRouteCell({td,upd}){
     </select>
   </div>;
 }
+// Sideways scrollbar fixed at the bottom of the screen for a wide box (the Package table):
+// shown while the box is wider than its frame and its own scrollbar is below the screen;
+// both scroll together. Desktop only.
+function PpFloatScroll({target}){
+  const barRef=useRef(null);
+  const [st,setSt]=useState(null);
+  useEffect(function(){
+    var lock=false;
+    function upd(){
+      var el=target.current;
+      if(!el||window._ppPhone){setSt(null);return;}
+      var r=el.getBoundingClientRect(),vh=window.innerHeight||document.documentElement.clientHeight;
+      var need=el.scrollWidth>el.clientWidth+2&&r.bottom>vh-4&&r.top<vh-60;
+      setSt(function(o){
+        var n=need?{left:Math.round(r.left),width:el.clientWidth,sw:el.scrollWidth}:null;
+        if(!o&&!n)return o;
+        if(o&&n&&o.left===n.left&&o.width===n.width&&o.sw===n.sw)return o;
+        return n;
+      });
+    }
+    function fromBox(){var el=target.current,b=barRef.current;if(!el||!b||lock)return;lock=true;b.scrollLeft=el.scrollLeft;lock=false;}
+    upd();
+    window.addEventListener("scroll",upd,true);window.addEventListener("resize",upd);
+    var el=target.current;if(el)el.addEventListener("scroll",fromBox);
+    var ro=null;try{if(el&&window.ResizeObserver){ro=new ResizeObserver(upd);ro.observe(el);if(el.firstChild)ro.observe(el.firstChild);}}catch(e){}
+    var t=setInterval(upd,1500);
+    return function(){window.removeEventListener("scroll",upd,true);window.removeEventListener("resize",upd);if(el)el.removeEventListener("scroll",fromBox);if(ro)ro.disconnect();clearInterval(t);};
+  },[]);
+  useEffect(function(){var el=target.current,b=barRef.current;if(el&&b)b.scrollLeft=el.scrollLeft;},[st]);
+  if(!st)return null;
+  return <div ref={barRef} className="pp-fscroll" title="Scroll the table sideways"
+    onScroll={function(e){var el=target.current;if(el&&Math.abs(el.scrollLeft-e.currentTarget.scrollLeft)>1)el.scrollLeft=e.currentTarget.scrollLeft;}}
+    style={{position:"fixed",bottom:0,left:st.left,width:st.width,height:18,overflowX:"scroll",overflowY:"hidden",zIndex:60,
+      background:"#eef2f8",borderTop:"1px solid #c7d5e6",boxShadow:"0 -2px 6px rgba(23,42,66,.08)"}}>
+    <div style={{width:st.sw,height:1}}></div>
+  </div>;
+}
 // The Package view: every package of the project (Package list and Procurement plan merged).
 // Rendered by TendersView as its list; onOpenTender opens a package sheet in place.
 function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,onOpenTender,onNavZone,onQuickUpdate,actions,primary}){
@@ -1580,6 +1629,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   var ft=ppFinanceTotals(vis);
   var NOACT={next:[],block:[]};
   const tdRef=useRef(tenders);tdRef.current=tenders;
+  const wrapRef=useRef(null);             // the table box, for the scrollbar fixed at the bottom
   function upd(td,patch){if(blockIfReadOnly())return;saveTenders((tdRef.current||[]).map(function(t){return t.id===td.id?Object.assign({},t,patch):t;}));}
   function openTd(id){
     if(onOpenTender){var t=(tenders||[]).find(function(x){return x.id===id;});if(t)onOpenTender(t);return;}
@@ -1708,18 +1758,18 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
           style={{cursor:"pointer",background:on?"var(--rule-2,#efece5)":undefined}}>
           <div className="kpi-l" style={{color:on?"var(--ink,#16181d)":undefined}}>{k.label}{on?" ✕":""}</div>
           <div className="kpi-v">{l.length}</div>
-          <div className="kpi-s">{ppMoney(b)} budget</div>
+          {fin&&<div className="kpi-s">{ppMoney(b)} budget</div>}
         </div>;
       })}
     </div>
-    <div style={{display:"flex",gap:18,flexWrap:"wrap",alignItems:"baseline",background:"#fff",border:"1px solid var(--rule,#ddd9cf)",borderRadius:8,padding:"7px 14px",margin:"0 0 10px",fontSize:12,color:"#6f6b62"}}
-      title="Totals of the packages shown. Awarded = budget of the released packages; Proposed = their ACC/Aconex amount; Variance = Awarded − Proposed">
+    {fin&&<div style={{display:"flex",gap:18,flexWrap:"wrap",alignItems:"baseline",background:"#fff",border:"1px solid var(--rule,#ddd9cf)",borderRadius:8,padding:"7px 14px",margin:"0 0 10px",fontSize:12,color:"#6f6b62"}}
+      title="Totals of the packages shown: budget, proposed (ACC / Aconex amount), instructed, and budget − instructed on the instructed packages">
       <span>Budget <b style={{color:"var(--ink)",fontFamily:"var(--font-mono)"}}>{ppNum(ft.budget)}</b></span>
       <span>Proposed <b style={{color:"#0f5299",fontFamily:"var(--font-mono)"}}>{ppNum(ft.proposed)}</b></span>
       <span>Instructed <b style={{color:"#1e6b3a",fontFamily:"var(--font-mono)"}}>{ppNum(ft.instructed)}</b></span>
       <span>Var. budget − instructed <b style={{color:ft.variance<0?"#b3302a":"#1e6b3a",fontFamily:"var(--font-mono)"}}>{ft.nVar?ppSigned(ft.variance):"—"}</b>
         {ft.nVar?<span style={{fontSize:10.5}}> on {ft.nVar} instructed package{ft.nVar>1?"s":""}</span>:null}</span>
-    </div>
+    </div>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
       <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Package, department, owner…" style={{width:210,padding:"5px 10px",fontSize:12}}/>
       {HZ.map(function(h){return <button key={h[0]} className={chip(horizon===h[0])} onClick={function(){setHorizon(h[0]);}}>{h[1]}</button>;})}
@@ -1759,12 +1809,13 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         <input type="checkbox" checked={tl} onChange={function(e){setTl(e.target.checked);}} style={{width:"auto",margin:0}}/>Timelines</label>}
       {(mode==="timeline"||(tl&&dl))&&<button className={chip(leg)} onClick={function(){setLeg(!leg);}} title="Show / hide the legend of the timelines">{leg?"Hide legend":"Legend"}</button>}
       {(kpiF||horizon!=="all"||quickF||typeF!=="all"||deptF!=="all"||ownerF!=="all"||awdF!=="all"||q)&&<button className="btn btn-sm" onClick={function(){setKpiF("");setHorizon("all");setQuickF("");setTypeF("all");setDeptF("all");setOwnerF("all");setAwdF("all");setQ("");}}>Clear filters</button>}
-      <span style={{fontSize:11,color:"#9b968b",marginLeft:"auto"}}>{vis.length} / {rows.length} packages · {ppMoney(budgetVis)} budget</span>
+      <span style={{fontSize:11,color:"#9b968b",marginLeft:"auto"}}>{vis.length} / {rows.length} packages{fin?" · "+ppMoney(budgetVis)+" budget":""}</span>
     </div>
     {leg&&(mode==="timeline"||model)&&<div style={{marginBottom:10}} dangerouslySetInnerHTML={{__html:ppLegendHtml(mode==="timeline"?"gantt":"strip")}}></div>}
+    {mode==="table"&&<PpFloatScroll key={cols+"|"+(tl?1:0)} target={wrapRef}/>}
     {mode==="timeline"
       ?(vis.length>0&&<ProcPlanGantt vis={vis} grouped={grouped} onNavTender={function(id){openTd(id);}}/>)
-      :<div className="phone-scroll ppt-wrap">
+      :<div className="phone-scroll ppt-wrap" ref={wrapRef}>
       <table className={"tbl ppt"+(model?" ppt-tl":"")} style={{fontSize:12}}>
         <thead>
           <tr className="ppt-g">
@@ -1801,7 +1852,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             return <React.Fragment key={g.dept||"—"}>
               <tr><td colSpan={nCols} style={{background:"#fafaf8",fontSize:10.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#4a4740"}}>
                 {g.dept||"No department"} <span style={{fontWeight:400,textTransform:"none",letterSpacing:0,color:"#9b968b",marginLeft:6}}>
-                  {g.rows.length} package{g.rows.length!==1?"s":""} · {ppMoney(b)}{nl?" · ":""}{nl?<b style={{color:"#b3302a"}}>{nl} late</b>:null}</span></td></tr>
+                  {g.rows.length} package{g.rows.length!==1?"s":""}{fin?" · "+ppMoney(b):""}{nl?" · ":""}{nl?<b style={{color:"#b3302a"}}>{nl} late</b>:null}</span></td></tr>
               {g.rows.map(line)}
             </React.Fragment>;
           })
