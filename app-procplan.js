@@ -1044,21 +1044,24 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     return;
   }
   var model=withTl&&vis.length?ppNowModel(vis,now):null;
-  var nCols=3+(plan?7:0)+(fin?3:0)+(fol?4:0);
-  var tlSpan=plan?7:nCols-3,tlRest=nCols-3-tlSpan;
+  // Finance alone: no Next deadline column (and no timeline strip)
+  var dl=plan||fol,nb=dl?3:2;
+  if(!dl)model=null;
+  var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
+  var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
   var tableW=470+(plan?880:0)+(fin?330:0)+(fol?780:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
-    '<tr class="ppt-g"><th colspan="3">Package</th>'+(plan?'<th colspan="6" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
+    '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="6" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
     (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
-    '<th>Package</th><th class="r">Budget</th><th>Next deadline</th>'+
+    '<th>Package</th><th class="r">Budget</th>'+(dl?'<th>Next deadline</th>':'')+
     (plan?PP_TABLE_MS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(PP_MS_LABEL[m])+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
     (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
-    (model?'<tr class="ppt-scale"><td colspan="3" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
+    (model?'<tr class="ppt-scale"><td colspan="'+nb+'" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
     '</thead><tbody>';
   function li(l,cls){return l.length?l.map(function(x){return '<div>'+esc(x)+'</div>';}).join(""):'<span style="color:#ccc">—</span>';}
   function line(r){
@@ -1067,8 +1070,8 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     var h='<tr class="ppt-main'+(soon?' s21':'')+'"><td><b>'+esc(td.title||"(untitled)")+'</b><div class="sm">'+esc(td.package||"No department")+' · '+esc(ppTypeLabel(ppType(td)))+'</div>'+
       (soon?'<div class="sm" style="color:#b35c00;font-weight:700">starts on site ≤ 21 d</div>':'')+'</td>'+
       '<td class="r mono">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>'+
-      '<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
-        (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>';
+      (dl?'<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
+        (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>':'');
     if(plan){
       PP_TABLE_MS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+'">'+ppMsCellHtml(ppMsCell(td,p,m,now))+'</td>';});
       h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div></td>';
@@ -1085,7 +1088,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
         '<td class="a">'+li(ppNotesText(td))+'</td>';
     }
     h+='</tr>';
-    if(model)h+='<tr class="ppt-strip'+(soon?' s21':'')+'"><td colspan="3" class="nx">'+ppNowHtml(model.rows[td.id])+'</td>'+tlCells(ppNowStripHtml(model.rows[td.id],model))+'</tr>';
+    if(model)h+='<tr class="ppt-strip'+(soon?' s21':'')+'"><td colspan="'+nb+'" class="nx">'+ppNowHtml(model.rows[td.id])+'</td>'+tlCells(ppNowStripHtml(model.rows[td.id],model))+'</tr>';
     return h;
   }
   if(grouped)ppGroups(vis).forEach(function(g){
@@ -1573,10 +1576,12 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
     if(onNavTender)onNavTender(id,"procplan");
   }
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
-  var nCols=3+(plan?7:0)+(fin?3:0)+(fol?4:0);
+  // Finance alone: no Next deadline column (and no timeline strip)
+  var dl=plan||fol,nb=dl?3:2;
+  var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
-  var tlSpan=plan?7:nCols-3,tlRest=nCols-3-tlSpan;
-  var model=tl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
+  var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
+  var model=tl&&dl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
   var HZ=[["all","Any date"],["4w","Next deadline ≤ 4 weeks"],["8w","≤ 8 weeks"]];
   var QF=[["cl","With client","At least one document waits for the client's answer"],["late","Late delivery","Will start late: forecast delivery after a start on site still to come (packages already started are not listed)"],["na","Not awarded","No subcontractor recorded in Awards"]];
   function filterLabel(){
@@ -1635,13 +1640,13 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             style={{fontSize:10.5,padding:"1px 8px",marginTop:4}}>⚡ Update</button>}
         </td>
         <td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,whiteSpace:"nowrap"}}>{bud?bud.toLocaleString():"—"}</td>
-        <td style={{minWidth:160}}>
+        {dl&&<td style={{minWidth:160}}>
           {ppNextAct(p)&&<div style={{fontSize:9.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b"}}>To do</div>}
           <span className="badge" style={{background:st.bg,color:st.fg}} title={ppNextAct(p)?"Next thing to do on this package, and its latest date (worked back from the need on site)":st.label}>{ppNextAct(p)||st.label}</span>
           {ppNextAct(p)?<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppNextBy(p)}</div>
             :p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}
           <div dangerouslySetInnerHTML={{__html:ppWhoHtml(stg)}}/>
-        </td>
+        </td>}
         {plan&&PP_TABLE_MS.map(function(m,i){
           return <td key={m} className={"ms"+(i===0?" sep":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppMsCell(td,p,m,now))}}></td>;
         })}
@@ -1656,7 +1661,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
       </tr>
       {model&&<tr className="ppt-strip" style={hl}>
-        <td colSpan={3} className="nx" style={soon?{boxShadow:"inset 3px 0 0 var(--amber,#b35c00)"}:null} dangerouslySetInnerHTML={{__html:ppNowHtml(model.rows[td.id])}}></td>
+        <td colSpan={nb} className="nx" style={soon?{boxShadow:"inset 3px 0 0 var(--amber,#b35c00)"}:null} dangerouslySetInnerHTML={{__html:ppNowHtml(model.rows[td.id])}}></td>
         <td colSpan={tlSpan} dangerouslySetInnerHTML={{__html:ppNowStripHtml(model.rows[td.id],model)}}></td>
         {tlRest>0&&<td colSpan={tlRest}></td>}
       </tr>}
@@ -1739,10 +1744,10 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         <option value="—">Not awarded</option>
       </select>
       <button className={chip(grouped)} onClick={function(){setGrouped(!grouped);}} title="Group the packages by department">By department</button>
-      {mode==="table"&&<label className="phone-hide" title="A strip under each package: the plan chain (latest dates), the milestones reached, the need on site, the delivery forecast and today"
+      {mode==="table"&&dl&&<label className="phone-hide" title="A strip under each package: the plan chain (latest dates), the milestones reached, the need on site, the delivery forecast and today"
         style={{display:"inline-flex",alignItems:"center",gap:6,margin:"0 0 0 6px",cursor:"pointer",fontSize:12,fontWeight:600,textTransform:"none",letterSpacing:0,fontFamily:"inherit",color:"var(--ink)"}}>
         <input type="checkbox" checked={tl} onChange={function(e){setTl(e.target.checked);}} style={{width:"auto",margin:0}}/>Timelines</label>}
-      {(mode==="timeline"||tl)&&<button className={chip(leg)} onClick={function(){setLeg(!leg);}} title="Show / hide the legend of the timelines">{leg?"Hide legend":"Legend"}</button>}
+      {(mode==="timeline"||(tl&&dl))&&<button className={chip(leg)} onClick={function(){setLeg(!leg);}} title="Show / hide the legend of the timelines">{leg?"Hide legend":"Legend"}</button>}
       {(kpiF||horizon!=="all"||quickF||typeF!=="all"||deptF!=="all"||ownerF!=="all"||awdF!=="all"||q)&&<button className="btn btn-sm" onClick={function(){setKpiF("");setHorizon("all");setQuickF("");setTypeF("all");setDeptF("all");setOwnerF("all");setAwdF("all");setQ("");}}>Clear filters</button>}
       <span style={{fontSize:11,color:"#9b968b",marginLeft:"auto"}}>{vis.length} / {rows.length} packages · {ppMoney(budgetVis)} budget</span>
     </div>
@@ -1753,7 +1758,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
       <table className={"tbl ppt"+(model?" ppt-tl":"")} style={{fontSize:12}}>
         <thead>
           <tr className="ppt-g">
-            <th colSpan={3}>Package</th>
+            <th colSpan={nb}>Package</th>
             {plan&&<th colSpan={6} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={3} className="sep">Finance</th>}
@@ -1762,7 +1767,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
           <tr>
             {th("title","Package",{minWidth:200})}
             {th("budget","Budget",{textAlign:"right"})}
-            {th("deadline","Next deadline",{minWidth:160},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
+            {dl&&th("deadline","Next deadline",{minWidth:160},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
             {plan&&PP_TABLE_MS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,PP_MS_LABEL[m],null,"Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[m]+" — sorted by that latest date",i===0?"sep":"")}</React.Fragment>;})}
             {plan&&th("need","Need on site",{minWidth:132},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
             {fin&&th("proposed","Proposed",{textAlign:"right"},"ACC / Aconex amount proposed (subcontract + other)","sep")}
@@ -1774,7 +1779,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {fol&&th("notes","Notes",null,"Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one. Sorted by number.")}
           </tr>
           {model&&<tr className="ppt-scale">
-            <td colSpan={3} style={{fontSize:10.5,color:"#9b968b"}}>Now · delay → projected arrival</td>
+            <td colSpan={nb} style={{fontSize:10.5,color:"#9b968b"}}>Now · delay → projected arrival</td>
             <td colSpan={tlSpan} dangerouslySetInnerHTML={{__html:ppScaleHtml(model)}}></td>
             {tlRest>0&&<td colSpan={tlRest}></td>}
           </tr>}
