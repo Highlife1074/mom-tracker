@@ -49,6 +49,34 @@ const THEORETICAL_CHAIN=[
   {key:"itp",     from:"contract",days:0, anchor:"startMinus"},
   {key:"mar",     from:"contract",days:14}
 ];
+// The notes of a package (td.tenderNotes, edited in the sheet's Actions & notes tab and in the
+// Notes column of the Package list). An old package may still hold one free-text td.notes.
+function tenderNotesOf(td){
+  if(td&&Array.isArray(td.tenderNotes))return td.tenderNotes;
+  return td&&td.notes?[{id:"legacy-note",title:"Note",content:String(td.notes)}]:[];
+}
+function newTenderNote(o){
+  return Object.assign({id:uuid(),title:"",content:"",at:today(),by:window._currentUser?window._currentUser.name:""},o||{});
+}
+// Short notes summary, shown above the tabs of the package sheet so the notes are seen
+// whatever the tab; a click opens the Actions & notes tab where they are edited.
+function TenderNotesStrip({td,onOpen}){
+  var notes=tenderNotesOf(td).filter(function(n){return String(n.title||"").trim()||String(n.content||"").trim();});
+  if(!notes.length)return null;
+  return <div onClick={onOpen} title="Open the notes (Actions & notes tab)"
+    style={{display:"flex",gap:8,alignItems:"flex-start",flexWrap:"wrap",margin:"0 0 8px",padding:"7px 12px",border:"1px solid #ece3c8",
+      borderLeft:"3px solid var(--gold,#c9a84c)",borderRadius:6,background:"#fffdf6",cursor:"pointer",fontSize:12,lineHeight:1.4}}>
+    <span style={{fontWeight:700,color:"var(--gold-ink,#8a6a1e)",whiteSpace:"nowrap"}}>📝 Notes ({notes.length})</span>
+    <div style={{flex:1,minWidth:200,display:"flex",flexDirection:"column",gap:2}}>
+      {notes.slice(0,3).map(function(n,i){
+        var c=String(n.content||"").trim();
+        return <div key={n.id||i} style={{color:"#4a4740",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={(n.title||"")+(c?"\n"+c:"")}>
+          {n.title&&<b style={{color:"var(--ink,#16181d)"}}>{n.title}</b>}{n.title&&c?" — ":""}{c}</div>;
+      })}
+      {notes.length>3&&<span style={{fontSize:10.5,color:"#9b968b"}}>+ {notes.length-3} more</span>}
+    </div>
+  </div>;
+}
 function addCalDays(dateStr,days){
   if(!isValidDate(dateStr))return "";
   var d=parseISODate(dateStr);   // local midnight: new Date("YYYY-MM-DD") is UTC and slips a day west of Greenwich
@@ -4232,7 +4260,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                       🗓 {fmtDate(td.startOnSite||f.r.startWeek)} <span style={{fontSize:9,fontWeight:600,color:"#4caf50"}}>· {f.r.label||"task"} ↗</span>
                     </span>;
                   }
-                  return <input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} onChange={function(e){updTd("startOnSite",e.target.value);}}
+                  return <DraftDateInput value={td.startOnSite||""} onCommit={function(v){updTd("startOnSite",v);}}
                     title="No schedule task is linked to this tender yet — you can set the date by hand. As soon as a task is linked, the schedule takes over."
                     style={{fontSize:11,border:"1px solid #e8e6df",borderRadius:5,padding:"2px 6px"}}/>;
                 })()}
@@ -4301,10 +4329,12 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           </div>}
         </div>
 
+        {tdTab!=="actions"&&<TenderNotesStrip td={td} onOpen={function(){setTdTab("actions");}}/>}
+
         {/* One tab per job. Submissions = every document, edited in one place each;
             Contract = contract circuit + contracts and addendums; Flow = read-only history. */}
         {(function(){
-          var nNotes=Array.isArray(td.tenderNotes)?td.tenderNotes.length:(td.notes?1:0);
+          var nNotes=tenderNotesOf(td).length;
           var nOpen=linkedTasks.filter(function(t){return t.status!=="done";}).length;
           var ctt=tenderContractTotals(td,contractors);
           var docs=tenderDocs(td);
@@ -4502,11 +4532,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
 
 
         {(function(){
-          var notes=Array.isArray(td.tenderNotes)?td.tenderNotes:(td.notes?[{id:uuid(),title:"Note",content:td.notes}]:[]);
+          var notes=tenderNotesOf(td);
           return <div className="card" style={{marginBottom:10}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:notes.length>0?10:0}}>
               <div style={{fontWeight:700,fontSize:13}}>📝 Notes ({notes.length})</div>
-              <button className="btn btn-sm" onClick={function(){var ns=[...notes,{id:uuid(),title:"Note "+(notes.length+1),content:"",open:true}];updTd("tenderNotes",ns);}}>＋ Note</button>
+              <button className="btn btn-sm" onClick={function(){var ns=[...notes,newTenderNote({title:"Note "+(notes.length+1),open:true})];updTd("tenderNotes",ns);}}>＋ Note</button>
             </div>
             {notes.map(function(note,ni){
               function updNote(field,val){var ns=notes.map(function(n,j){return j!==ni?n:Object.assign({},n,{[field]:val});});updTd("tenderNotes",ns);}
@@ -4514,6 +4544,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <div onClick={function(){updNote("open",!note.open);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",background:note.open?"#f8f7f4":"#fff"}}>
                   <span style={{fontSize:12,color:"#aaa"}}>{note.open?"▾":"▸"}</span>
                   <input type="text" value={note.title||""} onChange={function(e){e.stopPropagation();updNote("title",e.target.value);}} onClick={function(e){e.stopPropagation();}} placeholder="Note title..." style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  {(note.by||note.at)&&<span style={{fontSize:10,color:"#9b968b",whiteSpace:"nowrap"}}>{[note.by?String(note.by).split(",")[0]:"",note.at?fmtDate(note.at):""].filter(Boolean).join(" · ")}</span>}
                   <button onClick={function(e){e.stopPropagation();if(safeConfirm("Delete note?"))updTd("tenderNotes",notes.filter(function(_,j){return j!==ni;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",fontSize:12}} onMouseEnter={function(e){e.currentTarget.style.color="#b3302a";}} onMouseLeave={function(e){e.currentTarget.style.color="#ddd";}}>🗑</button>
                 </div>
                 {note.open&&<div style={{padding:"8px 10px",borderTop:"1px solid #f0ede6"}}>
