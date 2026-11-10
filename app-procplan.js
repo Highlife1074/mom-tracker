@@ -35,6 +35,16 @@ const PP_STEPS=[
   {k:"buffer",label:"Float before start on site",ms:"need",msLabel:"Start on site"}
 ];
 const PP_MS_LABEL={start:"Start tender docs"};
+// The next milestone said as the thing to do (Next deadline column, badges): "Approved" in
+// red read like a status; "Get the approval" + its latest date reads as the action that is late.
+const PP_MS_TODO={start:"Start the tender documents",issue:"Issue the tender",bids:"Receive the bids",recommend:"Send the recommendation",
+  approved:"Get the approval",contract:"Sign the contract / PO",submittals:"Get the submittals approved",ready:"Have it ready to ship",delivered:"Deliver to site"};
+function ppNextAct(p){return p&&p.next&&p.need&&p.status!=="past"&&p.status!=="cancelled"?(PP_MS_TODO[p.next]||PP_MS_LABEL[p.next]):"";}
+function ppNextBy(p){
+  if(!ppNextAct(p))return "";
+  var d=p.latest[p.next==="ready"&&p.fcDelivery?"delivered":p.next];
+  return (isValidDate(d)?"by "+fmtDate(d):"")+(p.daysLeft!==null&&p.daysLeft!==undefined?(isValidDate(d)?" · ":"")+ppDaysText(p.daysLeft):"");
+}
 PP_STEPS.forEach(function(s){PP_MS_LABEL[s.ms]=s.msLabel;});
 // Calendar days. A subcontract has no fabrication of its own: its float covers mobilisation.
 const PP_DEFAULT_TEMPLATES={
@@ -555,7 +565,7 @@ function ppGanttHtml(model,grouped){
     var r=g.r,st=PP_STATUS[r.p.status];
     var soon=ppStartsSoon(r.p);
     var h='<div class="ppg-row"'+(soon?' style="background:#fdf1e0"':'')+'><div class="ppg-l"'+(soon?' style="background:#fdf1e0;box-shadow:inset 3px 0 0 #b35c00"':'')+'><span class="t">'+esc(r.td.title||"(untitled)")+'</span><span class="ppg-st" style="background:'+st.bg+';color:'+st.fg+'">'+
-      esc(r.p.next&&r.p.need&&r.p.status!=="past"?PP_MS_LABEL[r.p.next]:st.label)+(r.p.daysLeft!==null?' · '+ppDaysText(r.p.daysLeft):'')+'</span></div><div class="ppg-tr">';
+      esc(ppNextAct(r.p)||st.label)+(r.p.daysLeft!==null?' · '+ppDaysText(r.p.daysLeft):'')+'</span></div><div class="ppg-tr">';
     g.segs.forEach(function(s){h+=seg(s,st);});
     if(g.need)h+='<div class="ppg-nd" style="left:'+g.need.left.toFixed(3)+'%"></div>';
     if(g.fc)h+='<div class="ppg-fc'+(g.fc.actual?' act':g.fc.late?' late':'')+'" style="left:'+g.fc.left.toFixed(3)+'%"></div>';
@@ -598,7 +608,7 @@ function ProcPlanGantt({vis,grouped,onNavTender}){
         <span className="t" style={{cursor:onNavTender?"pointer":"default"}} title={(td.title||"")+(td.package?" · "+td.package:"")+" — open the package"}
           onClick={function(){if(onNavTender)onNavTender(td.id,"procplan");}}>{td.title||"(untitled)"}</span>
         <span className="ppg-st" style={{background:st.bg,color:st.fg}}>
-          {p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label}{p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""}</span>
+          {ppNextAct(p)||st.label}{p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""}</span>
       </div>
       <div className="ppg-tr">
         {g.segs.map(function(s){
@@ -1057,8 +1067,8 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     var h='<tr class="ppt-main'+(soon?' s21':'')+'"><td><b>'+esc(td.title||"(untitled)")+'</b><div class="sm">'+esc(td.package||"No department")+' · '+esc(ppTypeLabel(ppType(td)))+'</div>'+
       (soon?'<div class="sm" style="color:#b35c00;font-weight:700">starts on site ≤ 21 d</div>':'')+'</td>'+
       '<td class="r mono">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>'+
-      '<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label)+'</span>'+
-        (p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>';
+      '<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
+        (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>';
     if(plan){
       PP_TABLE_MS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+'">'+ppMsCellHtml(ppMsCell(td,p,m,now))+'</td>';});
       h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div></td>';
@@ -1363,7 +1373,7 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
           <div style={{fontSize:11.5,color:"#6f6b62",marginTop:2,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             <span>{td.package||"No department"} · {ppTypeLabel(ppType(td))}</span>
             {td.ownerTender&&<span>· {td.ownerTender}</span>}
-            <span className="badge" style={{background:st.bg,color:st.fg}}>{p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label}{p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""}</span>
+            <span className="badge" style={{background:st.bg,color:st.fg}}>{ppNextAct(p)||st.label}{p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""}</span>
             {stg.text&&<span>Now: <b>{ppNowText(stg)}</b>{stg.next?" · next: "+stg.next:""}</span>}
             <span>· Need on site <b>{p.need?fmtDate(p.need):"—"}</b>{f?<PpMoveStartBtn td={td} f={f}/>:null}</span>
           </div>
@@ -1626,8 +1636,10 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         </td>
         <td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,whiteSpace:"nowrap"}}>{bud?bud.toLocaleString():"—"}</td>
         <td style={{minWidth:160}}>
-          <span className="badge" style={{background:st.bg,color:st.fg}}>{p.next&&p.need&&p.status!=="past"?PP_MS_LABEL[p.next]:st.label}</span>
-          {p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}
+          {ppNextAct(p)&&<div style={{fontSize:9.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b"}}>To do</div>}
+          <span className="badge" style={{background:st.bg,color:st.fg}} title={ppNextAct(p)?"Next thing to do on this package, and its latest date (worked back from the need on site)":st.label}>{ppNextAct(p)||st.label}</span>
+          {ppNextAct(p)?<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppNextBy(p)}</div>
+            :p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}
           <div dangerouslySetInnerHTML={{__html:ppWhoHtml(stg)}}/>
         </td>
         {plan&&PP_TABLE_MS.map(function(m,i){
@@ -1750,7 +1762,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
           <tr>
             {th("title","Package",{minWidth:200})}
             {th("budget","Budget",{textAlign:"right"})}
-            {th("deadline","Next deadline",{minWidth:160},"Next milestone not reached yet, the days left to its latest date, and who holds the package now")}
+            {th("deadline","Next deadline",{minWidth:160},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
             {plan&&PP_TABLE_MS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,PP_MS_LABEL[m],null,"Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[m]+" — sorted by that latest date",i===0?"sep":"")}</React.Fragment>;})}
             {plan&&th("need","Need on site",{minWidth:132},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
             {fin&&th("proposed","Proposed",{textAlign:"right"},"ACC / Aconex amount proposed (subcontract + other)","sep")}
