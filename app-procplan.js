@@ -636,7 +636,7 @@ function ppExportXlsx(vis,acts){
   function d(v){return isValidDate(v)?{xlDate:_ppDay(v)-EPOCH}:"";}
   var head=["Package","Department","Type","Budget","Need on site","Need from","Status","Next milestone","Days left","Total lead (d)"];
   PP_MS_ORDER.forEach(function(m){if(m==="need")return;head.push(PP_MS_LABEL[m]+" — latest");head.push(PP_MS_LABEL[m]+" — actual");});
-  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Variance","Approval route","Owner","Next steps","Blocking points");
+  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Variance","Approval route","Owner","Next steps","Blocking points","Notes");
   var aoa=[head];
   vis.forEach(function(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status];
@@ -655,7 +655,7 @@ function ppExportXlsx(vis,acts){
       (td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return x.subcontractor;}).join(", ")||td.contractor||"",
       prop||"",Number(td.instructionAmount)||"",String(td.instructionNumber||"").trim(),bud&&prop?bud-prop:"",
       (function(){try{return tenderRouteLabel(td);}catch(e){return "";}})(),td.ownerTender||"",
-      [td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean).join("\n"),a.block.map(ppActText).join("\n"));
+      [td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean).join("\n"),a.block.map(ppActText).join("\n"),ppNotesText(td).join("\n"));
     aoa.push(line);
   });
   aoa=aoa.map(function(line,ri){return line.map(function(v,ci){if(v&&typeof v==="object"&&"xlDate" in v){dateCells.push([ri,ci]);return v.xlDate;}return v;});});
@@ -678,7 +678,7 @@ function ppExportXlsx(vis,acts){
 var PP_COLSETS=[
   {k:"plan",label:"Plan",tip:"Milestones of the procurement chain and the need on site"},
   {k:"finance",label:"Finance",tip:"Awarded to, proposed, instructed, instruction number, variance, approval route"},
-  {k:"follow",label:"Follow-up",tip:"Owner, next steps and blocking points"},
+  {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points and notes"},
   {k:"all",label:"All in one",tip:"Every column on one line: plan, finance and follow-up (scrolls sideways; print it on A3)"}
 ];
 var PP_TABLE_MS=["start","issue","approved","contract","submittals","delivered"];
@@ -901,20 +901,20 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   }
   var model=withTl?ppGanttModel(vis,now):null,byId={};
   if(model)model.rows.forEach(function(g){byId[g.r.td.id]=g;});
-  var nCols=3+(plan?7:0)+(fin?6:0)+(fol?3:0);
+  var nCols=3+(plan?7:0)+(fin?6:0)+(fol?4:0);
   var tlSpan=plan?7:nCols-3,tlRest=nCols-3-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=470+(plan?880:0)+(fin?680:0)+(fol?560:0);
+  var tableW=470+(plan?880:0)+(fin?680:0)+(fol?780:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
     '<tr class="ppt-g"><th colspan="3">Package</th>'+(plan?'<th colspan="6" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
-    (fin?'<th colspan="6" class="sep">Finance</th>':'')+(fol?'<th colspan="3" class="sep">Follow-up</th>':'')+'</tr><tr>'+
+    (fin?'<th colspan="6" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
     '<th>Package</th><th class="r">Budget</th><th>Next deadline</th>'+
     (plan?PP_TABLE_MS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(PP_MS_LABEL[m])+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep">Awarded to</th><th class="r">Proposed</th><th class="r">Instructed</th><th>Instruction</th><th class="r">Variance</th><th>Approval route</th>':'')+
-    (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th>':'')+'</tr>'+
+    (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
     (model?'<tr class="ppt-scale"><td colspan="3" class="sm">▸ next step after the current one</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
     '</thead><tbody>';
   function li(l,cls){return l.length?l.map(function(x){return '<div>'+esc(x)+'</div>';}).join(""):'<span style="color:#ccc">—</span>';}
@@ -942,7 +942,8 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     if(fol){
       h+='<td class="sep">'+esc(String(td.ownerTender||"—"))+'</td>'+
         '<td class="a">'+li([td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean))+'</td>'+
-        '<td class="a b">'+li(a.block.map(ppActText))+'</td>';
+        '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
+        '<td class="a">'+li(ppNotesText(td))+'</td>';
     }
     h+='</tr>';
     if(model)h+='<tr class="ppt-strip'+(soon?' s21':'')+'"><td colspan="3" class="nx">'+(stg.next?'▸ Next: '+esc(stg.next):'')+'</td>'+tlCells(ppStripHtml(byId[td.id],model,p))+'</tr>';
@@ -1006,6 +1007,75 @@ function PpActionsCell({td,list,kind,tasks,saveTasks}){
       </div>
       :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":"Add a next step (an action linked to this package)"}
         style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ add</button>)}
+  </div>;
+}
+// The notes of a package as lines of text ("Title — content"), for the print and the Excel.
+function ppNotesText(td){
+  return tenderNotesOf(td).map(function(n){
+    var t=String(n.title||"").trim(),c=String(n.content||"").trim().replace(/\s*\n\s*/g," · ");
+    return t&&c?t+" — "+c:t||c;
+  }).filter(Boolean);
+}
+// Notes column of the Package table: the package's notes (td.tenderNotes — the same notes as
+// the sheet's Actions & notes tab), a click on one edits it in a small window, + note adds one.
+function PpNotesCell({td,upd}){
+  const [edit,setEdit]=useState(null);       // {id|null, title, content}
+  const [all,setAll]=useState(false);
+  var ro=isReadOnly();
+  var notes=tenderNotesOf(td);
+  var shown=all?notes:notes.slice(0,3);
+  function save(){
+    if(blockIfReadOnly())return;
+    var e=edit,title=String(e.title||"").trim(),content=String(e.content||"");
+    var ns;
+    if(e.id)ns=notes.map(function(n){return n.id!==e.id?n:Object.assign({},n,{title:title,content:content});});
+    else ns=notes.concat([newTenderNote({title:title||"Note "+(notes.length+1),content:content})]);
+    var patch={tenderNotes:ns};
+    if(e.id==="legacy-note")patch.notes="";            // the old free text now lives in tenderNotes
+    upd(td,patch);setEdit(null);
+  }
+  function del(){
+    if(blockIfReadOnly()||!safeConfirm("Delete note?"))return;
+    var patch={tenderNotes:notes.filter(function(n){return n.id!==edit.id;})};
+    if(edit.id==="legacy-note")patch.notes="";
+    upd(td,patch);setEdit(null);
+  }
+  return <div style={{minWidth:180,maxWidth:280,fontSize:11,lineHeight:1.35}}>
+    {shown.map(function(n,i){
+      var c=String(n.content||"").trim();
+      return <div key={n.id||i} onClick={function(){if(!ro)setEdit({id:n.id,title:n.title||"",content:n.content||""});}}
+        title={(n.title||"")+(c?"\n"+c:"")+(n.by||n.at?"\n— "+[n.by||"",n.at?fmtDate(n.at):""].filter(Boolean).join(" · "):"")+(ro?"":"\nClick to edit")}
+        style={{marginBottom:3,padding:"2px 5px",borderLeft:"2px solid var(--gold,#c9a84c)",background:"#fffdf6",cursor:ro?"default":"pointer",borderRadius:"0 4px 4px 0"}}>
+        {n.title&&<div style={{fontWeight:600,color:"var(--ink,#16181d)"}}>{n.title}</div>}
+        {c&&<div style={{color:"#4a4740",whiteSpace:"pre-wrap",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{c}</div>}
+      </div>;
+    })}
+    {notes.length>3&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit"}}>
+      {all?"show less":"+ "+(notes.length-3)+" more"}</button>}
+    {ro&&!notes.length&&<span style={{color:"#ccc"}}>—</span>}
+    {!ro&&<button onClick={function(){setEdit({id:null,title:"",content:""});}} title="Add a note to this package (also shown in the package sheet)"
+      style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ note</button>}
+    {edit&&<div className="overlay" onClick={function(e){if(e.target===e.currentTarget)setEdit(null);}}>
+      <div className="modal" style={{maxWidth:520}}>
+        <div className="modal-hdr">
+          <div className="modal-title">{edit.id?"Note":"New note"} · {td.title||"(untitled)"}</div>
+          <button onClick={function(){setEdit(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div className="modal-body">
+          <input type="text" autoFocus value={edit.title} placeholder="Note title…" onChange={function(e){setEdit(Object.assign({},edit,{title:e.target.value}));}}
+            style={{width:"100%",boxSizing:"border-box",fontWeight:600,marginBottom:8}}/>
+          <textarea value={edit.content} placeholder="Write your note here…" onChange={function(e){setEdit(Object.assign({},edit,{content:e.target.value}));}}
+            onKeyDown={function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))save();}}
+            style={{width:"100%",minHeight:140,boxSizing:"border-box",fontFamily:"inherit",fontSize:13,resize:"vertical"}}/>
+          <div style={{fontSize:11,color:"#9b968b",marginTop:6}}>Same notes as the package sheet (Actions & notes). Ctrl+Enter saves.</div>
+        </div>
+        <div className="modal-footer">
+          {edit.id&&<button className="btn" onClick={del} style={{marginRight:"auto",color:"#b3302a"}}>Delete</button>}
+          <button className="btn" onClick={function(){setEdit(null);}}>Cancel</button>
+          <button className="btn btn-gold" onClick={save} disabled={!String(edit.title||"").trim()&&!String(edit.content||"").trim()}>Save</button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 // Print window of the Package table: column set, page size and timelines. Page size and
@@ -1118,13 +1188,14 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   var ft=ppFinanceTotals(vis);
   var acts=ppActionsIndex(tasks);
   var NOACT={next:[],block:[]};
-  function upd(td,patch){if(blockIfReadOnly())return;saveTenders((tenders||[]).map(function(t){return t.id===td.id?Object.assign({},t,patch):t;}));}
+  const tdRef=useRef(tenders);tdRef.current=tenders;
+  function upd(td,patch){if(blockIfReadOnly())return;saveTenders((tdRef.current||[]).map(function(t){return t.id===td.id?Object.assign({},t,patch):t;}));}
   function openTd(id){
     if(onOpenTender){var t=(tenders||[]).find(function(x){return x.id===id;});if(t)onOpenTender(t);return;}
     if(onNavTender)onNavTender(id,"procplan");
   }
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
-  var nCols=3+(plan?7:0)+(fin?6:0)+(fol?3:0);
+  var nCols=3+(plan?7:0)+(fin?6:0)+(fol?4:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
   var tlSpan=plan?7:nCols-3,tlRest=nCols-3-tlSpan;
   var model=tl&&mode==="table"&&vis.length?ppGanttModel(vis,now):null,byId={};
@@ -1152,9 +1223,9 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
           title={"From the schedule: \""+(f.r.label||"task")+"\" in "+(f.sc.zone||"?")+" ("+(f.sc.title||"")+")\nChange it in the schedule. Click to open that task."}
           style={{fontSize:11,fontWeight:700,color:"#00695c",background:"#e6f2e9",border:"1px solid #cfe3d5",borderRadius:5,padding:"2px 7px",cursor:"pointer",whiteSpace:"nowrap"}}>
           🗓 {fmtDate(td.startOnSite||f.r.startWeek)}</span>
-        :<input type="date" min="1990-01-01" max="2200-12-31" value={td.startOnSite||""} disabled={ro}
-          title="No schedule task is linked to this package: set the date by hand. As soon as a task is linked, the schedule takes over."
-          onChange={function(e){upd(td,{startOnSite:e.target.value});}} style={{fontSize:11,padding:"2px 5px",width:126}}/>}
+        :<DraftDateInput value={td.startOnSite||""} disabled={ro}
+          title="No schedule task is linked to this package: set the date by hand (saved when the date is complete: Enter, Tab or click elsewhere; Esc cancels). As soon as a task is linked, the schedule takes over."
+          onCommit={function(v){upd(td,{startOnSite:v});}} style={{fontSize:11,padding:"2px 5px",width:126}}/>}
       {p.needNext&&p.needTask&&<div style={{fontSize:10,color:"#b35c00",marginTop:2,whiteSpace:"nowrap",cursor:"pointer"}}
         onClick={function(){openScheduleStart(p.needTask,td,onNavZone);}}
         title={"The first task has started; the next linked task not started yet is \""+(p.needTask.r.label||"task")+"\" in "+(p.needTask.sc.zone||"?")+" — the plan is worked back from it. Click to open it."}>
@@ -1216,6 +1287,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         {fol&&<td className="sep">{td.ownerTender?<OwnerChip owner={td.ownerTender}/>:<span style={{color:"#ccc"}}>—</span>}</td>}
         {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>}
+        {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
       </tr>
       {model&&<tr className="ppt-strip" style={hl}>
         <td colSpan={3} className="nx" style={soon?{boxShadow:"inset 3px 0 0 var(--amber,#b35c00)"}:null}>{stg.next?"▸ Next: "+stg.next:""}</td>
@@ -1307,7 +1379,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {plan&&<th colSpan={6} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={6} className="sep">Finance</th>}
-            {fol&&<th colSpan={3} className="sep">Follow-up</th>}
+            {fol&&<th colSpan={4} className="sep">Follow-up</th>}
           </tr>
           <tr>
             {th("title","Package",{minWidth:200})}
@@ -1324,6 +1396,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {fol&&<th className="sep">Owner</th>}
             {fol&&<th title="Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one.">Next steps</th>}
             {fol&&<th title="Open actions tagged Blocking Point linked to the package — including the automatic “Procurement late” ones from the schedule">Blocking points</th>}
+            {fol&&<th title="Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one.">Notes</th>}
           </tr>
           {model&&<tr className="ppt-scale">
             <td colSpan={3} style={{fontSize:10.5,color:"#9b968b"}}>▸ next step after the current one</td>

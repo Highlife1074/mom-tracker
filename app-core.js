@@ -206,7 +206,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-11-09-b";
+var APP_BUILD="2026-11-10-a";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -257,6 +257,50 @@ function toISO(dt){
     var dd=String(t.getDate());if(dd.length<2)dd="0"+dd;
     return y+"-"+m+"-"+dd;
   }catch(e){return"";}
+}
+// A date box that saves only a whole, sane date. A plain <input type="date" onChange=save>
+// saves every keystroke: typing the year 2026 writes 0002, 0020, 0202 then 2026, and in a
+// sorted list the row jumps away under the cursor after the first digit, so the next digits
+// land in ANOTHER row. Here the typed value stays local and is saved on blur, Enter or after
+// a short pause — and only when it is empty or a valid date (isValidDate, 1990–2200).
+// Escape puts the saved value back. Props: value, onCommit(iso), plus any <input> prop.
+function DraftDateInput(props){
+  var value=props.value||"";
+  const [v,setV]=useState(value);
+  const focused=useRef(false);
+  const timer=useRef(null);
+  const last=useRef(value);
+  const cancel=useRef(false);
+  const cb=useRef(props.onCommit);cb.current=props.onCommit;   // latest callback: a delayed save never writes a stale list
+  useEffect(function(){if(!focused.current)setV(value);last.current=value;},[value]);
+  useEffect(function(){return function(){if(timer.current)clearTimeout(timer.current);};},[]);
+  function commit(x){
+    if(timer.current){clearTimeout(timer.current);timer.current=null;}
+    if(x===last.current)return;
+    if(x!==""&&!isValidDate(x))return;
+    last.current=x;
+    if(cb.current)cb.current(x);
+  }
+  var rest=Object.assign({},props);delete rest.value;delete rest.onCommit;
+  return <input type="date" min="1990-01-01" max="2200-12-31" {...rest} value={v}
+    onFocus={function(e){focused.current=true;if(props.onFocus)props.onFocus(e);}}
+    onChange={function(e){
+      var x=e.target.value;setV(x);
+      if(timer.current)clearTimeout(timer.current);
+      // the calendar picker gives a whole date at once: saved after a short pause
+      timer.current=setTimeout(function(){timer.current=null;if(x===""||isValidDate(x))commit(x);},1200);
+    }}
+    onBlur={function(e){
+      focused.current=false;
+      if(cancel.current){cancel.current=false;setV(last.current);}
+      else if(v===""||isValidDate(v))commit(v);else setV(last.current);
+      if(props.onBlur)props.onBlur(e);
+    }}
+    onKeyDown={function(e){
+      if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();}
+      else if(e.key==="Escape"){if(timer.current){clearTimeout(timer.current);timer.current=null;}cancel.current=true;setV(last.current);e.currentTarget.blur();}
+      if(props.onKeyDown)props.onKeyDown(e);
+    }}/>;
 }
 function fmtMonthYear(d){if(!d)return"—";var p=d.split("-");return p.length>=2?p[1]+"/"+p[0].slice(2):d;}
 function calcScore(i,u){return (i||1)*(u||1);}
