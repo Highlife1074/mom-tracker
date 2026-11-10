@@ -3778,6 +3778,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   const [quickF,setQuickF]=useState("");
   const [showTl,setShowTl]=useState(true);
   const [showGaps,setShowGaps]=useState(false);
+  const [quickId,setQuickId]=useState(null);       // package open in the Quick update window (meeting)
   const [showPrint,setShowPrint]=useState(false);
   // The list is the merged Package / Procurement plan table (ProcPlanView); the former table
   // stays reachable as "Classic list" for a while (localStorage pp_pkg_classic).
@@ -4585,12 +4586,14 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     return <button className="btn" onClick={function(){setShowGaps(true);}} title="Every blank of the table, across all packages, to fill in one window"
       style={n?{borderColor:"#ecc3c7",color:"#b3302a"}:{}}>🧩 Missing info{n?" ("+n+")":""}</button>;
   })();
+  var quickModal=quickId&&<PpQuickUpdateModal tdId={quickId} tenders={tenders} saveTenders={saveTenders} tasks={tasks} saveTasks={saveTasks}
+    updateStep={updateStep} onOpenSheet={function(t){setSelTender(t);}} onClose={function(){setQuickId(null);}}/>;
   var gapsModal=showGaps&&<TenderGapsModal tenders={tenders} saveTenders={saveTenders} packages={packages} people={people}
     onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>;
   if(!classic)return <div>
-    {gapsModal}
+    {gapsModal}{quickModal}
     <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} tasks={tasks} saveTasks={saveTasks} onNavZone={onNavZone}
-      onOpenTender={function(t){setSelTender(t);}}
+      onOpenTender={function(t){setSelTender(t);}} onQuickUpdate={setQuickId}
       actions={<React.Fragment>
         <button className="btn" onClick={function(){setClassic(true);}} title="The former Package table (Submission steps, Stage…), kept for a few weeks">Classic list</button>
         {gapsBtn}
@@ -4599,6 +4602,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
       primary={<button className="btn btn-gold" onClick={openNew}>＋ New Package</button>}/>
   </div>;
   return <div>
+    {quickModal}
     <div className="page-hdr">
       <div><div className="page-title">Packages</div><div className="page-sub">Submissions, contracts and addendums — by department</div></div>
       <div className="page-actions">
@@ -4740,6 +4744,8 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 <span title={_ph.label} style={{background:_ph.bg,color:_ph.fg,fontSize:9.5,fontWeight:700,borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap",flexShrink:0,width:92,boxSizing:"border-box",textAlign:"center"}}>{_ph.short}</span>
                 <span title={td.released?"Released — included in totals":""} style={{width:7,height:7,borderRadius:"50%",background:td.released?"#1e6b3a":"transparent",flexShrink:0,display:"inline-block"}}/>
                 <span style={{flex:1,minWidth:0}}>{td.title}</span>
+                <button className="btn btn-sm" onClick={function(e){e.stopPropagation();setQuickId(td.id);}} title="Quick update (meeting): target dates, documents, next steps, blocking points, notes"
+                  style={{fontSize:10,padding:"0 6px",flexShrink:0}}>⚡</button>
               </div>
             </td>
             <td>{td.package&&<span className="badge" style={{background:"#f0ede6",color:"#555"}}>{td.package}</span>}</td>
