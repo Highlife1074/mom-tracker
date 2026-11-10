@@ -206,7 +206,7 @@ function qualityTag(pkg){
   if(p.includes("external")||p.includes("works"))return"Quality External";
   return"Quality Tower";
 }
-var APP_BUILD="2026-11-10-a";
+var APP_BUILD="2026-11-10-e";
 window._appBuild=APP_BUILD;
 console.log("Pilot Tracker build",APP_BUILD);
 function today(){return toISO(new Date());}
@@ -4484,6 +4484,32 @@ function App(){
   function setMemoryFor(key,patch){setViewMemory(function(prev){return Object.assign({},prev,{[key]:Object.assign({},prev[key]||{},patch)});});}
   const [jumpTender,setJumpTender]=useState(null);
   const [jumpFrom,setJumpFrom]=useState(null);
+  // "↩ Back" after a jump to the schedule from a package date (openScheduleStart): where we
+  // were — the view, the package sheet or the list (TendersView keeps its own selection), the
+  // scroll. Shown while in the zone view, dropped as soon as the user goes anywhere else.
+  const [backNav,setBackNav]=useState(null);
+  const viewRef=useRef(view);viewRef.current=view;
+  useEffect(function(){
+    function onBack(e){
+      var d=(e&&e.detail)||{},v=viewRef.current;
+      var sheet=false;try{sheet=v==="tenders"&&!!localStorage.getItem("pp_tv_selTenderId");}catch(x){}
+      var c=document.querySelector(".content");
+      setBackNav({view:v,label:v==="tenders"?(sheet?(d.title||"the package"):"the Package list"):((NAV_VIEWS[v]||{}).label||v),
+        scroll:c?c.scrollTop:0,winY:window.scrollY||0});
+    }
+    window.addEventListener("pp-back-nav",onBack);
+    return function(){window.removeEventListener("pp-back-nav",onBack);};
+  },[]);
+  useEffect(function(){if(backNav&&view!=="zone")setBackNav(null);},[view]);
+  function goBackNav(){
+    var b=backNav;if(!b)return;
+    setBackNav(null);setView(b.view);
+    // put the list back where it was once it is drawn again
+    [60,300,800].forEach(function(ms){setTimeout(function(){
+      var c=document.querySelector(".content");if(c&&b.scroll)c.scrollTop=b.scroll;
+      if(b.winY)window.scrollTo(0,b.winY);
+    },ms);});
+  }
   function navToTender(tenderId,fromView){setJumpTender(tenderId);setJumpFrom(fromView||view);setView("tenders");}
   function navToContractor(ctrId,fromView){setJumpFrom(fromView||view);setView("contractors");}
   const [showWeeklyPopup,setShowWeeklyPopup]=useState(function(){var now=new Date();var isMonday=now.getDay()===1;var key="pp_weekly_shown_"+now.toISOString().slice(0,10);var shown=false;try{shown=!!localStorage.getItem(key);}catch(e){}if(isMonday&&!shown){try{localStorage.setItem(key,"1");}catch(e){}return true;}return false;});
@@ -5125,6 +5151,7 @@ function App(){
   window._ppPkgOwners=pkgOwners;
   window._ppTenders=tenders;
   window._ppSchedules=schedules;
+  window._ppSaveSchedules=saveSchedules;   // the Package list moves a schedule task (PpMoveStartModal)
   window._ppSubList=allSubcontractors(subList,contractors);
   window._ppSubColors=subColors;
   window._ppTenderRules=tenderRules;
@@ -5274,6 +5301,12 @@ function App(){
         </div>
       </div>
       <div className="content">
+        {view==="zone"&&backNav&&<div className="sched-noprint" style={{position:"sticky",top:0,zIndex:60,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",
+          margin:"0 0 10px",padding:"7px 12px",borderRadius:8,background:"var(--brand-soft,#e9eff7)",border:"1px solid #c9d6e8",boxShadow:"0 2px 6px rgba(23,42,66,.08)"}}>
+          <button className="btn btn-pri" onClick={goBackNav} title="Go back where you were, same list, filters and position" style={{fontSize:13,padding:"5px 14px"}}>↩ Back</button>
+          <span style={{fontSize:12,color:"var(--brand-ink,#173b63)"}}>to <b>{backNav.label}</b></span>
+          <button className="btn btn-sm" onClick={function(){setBackNav(null);}} title="Stay in the schedule" style={{marginLeft:"auto"}}>✕</button>
+        </div>}
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules} tasks={tasks} saveTasks={saveT} zones={zones}/>}
         {view==="procflow"&&<ProcFlowView tenders={tenders} onNavTender={navToTender}/>}
