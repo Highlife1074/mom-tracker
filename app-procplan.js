@@ -426,6 +426,7 @@ var PP_SORTS={
 ["start","issue","bids","recommend","approved","contract","submittals","ready","delivered"].forEach(function(m){
   PP_SORTS["ms_"+m]=function(r){return r.p.latest[m]||null;};
 });
+["mar","mss","wms","itp"].forEach(function(k){PP_SORTS["ms_sub_"+k]=function(r){return r.p.latest.submittals||null;};});
 function ppAwardedNames(td){
   var aw=(td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return String(x.subcontractor).trim();});
   return aw.length?aw:(td.contractor?[String(td.contractor).trim()]:[]);
@@ -709,7 +710,51 @@ var PP_COLSETS=[
   {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points and notes"},
   {k:"all",label:"All in one",tip:"The three sets on one line: plan, finance and follow-up (scrolls sideways; print it on A3). Click Plan, Finance or Follow-up to show or hide one set: any one, two or three."}
 ];
-var PP_TABLE_MS=["start","issue","approved","contract","submittals","delivered"];
+// Columns of the table: the Submittals milestone is split by document kind (MAR / MSS / WMS / ITP),
+// each column = the documents of that kind in the package sheet, against the Submittals latest date.
+var PP_SUB_KINDS=[{k:"mar",label:"MAR"},{k:"mss",label:"MSS"},{k:"wms",label:"WMS"},{k:"itp",label:"ITP"}];
+var PP_TABLE_COLS=["start","issue","approved","contract"].concat(PP_SUB_KINDS.map(function(x){return "sub_"+x.k;})).concat(["delivered"]);
+function ppColLabel(c){
+  if(c.indexOf("sub_")===0){var k=c.slice(4);return ((PP_SUB_KINDS.find(function(x){return x.k===k;})||{}).label||k.toUpperCase());}
+  return PP_MS_LABEL[c];
+}
+function ppColTip(c){
+  if(c.indexOf("sub_")===0)return ppColLabel(c)+" documents of the package (Submissions): how many approved, at the client, to resubmit. Bottom line: latest date to have the submittals approved — sorted by that latest date";
+  return "Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[c]+" — sorted by that latest date";
+}
+function ppColCell(td,p,c,now){return c.indexOf("sub_")===0?ppSubCell(td,p,c.slice(4),now):ppMsCell(td,p,c,now);}
+// One submittal kind (mar / mss / wms / itp) of a package, as a milestone cell.
+function ppSubCell(td,p,k,now){
+  now=now||today();
+  var lab=ppColLabel("sub_"+k),lat=p.latest.submittals||"";
+  if((k==="wms"||k==="itp")&&((td.steps||{})[k]||"")==="N/A")
+    return {kind:"done",l1:"N/A",l2:"",tip:lab+" not applicable"};
+  var docs=[];
+  try{docs=tenderDocs(td).filter(function(d){return d.kind===k;});}catch(e){}
+  if(!docs.length)return {kind:"none",l1:"",l2:"",tip:"No "+lab+" on this package"};
+  var ok=0,cl=0,ret=0,last="",sums=docs.map(function(d){return docSummary(d,now);});
+  sums.forEach(function(s){
+    if(s.state==="approved"){ok++;var a=s.stats&&s.stats.approvedOn;if(isValidDate(a)&&a>last)last=a;}
+    else if(s.state==="pending")cl++;else if(s.state==="returned")ret++;
+  });
+  var n=docs.length;
+  var tip=lab+": "+docs.map(function(d,i){return (n>1?docShortName(d)+" — ":"")+sums[i].text;}).join("\n")+(lat?"\nSubmittals latest date "+fmtDate(lat):"");
+  if(ok===n){
+    var over=last&&lat&&last>lat?Math.round((parseISODate(last)-parseISODate(lat))/86400000):0;
+    return {kind:over?"doneLate":"done",l1:"✓ "+(last?fmtDate(last):"approved"),
+      l2:[n>1?n+"/"+n:"",lat?"by "+fmtDate(lat)+(over?" · +"+over+" d":""):""].filter(Boolean).join(" · "),tip:tip};
+  }
+  var l1;
+  if(n===1){var s0=sums[0];l1=s0.state==="pending"?"At client"+(s0.rev?" R"+s0.rev:""):s0.state==="returned"?"To resubmit":"Not submitted";}
+  else l1=ok+"/"+n+" approved"+(cl?" · "+cl+" at client":"")+(ret?" · "+ret+" to resubmit":"");
+  if(!lat)return {kind:"none",l1:l1,l2:"",tip:tip};
+  if(ppShownNext(p)==="submittals"){
+    var st=PP_STATUS[p.status]||PP_STATUS.none;
+    return {kind:"next",fg:st.fg,bg:st.bg,l1:l1,l2:"by "+fmtDate(lat)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),tip:tip};
+  }
+  var overdue=p.status!=="past"&&lat<now;
+  return {kind:overdue?"overdue":"todo",l1:l1,l2:"by "+fmtDate(lat),tip:tip};
+}
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
 function ppColsList(cols){
@@ -968,6 +1013,7 @@ var PP_TABLE_CSS=
   '.ppt td{vertical-align:top}'+
   '.ppt tr.ppt-g th{background:#f4f6fa;font-size:10px;letter-spacing:.08em;padding:5px 10px;border-bottom:1px solid #c7d5e6}'+
   '.ppt td.ms{padding:4px 5px;min-width:96px;max-width:124px}'+
+  '.ppt td.ms.sub{min-width:78px;max-width:104px}'+
   // the screen table scrolls inside its own box: the sideways scrollbar stays at the bottom
   // of the window and the headers stay on top (ppt-wrap; not in print)
   '.ppt-wrap{overflow:auto;max-height:calc(100vh - 170px);border:1px solid #e6e2d9;border-radius:6px}'+
@@ -1069,18 +1115,18 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
   if(!dl)model=null;
-  var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
-  var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
+  var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?880:0)+(fin?330:0)+(fol?780:0);
+  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?1180:0)+(fin?330:0)+(fol?780:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
-    '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="6" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
+    '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="'+PP_TABLE_COLS.length+'" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
     (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
     '<th>Package</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th>':'')+
-    (plan?PP_TABLE_MS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(PP_MS_LABEL[m])+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
+    (plan?PP_TABLE_COLS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(ppColLabel(m))+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
     (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
     (model?'<tr class="ppt-scale"><td colspan="'+nb+'" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
@@ -1095,7 +1141,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
       (dl?'<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
         (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>':'');
     if(plan){
-      PP_TABLE_MS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+'">'+ppMsCellHtml(ppMsCell(td,p,m,now))+'</td>';});
+      PP_TABLE_COLS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+(m.indexOf("sub_")===0?' sub':'')+'">'+ppMsCellHtml(ppColCell(td,p,m,now))+'</td>';});
       h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div></td>';
     }
     if(fin){
@@ -1638,9 +1684,9 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
-  var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
-  var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
+  var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   var model=tl&&dl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
   var HZ=[["all","Any date"],["4w","Next deadline ≤ 4 weeks"],["8w","≤ 8 weeks"]];
   var QF=[["cl","With client","At least one document waits for the client's answer"],["late","Late delivery","Will start late: forecast delivery after a start on site still to come (packages already started are not listed)"],["na","Not awarded","No subcontractor recorded in Awards"]];
@@ -1707,8 +1753,8 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             :p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}
           <div dangerouslySetInnerHTML={{__html:ppWhoHtml(stg)}}/>
         </td>}
-        {plan&&PP_TABLE_MS.map(function(m,i){
-          return <td key={m} className={"ms"+(i===0?" sep":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppMsCell(td,p,m,now))}}></td>;
+        {plan&&PP_TABLE_COLS.map(function(m,i){
+          return <td key={m} className={"ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppColCell(td,p,m,now))}}></td>;
         })}
         {plan&&<td className="sep" style={{minWidth:112}}>{needCell(td,p)}</td>}
         {fin&&<td className="sep" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,color:"#0f5299",whiteSpace:"nowrap"}}>{prop?prop.toLocaleString():"—"}</td>}
@@ -1820,7 +1866,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         <thead>
           <tr className="ppt-g">
             <th colSpan={nb}>Package</th>
-            {plan&&<th colSpan={6} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
+            {plan&&<th colSpan={PP_TABLE_COLS.length} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={3} className="sep">Finance</th>}
             {fol&&<th colSpan={4} className="sep">Follow-up</th>}
@@ -1829,7 +1875,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {th("title","Package",{minWidth:160})}
             {fin&&th("budget","Budget",{textAlign:"right"})}
             {dl&&th("deadline","Next deadline",{minWidth:150},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
-            {plan&&PP_TABLE_MS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,PP_MS_LABEL[m],null,"Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[m]+" — sorted by that latest date",i===0?"sep":"")}</React.Fragment>;})}
+            {plan&&PP_TABLE_COLS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,ppColLabel(m),null,ppColTip(m),i===0?"sep":"")}</React.Fragment>;})}
             {plan&&th("need","Need on site",{minWidth:112},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
             {fin&&th("proposed","Proposed",{textAlign:"right"},"ACC / Aconex amount proposed (subcontract + other)","sep")}
             {fin&&th("instructed","Instructed",{textAlign:"right"},"Amount instructed by the client")}
