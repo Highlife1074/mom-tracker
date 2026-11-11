@@ -29,7 +29,8 @@ const PP_STEPS=[
   {k:"evaluation",label:"Evaluation & negotiation",ms:"recommend",msLabel:"Recommendation"},
   {k:"approval",label:"Approval (internal / ACC / Aconex)",ms:"approved",msLabel:"Approved"},
   {k:"contract",label:"Contract / PO signature",ms:"contract",msLabel:"Contract / PO"},
-  {k:"submittals",label:"Shop drawings / MAR approval",ms:"submittals",msLabel:"Submittals OK"},
+  {k:"submittals",label:"MAR / MSS / WMS / ITP approval",ms:"submittals",msLabel:"Submittals OK"},
+  {k:"sd",label:"Shop drawings approval",ms:"sdok",msLabel:"SD approved"},
   {k:"fab",label:"Fabrication / manufacturing",ms:"ready",msLabel:"Ready to ship"},
   {k:"transport",label:"Transport & delivery",ms:"delivered",msLabel:"Delivered"},
   {k:"buffer",label:"Float before start on site",ms:"need",msLabel:"Start on site"}
@@ -38,7 +39,7 @@ const PP_MS_LABEL={start:"Start tender docs"};
 // The next milestone said as the thing to do (Next deadline column, badges): "Approved" in
 // red read like a status; "Get the approval" + its latest date reads as the action that is late.
 const PP_MS_TODO={start:"Start the tender documents",issue:"Issue the tender",bids:"Receive the bids",recommend:"Send the recommendation",
-  approved:"Get the approval",contract:"Sign the contract / PO",submittals:"Get the submittals approved",ready:"Have it ready to ship",delivered:"Deliver to site"};
+  approved:"Get the approval",contract:"Sign the contract / PO",submittals:"Get the submittals approved",sdok:"Get the shop drawings approved",ready:"Have it ready to ship",delivered:"Deliver to site"};
 function ppNextAct(p){return p&&p.next&&p.need&&p.status!=="past"&&p.status!=="cancelled"?(PP_MS_TODO[p.next]||PP_MS_LABEL[p.next]):"";}
 function ppNextBy(p){
   if(!ppNextAct(p))return "";
@@ -48,18 +49,25 @@ function ppNextBy(p){
 PP_STEPS.forEach(function(s){PP_MS_LABEL[s.ms]=s.msLabel;});
 // Calendar days. A subcontract has no fabrication of its own: its float covers mobilisation.
 const PP_DEFAULT_TEMPLATES={
-  subcontract:   {prep:14,bidding:21,evaluation:14,approval:21,contract:28,submittals:28,fab:0,  transport:0, buffer:14},
-  supply_install:{prep:14,bidding:21,evaluation:14,approval:21,contract:28,submittals:42,fab:56, transport:14,buffer:7},
-  equipment:     {prep:14,bidding:28,evaluation:14,approval:21,contract:21,submittals:28,fab:112,transport:21,buffer:14},
-  material:      {prep:7, bidding:14,evaluation:7, approval:21,contract:14,submittals:28,fab:42, transport:14,buffer:7}
+  subcontract:   {prep:14,bidding:21,evaluation:14,approval:21,contract:28,submittals:14,sd:14,fab:0,  transport:0, buffer:14},
+  supply_install:{prep:14,bidding:21,evaluation:14,approval:21,contract:28,submittals:21,sd:21,fab:56, transport:14,buffer:7},
+  equipment:     {prep:14,bidding:28,evaluation:14,approval:21,contract:21,submittals:14,sd:14,fab:112,transport:21,buffer:14},
+  material:      {prep:7, bidding:14,evaluation:7, approval:21,contract:14,submittals:21,sd:7, fab:42, transport:14,buffer:7}
 };
 function ppType(td){var t=td&&td.procType;return PP_DEFAULT_TEMPLATES[t]?t:"subcontract";}
 function ppTypeLabel(k){var x=PP_TYPES.find(function(t){return t.k===k;});return x?x.label:"Subcontract";}
+// Default of one step for a stored row (template or package overrides). The shop drawings
+// step was split out of "submittals": a row that typed submittals before that split keeps
+// covering the SD in it, so its SD step is 0 — the old total, and the old dates, stay.
+function ppStepDefault(row,type,k){
+  row=row||{};
+  if(k==="sd"&&row.sd===undefined&&row.submittals!==undefined&&row.submittals!=="")return 0;
+  return (PP_DEFAULT_TEMPLATES[type]||PP_DEFAULT_TEMPLATES.subcontract)[k];
+}
 function ppTemplate(type){
   var stored=(((window._ppDurations||{}).procTemplates)||{})[type]||{};
-  var def=PP_DEFAULT_TEMPLATES[type]||PP_DEFAULT_TEMPLATES.subcontract;
   var out={};
-  PP_STEPS.forEach(function(s){var v=Number(stored[s.k]);out[s.k]=stored[s.k]!==undefined&&stored[s.k]!==""&&isFinite(v)&&v>=0?v:def[s.k];});
+  PP_STEPS.forEach(function(s){var v=Number(stored[s.k]);out[s.k]=stored[s.k]!==undefined&&stored[s.k]!==""&&isFinite(v)&&v>=0?v:ppStepDefault(stored,type,s.k);});
   return out;
 }
 function _ppNum(v){if(v===undefined||v===null||v==="")return null;var n=Number(v);return isFinite(n)&&n>=0?n:null;}
@@ -75,6 +83,8 @@ function ppLeads(td){
   PP_STEPS.forEach(function(s){
     var v=_ppNum(own[s.k]);
     if(v!==null){out[s.k]={days:v,src:"pkg"};return;}
+    // SD typed together with the submittals before the split: covered by that lead time
+    if(s.k==="sd"&&_ppNum(own.submittals)!==null){out[s.k]={days:0,src:"pkg"};return;}
     if(s.k==="fab"&&matLead>0){out[s.k]={days:matLead,src:"materials"};return;}
     if(s.k==="approval"&&route==="none"){out[s.k]={days:Math.min(7,tpl.approval),src:"route"};return;}
     out[s.k]={days:tpl[s.k],src:"template"};
@@ -109,11 +119,25 @@ function ppActuals(td){
     if(!a.contract&&(ty==="material"||ty==="equipment")&&pos.every(isValidDate))a.contract={date:pos.slice().sort().pop(),po:true};
     if(ty!=="subcontract"&&dls.every(isValidDate))a.delivered={date:dls.slice().sort().pop()};
   }
-  var subs=tenderDocs(td).filter(function(d){return d.kind==="sd"||d.kind==="mar"||d.kind==="mss";});
-  if(subs.length){
-    var sums=subs.map(function(d){return cycleStats(d.cycles);});
-    if(sums.every(function(x){return !!x.approvedOn;}))a.submittals={date:sums.map(function(x){return x.approvedOn;}).sort().pop()};
-  }else if(a.contract)a.submittals={date:"",done:true};
+  // Submittals OK = every MAR, MSS, WMS and ITP approved (WMS / ITP set to N/A count as done);
+  // SD approved = every shop drawing approved. No document of the kind: reached with the contract.
+  var docs=tenderDocs(td);
+  function reached(list){
+    if(!list.length)return a.contract?{date:"",done:true}:null;
+    var ds=[];
+    for(var i=0;i<list.length;i++){
+      var d=list[i];
+      if((d.kind==="wms"||d.kind==="itp")&&String(steps[d.kind]||"")==="N/A")continue;
+      var s=docSummary(d);
+      if(s.state!=="approved")return null;
+      if(isValidDate(s.stats&&s.stats.approvedOn))ds.push(s.stats.approvedOn);
+    }
+    return ds.length?{date:ds.sort().pop()}:a.contract?{date:"",done:true}:null;
+  }
+  var sub=reached(docs.filter(function(d){return d.kind==="mar"||d.kind==="mss"||d.kind==="wms"||d.kind==="itp";}));
+  if(sub)a.submittals=sub;
+  var sdr=reached(docs.filter(function(d){return d.kind==="sd";}));
+  if(sdr)a.sdok=sdr;
   return a;
 }
 var PP_MS_ORDER=["start"].concat(PP_STEPS.map(function(s){return s.ms;}));
@@ -136,10 +160,12 @@ function ppPlan(td,now){
   }
   var act=ppActuals(td);
   // A milestone is reached when it has happened, or when a later one has.
+  // SD approved and Submittals OK run side by side: one does not reach the other.
   var done={},later=false;
   for(var j=PP_MS_ORDER.length-1;j>=0;j--){
     var m=PP_MS_ORDER[j];
-    if(act[m])later=true;
+    if(m==="sdok"){done[m]=later||!!act[m];continue;}
+    if(act[m]||act.sdok&&PP_MS_ORDER.indexOf(m)<PP_MS_ORDER.indexOf("submittals"))later=true;
     done[m]=later;
   }
   var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
@@ -423,9 +449,10 @@ var PP_SORTS={
   notes:function(r){return tenderNotesOf(r.td).length||null;}
 };
 // One sort per milestone column: by its LATEST date (bottom line of the cell).
-["start","issue","bids","recommend","approved","contract","submittals","ready","delivered"].forEach(function(m){
+["start","issue","bids","recommend","approved","contract","submittals","sdok","ready","delivered"].forEach(function(m){
   PP_SORTS["ms_"+m]=function(r){return r.p.latest[m]||null;};
 });
+["sd","mar","mss","wms","itp"].forEach(function(k){PP_SORTS["ms_sub_"+k]=function(r){return r.p.latest[k==="sd"?"sdok":"submittals"]||null;};});
 function ppAwardedNames(td){
   var aw=(td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return String(x.subcontractor).trim();});
   return aw.length?aw:(td.contractor?[String(td.contractor).trim()]:[]);
@@ -457,10 +484,10 @@ function ppGroups(list){
 // and today. Built as a model of percentages, drawn by the screen (React) and by the print
 // (HTML) from the same numbers.
 var PP_GANTT_COL={prep:"#d6d1c4",bidding:"#c4bdab",evaluation:"#b1a993",approval:"#9fb9d8",contract:"#d6bd70",
-  submittals:"#93bfb3",fab:"#8d887d",transport:"#b0ab9f",buffer:"#ece9e2"};
+  submittals:"#93bfb3",sd:"#7fb0c4",fab:"#8d887d",transport:"#b0ab9f",buffer:"#ece9e2"};
 var PP_GANTT_GROUPS=[
   {label:"Tender",steps:["prep","bidding","evaluation"]},{label:"Approval",steps:["approval"]},{label:"Contract / PO",steps:["contract"]},
-  {label:"Submittals",steps:["submittals"]},{label:"Fabrication",steps:["fab"]},{label:"Transport",steps:["transport"]},{label:"Float",steps:["buffer"]}
+  {label:"Submittals",steps:["submittals"]},{label:"Shop drawings",steps:["sd"]},{label:"Fabrication",steps:["fab"]},{label:"Transport",steps:["transport"]},{label:"Float",steps:["buffer"]}
 ];
 var PP_MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function _ppDay(iso){var p=String(iso||"").split("-");return Date.UTC(+p[0],(+p[1])-1,+p[2])/864e5;}
@@ -709,7 +736,51 @@ var PP_COLSETS=[
   {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points and notes"},
   {k:"all",label:"All in one",tip:"The three sets on one line: plan, finance and follow-up (scrolls sideways; print it on A3). Click Plan, Finance or Follow-up to show or hide one set: any one, two or three."}
 ];
-var PP_TABLE_MS=["start","issue","approved","contract","submittals","delivered"];
+// Columns of the table: the Submittals milestone is split by document kind (SD / MAR / MSS / WMS / ITP),
+// each column = the documents of that kind in the package sheet, against the latest date of its milestone (SD approved for SD, Submittals OK for the others).
+var PP_SUB_KINDS=[{k:"mar",label:"MAR"},{k:"mss",label:"MSS"},{k:"wms",label:"WMS"},{k:"itp",label:"ITP"},{k:"sd",label:"SD"}];
+var PP_TABLE_COLS=["start","issue","approved","contract"].concat(PP_SUB_KINDS.map(function(x){return "sub_"+x.k;})).concat(["delivered"]);
+function ppColLabel(c){
+  if(c.indexOf("sub_")===0){var k=c.slice(4);return ((PP_SUB_KINDS.find(function(x){return x.k===k;})||{}).label||k.toUpperCase());}
+  return PP_MS_LABEL[c];
+}
+function ppColTip(c){
+  if(c.indexOf("sub_")===0)return ppColLabel(c)+" documents of the package (Submissions): how many approved, at the client, to resubmit. Bottom line: latest date of the "+(c==="sub_sd"?"SD approved":"Submittals OK")+" milestone — sorted by that latest date";
+  return "Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[c]+" — sorted by that latest date";
+}
+function ppColCell(td,p,c,now){return c.indexOf("sub_")===0?ppSubCell(td,p,c.slice(4),now):ppMsCell(td,p,c,now);}
+// One submittal kind (sd / mar / mss / wms / itp) of a package, as a milestone cell.
+function ppSubCell(td,p,k,now){
+  now=now||today();
+  var ms=k==="sd"?"sdok":"submittals",lab=ppColLabel("sub_"+k),lat=p.latest[ms]||"";
+  if((k==="wms"||k==="itp")&&((td.steps||{})[k]||"")==="N/A")
+    return {kind:"done",l1:"N/A",l2:"",tip:lab+" not applicable"};
+  var docs=[];
+  try{docs=tenderDocs(td).filter(function(d){return d.kind===k;});}catch(e){}
+  if(!docs.length)return {kind:"none",l1:"",l2:"",tip:"No "+lab+" on this package"};
+  var ok=0,cl=0,ret=0,last="",sums=docs.map(function(d){return docSummary(d,now);});
+  sums.forEach(function(s){
+    if(s.state==="approved"){ok++;var a=s.stats&&s.stats.approvedOn;if(isValidDate(a)&&a>last)last=a;}
+    else if(s.state==="pending")cl++;else if(s.state==="returned")ret++;
+  });
+  var n=docs.length;
+  var tip=lab+": "+docs.map(function(d,i){return (n>1?docShortName(d)+" — ":"")+sums[i].text;}).join("\n")+(lat?"\n"+(ms==="sdok"?"SD approved":"Submittals OK")+" latest date "+fmtDate(lat):"");
+  if(ok===n){
+    var over=last&&lat&&last>lat?Math.round((parseISODate(last)-parseISODate(lat))/86400000):0;
+    return {kind:over?"doneLate":"done",l1:"✓ "+(last?fmtDate(last):"approved"),
+      l2:[n>1?n+"/"+n:"",lat?"by "+fmtDate(lat)+(over?" · +"+over+" d":""):""].filter(Boolean).join(" · "),tip:tip};
+  }
+  var l1;
+  if(n===1){var s0=sums[0];l1=s0.state==="pending"?"At client"+(s0.rev?" R"+s0.rev:""):s0.state==="returned"?"To resubmit":"Not submitted";}
+  else l1=ok+"/"+n+" approved"+(cl?" · "+cl+" at client":"")+(ret?" · "+ret+" to resubmit":"");
+  if(!lat)return {kind:"none",l1:l1,l2:"",tip:tip};
+  if(ppShownNext(p)===ms){
+    var st=PP_STATUS[p.status]||PP_STATUS.none;
+    return {kind:"next",fg:st.fg,bg:st.bg,l1:l1,l2:"by "+fmtDate(lat)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),tip:tip};
+  }
+  var overdue=p.status!=="past"&&lat<now;
+  return {kind:overdue?"overdue":"todo",l1:l1,l2:"by "+fmtDate(lat),tip:tip};
+}
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
 function ppColsList(cols){
@@ -767,8 +838,8 @@ function ppMsInfo(td,m,p,now){
       if(tenderPhase(td)==="ctr"){var n=tenderNow(td,now);return String(n.text||"").replace(/^Contract · /,"")+(n.days?" · "+n.days+" d":"");}
       return "";
     }
-    if(m==="submittals"){
-      var docs=tenderDocs(td).filter(function(d){return d.kind==="sd"||d.kind==="mar"||d.kind==="mss";});
+    if(m==="submittals"||m==="sdok"){
+      var docs=tenderDocs(td).filter(function(d){return m==="sdok"?d.kind==="sd":d.kind==="mar"||d.kind==="mss"||d.kind==="wms"||d.kind==="itp";});
       if(!docs.length)return "";
       var ok=0,cl=0;
       docs.forEach(function(d){var st=docSummary(d,now).state;if(st==="approved")ok++;else if(st==="pending")cl++;});
@@ -846,7 +917,7 @@ function ppSvgTruck(c){
 // (kind "strip") or the Timeline chart (kind "gantt"). Screen (top of the table, can be
 // folded, localStorage pp_procplan_leg) and print.
 var PP_STEP_SHORT={prep:"Tender documents",bidding:"Bidding",evaluation:"Evaluation",approval:"Approval (internal / ACC / Aconex)",
-  contract:"Contract / PO",submittals:"Shop drawings / MAR",fab:"Fabrication",transport:"Transport",buffer:"Float before start"};
+  contract:"Contract / PO",submittals:"MAR / MSS / WMS / ITP",sd:"Shop drawings",fab:"Fabrication",transport:"Transport",buffer:"Float before start"};
 function ppLegendHtml(kind){
   function it(sym,txt){return '<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'+sym+'<span>'+txt+'</span></span>';}
   var box='<div class="ppleg" style="display:flex;flex-wrap:wrap;align-items:center;gap:5px 16px;border:1px solid #e3dfd6;border-radius:8px;background:#fff;padding:6px 12px;font-size:11px;color:#4a4740;line-height:1.4">';
@@ -968,6 +1039,7 @@ var PP_TABLE_CSS=
   '.ppt td{vertical-align:top}'+
   '.ppt tr.ppt-g th{background:#f4f6fa;font-size:10px;letter-spacing:.08em;padding:5px 10px;border-bottom:1px solid #c7d5e6}'+
   '.ppt td.ms{padding:4px 5px;min-width:96px;max-width:124px}'+
+  '.ppt td.ms.sub{min-width:78px;max-width:104px}'+
   // the screen table scrolls inside its own box: the sideways scrollbar stays at the bottom
   // of the window and the headers stay on top (ppt-wrap; not in print)
   '.ppt-wrap{overflow:auto;max-height:calc(100vh - 170px);border:1px solid #e6e2d9;border-radius:6px}'+
@@ -1069,18 +1141,18 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
   if(!dl)model=null;
-  var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
-  var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
+  var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?880:0)+(fin?330:0)+(fol?780:0);
+  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?1280:0)+(fin?330:0)+(fol?780:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
-    '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="6" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
+    '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="'+PP_TABLE_COLS.length+'" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
     (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
     '<th>Package</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th>':'')+
-    (plan?PP_TABLE_MS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(PP_MS_LABEL[m])+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
+    (plan?PP_TABLE_COLS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(ppColLabel(m))+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
     (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
     (model?'<tr class="ppt-scale"><td colspan="'+nb+'" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
@@ -1095,7 +1167,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
       (dl?'<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
         (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>':'');
     if(plan){
-      PP_TABLE_MS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+'">'+ppMsCellHtml(ppMsCell(td,p,m,now))+'</td>';});
+      PP_TABLE_COLS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+(m.indexOf("sub_")===0?' sub':'')+'">'+ppMsCellHtml(ppColCell(td,p,m,now))+'</td>';});
       h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div></td>';
     }
     if(fin){
@@ -1638,9 +1710,9 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
-  var nCols=nb+(plan?7:0)+(fin?3:0)+(fol?4:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
-  var tlSpan=plan?7:nCols-nb,tlRest=nCols-nb-tlSpan;
+  var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   var model=tl&&dl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
   var HZ=[["all","Any date"],["4w","Next deadline ≤ 4 weeks"],["8w","≤ 8 weeks"]];
   var QF=[["cl","With client","At least one document waits for the client's answer"],["late","Late delivery","Will start late: forecast delivery after a start on site still to come (packages already started are not listed)"],["na","Not awarded","No subcontractor recorded in Awards"]];
@@ -1707,8 +1779,8 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             :p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}
           <div dangerouslySetInnerHTML={{__html:ppWhoHtml(stg)}}/>
         </td>}
-        {plan&&PP_TABLE_MS.map(function(m,i){
-          return <td key={m} className={"ms"+(i===0?" sep":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppMsCell(td,p,m,now))}}></td>;
+        {plan&&PP_TABLE_COLS.map(function(m,i){
+          return <td key={m} className={"ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppColCell(td,p,m,now))}}></td>;
         })}
         {plan&&<td className="sep" style={{minWidth:112}}>{needCell(td,p)}</td>}
         {fin&&<td className="sep" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,color:"#0f5299",whiteSpace:"nowrap"}}>{prop?prop.toLocaleString():"—"}</td>}
@@ -1820,7 +1892,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         <thead>
           <tr className="ppt-g">
             <th colSpan={nb}>Package</th>
-            {plan&&<th colSpan={6} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
+            {plan&&<th colSpan={PP_TABLE_COLS.length} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={3} className="sep">Finance</th>}
             {fol&&<th colSpan={4} className="sep">Follow-up</th>}
@@ -1829,7 +1901,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {th("title","Package",{minWidth:160})}
             {fin&&th("budget","Budget",{textAlign:"right"})}
             {dl&&th("deadline","Next deadline",{minWidth:150},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
-            {plan&&PP_TABLE_MS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,PP_MS_LABEL[m],null,"Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[m]+" — sorted by that latest date",i===0?"sep":"")}</React.Fragment>;})}
+            {plan&&PP_TABLE_COLS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,ppColLabel(m),null,ppColTip(m),i===0?"sep":"")}</React.Fragment>;})}
             {plan&&th("need","Need on site",{minWidth:112},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
             {fin&&th("proposed","Proposed",{textAlign:"right"},"ACC / Aconex amount proposed (subcontract + other)","sep")}
             {fin&&th("instructed","Instructed",{textAlign:"right"},"Amount instructed by the client")}
@@ -1861,7 +1933,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
       </div>}
     {vis.length===0&&<div style={{color:"#9b968b",fontSize:12,padding:"14px 0"}}>{rows.length?"No package matches these filters.":"No package here. Paste the project list from Excel, or create a package."}</div>}
     {mode==="table"&&<div style={{fontSize:10.5,color:"#9b968b",marginTop:8,lineHeight:1.5}}>Each milestone cell: top line = what really happened (from the package sheet), bottom line = the LATEST date to reach it so the package is on site when needed. ✓ green on time, orange later than the latest date. Only the next milestone of each package is coloured: red late, orange ≤ 14 d, green on track. A package whose need date is past is "Started" and never flagged late. Amber row = starts on site within 21 days.
-      {model?" Timeline: plan chain (tender · approval · contract · submittals · fabrication · float), faded once reached; ◆ reached (orange: late); ○ next deadline; flag = need on site; truck = delivery forecast and its gap to the need; navy line = today.":""} Lead times: Settings › Durations › Procurement plan templates, adjustable per package (Submissions › 📅 Procurement plan).</div>}
+      {model?" Timeline: plan chain (tender · approval · contract · submittals · shop drawings · fabrication · float), faded once reached; ◆ reached (orange: late); ○ next deadline; flag = need on site; truck = delivery forecast and its gap to the need; navy line = today.":""} Lead times: Settings › Durations › Procurement plan templates, adjustable per package (Submissions › 📅 Procurement plan).</div>}
   </div>;
 }
 
@@ -1882,7 +1954,7 @@ function ProcPlanTemplatesEditor({durations,saveDurations}){
       <tbody>{PP_STEPS.map(function(s){
         return <tr key={s.k}><td>{s.label}</td>
           {PP_TYPES.map(function(t){
-            var v=(cur[t.k]||{})[s.k];var def=PP_DEFAULT_TEMPLATES[t.k][s.k];
+            var v=(cur[t.k]||{})[s.k];var def=ppStepDefault(cur[t.k],t.k,s.k);
             return <td key={t.k} style={{textAlign:"right"}}><input type="number" min="0" value={v===undefined?"":v} placeholder={String(def)}
               onChange={function(e){set(t.k,s.k,e.target.value);}} style={{width:64,textAlign:"right",fontSize:11.5,padding:"3px 6px",fontWeight:v!==undefined?700:400}}/></td>;
           })}</tr>;
