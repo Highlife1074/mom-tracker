@@ -426,7 +426,7 @@ var PP_SORTS={
 ["start","issue","bids","recommend","approved","contract","submittals","ready","delivered"].forEach(function(m){
   PP_SORTS["ms_"+m]=function(r){return r.p.latest[m]||null;};
 });
-["mar","mss","wms","itp"].forEach(function(k){PP_SORTS["ms_sub_"+k]=function(r){return r.p.latest.submittals||null;};});
+["sd","mar","mss","wms","itp"].forEach(function(k){PP_SORTS["ms_sub_"+k]=function(r){return r.p.latest.submittals||null;};});
 function ppAwardedNames(td){
   var aw=(td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return String(x.subcontractor).trim();});
   return aw.length?aw:(td.contractor?[String(td.contractor).trim()]:[]);
@@ -710,9 +710,9 @@ var PP_COLSETS=[
   {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points and notes"},
   {k:"all",label:"All in one",tip:"The three sets on one line: plan, finance and follow-up (scrolls sideways; print it on A3). Click Plan, Finance or Follow-up to show or hide one set: any one, two or three."}
 ];
-// Columns of the table: the Submittals milestone is split by document kind (MAR / MSS / WMS / ITP),
+// Columns of the table: the Submittals milestone is split by document kind (SD / MAR / MSS / WMS / ITP),
 // each column = the documents of that kind in the package sheet, against the Submittals latest date.
-var PP_SUB_KINDS=[{k:"mar",label:"MAR"},{k:"mss",label:"MSS"},{k:"wms",label:"WMS"},{k:"itp",label:"ITP"}];
+var PP_SUB_KINDS=[{k:"sd",label:"SD"},{k:"mar",label:"MAR"},{k:"mss",label:"MSS"},{k:"wms",label:"WMS"},{k:"itp",label:"ITP"}];
 var PP_TABLE_COLS=["start","issue","approved","contract"].concat(PP_SUB_KINDS.map(function(x){return "sub_"+x.k;})).concat(["delivered"]);
 function ppColLabel(c){
   if(c.indexOf("sub_")===0){var k=c.slice(4);return ((PP_SUB_KINDS.find(function(x){return x.k===k;})||{}).label||k.toUpperCase());}
@@ -723,7 +723,7 @@ function ppColTip(c){
   return "Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[c]+" — sorted by that latest date";
 }
 function ppColCell(td,p,c,now){return c.indexOf("sub_")===0?ppSubCell(td,p,c.slice(4),now):ppMsCell(td,p,c,now);}
-// One submittal kind (mar / mss / wms / itp) of a package, as a milestone cell.
+// One submittal kind (sd / mar / mss / wms / itp) of a package, as a milestone cell.
 function ppSubCell(td,p,k,now){
   now=now||today();
   var lab=ppColLabel("sub_"+k),lat=p.latest.submittals||"";
@@ -1119,7 +1119,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?1180:0)+(fin?330:0)+(fol?780:0);
+  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?1280:0)+(fin?330:0)+(fol?780:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
