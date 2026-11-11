@@ -40,7 +40,38 @@ const PP_MS_LABEL={start:"Start tender docs"};
 // red read like a status; "Get the approval" + its latest date reads as the action that is late.
 const PP_MS_TODO={start:"Start the tender documents",issue:"Issue the tender",bids:"Receive the bids",recommend:"Send the recommendation",
   approved:"Get the approval",contract:"Sign the contract / PO",submittals:"Get the submittals approved",sdok:"Get the shop drawings approved",ready:"Have it ready to ship",delivered:"Deliver to site"};
-function ppNextAct(p){return p&&p.next&&p.need&&p.status!=="past"&&p.status!=="cancelled"?(PP_MS_TODO[p.next]||PP_MS_LABEL[p.next]):"";}
+function ppNextAct(p){return p&&p.next&&p.need&&p.status!=="past"&&p.status!=="cancelled"?(p.todo||PP_MS_TODO[p.next]||PP_MS_LABEL[p.next]):"";}
+// The submittals (MAR / MSS / WMS / ITP, SD) never make the Next deadline: they have their own
+// columns. The next deadline is the next milestone of the chain after them.
+var PP_DL_SKIP={submittals:1,sdok:1};
+// The next deadline said as the precise thing to do, read from the package sheet:
+// "Submit ACC", "Obtain approval on Aconex REF-12", "Send the subcontract request", "Sign the contract"…
+function ppTodo(td,m){
+  try{
+    var rl=tenderRouteLabel(td),internal=tenderApprovalRoute(td).route==="none";
+    if(m==="recommend"||m==="approved"){
+      if(internal)return m==="recommend"?"Award the package":"Get the internal approval";
+      var acc=tenderDocs(td).find(function(d){return d.id==="acc";});
+      var ref=String((((td.stepDates||{}).acc)||{}).reference||"").trim();
+      var st=acc?docSummary(acc).state:"none";
+      // "ACC ACC-045" reads twice: a reference that already names the route stands alone
+      var nm=ref?(ref.toUpperCase().indexOf(String(rl).toUpperCase().split("/")[0])===0||/^(ACC|ACX|ACONEX)/i.test(ref)?ref:rl+" "+ref):rl;
+      if(st==="pending")return "Obtain approval on "+nm;
+      if(st==="returned")return "Resubmit "+nm;
+      return "Submit "+rl;
+    }
+    if(m==="contract"){
+      var ty=ppType(td),pur=(td.purchases||[]).filter(Boolean);
+      if(pur.length&&(ty==="material"||ty==="equipment"))return "Issue the PO";
+      var ct=(td.stepDates||{}).contract||{},sc=String((td.steps||{}).contract||"");
+      if(ct.circulateDone||/circulation/i.test(sc))return "Sign the contract";
+      if(ct.requestDone||/request sent/i.test(sc))return "Circulate the contract";
+      return "Send the subcontract request";
+    }
+  }catch(e){}
+  if((m==="ready"||m==="delivered")&&ppType(td)==="subcontract")return "Mobilise on site";
+  return PP_MS_TODO[m]||PP_MS_LABEL[m]||"";
+}
 function ppNextBy(p){
   if(!ppNextAct(p))return "";
   var d=p.latest[p.next==="ready"&&p.fcDelivery?"delivered":p.next];
@@ -169,7 +200,7 @@ function ppPlan(td,now){
     done[m]=later;
   }
   var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
-  var next=PP_MS_ORDER.find(function(m){return m!=="need"&&!done[m];})||"";
+  var next=PP_MS_ORDER.find(function(m){return m!=="need"&&!PP_DL_SKIP[m]&&!done[m];})||"";
   // Once the order is placed, fabrication and delivery are judged on the delivery forecast.
   var fcDelivery=isValidDate(proc.deliveryDate)?proc.deliveryDate:"";
   var daysLeft=null,status="none";
@@ -188,7 +219,7 @@ function ppPlan(td,now){
   // end of the need week. Landing after the latest delivery date but before that only eats
   // the float (deliveryTight).
   var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
-  return {need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  return {need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,todo:next?ppTodo(td,next):"",daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
     deliveryLate:!!(dst&&dst.late),
     deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
@@ -390,8 +421,12 @@ function ppActionsIndex(tasks){
   var m={};
   (tasks||[]).forEach(function(t){
     if(!t||!t.tenderRef||t.status==="done")return;
+    var blocking=(t.tags||[]).indexOf("Blocking Point")>=0;
+    // Blocking points are typed by people: the automatic ones (System, e.g. "Procurement late
+    // for: …" from the schedule) are left out of the list — they stay in the Actions view.
+    if(blocking&&t.addedBy==="System")return;
     var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[]});
-    ((t.tags||[]).indexOf("Blocking Point")>=0?e.block:e.next).push(t);
+    (blocking?e.block:e.next).push(t);
   });
   function byDue(a,b){var x=a.due||"9999",y=b.due||"9999";return x<y?-1:x>y?1:0;}
   Object.keys(m).forEach(function(k){m[k].next.sort(byDue);m[k].block.sort(byDue);});
@@ -882,7 +917,11 @@ function ppMsCellHtml(c){
     (c.l2?'<div class="l2">'+esc(c.l2)+'</div>':'')+'</div>';
 }
 // Where the package is now (who holds it, since when) and the step after it — tenderStage.
-function ppStageOf(td,now){try{return tenderStage(td,now);}catch(e){return {text:"",who:"us",days:null,next:""};}}
+// Under the Next deadline: nothing about the submittals (MAR / MSS / WMS / ITP / SD have their own columns).
+function ppStageOf(td,now){
+  var none={text:"",who:"us",days:null,next:""};
+  try{var s=tenderStage(td,now);return /^(MAR|MSS|WMS|ITP|SD)\b/.test(String(s.text||""))?none:s;}catch(e){return none;}
+}
 function ppNowText(s){return (s.text||"")+(s.days!==null&&s.days!==undefined&&s.days>=0?" · "+s.days+" d":"");}
 function ppWhoHtml(s){
   if(!s||!s.text)return "";
@@ -1908,7 +1947,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {fin&&th("variance","Var. budget − instructed",{textAlign:"right"},"Budget − instructed: positive = under budget (green), negative = over budget (red). Empty until the package is instructed.")}
             {fol&&th("owner","Owner",null,"Owner of the package","sep")}
             {fol&&th("next","Next steps",null,"Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one. Sorted by number.")}
-            {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package — including the automatic “Procurement late” ones from the schedule. Sorted by number.")}
+            {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package, typed by people only (the automatic “Procurement late” ones stay in the Actions view). Sorted by number.")}
             {fol&&th("notes","Notes",null,"Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one. Sorted by number.")}
           </tr>
           {model&&<tr className="ppt-scale">
