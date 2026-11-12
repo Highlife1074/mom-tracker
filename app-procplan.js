@@ -216,6 +216,24 @@ function ppDoneVs(ad,lat){
   var over=Math.round((parseISODate(ad)-parseISODate(lat))/86400000);
   return over>0?over+" d after deadline":"on time";
 }
+// The client's answer for the documents now at the client (ACC clock in working days for
+// ACC / Aconex, calendar days for the others — docResponseDue / docOverdue): the worst overdue
+// one in red, else the earliest due date in green. null when nothing is at the client.
+function ppClientDue(docs,now){
+  now=now||today();
+  var worst=null,first="";
+  (docs||[]).forEach(function(d){
+    var s=docSummary(d,now);if(s.state!=="pending")return;
+    var last=d.cycles[d.cycles.length-1]||{},due=docResponseDue(d,last.submitted);
+    if(s.overdue){if(!worst||s.overdue.days>worst.days)worst=s.overdue;}
+    else if(isValidDate(due)&&(!first||due<first))first=due;
+  });
+  if(worst)return {late:true,txt:"Client answer due "+ppDay(worst.due)+" · "+fmtOverdue(worst),
+    tip:"The client has not answered: answer was due "+fmtDate(worst.due)+(worst.unit==="wd"?" (working days)":" (calendar days)")};
+  if(first){var n=Math.round((parseISODate(first)-parseISODate(now))/86400000);
+    return {late:false,txt:"Client answer due "+ppDay(first)+" · "+(n>0?n+" d left":"today"),tip:"Client answer expected by "+fmtDate(first)};}
+  return null;
+}
 function ppLateTxt(lat,now){var n=Math.round((parseISODate(now)-parseISODate(lat))/86400000);return n>0?n+" d late":"";}
 
 // One milestone cell: the latest date, or ✓ and the real date once reached.
@@ -787,13 +805,15 @@ function ppSubCell(td,p,k,now){
   var l1;
   if(n===1){var s0=sums[0];l1=s0.state==="pending"?"At client"+(s0.rev?" (rev "+s0.rev+")":""):s0.state==="returned"?"Returned · to resubmit":"Not submitted yet";}
   else l1=ok+"/"+n+" approved"+(cl?" · "+cl+" at client":"")+(ret?" · "+ret+" to resubmit":"");
-  if(!lat)return {kind:"none",l1:l1,l2:"",tip:tip};
+  var cli=ppClientDue(docs,now);
+  if(cli)tip+="\n"+cli.tip;
+  if(!lat)return {kind:"none",l1:l1,cli:cli,l2:"",tip:tip};
   if(ppShownNext(p)===ms){
     var st=PP_STATUS[p.status]||PP_STATUS.none;
-    return {kind:"next",fg:st.fg,bg:st.bg,l1:l1,l2:ppDue(ms,lat)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),tip:tip};
+    return {kind:"next",fg:st.fg,bg:st.bg,l1:l1,cli:cli,l2:ppDue(ms,lat)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),tip:tip};
   }
   var overdue=p.status!=="past"&&lat<now;
-  return {kind:overdue?"overdue":"todo",l1:l1,l2:ppDue(ms,lat)+(overdue?" · "+ppLateTxt(lat,now):""),tip:tip};
+  return {kind:overdue?"overdue":"todo",l1:l1,cli:cli,l2:ppDue(ms,lat)+(overdue?" · "+ppLateTxt(lat,now):""),tip:tip};
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
@@ -877,22 +897,25 @@ function ppMsCell(td,p,m,now){
       tip:PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · latest date "+fmtDate(lat):"")+(over?" — "+over+" d later":"")};
   }
   var info=ppMsInfo(td,m,p,now);
-  if(!lat)return {kind:"none",l1:info,l2:"",tip:"No need on site: nothing can be worked back"};
+  var cli=null;
+  if(m==="approved"){try{cli=ppClientDue(tenderDocs(td).filter(function(d){return d.id==="acc";}),now);}catch(e){}}
+  if(!lat)return {kind:"none",l1:info,cli:cli,l2:"",tip:"No need on site: nothing can be worked back"};
   if(ppShownNext(p)===m){
     var st=PP_STATUS[p.status]||PP_STATUS.none,hid=p.next!==m,dl=p.latest[p.next]||lat;
-    return {kind:"next",fg:st.fg,bg:st.bg,l1:info||PP_MS_LABEL[p.next],
+    return {kind:"next",fg:st.fg,bg:st.bg,l1:info||PP_MS_LABEL[p.next],cli:cli,
       l2:ppDue(p.next,dl)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),
       tip:"Next milestone: "+PP_MS_LABEL[p.next]+" — latest date "+fmtDate(dl)};
   }
   var overdue=p.status!=="past"&&lat<now;
   var fcCol=m==="delivered"&&p.fcDelivery?(p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":"#1e6b3a"):"";
-  return {kind:overdue?"overdue":"todo",l1:m==="start"||m==="issue"?"":info,l1fg:fcCol,l2:ppDue(m,lat)+(overdue?" · "+ppLateTxt(lat,now):""),
+  return {kind:overdue?"overdue":"todo",l1:m==="start"||m==="issue"?"":info,l1fg:fcCol,cli:cli,l2:ppDue(m,lat)+(overdue?" · "+ppLateTxt(lat,now):""),
     tip:"Latest date to reach "+PP_MS_LABEL[m]+": "+fmtDate(lat)+(overdue?" — passed, not reached":"")+
       (fcCol?"\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":""):"")};
 }
 function ppMsCellHtml(c){
   return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'"'+(c.kind==="next"?' style="background:'+c.bg+';border-color:'+c.fg+';color:'+c.fg+'"':'')+'>'+
     '<div class="l1"'+(c.l1fg?' style="color:'+c.l1fg+';font-weight:700"':'')+'>'+(c.l1?esc(c.l1):'&nbsp;')+'</div>'+
+    (c.cli?'<div class="l3 '+(c.cli.late?'late':'ok')+'" title="'+esc(c.cli.tip||"")+'">'+esc(c.cli.txt)+'</div>':'')+
     (c.l2?'<div class="l2">'+esc(c.l2)+'</div>':'')+'</div>';
 }
 // Where the package is now (who holds it, since when) and the step after it — tenderStage.
@@ -1083,6 +1106,9 @@ var PP_TABLE_CSS=
   '.ppc .l1{font-size:11.5px;font-weight:600;color:#6f6b62}'+
   '.ppc .l1{overflow-wrap:anywhere}'+
   '.ppc .l2{font-size:10.5px;color:#6f6b62}'+
+  '.ppc .l3{font-size:10.5px;font-weight:700;margin:1px 0;padding:0 4px;border-radius:4px;background:#fff;display:inline-block}'+
+  '.ppc .l3.ok{color:#1e6b3a;box-shadow:inset 0 0 0 1px #9cc9a8}'+
+  '.ppc .l3.late{color:#fff;background:#b3302a}'+
   '.ppc-done .l1{color:#1e6b3a}'+
   '.ppc-doneLate .l1{color:#b35c00}'+
   '.ppc-next .l1,.ppc-next .l2{color:inherit;font-weight:700}'+
