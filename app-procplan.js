@@ -203,6 +203,20 @@ const PP_STATUS={
   cancelled:{label:"Cancelled",fg:"#9b968b",bg:"#f2f0eb"}
 };
 function ppDaysText(n){if(n===null||n===undefined)return"";if(n<0)return (-n)+" d late";if(n===0)return"today";return n+" d left";}
+// Cells of the table: a date said with its month ("7 Dec 26", never the ambiguous 07/12/26)
+// and the deadline said as the action ("Approve by 7 Dec 26", not a bare "by 07/12/26").
+var PP_MON3=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function ppDay(d){if(!isValidDate(d))return "";var p=String(d).split("-");return (+p[2])+" "+PP_MON3[(+p[1])-1]+" "+p[0].slice(2);}
+var PP_MS_VERB={start:"Start by",issue:"Issue by",bids:"Bids in by",recommend:"Recommend by",approved:"Approve by",contract:"Sign by",
+  submittals:"Approve by",sdok:"Approve by",ready:"Ready by",delivered:"Deliver by",need:"Start by"};
+function ppDue(m,d){return (PP_MS_VERB[m]||"Due")+" "+ppDay(d);}
+// Done: on time, or how many days after the deadline.
+function ppDoneVs(ad,lat){
+  if(!ad||!lat)return "";
+  var over=Math.round((parseISODate(ad)-parseISODate(lat))/86400000);
+  return over>0?over+" d after deadline":"on time";
+}
+function ppLateTxt(lat,now){var n=Math.round((parseISODate(now)-parseISODate(lat))/86400000);return n>0?n+" d late":"";}
 
 // One milestone cell: the latest date, or ✓ and the real date once reached.
 function PpMsCell({p,m}){
@@ -745,8 +759,8 @@ function ppColLabel(c){
   return PP_MS_LABEL[c];
 }
 function ppColTip(c){
-  if(c.indexOf("sub_")===0)return ppColLabel(c)+" documents of the package (Submissions): how many approved, at the client, to resubmit. Bottom line: latest date of the "+(c==="sub_sd"?"SD approved":"Submittals OK")+" milestone — sorted by that latest date";
-  return "Top line: what really happened. Bottom line: latest date to reach "+PP_MS_LABEL[c]+" — sorted by that latest date";
+  if(c.indexOf("sub_")===0)return ppColLabel(c)+" documents of the package (Submissions). Top line: where they are (approved, at the client, to resubmit, not submitted yet). Bottom line: deadline to get them approved, worked back from the need on site (milestone "+(c==="sub_sd"?"SD approved":"Submittals OK")+") — sorted by that deadline";
+  return "Top line: what really happened. Bottom line: deadline to reach "+PP_MS_LABEL[c]+", worked back from the need on site (once reached: on time or how late) — sorted by that deadline";
 }
 function ppColCell(td,p,c,now){return c.indexOf("sub_")===0?ppSubCell(td,p,c.slice(4),now):ppMsCell(td,p,c,now);}
 // One submittal kind (sd / mar / mss / wms / itp) of a package, as a milestone cell.
@@ -767,19 +781,19 @@ function ppSubCell(td,p,k,now){
   var tip=lab+": "+docs.map(function(d,i){return (n>1?docShortName(d)+" — ":"")+sums[i].text;}).join("\n")+(lat?"\n"+(ms==="sdok"?"SD approved":"Submittals OK")+" latest date "+fmtDate(lat):"");
   if(ok===n){
     var over=last&&lat&&last>lat?Math.round((parseISODate(last)-parseISODate(lat))/86400000):0;
-    return {kind:over?"doneLate":"done",l1:"✓ "+(last?fmtDate(last):"approved"),
-      l2:[n>1?n+"/"+n:"",lat?"by "+fmtDate(lat)+(over?" · +"+over+" d":""):""].filter(Boolean).join(" · "),tip:tip};
+    return {kind:over?"doneLate":"done",l1:"✓ Approved"+(last?" "+ppDay(last):""),
+      l2:[n>1?"all "+n+" docs":"",ppDoneVs(last,lat)].filter(Boolean).join(" · "),tip:tip};
   }
   var l1;
-  if(n===1){var s0=sums[0];l1=s0.state==="pending"?"At client"+(s0.rev?" R"+s0.rev:""):s0.state==="returned"?"To resubmit":"Not submitted";}
+  if(n===1){var s0=sums[0];l1=s0.state==="pending"?"At client"+(s0.rev?" (rev "+s0.rev+")":""):s0.state==="returned"?"Returned · to resubmit":"Not submitted yet";}
   else l1=ok+"/"+n+" approved"+(cl?" · "+cl+" at client":"")+(ret?" · "+ret+" to resubmit":"");
   if(!lat)return {kind:"none",l1:l1,l2:"",tip:tip};
   if(ppShownNext(p)===ms){
     var st=PP_STATUS[p.status]||PP_STATUS.none;
-    return {kind:"next",fg:st.fg,bg:st.bg,l1:l1,l2:"by "+fmtDate(lat)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),tip:tip};
+    return {kind:"next",fg:st.fg,bg:st.bg,l1:l1,l2:ppDue(ms,lat)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),tip:tip};
   }
   var overdue=p.status!=="past"&&lat<now;
-  return {kind:overdue?"overdue":"todo",l1:l1,l2:"by "+fmtDate(lat),tip:tip};
+  return {kind:overdue?"overdue":"todo",l1:l1,l2:ppDue(ms,lat)+(overdue?" · "+ppLateTxt(lat,now):""),tip:tip};
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
@@ -858,8 +872,8 @@ function ppMsCell(td,p,m,now){
     var ad=a&&isValidDate(a.date)?a.date:"";
     var over=ad&&lat&&ad>lat?Math.round((parseISODate(ad)-parseISODate(lat))/86400000):0;
     var extra=m==="approved"?(function(){try{return tenderRouteLabel(td);}catch(e){return "";}})():m==="contract"&&a&&a.po?"PO":"";
-    return {kind:over?"doneLate":"done",l1:"✓ "+(ad?fmtDate(ad):"done"),
-      l2:[extra,lat?"by "+fmtDate(lat)+(over?" · +"+over+" d":""):""].filter(Boolean).join(" · "),
+    return {kind:over?"doneLate":"done",l1:"✓ "+(ad?ppDay(ad):"done"),
+      l2:[extra,ppDoneVs(ad,lat)].filter(Boolean).join(" · "),
       tip:PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · latest date "+fmtDate(lat):"")+(over?" — "+over+" d later":"")};
   }
   var info=ppMsInfo(td,m,p,now);
@@ -867,12 +881,12 @@ function ppMsCell(td,p,m,now){
   if(ppShownNext(p)===m){
     var st=PP_STATUS[p.status]||PP_STATUS.none,hid=p.next!==m,dl=p.latest[p.next]||lat;
     return {kind:"next",fg:st.fg,bg:st.bg,l1:info||PP_MS_LABEL[p.next],
-      l2:(hid?PP_MS_LABEL[p.next]+" ":"")+"by "+fmtDate(dl)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),
+      l2:ppDue(p.next,dl)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),
       tip:"Next milestone: "+PP_MS_LABEL[p.next]+" — latest date "+fmtDate(dl)};
   }
   var overdue=p.status!=="past"&&lat<now;
   var fcCol=m==="delivered"&&p.fcDelivery?(p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":"#1e6b3a"):"";
-  return {kind:overdue?"overdue":"todo",l1:m==="start"||m==="issue"?"":info,l1fg:fcCol,l2:"by "+fmtDate(lat),
+  return {kind:overdue?"overdue":"todo",l1:m==="start"||m==="issue"?"":info,l1fg:fcCol,l2:ppDue(m,lat)+(overdue?" · "+ppLateTxt(lat,now):""),
     tip:"Latest date to reach "+PP_MS_LABEL[m]+": "+fmtDate(lat)+(overdue?" — passed, not reached":"")+
       (fcCol?"\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":""):"")};
 }
