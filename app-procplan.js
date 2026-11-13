@@ -833,8 +833,9 @@ function ppSubCell(td,p,k,now){
   });
   var n=docs.length;
   var tip=lab+": "+docs.map(function(d,i){return (n>1?docShortName(d)+" — ":"")+sums[i].text;}).join("\n");
-  if(ok===n)return ppDoneCell("✓ Approved"+(last?" "+ppDay(last):""),last,lat,n>1?"all "+n+" docs":"",
-    tip+(lat?"\nApproval deadline "+fmtDate(lat):""));
+  var refs=ppDocRefs(td,docs);
+  if(ok===n){var dc=ppDoneCell("✓ Approved"+(last?" "+ppDay(last):""),last,lat,n>1?"all "+n+" docs":"",
+    tip+(lat?"\nApproval deadline "+fmtDate(lat):""));dc.refs=refs;return dc;}
   var act,due,subBy=ppSubmitBy(k,lat);
   if(nn){act="To submit"+(n>1?" ("+nn+")":"");due=subBy;}
   else if(ret){act="To resubmit"+(n>1?" ("+ret+")":"");due=subBy;}
@@ -848,7 +849,7 @@ function ppSubCell(td,p,k,now){
   var cli=ppClientDue(docs,now);
   if(cli)tip+="\n"+cli.tip;
   if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+"\n\n"+ppChainTip(p,ms,(nn||ret)?k:"",due);
-  return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip},now);
+  return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip,refs:refs},now);
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
@@ -960,9 +961,21 @@ function ppChainTip(p,ms,subKind,submitBy){
   out.push("Lead times: Submissions › Procurement plan card of the package, or Settings › Durations › templates.");
   return out.join("\n");
 }
+// Numbers of the documents (reference typed at submission, else the one of the latest
+// revision), one after the other, for the bottom of the cell.
+function ppDocRefs(td,docs){
+  var out=[];
+  (docs||[]).forEach(function(d){
+    var r="";
+    try{r=docCurRef(td,d);}catch(e){}
+    if(!r){var cs=d.cycles||[];for(var i=cs.length-1;i>=0&&!r;i--)r=String(cs[i].ref||"").trim();}
+    if(r&&out.indexOf(r)<0)out.push(r);
+  });
+  return out.join(", ");
+}
 function ppTodoCell(p,ms,act,due,real,o,now){
   o=o||{};
-  var c={act:act,real:real||"",realFg:o.realFg||"",cli:o.cli||null,tip:o.tip||""};
+  var c={act:act,real:real||"",realFg:o.realFg||"",cli:o.cli||null,tip:o.tip||"",refs:o.refs||""};
   if(!isValidDate(due)){c.kind="none";c.due="";return c;}
   var n=_ppDaysTo(due,now);
   c.due="by "+ppDay(due)+(p.status==="past"?"":" · "+ppDaysText(n));
@@ -985,6 +998,9 @@ function ppMsCell(td,p,m,now){
     var ad=a&&isValidDate(a.date)?a.date:"";
     var extra=m==="approved"?(function(){try{return tenderRouteLabel(td);}catch(e){return "";}})():"";
     var lbl=m==="contract"&&a&&a.po?"PO placed":PP_MS_DONE[m]||"Done";
+    if(m==="approved"){var dc=ppDoneCell("✓ "+lbl+(ad?" "+ppDay(ad):""),ad,lat,extra,PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · deadline "+fmtDate(lat):""));
+      try{dc.refs=ppDocRefs(td,tenderDocs(td).filter(function(d){return d.id==="acc";}));}catch(e){}
+      return dc;}
     return ppDoneCell("✓ "+lbl+(ad?" "+ppDay(ad):""),ad,lat,extra,
       PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · deadline "+fmtDate(lat):""));
   }
@@ -1000,7 +1016,7 @@ function ppMsCell(td,p,m,now){
       else if(s.state==="pending")act="To be approved ("+rl+")";
       else if(s.state==="returned"){act="To resubmit ("+rl+")";due=ppSubmitBy("acc",lat);}
       else act=route==="none"?"To approve (internal)":"To be approved ("+rl+")";
-      if(acc)o.cli=ppClientDue([acc],now);
+      if(acc){o.cli=ppClientDue([acc],now);o.refs=ppDocRefs(td,[acc]);}
     }
     else if(m==="contract"){
       var pur=(td.purchases||[]).filter(Boolean),ty=ppType(td);
@@ -1031,7 +1047,8 @@ function ppMsCellHtml(c){
   var bot=c.real||c.cli?'<div class="ppc-real">'+
     (c.real?'<div'+(c.realFg?' style="color:'+c.realFg+';font-weight:700"':'')+'>'+esc(c.real)+'</div>':'')+
     (c.cli?'<div class="l3 '+(c.cli.late?'late':'ok')+'" title="'+esc(c.cli.tip||"")+'">'+esc(c.cli.txt)+'</div>':'')+'</div>':'';
-  return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'">'+(top||bot?top+bot:'&nbsp;')+'</div>';
+  var ref=c.refs?'<div class="ppc-ref" title="Document number(s)">'+esc(c.refs)+'</div>':'';
+  return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'">'+(top||bot?top+bot:'&nbsp;')+ref+'</div>';
 }
 // Where the package is now (who holds it, since when) and the step after it — tenderStage.
 function ppStageOf(td,now){try{return tenderStage(td,now);}catch(e){return {text:"",who:"us",days:null,next:""};}}
@@ -1229,6 +1246,7 @@ var PP_TABLE_CSS=
   '.ppc-doneLate .ppc-top .act{color:#b35c00}'+
   '.ppc-none .ppc-top .act{color:#b9b4a8}'+
   '.ppc-na .ppc-top .act{color:#9b968b}'+
+  '.ppc-ref{margin:2px 6px 0;font-family:var(--font-mono,monospace);font-size:9.5px;color:#5f7ea6;overflow-wrap:anywhere}'+
   '.ppc-real{margin:2px 6px 0;padding:2px 0 1px;border-top:1px dashed #d9d5ca;font-size:10.5px;color:#8a857a}'+
   '.ppc .l3{font-size:10.5px;font-weight:700;margin:2px 0 0;padding:0 4px;border-radius:4px;background:#fff;display:inline-block}'+
   '.ppc .l3.ok{color:#1e6b3a;box-shadow:inset 0 0 0 1px #9cc9a8}'+
