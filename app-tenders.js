@@ -7287,6 +7287,22 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
 // Revisions are recorded in the tender (Submission steps → WMS & ITP), where they also open
 // and close the automatic actions: the tender name opens it. Only the reference is written
 // from here, because it has no automatic action attached.
+// Free note on one document row (WMS/ITP and Materials views). Saved when the field is left
+// (or after a pause), never on every keystroke: one write per edit, the list does not re-sort under the cursor.
+function DocNoteInput({value,onCommit,placeholder}){
+  const [v,setV]=useState(value||"");
+  const tRef=useRef(null);
+  useEffect(function(){setV(value||"");},[value]);
+  function commit(x){clearTimeout(tRef.current);if((x||"")!==(value||""))onCommit(x);}
+  var ro=isReadOnly();
+  return <textarea value={v} rows={1} readOnly={ro} placeholder={ro?"":(placeholder||"Note…")}
+    onChange={function(e){var x=e.target.value;setV(x);clearTimeout(tRef.current);tRef.current=setTimeout(function(){commit(x);},1500);}}
+    onBlur={function(){commit(v);}}
+    onKeyDown={function(e){if(e.key==="Escape"){clearTimeout(tRef.current);setV(value||"");e.target.blur();}}}
+    style={{width:"100%",minWidth:150,minHeight:24,fontSize:11,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4,
+      fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",lineHeight:1.35,fieldSizing:"content"}}/>;
+}
+
 function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,memory,setMemory}){
   var mem=memory||{};
   var QD_FILTERS={late:"Late — not submitted",overdue:"Client answer overdue",returned:"To resubmit",
@@ -7325,7 +7341,8 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
     if(fKind!=="all"&&r.kind!==fKind)return false;
     if(q){var lq=q.toLowerCase();
       if(!(r.td.title||"").toLowerCase().includes(lq)&&!(r.td.package||"").toLowerCase().includes(lq)
-        &&!String(r.sd.reference||"").toLowerCase().includes(lq))return false;}
+        &&!String(r.sd.reference||"").toLowerCase().includes(lq)
+        &&!String(r.sd.note||"").toLowerCase().includes(lq))return false;}
     return true;
   });
   function matches(r,f){
@@ -7350,6 +7367,16 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
       return Object.assign({},t,{stepDates:sd});
     });
     saveTenders(d);
+  }
+
+  function updNote(td,k,val){
+    if(blockIfReadOnly())return;
+    saveTenders((tenders||[]).map(function(t){
+      if(t.id!==td.id)return t;
+      var sd=Object.assign({},t.stepDates||{});
+      sd[k]=Object.assign({},sd[k]||{},{note:val});
+      return Object.assign({},t,{stepDates:sd});
+    }));
   }
 
   function statusCell(r){
@@ -7385,7 +7412,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
     </div>
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
-      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Tender, package, reference…" style={{width:220,padding:"5px 10px",fontSize:12}}/>
+      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Tender, package, reference, note…" style={{width:220,padding:"5px 10px",fontSize:12}}/>
       <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All departments</option>
         {pkgList.map(function(p){return <option key={p} value={p}>{p}</option>;})}
@@ -7409,6 +7436,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
             <th style={{minWidth:200}}>Status</th>
             <th style={{textAlign:"center"}} title="Date the latest revision was sent to the client">Submitted</th>
             <th style={{minWidth:110}}>Reference</th>
+            <th style={{minWidth:180}} title="Free note on this document — saved when you leave the field">Notes</th>
           </tr></thead>
           <tbody>{shown.map(function(r){
             var kc=KIND_COL[r.kind];
@@ -7437,6 +7465,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
               <td><input type="text" value={r.sd.reference||""} onChange={function(e){updRef(r.td,r.k,e.target.value);}}
                 placeholder="Ref…" title="Transmittal or document number"
                 style={{fontFamily:"var(--font-mono)",fontSize:11,padding:"3px 6px",width:"100%",boxSizing:"border-box"}}/></td>
+              <td><DocNoteInput value={r.sd.note||""} onCommit={function(v){updNote(r.td,r.k,v);}}/></td>
             </tr>;
           })}</tbody>
         </table>
@@ -7521,7 +7550,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
   });
 
   var filtered=rows.filter(function(r){
-    if(q){var lq=q.toLowerCase();if(!(r.mat.name||"").toLowerCase().includes(lq)&&!(r.td.title||"").toLowerCase().includes(lq))return false;}
+    if(q){var lq=q.toLowerCase();if(!(r.mat.name||"").toLowerCase().includes(lq)&&!(r.td.title||"").toLowerCase().includes(lq)&&!String(r.mat.note||"").toLowerCase().includes(lq))return false;}
     if(fStatus!=="all"){
       if(!matDocKinds(r.mat).some(function(k){return docKey(r,k)===fStatus;}))return false;
     }
@@ -7591,7 +7620,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
     </div>}
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
-      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search material, tender…" style={{width:200,padding:"5px 10px",fontSize:12}}/>
+      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Search material, tender, note…" style={{width:200,padding:"5px 10px",fontSize:12}}/>
       <select value={fPkg} onChange={function(e){setFPkg(e.target.value);if(fTender!=="all"){var t=(tenders||[]).find(function(x){return x.id===fTender;});if(t&&t.package!==e.target.value)setFTender("all");}}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All departments</option>
         {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
@@ -7617,6 +7646,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
               <th>Package</th><th>Dept.</th><th>Material</th><th>Lead time</th>
               <th>MSS</th><th>MSS Target</th><th style={{textAlign:"center"}}>MSS Act.</th>
               <th>MAR</th><th>MAR Target</th><th style={{textAlign:"center"}}>MAR Act.</th>
+              <th style={{minWidth:180}} title="Free note on this material (MSS / MAR) — saved when you leave the field">Notes</th>
             </tr>
           </thead>
           <tbody>
@@ -7640,10 +7670,11 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
                 <td data-l="MAR" style={{minWidth:120}}>{docCell(r,"mar")}</td>
                 <td data-l="MAR target"><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.marTarget||""} onChange={function(e){updMat(r.td,r.mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
                 <td data-l="MAR actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MAR");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fbe6e8":"#f0ede6",color:s.late>0?"#b3302a":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
+                <td data-l="Notes"><DocNoteInput value={r.mat.note||""} onCommit={function(v){updMat(r.td,r.mi,"note",v);}}/></td>
               </tr>
               {openKinds.map(function(k){
                 var doc=matDoc(r.td,r.mat,r.mi,k);
-                return <tr key={"ed-"+k}><td colSpan={10} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+                return <tr key={"ed-"+k}><td colSpan={11} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
                   <div style={{fontSize:11,fontWeight:700,color:"#6f6b62",marginBottom:2}}>{k.toUpperCase()} — {r.mat.name||"material"} · {r.td.title}</div>
                   <DocRevisionsEditor td={r.td} d={doc} updTd={updTdFor(r.td)} afterSave={afterSaveFor(r.td)}/>
                 </td></tr>;
