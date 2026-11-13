@@ -121,6 +121,13 @@ function ppActuals(td){
   }
   // Submittals OK = every MAR, MSS, WMS and ITP approved (WMS / ITP set to N/A count as done);
   // SD approved = every shop drawing approved. No document of the kind: reached with the contract.
+  // Steps set to N/A / Not needed in the sheet: not applicable, so never late. They do not
+  // count as reached for the milestones before them (ppPlan: na does not cascade).
+  function isNa(v){return v==="N/A"||v==="Not needed";}
+  var NA={date:"",done:true,na:true};
+  if(isNa(steps.pkg)){if(!a.start)a.start=NA;if(!a.issue)a.issue=NA;if(!a.bids)a.bids=NA;}
+  if(isNa(steps.acc)){if(!a.recommend)a.recommend=NA;if(!a.approved)a.approved=NA;}
+  if(isNa(steps.contract)&&!a.contract)a.contract=NA;
   var docs=tenderDocs(td);
   function reached(list){
     if(!list.length)return a.contract?{date:"",done:true}:null;
@@ -165,6 +172,7 @@ function ppPlan(td,now){
   for(var j=PP_MS_ORDER.length-1;j>=0;j--){
     var m=PP_MS_ORDER[j];
     if(m==="sdok"){done[m]=later||!!act[m];continue;}
+    if(act[m]&&act[m].na){done[m]=true;continue;}
     if(act[m]||act.sdok&&PP_MS_ORDER.indexOf(m)<PP_MS_ORDER.indexOf("submittals"))later=true;
     done[m]=later;
   }
@@ -786,7 +794,7 @@ function ppSubCell(td,p,k,now){
   now=now||today();
   var ms=k==="sd"?"sdok":"submittals",lab=ppColLabel("sub_"+k),lat=p.latest[ms]||"";
   if((k==="wms"||k==="itp")&&((td.steps||{})[k]||"")==="N/A")
-    return {kind:"done",l1:"N/A",l2:"",tip:lab+" not applicable"};
+    return {kind:"na",l1:"N/A",l2:"",tip:lab+" not applicable"};
   var docs=[];
   try{docs=tenderDocs(td).filter(function(d){return d.kind===k;});}catch(e){}
   if(!docs.length)return {kind:"none",l1:"",l2:"",tip:"No "+lab+" on this package"};
@@ -888,6 +896,7 @@ function ppMsInfo(td,m,p,now){
 function ppMsCell(td,p,m,now){
   now=now||today();
   var lat=p.latest[m]||"",a=p.actual[m];
+  if(a&&a.na)return {kind:"na",l1:"N/A",l2:"",tip:PP_MS_LABEL[m]+": not applicable (set to N/A in the package sheet)"};
   if(p.done[m]){
     var ad=a&&isValidDate(a.date)?a.date:"";
     var over=ad&&lat&&ad>lat?Math.round((parseISODate(ad)-parseISODate(lat))/86400000):0;
@@ -1114,6 +1123,7 @@ var PP_TABLE_CSS=
   '.ppc-next .l1,.ppc-next .l2{color:inherit;font-weight:700}'+
   '.ppc-overdue .l2{color:#b3302a;font-weight:700}'+
   '.ppc-none .l1{color:#b9b4a8}'+
+  '.ppc-na .l1{color:#9b968b;font-weight:600}'+
   '.pp-who{font-size:10.5px;margin-top:3px;display:flex;gap:5px;align-items:baseline;line-height:1.3}'+
   '.pp-who i{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block}'+
   '.pps{position:relative;height:16px;min-width:200px}'+
