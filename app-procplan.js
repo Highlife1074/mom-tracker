@@ -1965,7 +1965,8 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
           <thead><tr><th style={hd}>Step</th><th style={hd}>Where it stands</th><th style={hd} title="Planned date of the step (submission for ACC / WMS / ITP)">Target</th><th style={hd}>Done</th></tr></thead>
           <tbody>{stepsShown.map(function(x){
             var k=x.def.key,ed=k==="bidders"||k==="pkg"||k==="kickoff";
-            var late=x.s.k!=="done"&&x.s.k!=="na"&&isValidDate(x.sd.target)&&x.sd.target<now&&!(x.s.doc&&x.s.doc.cycles.length);
+            var tgt=k==="contract"?(x.sd.signedTarget||x.sd.target):x.sd.target;
+            var late=x.s.k!=="done"&&x.s.k!=="na"&&isValidDate(tgt)&&tgt<now&&!(x.s.doc&&x.s.doc.cycles.length);
             return <tr key={k} style={x.s.k==="run"?{background:"#f5f8fc"}:null}>
               <td style={Object.assign({},cell,{fontWeight:600,whiteSpace:"nowrap"})}>{k==="acc"?tenderRouteLabel(td):x.def.label}</td>
               <td style={cell}>
@@ -1974,14 +1975,16 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
                     style={{fontSize:11.5,padding:"2px 5px",width:"auto",color:STC[x.s.k],fontWeight:600}}>
                     {PP_QU_CT.map(function(o){return <option key={o.k} value={o.k}>{o.label}</option>;})}
                     <option value="na">N/A</option></select>
-                :k==="contract"?<span style={{color:STC[x.s.k],fontWeight:600}}>{x.s.text}<span style={{fontSize:10.5,color:"#9b968b",fontWeight:400}}> · tracked desk by desk: open the full sheet</span></span>
+                :k==="contract"?<span style={{color:STC[x.s.k],fontWeight:600}}>{x.s.text}<span style={{fontSize:10.5,color:"#9b968b",fontWeight:400}}> · tracked desk by desk: edit the desks just below</span></span>
                 :ed?<select value={((td.steps||{})[k])||"—"} disabled={ro} onChange={function(e){setStep(k,"status",e.target.value);}}
                     style={{fontSize:11.5,padding:"2px 5px",width:"auto",color:STC[x.s.k],fontWeight:600}}>
                     {x.def.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}</select>
                   :<span style={{color:STC[x.s.k],fontWeight:600}}>{x.s.text}</span>}
                 {x.s.doc&&<span style={{fontSize:10.5,color:"#9b968b"}}> · edit below in Documents</span>}
               </td>
-              <td style={cell}><DraftDateInput value={x.sd.target||""} disabled={ro} onCommit={function(v){setStep(k,"target",v);}}
+              <td style={cell}><DraftDateInput value={(k==="contract"?(x.sd.signedTarget||x.sd.target):x.sd.target)||""} disabled={ro}
+                title={k==="contract"?"Target date of the signature (same as Signed contract › Target in the sheet)":undefined}
+                onCommit={function(v){setStep(k,k==="contract"?"signedTarget":"target",v);}}
                 style={Object.assign({},dIn,late?{border:"1.5px solid #e8b4b8",background:"#fff6f6"}:{})}/>
                 {late&&<div style={{fontSize:10,color:"#b3302a",fontWeight:700}}>target passed</div>}</td>
               <td style={cell}>{k==="contract"&&!td.contractCircuit&&(function(){var cs=ppQuCtStage(td),o=PP_QU_CT.find(function(z){return z.k===cs;});return o&&o.field;})()
@@ -1993,6 +1996,11 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
             </tr>;
           })}</tbody>
         </table>}
+        {td.contractCircuit&&((td.steps||{}).contract||"")!=="N/A"&&(allSteps||ppQuStepState(td,"contract").k!=="done")&&<div style={{marginTop:10,padding:"8px 10px",border:"1px solid #e6e2d9",borderRadius:8,background:"#fbfaf7"}}>
+          <div style={{fontWeight:700,fontSize:12.5,marginBottom:6}}>Contract — desk-by-desk circuit</div>
+          {ro?<div style={{fontSize:11.5,color:"#9b968b"}}>Read-only account.</div>
+            :<ContractCircuitEditor td={td} updTd={function(patch){updTd(patch);}} afterSave={afterSave}/>}
+        </div>}
         {sec("Documents",allDocs?"every document":"documents not approved yet — approved ones hidden",tog(allDocs,setAllDocs,"Show approved"))}
         {docsShown.length===0?<div style={{fontSize:12,color:"#9b968b"}}>{docs.length?"Every document is approved.":"No document for this package."}</div>:
         <table style={{width:"100%",borderCollapse:"collapse"}}>
