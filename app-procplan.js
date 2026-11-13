@@ -1309,8 +1309,11 @@ var PP_TABLE_CSS=
   '.ppt th.sep,.ppt td.sep{border-left:1.5px solid #c7d5e6}'+
   '.ppt td{vertical-align:top}'+
   '.ppt tr.ppt-g th{background:#f4f6fa;font-size:10px;letter-spacing:.08em;padding:5px 10px;border-bottom:1px solid #c7d5e6}'+
-  '.ppt td.ms{padding:4px 5px;min-width:96px;max-width:124px}'+
-  '.ppt td.ms.sub{min-width:78px;max-width:104px}'+
+  // Widths: the cells must never be squeezed to a sliver (text stacked word by word). Words
+  // break only between words (break-word, not anywhere: "anywhere" lets the browser shrink a
+  // column to almost nothing and cut "ACONEX" in two).
+  '.ppt td.ms{padding:4px 5px;min-width:118px;max-width:150px}'+
+  '.ppt td.ms.sub{min-width:112px;max-width:140px}'+
   // the screen table scrolls inside its own box: the sideways scrollbar stays at the bottom
   // of the window and the headers stay on top (ppt-wrap; not in print)
   '.ppt-wrap{overflow:auto;max-height:calc(100vh - 170px);border:1px solid #e6e2d9;border-radius:6px}'+
@@ -1337,7 +1340,7 @@ var PP_TABLE_CSS=
   '.ppt tr.ppt-strip td.nx{font-size:11px;color:#6f6b62;line-height:1.35}'+
   '.ppt tr.ppt-scale td{background:#fafaf8;border-right:none;border-left:none;padding-top:4px;padding-bottom:4px}'+
   '.pp-act .pp-act-x{visibility:hidden}.pp-act:hover .pp-act-x{visibility:visible}'+
-  '.ppc{border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;overflow-wrap:anywhere}'+
+  '.ppc{border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;overflow-wrap:break-word}'+
   '.ppc-top{padding:2px 6px;border-radius:6px;border:1.5px solid transparent}'+
   '.ppc-top .act{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#4a4740}'+
   '.ppc-top .due{font-size:10.5px;color:#6f6b62}'+
@@ -1348,7 +1351,7 @@ var PP_TABLE_CSS=
   '.ppc-doneLate .ppc-top .act{color:#b35c00}'+
   '.ppc-none .ppc-top .act{color:#b9b4a8}'+
   '.ppc-na .ppc-top .act{color:#9b968b}'+
-  '.ppc-ref{margin:2px 6px 0;font-family:var(--font-mono,monospace);font-size:9.5px;color:#5f7ea6;overflow-wrap:anywhere}'+
+  '.ppc-ref{margin:2px 6px 0;font-family:var(--font-mono,monospace);font-size:9.5px;color:#5f7ea6;overflow-wrap:break-word}'+
   '.ppc-real{margin:2px 6px 0;padding:2px 0 1px;border-top:1px dashed #d9d5ca;font-size:10.5px;color:#8a857a}'+
   '.ppc .l3{font-size:10.5px;font-weight:700;margin:2px 0 0;padding:0 4px;border-radius:4px;background:#fff;display:inline-block}'+
   '.ppc .l3.ok{color:#1e6b3a;box-shadow:inset 0 0 0 1px #9cc9a8}'+
