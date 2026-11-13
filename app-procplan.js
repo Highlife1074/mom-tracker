@@ -237,7 +237,10 @@ function ppPlan(td,now){
     if(act[m]||act.sdok&&PP_MS_ORDER.indexOf(m)<PP_MS_ORDER.indexOf("submittals"))later=true;
     done[m]=later;
   }
-  var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
+  // Procurement closed by hand (self perform, …): every milestone counts as reached.
+  var closed=procClosedOf(td);
+  if(closed)PP_MS_ORDER.forEach(function(m){done[m]=true;});
+  var proc=closed?{}:(function(){try{return calcProcurement(td);}catch(e){return{};}})();
   var next=PP_MS_ORDER.find(function(m){return m!=="need"&&!done[m];})||"";
   // Once the order is placed, fabrication and delivery are judged on the delivery forecast.
   var fcDelivery=isValidDate(proc.deliveryDate)?proc.deliveryDate:"";
@@ -245,6 +248,7 @@ function ppPlan(td,now){
   // The past is the past: once the need date is reached, the package is no longer late or due.
   var past=!!need&&need<now;
   if(td.cancelled)status="cancelled";
+  else if(closed)status="closed";
   else if(past)status="past";
   else if(need&&next){
     var ref=(next==="ready"||next==="delivered")&&fcDelivery?fcDelivery:now;
@@ -257,7 +261,7 @@ function ppPlan(td,now){
   // end of the need week. Landing after the latest delivery date but before that only eats
   // the float (deliveryTight).
   var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
-  return {type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  return {closed:closed,type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
     deliveryLate:!!(dst&&dst.late),
     deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
@@ -267,6 +271,7 @@ const PP_STATUS={
   soon:{label:"Due soon",fg:"#b35c00",bg:"#fdf1e0"},
   ok:{label:"On track",fg:"#1e6b3a",bg:"#e6f2e9"},
   done:{label:"Delivered path",fg:"#1e6b3a",bg:"#e6f2e9"},
+  closed:{label:"Procurement closed",fg:"#1e6b3a",bg:"#e6f2e9"},
   past:{label:"Started",fg:"#6f6b62",bg:"#f2f0eb"},
   none:{label:"No need date",fg:"#9b968b",bg:"#f2f0eb"},
   cancelled:{label:"Cancelled",fg:"#9b968b",bg:"#f2f0eb"}
@@ -348,6 +353,7 @@ function ProcPlanCard({td,updTd}){
       <span className="badge" style={{background:st.bg,color:st.fg,marginLeft:"auto"}}>
         {st.label}{p.next&&p.daysLeft!==null?" · "+PP_MS_LABEL[p.next]+" "+ppDaysText(p.daysLeft):""}</span>
     </div>
+    {(open||p.closed)&&<PpProcCloseBar td={td} updTd={function(patch){Object.keys(patch).forEach(function(k){updTd(k,patch[k]);});}}/>}
     {open&&<div style={{marginTop:10}}>
       {!p.need&&<div style={{fontSize:11.5,color:"#b35c00",marginBottom:8}}>Fill the Target start (need on site) of this package: every latest date is computed back from it.</div>}
       <table className="tbl" style={{fontSize:12}}>
@@ -482,7 +488,9 @@ var PP_SOON_DAYS=21;
 // or no delivery) and every document approved (WMS / ITP set to N/A left aside). The whole
 // row is then shown pale green (screen, timeline, print) instead of any other highlight.
 function ppAllValid(td,p){
-  if(!td||td.cancelled||!p||p.next)return false;
+  if(!td||td.cancelled||!p)return false;
+  if(p.closed)return true;                       // closed by hand: nothing left to validate
+  if(p.next)return false;
   var st=td.steps||{};
   return tenderDocs(td).every(function(d){
     if((d.kind==="wms"||d.kind==="itp")&&String(st[d.kind]||"")==="N/A")return true;
@@ -538,7 +546,7 @@ var PP_KPIS=[
   {k:"start21",label:"Starts ≤ 21 d",cls:"warn",tip:"Needed on site within the next 21 days and not delivered yet: highlighted in the list"},
   {k:"late",label:"Late",cls:"bad",tip:"Next milestone past its latest date, or forecast delivery after the latest delivery date"},
   {k:"soon",label:"Due ≤ 14 d",cls:"warn",tip:"Next milestone due within 14 days"},
-  {k:"ok",label:"On track",cls:"good",tip:"Next milestone more than 14 days away, or every milestone reached"},
+  {k:"ok",label:"On track",cls:"good",tip:"Next milestone more than 14 days away, every milestone reached, or procurement closed"},
   {k:"notlaunched",label:"Not launched",cls:"",tip:"Tender not issued yet (and the package not started on site)"},
   {k:"started",label:"Started",cls:"",tip:"Need on site already past: started on site, never flagged late"},
   {k:"noneed",label:"No need date",cls:"",tip:"No Target start and no schedule task linked: nothing can be worked back"}
@@ -548,7 +556,7 @@ function ppKpiOf(r,k){
   if(k==="start21")return ppStartsSoon(p);
   if(k==="late")return p.status==="late"||p.deliveryLate;
   if(k==="soon")return p.status==="soon"&&!p.deliveryLate;
-  if(k==="ok")return (p.status==="ok"||p.status==="done")&&!p.deliveryLate;
+  if(k==="ok")return (p.status==="ok"||p.status==="done"||p.status==="closed")&&!p.deliveryLate;
   if(k==="notlaunched")return !p.done.issue&&p.status!=="past";
   if(k==="started")return p.status==="past";
   if(k==="noneed")return !p.need;
@@ -895,6 +903,8 @@ function ppSubCell(td,p,k,now){
   if(qd){ms="q_"+k;lat=qd.appr;}
   if((k==="wms"||k==="itp")&&((td.steps||{})[k]||"")==="N/A")
     return {kind:"na",act:"N/A",due:"",real:"",tip:lab+" not applicable"};
+  if(p.closed&&!tenderDocs(td).some(function(d){return d.kind===k;}))
+    return {kind:"na",act:"N/A",due:"",real:"",tip:lab+": procurement closed — "+procClosedLabel(p.closed)};
   var docs=[];
   try{docs=tenderDocs(td).filter(function(d){return d.kind===k;});}catch(e){}
   if(!docs.length)return {kind:"none",act:"",due:"",real:"",tip:"No "+lab+" on this package"};
@@ -1084,6 +1094,7 @@ var PP_MS_DONE={start:"Started",issue:"Issued",approved:"Approved",contract:"Sig
 function ppMsCell(td,p,m,now){
   now=now||today();
   var lat=p.latest[m]||"",a=p.actual[m];
+  if(p.closed&&!(a&&(isValidDate(a.date)||a.done)))return {kind:"na",act:"N/A",due:"",real:"",tip:PP_MS_LABEL[m]+": procurement closed — "+procClosedLabel(p.closed)};
   if(a&&a.na)return {kind:"na",act:"N/A",due:"",real:"",tip:PP_MS_LABEL[m]+": not applicable"+((m==="ready"||m==="delivered")&&ppNoDelivery(td)?" (manpower — no delivery)":" (set to N/A in the package sheet)")};
   if(p.done[m]){
     var ad=a&&isValidDate(a.date)?a.date:"";
@@ -1844,6 +1855,38 @@ function ppQuCtStage(td){
   if(sd.requestDone)return "request";
   return "";
 }
+// Close / reopen the procurement of a Package by hand (Quick update): self perform, bought
+// another way… td.procClosed = {on, reason, note, by}. Every milestone then counts as reached.
+function PpProcCloseBar({td,updTd}){
+  const [form,setForm]=useState(null);
+  var c=procClosedOf(td),ro=isReadOnly();
+  var box={margin:"10px 0 0",padding:"8px 10px",borderRadius:8,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",fontSize:12};
+  if(c)return <div style={Object.assign({},box,{background:"var(--green-soft,#e6f2e9)",border:"1px solid #cfe3d5",color:"#1e6b3a"})}>
+    <b>✓ Procurement closed</b><span>{c.on?fmtDate(c.on)+" · ":""}{procClosedLabel(c)}</span>
+    {c.by&&<span style={{color:"#6f6b62",fontSize:11}}>· by {c.by}</span>}
+    {!ro&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){
+      if(safeConfirm("Reopen the procurement of this Package? Its milestones are followed again."))updTd({procClosed:null});}}>↺ Reopen</button>}
+  </div>;
+  if(!form)return <div style={Object.assign({},box,{background:"#fbfaf7",border:"1px dashed #d9d5ca",color:"#6f6b62"})}>
+    <span>Special case — self perform, no contract needed, bought another way…?</span>
+    {!ro&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setForm({on:today(),reason:"self",note:""});}}>✓ Close the procurement…</button>}
+  </div>;
+  return <div style={Object.assign({},box,{background:"#fbfaf7",border:"1px solid #d9d5ca"})}>
+    <b>Close the procurement</b>
+    <select value={form.reason} onChange={function(e){setForm(Object.assign({},form,{reason:e.target.value}));}} style={{fontSize:11.5,padding:"2px 5px",width:"auto"}}>
+      {PROC_CLOSE_REASONS.map(function(r){return <option key={r.k} value={r.k}>{r.label}</option>;})}</select>
+    <DraftDateInput value={form.on} onCommit={function(v){setForm(Object.assign({},form,{on:v}));}} style={{fontSize:11.5,padding:"2px 5px",width:128}}/>
+    <input type="text" value={form.note} placeholder="Note (optional)" onChange={function(e){setForm(Object.assign({},form,{note:e.target.value}));}}
+      style={{fontSize:11.5,padding:"3px 6px",flex:1,minWidth:140}}/>
+    <button className="btn btn-sm" onClick={function(){setForm(null);}}>Cancel</button>
+    <button className="btn btn-sm btn-pri" onClick={function(){
+      if(blockIfReadOnly())return;
+      updTd({procClosed:{on:form.on||today(),reason:form.reason,note:(form.note||"").trim(),by:(window._currentUser&&window._currentUser.name)||""}});
+      setForm(null);
+    }}>Close</button>
+    <div style={{flexBasis:"100%",fontSize:10.5,color:"#9b968b"}}>Every milestone then counts as reached: nothing is late any more, the row turns green, the schedule stops waiting for a delivery. Reopen at any time.</div>
+  </div>;
+}
 function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep,onOpenSheet,onClose}){
   const [allSteps,setAllSteps]=useState(false);
   const [allDocs,setAllDocs]=useState(false);
@@ -1962,6 +2005,7 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
       </div>
       <div className="modal-body" style={{maxHeight:"72vh",overflowY:"auto",paddingTop:0}}>
         {ro&&<div style={{fontSize:11.5,color:"#b35c00",marginTop:8}}>Read-only account: nothing can be changed here.</div>}
+        <PpProcCloseBar td={td} updTd={updTd}/>
         {sec("Steps",allSteps?"every step":"steps still to do or running — finished and N/A hidden",tog(allSteps,setAllSteps,"Show all steps"))}
         {stepsShown.length===0?<div style={{fontSize:12,color:"#9b968b"}}>Every step is done.</div>:
         <table style={{width:"100%",borderCollapse:"collapse"}}>

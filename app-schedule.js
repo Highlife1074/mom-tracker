@@ -1801,6 +1801,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(!row.startWeek)return null;
     var td=(tenders||[]).find(function(t){return t.id===row.tenderRef;});
     if(!td)return null;
+    if(procClosedOf(td))return null;                     // procurement closed by hand: nothing to wait for
     var proc=null;
     try{proc=calcProcurement(td);}catch(e){return null;}
     if(!proc||!proc.deliveryDate)return null;
