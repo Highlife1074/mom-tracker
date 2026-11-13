@@ -246,7 +246,11 @@ function ppPlan(td,now){
   var fcDelivery=isValidDate(proc.deliveryDate)?proc.deliveryDate:"";
   var daysLeft=null,status="none";
   // The past is the past: once the need date is reached, the package is no longer late or due.
-  var past=!!need&&need<now;
+  // The past is the past — but only once the package has really started on site (a linked
+  // task with an actual week, or delivered / contract signed / closed). A need date gone by
+  // while nothing has started is a package LATE: needPassed.
+  var needPassed=!!need&&need<now;
+  var past=needPassed&&tenderStartedOnSite(td);
   if(td.cancelled)status="cancelled";
   else if(closed)status="closed";
   else if(past)status="past";
@@ -261,7 +265,7 @@ function ppPlan(td,now){
   // end of the need week. Landing after the latest delivery date but before that only eats
   // the float (deliveryTight).
   var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
-  return {closed:closed,type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  return {closed:closed,needPassed:needPassed&&!past,type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
     deliveryLate:!!(dst&&dst.late),
     deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
@@ -548,7 +552,7 @@ var PP_KPIS=[
   {k:"soon",label:"Due ≤ 14 d",cls:"warn",tip:"Next milestone due within 14 days"},
   {k:"ok",label:"On track",cls:"good",tip:"Next milestone more than 14 days away, every milestone reached, or procurement closed"},
   {k:"notlaunched",label:"Not launched",cls:"",tip:"Tender not issued yet (and the package not started on site)"},
-  {k:"started",label:"Started",cls:"",tip:"Need on site already past: started on site, never flagged late"},
+  {k:"started",label:"Started",cls:"",tip:"Need on site already past AND really started (an actual week on its schedule task, or delivered / contract signed / closed): never flagged late. A need date past with nothing started counts as late."},
   {k:"noneed",label:"No need date",cls:"",tip:"No Target start and no schedule task linked: nothing can be worked back"}
 ];
 function ppKpiOf(r,k){
@@ -585,7 +589,7 @@ var PP_SORTS={
   variance:function(r){return ppVariance(r.td);},
   route:function(r){try{return tenderRouteLabel(r.td)||null;}catch(e){return null;}},
   owner:function(r){return String(r.td.ownerTender||"").trim().toLowerCase()||null;},
-  next:function(r,acts){var a=(acts||{})[r.td.id];var n=(a?a.next.length:0)+(r.td.nextStep?1:0);return n||null;},
+  next:function(r,acts){var a=(acts||{})[r.td.id];var n=a?a.next.length:0;return n||null;},
   block:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.block.length)||null;},
   notes:function(r){return tenderNotesOf(r.td).length||null;},
   rfi:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.rfi.length)||null;}
@@ -862,7 +866,7 @@ function ppExportXlsx(vis,acts){
       (td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return x.subcontractor;}).join(", ")||td.contractor||"",
       prop||"",ppInstructed(td)||"",String(td.instructionNumber||"").trim(),ppVariance(td)===null?"":ppVariance(td),
       (function(){try{return tenderRouteLabel(td);}catch(e){return "";}})(),td.ownerTender||"",
-      [td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean).join("\n"),a.block.map(ppActText).join("\n"),a.rfi.map(function(t){return ppRfiText(t);}).join("\n"),ppNotesText(td).join("\n"));
+      a.next.map(ppActText).join("\n"),a.block.map(ppActText).join("\n"),a.rfi.map(function(t){return ppRfiText(t);}).join("\n"),ppNotesText(td).join("\n"));
     aoa.push(line);
   });
   aoa=aoa.map(function(line,ri){return line.map(function(v,ci){if(v&&typeof v==="object"&&"xlDate" in v){dateCells.push([ri,ci]);return v.xlDate;}return v;});});
@@ -1139,7 +1143,9 @@ function ppMsCell(td,p,m,now){
       if(p.fcDelivery){
         var dd=isValidDate(lat)?_ppDaysTo(p.fcDelivery,lat):0;
         real="Forecast "+ppDay(p.fcDelivery)+(dd>0?" · "+dd+" d after deadline":"");
-        o.realFg=p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":"#1e6b3a";
+        // never green when the forecast lands after its deadline — even for a package already
+        // started (status Started is never counted late, but the colour must not say "fine")
+        o.realFg=p.deliveryLate?"#b3302a":p.deliveryTight||dd>0?"#b35c00":"#1e6b3a";
       }
     }
   }catch(e){}
@@ -1463,7 +1469,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
         '<td class="a">'+(a.rfi.length?a.rfi.map(function(t){var r=ppRfiInfo(t,now);return '<div>'+esc(r.kind+" "+(t.text||""))+'<div class="sm" style="color:'+(r.late?'#b3302a;font-weight:700':r.sent?'#1e6b3a':'#9b968b')+'">'+esc(r.txt)+'</div></div>';}).join(""):'<span style="color:#ccc">—</span>')+'</td>':'');
     if(plan){
       PP_TABLE_COLS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+(m.indexOf("sub_")===0?' sub':'')+'">'+ppMsCellHtml(ppColCell(td,p,m,now))+'</td>';});
-      h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div></td>';
+      h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div>'+(p.needPassed?'<div class="sm" style="color:#b3302a;font-weight:700">passed · not started</div>':'')+'</td>';
     }
     if(fin){
       var v=ppVariance(td);
@@ -1472,7 +1478,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     }
     if(fol){
       h+='<td class="sep">'+esc(String(td.ownerTender||"—"))+'</td>'+
-        '<td class="a">'+li([td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean))+'</td>'+
+        '<td class="a">'+li(a.next.map(ppActText))+'</td>'+
         '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
         '<td class="a">'+li(ppNotesText(td))+'</td>';
     }
@@ -1490,12 +1496,35 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     '</div>'+(model?'<div style="margin-top:8px">'+ppLegendHtml("strip")+'</div>':'')+'</div>';
   openReport("Packages "+now,html);
 }
-// One cell of the Next steps / Blocking points columns: the open actions of the package
-// (the same actions as everywhere else — Actions, the package sheet, the zone) and, in Next
-// steps, each line of the package's own "Next Step" text (td.nextStep). Every item can be
-// ticked done, edited (click) or deleted (✕): a ticked Next Step line becomes a done action
-// linked to the package (kept in its history) and leaves the text. + add creates an action.
+// One cell of the Next steps / Blocking points columns: the open actions of the package —
+// real actions only, the same as everywhere else (Actions, the package sheet, the zone).
+// The former free "Next Step" text (td.nextStep) is converted once into actions
+// (ppMigrateNextSteps) and can no longer be typed. Every item can be ticked done, edited
+// (click) or deleted (✕). + add creates an action.
 function ppNextStepLines(td){return String((td&&td.nextStep)||"").split(/\n/).map(function(x){return x.trim();}).filter(Boolean);}
+// One-off conversion of every Package's Next Step text into actions linked to it (owner =
+// the Package's department owner, else its owner). Ids are derived from the Package and the
+// line, so two people converting at the same time produce the same actions (merged, not
+// doubled). Returns {tasks, tenders} to save, or null when there is nothing to convert.
+function _ppNsHash(s){var h=0;s=String(s);for(var i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return (h>>>0).toString(36);}
+function ppMigrateNextSteps(tenders,tasks){
+  var todo=(tenders||[]).filter(function(td){return td&&ppNextStepLines(td).length;});
+  if(!todo.length)return null;
+  var ids={};(tasks||[]).forEach(function(t){ids[t.id]=1;});
+  var add=[];
+  todo.forEach(function(td){
+    var owner=(window._ppPkgOwners||{})[td.package||""]||td.ownerTender||"";
+    if(Array.isArray(owner))owner=owner[0]||"";
+    ppNextStepLines(td).forEach(function(l,i){
+      var id="ns_"+td.id+"_"+i+"_"+_ppNsHash(l);
+      if(ids[id])return;ids[id]=1;
+      add.push(newTask({id:id,text:l,tenderRef:td.id,package:td.package||"",owner:owner,importance:2,urgence:2,
+        note:"From the Package's Next Step text"}));
+    });
+  });
+  var set={};todo.forEach(function(td){set[td.id]=1;});
+  return {tasks:add.concat(tasks||[]),tenders:(tenders||[]).map(function(td){return set[td.id]?Object.assign({},td,{nextStep:""}):td;}),n:add.length};
+}
 function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
   const [open,setOpen]=useState(false);
   const [txt,setTxt]=useState("");
@@ -1504,7 +1533,7 @@ function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
   var ro=isReadOnly()||!saveTasks;
   var now=today();
   var block=kind==="block";
-  var nsLines=!block&&!noNextStep?ppNextStepLines(td):[];
+  var nsLines=[];   // the Next Step text is converted into actions (ppMigrateNextSteps)
   var nsEditable=!ro&&!!updTd;
   var items=nsLines.map(function(l,i){return {key:"ns:"+i,ns:true,i:i,text:l};})
     .concat(list.map(function(t){return {key:t.id,t:t,text:t.text||""};}));
@@ -2345,6 +2374,9 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
         onClick={function(){openScheduleStart(p.needTask,td,onNavZone);}}
         title={"The first task has started; the next linked task not started yet is \""+(p.needTask.r.label||"task")+"\" in "+(p.needTask.sc.zone||"?")+" — the plan is worked back from it. Click to open it."}>
         next task {fmtDate(p.need)}</div>}
+      {p.needPassed&&<div style={{fontSize:10,color:"#b3302a",fontWeight:700,marginTop:2,whiteSpace:"nowrap"}}
+        title="The need date is past but nothing shows the package has started: no actual week on its schedule task(s), or no contract / delivery. It is late, not started.">
+        passed · not started</div>}
     </React.Fragment>;
   }
   function line(r){
