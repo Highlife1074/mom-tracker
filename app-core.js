@@ -1143,7 +1143,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
           <div style={{display:"flex",gap:6,padding:"8px",background:"#fff8f0",borderRadius:8,border:"1px solid #fed7aa"}}>
             <div style={{flex:1}}>
               <div style={{fontSize:9,fontWeight:800,color:"#b45309",marginBottom:2}}>SUBMISSION</div>
-              <input type="date" min="1990-01-01" max="2200-12-31" value={rfiSub||""} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+getDur("clientResponse"));setRfiDue(toISO(d));}}} style={{padding:"3px 6px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>
+              <input type="date" min="1990-01-01" max="2200-12-31" value={rfiSub||""} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){setRfiDue(addDur(e.target.value,"clientResponse"));}}} style={{padding:"3px 6px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>
             </div>
             <div style={{flex:1}}>
               <div style={{fontSize:9,fontWeight:800,color:"#b45309",marginBottom:2}}>DUE (+14d)</div>
@@ -1242,7 +1242,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
                 <input type="date" min="1990-01-01" max="2200-12-31" value={localRfiSub} onChange={function(e){
                   setLocalRfiSub(e.target.value);
                   upd("rfiSubmission",e.target.value);
-                  if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+getDur("clientResponse"));var dd=toISO(d);setLocalRfiDue(dd);upd("rfiDue",dd);}
+                  if(e.target.value){var dd=addDur(e.target.value,"clientResponse");setLocalRfiDue(dd);upd("rfiDue",dd);}
                 }} style={{padding:"5px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
               </div>
               <div style={{flex:1}}>
@@ -1434,7 +1434,7 @@ function QuickAddTask({prefill,onAdd,people,tags,label}){
       {(allTags.includes("RFI")||allTags.includes("FCR"))&&<div style={{display:"flex",gap:8,padding:"8px 10px",background:"#fff8f0",borderRadius:8,border:"1px solid #fed7aa",marginTop:8}}>
         <div style={{flex:1}}>
           <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:3}}>RFI Submission date</label>
-          <input type="date" min="1990-01-01" max="2200-12-31" value={rfiSub} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){var d=new Date(e.target.value);d.setDate(d.getDate()+getDur("clientResponse"));setRfiDue(toISO(d));}}} style={{padding:"4px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
+          <input type="date" min="1990-01-01" max="2200-12-31" value={rfiSub} onChange={function(e){setRfiSub(e.target.value);if(e.target.value){setRfiDue(addDur(e.target.value,"clientResponse"));}}} style={{padding:"4px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
         </div>
         <div style={{flex:1}}>
           <label style={{fontSize:9,fontWeight:800,color:"#b45309",textTransform:"uppercase",letterSpacing:".4px",display:"block",marginBottom:3}}>Due date (+14 days)</label>
@@ -2221,25 +2221,25 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
       <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>⏱ Durations &amp; lead times</div>
       <div style={{fontSize:12,color:"#888",marginBottom:14}}>These drive every automatic target date in the app. Changing a value re-computes all future dates immediately; dates you typed manually are never overwritten.</div>
       {[
-        {group:"Contract chain (calendar days)",items:[
+        {group:"Contract chain",items:[
           {k:"accToRequest",label:"ACC/Aconex approved → subcontract request sent"},
           {k:"requestToCirculate",label:"Request sent → contract to circulate"},
           {k:"circulateToSign",label:"Circulated → signed by all parties"},
           {k:"accToSigned",label:"ACC approval → signed contract (overall target)"},
           {k:"contractSigning",label:"Procurement timeline: ACC approval → contract signing"}
         ]},
-        {group:"Client review (calendar days)",items:[
+        {group:"Client review",items:[
           {k:"accApproval",label:"ACC/Aconex submitted → approval expected"},
           {k:"sdApproval",label:"Shop drawing submitted → approval expected"}
         ]},
-        {group:"Method statements & inspection (calendar days)",items:[
+        {group:"Method statements & inspection",items:[
           {k:"wmsBeforeStart",label:"WMS submitted this long BEFORE the target start on site"},
           {k:"itpBeforeStart",label:"ITP submitted this long BEFORE the target start on site"},
           {k:"marAfterContract",label:"MAR due this long AFTER the contract is signed"}
         ]},
         {group:"Other",items:[
-          {k:"sdAfterContract",label:"Contract signed → shop drawing submission (calendar days)"},
-          {k:"clientResponse",label:"Any document with client → response due (calendar days)"}
+          {k:"sdAfterContract",label:"Contract signed → shop drawing submission"},
+          {k:"clientResponse",label:"Any document with client → response due"}
         ]},
         {group:"Subcontract — client approval route (€)",unit:"€",items:[
           {k:"subAccMin",label:"Below this amount: internal approval only. From it: ACC"},
@@ -2262,7 +2262,8 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
                 onChange={function(e){var u=Object.assign({},durations||{});if(e.target.value==="")delete u[it.k];else u[it.k]=Number(e.target.value);saveDurations(u);}}
                 placeholder={String(DEFAULT_DURATIONS[it.k])}
                 style={{width:sec.unit?110:70,padding:"4px 8px",fontSize:12,textAlign:"right",fontWeight:700}}/>
-              <span style={{fontSize:10,color:"#aaa",width:30}}>{sec.unit||"days"}</span>
+              {sec.unit?<span style={{fontSize:10,color:"#aaa",width:30}}>{sec.unit}</span>
+                :<DurUnitPick k={it.k} durations={durations} saveDurations={saveDurations}/>}
             </div>;
           })}
         </div>;
@@ -2648,6 +2649,47 @@ function isWorkingDay(d){
   if(greekHolidays(d.getFullYear())[iso])return false;
   var extra=(window._ppDurations||{}).extraHolidays;
   return !(Array.isArray(extra)&&extra.indexOf(iso)>=0);
+}
+// Calendar / working days switch of one duration line (Settings › Durations, plan templates).
+function DurUnitPick({k,durations,saveDurations}){
+  var u=(((durations||{}).units)||{})[k]==="wd"?"wd":"cd";
+  function set(v){
+    if(blockIfReadOnly())return;
+    var units=Object.assign({},(durations||{}).units||{});
+    if(v==="cd")delete units[k];else units[k]=v;
+    saveDurations(Object.assign({},durations||{},{units:units}));
+  }
+  return <span style={{display:"inline-flex",border:"1px solid #ddd9cf",borderRadius:6,overflow:"hidden",flex:"0 0 auto"}} title="Calendar days or working days (Mon–Fri, public holidays, extra holidays)">
+    {[["cd","calendar"],["wd","working"]].map(function(x){
+      var on=u===x[0];
+      return <button key={x[0]} type="button" onClick={function(){set(x[0]);}}
+        style={{border:"none",padding:"3px 7px",fontSize:10,fontWeight:on?700:500,cursor:"pointer",fontFamily:"inherit",
+          background:on?"var(--brand,#173b63)":"#fff",color:on?"#fff":"#6f6b62"}}>{x[1]}</button>;
+    })}
+  </span>;
+}
+// Unit of each duration of Settings › Durations, chosen per line: "cd" calendar days (default)
+// or "wd" working days (Mon–Fri, public holidays, extra holidays). Stored in
+// pp_durations.units[key]; template steps of the procurement plan use the key "tpl_<step>".
+function durUnit(key){var u=(((window._ppDurations||{}).units)||{})[key];return u==="wd"?"wd":"cd";}
+function durUnitLabel(key){return durUnit(key)==="wd"?"working days":"calendar days";}
+function durShort(key){return getDur(key)+(durUnit(key)==="wd"?" wd":" d");}
+// Moves a date by n days in the given unit (n may be negative).
+function shiftDays(dateStr,n,unit){
+  if(!isValidDate(dateStr))return"";
+  n=Number(n)||0;
+  if(unit!=="wd"){var c=parseISODate(dateStr);c.setDate(c.getDate()+n);return toISO(c);}
+  if(n>=0)return addWorkingDays(dateStr,n);
+  var d=parseISODate(dateStr),k=0,g=0;
+  while(k<-n&&g++<4000){d.setDate(d.getDate()-1);if(isWorkingDay(d))k++;}
+  return toISO(d);
+}
+function addDur(dateStr,key){return shiftDays(dateStr,getDur(key),durUnit(key));}
+function subDur(dateStr,key){return shiftDays(dateStr,-getDur(key),durUnit(key));}
+// Days from a to b (b later) in the unit of the given duration.
+function countDurDays(a,b,key){
+  if(!isValidDate(a)||!isValidDate(b))return 0;
+  return durUnit(key)==="wd"?countWorkingDays(a,b):Math.round((parseISODate(b)-parseISODate(a))/86400000);
 }
 function addWorkingDays(dateStr,days){
   if(!isValidDate(dateStr))return"";

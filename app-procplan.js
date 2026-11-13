@@ -87,12 +87,26 @@ function _ppNum(v){if(v===undefined||v===null||v==="")return null;var n=Number(v
 //             clientResponse, SD = sdAfterContract + sdApproval
 //   template  the type's template
 var PP_SETTINGS_STEPS=["approval","contract","submittals","sd"];
-function ppSettingsLead(k){
-  if(k==="approval")return Number(getDur("accApproval"))||0;
-  if(k==="contract")return Number(getDur("contractSigning"))||0;
-  if(k==="submittals")return (Number(getDur("marAfterContract"))||0)+(Number(getDur("clientResponse"))||0);
-  if(k==="sd")return (Number(getDur("sdAfterContract"))||0)+(Number(getDur("sdApproval"))||0);
-  return null;
+var PP_SETTINGS_KEYS={approval:["accApproval"],contract:["contractSigning"],submittals:["marAfterContract","clientResponse"],sd:["sdAfterContract","sdApproval"]};
+// Lead of a step taken from Settings › Durations: its days (for totals) and its parts, each in
+// its own unit (calendar / working days, chosen per line in Settings).
+function ppSettingsLeadParts(k){
+  var keys=PP_SETTINGS_KEYS[k];if(!keys)return null;
+  return keys.map(function(key){return {n:Number(getDur(key))||0,unit:durUnit(key)};});
+}
+function ppSettingsLead(k){var p=ppSettingsLeadParts(k);return p?p.reduce(function(a,x){return a+x.n;},0):null;}
+// A lead: {days, src, parts:[{n, unit}]}. Moves a date by it (sign −1 = backward).
+function ppLead(days,src,unit,parts){return {days:days,src:src,parts:parts||[{n:days,unit:unit||"cd"}]};}
+function ppShiftLead(date,L,sign){
+  if(!isValidDate(date)||!L)return date||"";
+  var d=date;(L.parts||[{n:L.days,unit:"cd"}]).forEach(function(x){d=shiftDays(d,(sign<0?-1:1)*x.n,x.unit);});
+  return d;
+}
+function ppLeadTxt(L){
+  if(!L)return "";
+  var ps=L.parts||[];
+  if(ps.length>1)return ps.map(function(x){return x.n+(x.unit==="wd"?" wd":" d");}).join(" + ");
+  return L.days+(ps[0]&&ps[0].unit==="wd"?" wd":" d");
 }
 function ppLeads(td){
   var tpl=ppTemplate(ppType(td)),own=(td&&td.planLeads)||{},out={};
@@ -102,15 +116,16 @@ function ppLeads(td){
   var trOwn=_ppNum(own.transport),trDays=trOwn!==null?trOwn:tpl.transport;
   PP_STEPS.forEach(function(s){
     var v=_ppNum(own[s.k]);
-    if(v!==null){out[s.k]={days:v,src:"pkg"};return;}
+    var tu=durUnit("tpl_"+s.k);                         // unit chosen for this step in Settings
+    if(v!==null){out[s.k]=ppLead(v,"pkg",PP_SETTINGS_KEYS[s.k]&&PP_SETTINGS_KEYS[s.k].length===1?durUnit(PP_SETTINGS_KEYS[s.k][0]):PP_SETTINGS_KEYS[s.k]?"cd":tu);return;}
     // SD typed together with the submittals before the split: covered by that lead time
-    if(s.k==="sd"&&_ppNum(own.submittals)!==null){out[s.k]={days:0,src:"pkg"};return;}
-    if(s.k==="fab"&&manLead>0){out[s.k]={days:Math.max(0,manLead-trDays),src:"manual"};return;}
-    if(s.k==="fab"&&matLead>0){out[s.k]={days:matLead,src:"materials"};return;}
-    if(s.k==="approval"&&route==="none"){out[s.k]={days:7,src:"route"};return;}
-    var sv=ppSettingsLead(s.k);
-    if(sv!==null){out[s.k]={days:sv,src:"settings"};return;}
-    out[s.k]={days:tpl[s.k],src:"template"};
+    if(s.k==="sd"&&_ppNum(own.submittals)!==null){out[s.k]=ppLead(0,"pkg");return;}
+    if(s.k==="fab"&&manLead>0){out[s.k]=ppLead(Math.max(0,manLead-trDays),"manual","cd");return;}
+    if(s.k==="fab"&&matLead>0){out[s.k]=ppLead(matLead,"materials","cd");return;}
+    if(s.k==="approval"&&route==="none"){out[s.k]=ppLead(7,"route","cd");return;}
+    var sp=ppSettingsLeadParts(s.k);
+    if(sp){out[s.k]=ppLead(ppSettingsLead(s.k),"settings","",sp);return;}
+    out[s.k]=ppLead(tpl[s.k],"template",tu);
   });
   return out;
 }
@@ -195,9 +210,9 @@ function ppPlan(td,now){
     for(var i=PP_STEPS.length-1;i>=0;i--){
       var s=PP_STEPS[i];
       if(s.k==="fab"){                                   // fabrication starts once MAR / MSS AND SD are approved
-        latest.sdok=latest.submittals=addCalDays(latest.ready,-leads.fab.days);continue;
+        latest.sdok=latest.submittals=ppShiftLead(latest.ready,leads.fab,-1);continue;
       }
-      var from=ppStepFrom(i),d=addCalDays(latest[s.ms],-leads[s.k].days);
+      var from=ppStepFrom(i),d=ppShiftLead(latest[s.ms],leads[s.k],-1);
       if(!latest[from]||d<latest[from])latest[from]=d;   // contract: the longer of MAR / MSS and SD
     }
   }
@@ -270,7 +285,7 @@ function ppClientDue(docs,now){
     else if(isValidDate(due)&&(!first||due<first))first=due;
   });
   if(worst)return {late:true,txt:"Client answer due "+ppDay(worst.due)+" · "+fmtOverdue(worst),
-    tip:"The client has not answered: answer was due "+fmtDate(worst.due)+" (calendar days)"};
+    tip:"The client has not answered: answer was due "+fmtDate(worst.due)+(worst.unit==="wd"?" (working days)":" (calendar days)")};
   if(first){var n=Math.round((parseISODate(first)-parseISODate(now))/86400000);
     return {late:false,txt:"Client answer due "+ppDay(first)+" · "+(n>0?n+" d left":"today"),tip:"Client answer expected by "+fmtDate(first)};}
   return null;
@@ -338,7 +353,7 @@ function ProcPlanCard({td,updTd}){
               <td style={{textAlign:"right",color:"#9b968b"}}>{tpl[s.k]} d</td>
               <td style={{textAlign:"right"}}>
                 <input type="number" min="0" value={own===undefined?"":own} disabled={ro} placeholder={String(L.days)}
-                  title={"Used: "+L.days+" d ("+SRC[L.src]+")"} onChange={function(e){setLead(s.k,e.target.value);}}
+                  title={"Used: "+ppLeadTxt(L)+" ("+SRC[L.src]+")"} onChange={function(e){setLead(s.k,e.target.value);}}
                   style={{width:70,textAlign:"right",fontSize:11,padding:"2px 5px",fontWeight:L.src==="pkg"?700:400}}/>
                 {L.src!=="template"&&L.src!=="pkg"&&<div style={{fontSize:9.5,color:"#9b968b"}}>{SRC[L.src]}</div>}
               </td>
@@ -483,7 +498,7 @@ function ppRfiInfo(t,now){
   now=now||today();
   var kind=((t.tags||[]).indexOf("FCR")>=0)?"FCR":"RFI";
   var sent=isValidDate(t.rfiSubmission)?t.rfiSubmission:"";
-  var due=isValidDate(t.rfiDue)?t.rfiDue:sent?addCalDays(sent,getDur("clientResponse")):"";
+  var due=isValidDate(t.rfiDue)?t.rfiDue:sent?addDur(sent,"clientResponse"):"";
   var done=t.status==="done",ans=done&&isValidDate(t.completedAt)?t.completedAt:"";
   var n=due?Math.round((parseISODate(due)-parseISODate(done&&ans?ans:now))/86400000):null;
   var txt;
@@ -964,19 +979,19 @@ function _ppDaysTo(due,now){return Math.round((parseISODate(due)-parseISODate(no
 // drawings, ACC approval time for ACC / Aconex, client answer time for the others.
 function ppSubmitBy(kind,lat){
   if(!isValidDate(lat))return "";
-  return addCalDays(lat,-docClientDays(kind));
+  return subDur(lat,docClientKey(kind));
 }
 // WMS / ITP: submitted wms/itpBeforeStart days before the start on site (the package sheet's
 // rule), answered within the client answer time.
 function ppQualityDue(p,k){
   if(!p||!p.need)return {sub:"",appr:""};
-  var sub=addCalDays(p.need,-(Number(getDur(k==="wms"?"wmsBeforeStart":"itpBeforeStart"))||0));
-  return {sub:sub,appr:addCalDays(sub,docClientDays(k))};
+  var sub=subDur(p.need,k==="wms"?"wmsBeforeStart":"itpBeforeStart");
+  return {sub:sub,appr:addDur(sub,docClientKey(k))};
 }
 function ppQualityTip(p,k,qd){
   return ["How this deadline is worked out:","Need on site "+ppDay(p.need),
-    "− "+k.toUpperCase()+" before start "+getDur(k==="wms"?"wmsBeforeStart":"itpBeforeStart")+" d (Settings › Durations)",
-    "= to submit by "+ppDay(qd.sub),"+ client answer "+docClientDays(k)+" d = approved by "+ppDay(qd.appr)].join("\n");
+    "− "+k.toUpperCase()+" before start "+durShort(k==="wms"?"wmsBeforeStart":"itpBeforeStart")+" (Settings › Durations)",
+    "= to submit by "+ppDay(qd.sub),"+ client answer "+durShort(docClientKey(k))+" = approved by "+ppDay(qd.appr)].join("\n");
 }
 // How a deadline is worked back from the need on site, step by step, for the tooltips:
 // need − float − transport − fabrication … = the milestone; then, for a document still to be
@@ -991,14 +1006,14 @@ function ppChainTip(p,ms,subKind,submitBy){
     if(s.k==="sd")continue;                                 // drawn with MAR / MSS below
     if(s.k==="submittals"){
       var S=p.leads.sd||{days:0};
-      out.push("− the longer of MAR / MSS "+L.days+" d ("+src(L)+") and SD "+S.days+" d ("+src(S)+"), in parallel");
-    }else out.push("− "+s.label+" "+L.days+" d ("+src(L)+")");
+      out.push("− the longer of MAR / MSS "+ppLeadTxt(L)+" ("+src(L)+") and SD "+ppLeadTxt(S)+" ("+src(S)+"), in parallel");
+    }else out.push("− "+s.label+" "+ppLeadTxt(L)+" ("+src(L)+")");
     var from=s.k==="fab"?"sdok":ppStepFrom(i);
     if(from===ms||(s.k==="fab"&&ms==="submittals"))break;
   }
   out.push("= "+(PP_MS_LABEL[ms]||ms)+" by "+ppDay(p.latest[ms]));
   if(subKind&&submitBy&&submitBy!==p.latest[ms]){
-    var lbl=(subKind==="sd"?"SD approval ":docAccClock(subKind)?"client approval ":"client answer ")+docClientDays(subKind)+" d";
+    var lbl=(subKind==="sd"?"SD approval ":docAccClock(subKind)?"client approval ":"client answer ")+durShort(docClientKey(subKind));
     out.push("− "+lbl+" (Settings › Durations)");
     out.push("= to submit by "+ppDay(submitBy));
   }
@@ -1522,7 +1537,7 @@ function PpRfiCell({td,list,done,tasks,saveTasks,wide}){
   var now=today();
   list=list||[];done=done||[];
   var shown=all||wide?list:list.slice(0,3);
-  function autoDue(sent){return isValidDate(sent)?addCalDays(sent,getDur("clientResponse")):"";}
+  function autoDue(sent){return isValidDate(sent)?addDur(sent,"clientResponse"):"";}
   function openEdit(t){
     if(ro)return;
     if(!t){setEdit({id:null,text:"",kind:"RFI",sent:now,due:autoDue(now),dueTyped:false,answered:""});return;}
@@ -1598,7 +1613,7 @@ function PpRfiCell({td,list,done,tasks,saveTasks,wide}){
             <label style={{fontSize:11,color:"#6f6b62",display:"flex",flexDirection:"column",gap:3}}>Answered on
               <input type="date" min="1990-01-01" max="2200-12-31" value={edit.answered||""} onChange={function(e){setEdit(Object.assign({},edit,{answered:e.target.value}));}}/></label>
           </div>
-          <div style={{fontSize:11,color:"#9b968b"}}>Answer due = sent + {getDur("clientResponse")} calendar days (Settings › Durations, client answer time) unless typed. With an answer date the RFI is archived in the package sheet and leaves the Package list. Same action as in Actions and With client.</div>
+          <div style={{fontSize:11,color:"#9b968b"}}>Answer due = sent + {getDur("clientResponse")} {durUnitLabel("clientResponse")} (Settings › Durations, client answer time) unless typed. With an answer date the RFI is archived in the package sheet and leaves the Package list. Same action as in Actions and With client.</div>
         </div>
         <div className="modal-footer">
           {edit.id&&mayDelete()&&<button className="btn" onClick={del} style={{marginRight:"auto",color:"#b3302a"}}>Delete</button>}
@@ -2313,19 +2328,19 @@ function ProcPlanTemplatesEditor({durations,saveDurations}){
     saveDurations(Object.assign({},durations||{},{procTemplates:t}));
   }
   return <div style={{marginBottom:16}}>
-    <div style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",marginBottom:6,letterSpacing:".4px"}}>Procurement plan templates (calendar days per step)</div>
+    <div style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",marginBottom:6,letterSpacing:".4px"}}>Procurement plan templates (days per step — calendar or working, per step)</div>
     <div style={{overflowX:"auto"}}>
     <table className="tbl" style={{fontSize:11.5}}>
-      <thead><tr><th>Step</th>{PP_TYPES.map(function(t){return <th key={t.k} style={{textAlign:"right"}}>{t.label}</th>;})}</tr></thead>
+      <thead><tr><th>Step</th>{PP_TYPES.map(function(t){return <th key={t.k} style={{textAlign:"right"}}>{t.label}</th>;})}<th>Unit</th></tr></thead>
       <tbody>{PP_STEPS.map(function(s){
         if(PP_SETTINGS_STEPS.indexOf(s.k)>=0)return <tr key={s.k}><td>{s.label}</td>
-          <td colSpan={PP_TYPES.length} style={{color:"#9b968b",fontSize:11}}>{ppSettingsLead(s.k)} d — from the durations above (same for every type; can be typed per package)</td></tr>;
+          <td colSpan={PP_TYPES.length+1} style={{color:"#9b968b",fontSize:11}}>{ppLeadTxt(ppLead(ppSettingsLead(s.k),"settings","",ppSettingsLeadParts(s.k)))} — from the durations above, in their own unit (same for every type; can be typed per package)</td></tr>;
         return <tr key={s.k}><td>{s.label}</td>
           {PP_TYPES.map(function(t){
             var v=(cur[t.k]||{})[s.k];var def=ppStepDefault(cur[t.k],t.k,s.k);
             return <td key={t.k} style={{textAlign:"right"}}><input type="number" min="0" value={v===undefined?"":v} placeholder={String(def)}
               onChange={function(e){set(t.k,s.k,e.target.value);}} style={{width:64,textAlign:"right",fontSize:11.5,padding:"3px 6px",fontWeight:v!==undefined?700:400}}/></td>;
-          })}</tr>;
+          })}<td><DurUnitPick k={"tpl_"+s.k} durations={durations} saveDurations={saveDurations}/></td></tr>;
       })}</tbody>
     </table>
     </div>

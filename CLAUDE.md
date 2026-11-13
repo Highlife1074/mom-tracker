@@ -82,9 +82,13 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
   (`procRisk`), la liste des Packages / Proc. flow (`tenderWillStartLate`), Proc. plan (`deliveryLate`) et les rapports :
   en retard si la livraison prévue tombe après le dimanche de la semaine du besoin, tendu si moins de 21 jours.
   Proc. plan : livraison après la date limite de livraison mais avant le besoin = `deliveryTight` (marge consommée, orange).
-- **Toutes les durées du procurement sont en jours CALENDAIRES** (Settings › Durations, modèles, délais, horloges des
-  documents, retards) : `addCalDays`, plus jamais `addWorkingDays` dans `app-tenders.js` / `app-procplan.js` ; les défauts
-  ont été convertis (14 j ouvrés ≈ 20 j calendaires). Horloge de réponse client unique `docClientDays` (ACC / Aconex
+- **Unité de chaque durée choisie dans Settings** : bouton calendar / working sur chaque ligne de Settings › Durations
+  et sur chaque étape des modèles du Procurement plan (`DurUnitPick`, stocké dans `pp_durations.units[clé]`, étapes des
+  modèles = clé `tpl_<étape>`, défaut calendaire). **Toujours passer par `addDur(date, clé)` / `subDur` / `shiftDays(date, n,
+  unité)` / `countDurDays` / `durShort` / `durUnitLabel`** (`app-core.js`), jamais `addCalDays(x, getDur(…))` ; délais du plan =
+  `{days, src, parts:[{n, unit}]}` déplacés par `ppShiftLead` (MAR / MSS = marAfterContract + clientResponse, SD =
+  sdAfterContract + sdApproval, chaque partie dans son unité), texte `ppLeadTxt` ; la prévision applique fabrication + transport
+  du plan dans leur unité ; les défauts sont en calendaire (14 j ouvrés ≈ 20 j calendaires). Horloge de réponse client unique `docClientDays` (ACC / Aconex
   `accApproval`, SD `sdApproval`, autres `clientResponse`) pour `docResponseDue`, `docOverdue`, `ppSubmitBy`, pastille client ;
 - **`calcProcurement`** : **ce qui n'est pas fait ne peut pas arriver avant aujourd'hui** (`notBefore`) : ACC non soumis = aujourd'hui (ou sa cible / date théorique si plus tard), puis + accApproval, + contractSigning, SD + sdAfterContract + sdApproval, MAR + marAfterContract + clientResponse ; le retard d'aujourd'hui se reporte sur toute la chaîne jusqu'à la livraison (plus de « grâce » de 7 jours) ; délai de
   fabrication = saisi (`leadTimeDays`) > délais du Package dans Proc. plan (`planLeads` fab + transport) > plus long
