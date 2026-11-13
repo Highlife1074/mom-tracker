@@ -1188,6 +1188,7 @@ var PP_TABLE_CSS=
   '.ppt tr.ppt-strip td{border-right:none;border-left:none;padding-top:0;padding-bottom:7px}'+
   '.ppt tr.ppt-strip td.nx{font-size:11px;color:#6f6b62;line-height:1.35}'+
   '.ppt tr.ppt-scale td{background:#fafaf8;border-right:none;border-left:none;padding-top:4px;padding-bottom:4px}'+
+  '.pp-act .pp-act-x{visibility:hidden}.pp-act:hover .pp-act-x{visibility:visible}'+
   '.ppc{border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;overflow-wrap:anywhere}'+
   '.ppc-top{padding:2px 6px;border-radius:6px;border:1.5px solid transparent}'+
   '.ppc-top .act{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#4a4740}'+
@@ -1326,44 +1327,86 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   openReport("Packages "+now,html);
 }
 // One cell of the Next steps / Blocking points columns: the open actions of the package
-// (the same actions as everywhere else — Actions, the package sheet, the zone), ticked off
-// here, and a box to add one. Next steps also shows the package's own "Next Step" text.
-function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide}){
+// (the same actions as everywhere else — Actions, the package sheet, the zone) and, in Next
+// steps, each line of the package's own "Next Step" text (td.nextStep). Every item can be
+// ticked done, edited (click) or deleted (✕): a ticked Next Step line becomes a done action
+// linked to the package (kept in its history) and leaves the text. + add creates an action.
+function ppNextStepLines(td){return String((td&&td.nextStep)||"").split(/\n/).map(function(x){return x.trim();}).filter(Boolean);}
+function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
   const [open,setOpen]=useState(false);
   const [txt,setTxt]=useState("");
   const [all,setAll]=useState(false);
+  const [edit,setEdit]=useState(null);       // {key:"ns:<i>"|<task id>, text}
   var ro=isReadOnly()||!saveTasks;
   var now=today();
   var block=kind==="block";
-  var shown=all||wide?list:list.slice(0,3);
+  var nsLines=!block&&!noNextStep?ppNextStepLines(td):[];
+  var nsEditable=!ro&&!!updTd;
+  var items=nsLines.map(function(l,i){return {key:"ns:"+i,ns:true,i:i,text:l};})
+    .concat(list.map(function(t){return {key:t.id,t:t,text:t.text||""};}));
+  var shown=all||wide?items:items.slice(0,3);
+  function newAct(o){
+    return newTask(Object.assign({tenderRef:td.id,package:td.package||"",tags:block?["Blocking Point"]:[],
+      importance:block?3:2,urgence:block?3:2,owner:td.ownerTender||"",note:"From the Package list"},o));
+  }
   function add(){
     var v=txt.trim();if(!v||blockIfReadOnly())return;
-    saveTasks([newTask({text:v,tenderRef:td.id,package:td.package||"",tags:block?["Blocking Point"]:[],
-      importance:block?3:2,urgence:block?3:2,owner:td.ownerTender||"",note:"From the Procurement plan"})].concat(tasks||[]));
+    saveTasks([newAct({text:v})].concat(tasks||[]));
     setTxt("");setOpen(false);
   }
-  function close(t){
+  function setLines(l){updTd({nextStep:l.join("\n")});}
+  function done(it){
     if(blockIfReadOnly())return;
-    saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,{status:"done",completedAt:now}));}));
+    if(it.ns){
+      if(!nsEditable)return;
+      saveTasks([newAct({text:it.text,status:"done",completedAt:now,note:"Next Step of the package, done from the Package list"})].concat(tasks||[]));
+      setLines(nsLines.filter(function(x,j){return j!==it.i;}));
+      return;
+    }
+    saveTasks((tasks||[]).map(function(x){return x.id!==it.t.id?x:stampModified(Object.assign({},x,{status:"done",completedAt:now}));}));
+  }
+  function del(it){
+    if(blockIfReadOnly())return;
+    if(it.ns){if(nsEditable&&safeConfirm("Delete this next step?"))setLines(nsLines.filter(function(x,j){return j!==it.i;}));return;}
+    if(!mayDelete()||!safeConfirm("Delete this action?"))return;
+    saveTasks((tasks||[]).filter(function(x){return x.id!==it.t.id;}));
+  }
+  function saveEdit(){
+    if(!edit||blockIfReadOnly())return;
+    var v=String(edit.text||"").trim(),it=items.find(function(x){return x.key===edit.key;});
+    setEdit(null);
+    if(!it||v===it.text)return;
+    if(it.ns){if(!nsEditable)return;var l=nsLines.slice();if(v)l[it.i]=v;else l.splice(it.i,1);setLines(l);return;}
+    if(!v)return;
+    saveTasks((tasks||[]).map(function(x){return x.id!==it.t.id?x:stampModified(Object.assign({},x,{text:v}));}));
   }
   var col=block?"#b3302a":"#16181d";
+  var canDel=function(it){return it.ns?nsEditable:mayDelete();};
   return <div style={{minWidth:wide?190:140,maxWidth:wide?"none":210,fontSize:wide?12:11,lineHeight:1.35,overflowWrap:"anywhere"}}>
-    {!block&&!noNextStep&&td.nextStep&&<div title="Next Step of the package (Follow-up)" style={{color:"#4a4740",fontStyle:"italic",marginBottom:3,whiteSpace:"pre-wrap"}}>{td.nextStep}</div>}
-    {shown.map(function(t){
-      var late=t.due&&t.due<now;
-      return <div key={t.id} style={{display:"flex",gap:5,alignItems:"flex-start",marginBottom:2}}>
-        {!ro&&<input type="checkbox" checked={false} onChange={function(){close(t);}} title="Mark done" style={{width:12,height:12,margin:"2px 0 0",flex:"0 0 auto"}}/>}
-        {ro&&<span style={{color:col}}>{block?"■":"•"}</span>}
-        <span style={{color:block?col:"inherit",fontWeight:block?600:400}} title={ppActText(t)+(t.note?"\n"+t.note:"")}>
-          {t.text||"(no text)"}
-          {t.owner&&<span style={{color:"#9b968b",fontWeight:400}}> · {String(t.owner).split(",")[0]}</span>}
-          {t.due&&<span style={{color:late?"#b3302a":"#9b968b",fontWeight:late?700:400,fontFamily:"var(--font-mono)",fontSize:10}}> {fmtDate(t.due)}</span>}
+    {shown.map(function(it){
+      var t=it.t,late=t&&t.due&&t.due<now,canEdit=!ro&&(!it.ns||nsEditable);
+      if(edit&&edit.key===it.key)return <div key={it.key} style={{display:"flex",gap:3,marginBottom:2}}>
+        <input type="text" autoFocus value={edit.text} onChange={function(e){setEdit({key:it.key,text:e.target.value});}}
+          onKeyDown={function(e){if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEdit(null);}} onBlur={saveEdit}
+          style={{flex:1,minWidth:0,fontSize:11,padding:"2px 6px"}}/>
+      </div>;
+      return <div key={it.key} className="pp-act" style={{display:"flex",gap:5,alignItems:"flex-start",marginBottom:2}}>
+        {canEdit&&<input type="checkbox" checked={false} onChange={function(){done(it);}} title={it.ns?"Done: becomes a done action of the package and leaves the Next Step text":"Mark done"} style={{width:12,height:12,margin:"2px 0 0",flex:"0 0 auto"}}/>}
+        {!canEdit&&<span style={{color:col}}>{block?"■":"•"}</span>}
+        <span onClick={function(){if(canEdit)setEdit({key:it.key,text:it.text});}}
+          style={{flex:1,minWidth:0,cursor:canEdit?"text":"default",color:block?col:it.ns?"#4a4740":"inherit",fontWeight:block?600:400}}
+          title={(it.ns?"Next Step of the package (free text)":ppActText(t)+(t.note?"\n"+t.note:""))+(canEdit?"\nClick to edit":"")}>
+          {it.text||"(no text)"}
+          {t&&t.owner&&<span style={{color:"#9b968b",fontWeight:400}}> · {String(t.owner).split(",")[0]}</span>}
+          {t&&t.due&&<span style={{color:late?"#b3302a":"#9b968b",fontWeight:late?700:400,fontFamily:"var(--font-mono)",fontSize:10}}> {fmtDate(t.due)}</span>}
         </span>
+        {canEdit&&canDel(it)&&<button className="pp-act-x" onClick={function(){del(it);}} title="Delete"
+          style={{background:"none",border:"none",padding:"0 2px",cursor:"pointer",color:"#b9b4a8",fontSize:11,lineHeight:1,flex:"0 0 auto"}}>✕</button>}
       </div>;
     })}
-    {!wide&&list.length>3&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit"}}>
-      {all?"show less":"+ "+(list.length-3)+" more"}</button>}
-    {ro&&!list.length&&!(!block&&!noNextStep&&td.nextStep)&&<span style={{color:"#ccc"}}>—</span>}
+    {!wide&&items.length>3&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit"}}>
+      {all?"show less":"+ "+(items.length-3)+" more"}</button>}
+    {ro&&!items.length&&<span style={{color:"#ccc"}}>—</span>}
     {!ro&&(open
       ?<div style={{display:"flex",gap:3,marginTop:3}}>
         <input type="text" autoFocus value={txt} onChange={function(e){setTxt(e.target.value);}}
@@ -1371,7 +1414,7 @@ function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide}){
           placeholder={block?"Blocking point…":"Next step…"} style={{flex:1,minWidth:0,fontSize:11,padding:"2px 6px"}}/>
         <button className="btn btn-sm" onClick={add} disabled={!txt.trim()} style={{padding:"1px 7px",fontSize:10.5}}>Add</button>
       </div>
-      :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":"Add a next step (an action linked to this package)"}
+      :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":"Add a next step (an action linked to this package, to tick when done)"}
         style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ add</button>)}
   </div>;
 }
@@ -2018,7 +2061,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",color:vr===null?"#ccc":vr<0?"#b3302a":"#1e6b3a"}}
           title="Budget − instructed">{vr===null?"—":ppSigned(vr)}</td>}
         {fol&&<td className="sep">{td.ownerTender?<OwnerChip owner={td.ownerTender}/>:<span style={{color:"#ccc"}}>—</span>}</td>}
-        {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks}/></td>}
+        {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} updTd={function(p){upd(td,p);}}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpRfiCell td={td} list={a.rfi} done={a.rfiDone} tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
