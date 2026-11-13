@@ -136,8 +136,7 @@ function theoreticalDates(td){
 
     if(st.anchor==="startMinus"){
       // WMS / ITP hang off the start on site, not off the previous step
-      var lead=st.key==="wms"?getDur("wmsBeforeStart"):getDur("itpBeforeStart");
-      if(isValidDate(td.startOnSite))theo=addCalDays(td.startOnSite,-lead);
+      if(isValidDate(td.startOnSite))theo=subDur(td.startOnSite,st.key==="wms"?"wmsBeforeStart":"itpBeforeStart");
     }else if(!st.from){
       theo=target||"";
     }else{
@@ -533,20 +532,20 @@ function _tenderDocs(td){
     var sub=th(d.k);
     out.push({id:d.k,group:d.group,kind:d.k,label:d.label,sub:(((td.stepDates||{})[d.k])||{}).reference||"",
       cycles:cyclesOfStep(td,d.k),theoSub:sub,
-      theoApproval:isValidDate(sub)?(d.k==="acc"?addCalDays(sub,getDur("accApproval")):addCalDays(sub,getDur("clientResponse"))):"",
+      theoApproval:isValidDate(sub)?(d.k==="acc"?addDur(sub,"accApproval"):addDur(sub,"clientResponse")):"",
       patchFor:function(list){var n=tdWithStepCycles(td,d.k,list);return {cycles:n.cycles,stepDates:n.stepDates,steps:n.steps};}});
   });
   // shop drawings: one document per transmission
   var ct=(td.stepDates||{}).contract||{};
   var ctBase=ct.signedDone||ct.signedAllDone||th("contract");
-  var sdSub=isValidDate(ctBase)?addCalDays(ctBase,getDur("sdAfterContract")):"";
+  var sdSub=isValidDate(ctBase)?addDur(ctBase,"sdAfterContract"):"";
   // The approval is expected from the submission date actually planned: the transmission's
   // own target, then the tender's SD target, then the computed one.
   (td.sdTransmissions||[]).forEach(function(t,i){
     var tSub=t.target||td.sdTarget||sdSub;
     out.push({id:"sd:"+t.id,group:"Shop drawings",kind:"sd",label:t.ref||("SD "+(i+1)),sub:t.description||"",
       cycles:cyclesOfSD(t),theoSub:tSub,
-      theoApproval:isValidDate(tSub)?addCalDays(tSub,getDur("sdApproval")):"",
+      theoApproval:isValidDate(tSub)?addDur(tSub,"sdApproval"):"",
       patchFor:function(list){
         var tl=(td.sdTransmissions||[]).map(function(x){return x.id===t.id?sdWithCycles(x,list):x;});
         return Object.assign({sdTransmissions:tl},_sdAggregate(tl));
@@ -557,7 +556,7 @@ function _tenderDocs(td){
   if(!(td.sdTransmissions||[]).length&&(td.hasSD||td.sdDone||td.sdApprovalDone||td.sdStatus||(td.sdCycles||[]).length)){
     out.push({id:"sd:_main",group:"Shop drawings",kind:"sd",label:"SD",sub:"whole tender",
       cycles:cyclesOfSdMain(td),theoSub:td.sdTarget||sdSub,
-      theoApproval:isValidDate(td.sdTarget||sdSub)?addCalDays(td.sdTarget||sdSub,getDur("sdApproval")):"",
+      theoApproval:isValidDate(td.sdTarget||sdSub)?addDur(td.sdTarget||sdSub,"sdApproval"):"",
       patchFor:function(list){return sdMainWithCycles(td,list);}});
   }
   // materials: the MAR, and the MSS when the material needs one (or already has a history).
@@ -581,9 +580,8 @@ var DOC_GROUPS=["Client approval","Shop drawings","Materials","Purchases","Quali
 function docAccClock(kind){return kind==="acc"||kind==="pacc"||kind==="paconex";}
 // The client's answer time for a document, in calendar days: ACC / Aconex accApproval, shop
 // drawings sdApproval, every other document clientResponse.
-function docClientDays(kind){
-  return Number(getDur(docAccClock(kind)?"accApproval":kind==="sd"?"sdApproval":"clientResponse"))||0;
-}
+function docClientKey(kind){return docAccClock(kind)?"accApproval":kind==="sd"?"sdApproval":"clientResponse";}
+function docClientDays(kind){return Number(getDur(docClientKey(kind)))||0;}
 function isPurchaseDoc(d){return !!d&&(d.kind==="pacc"||d.kind==="paconex");}
 // The short name of a document in actions and the Stage column.
 function docShortName(d){
@@ -596,14 +594,14 @@ function docShortName(d){
 // for every other document (docClientDays).
 function docResponseDue(doc,submitted){
   if(!isValidDate(submitted))return"";
-  return addCalDays(submitted,docClientDays(doc.kind));
+  return addDur(submitted,docClientKey(doc.kind));
 }
 function docOverdue(doc,submitted,now){
   now=now||today();
   var due=docResponseDue(doc,submitted);
   if(!isValidDate(due)||!(now>due))return null;
-  var n=Math.round((parseISODate(now)-parseISODate(due))/86400000);
-  return n>0?{days:n,unit:"d",due:due}:null;
+  var key=docClientKey(doc.kind),n=countDurDays(due,now,key);
+  return n>0?{days:n,unit:durUnit(key)==="wd"?"wd":"d",due:due}:null;
 }
 function fmtOverdue(o){return o?o.days+" "+o.unit+" overdue":"";}
 function OverdueTag({o,lead}){
@@ -800,7 +798,7 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,foc
         var nums=t.numbers||[];
         var open=!!openIds[t.id];
         var answered=t.status==="approved"||t.status==="rejected"||!!t.approvalDone;
-        var due=t.done?addCalDays(t.done,getDur("clientResponse")):"";
+        var due=t.done?addDur(t.done,"clientResponse"):"";
         var overdue=!answered&&due&&due<today();
         return <React.Fragment key={t.id}>
           <tr id={"tdoc-sd:"+t.id} style={{background:overdue?"var(--red-soft,#fbe6e8)":"#fff"}}>
@@ -861,10 +859,10 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,foc
 function matDocTheo(td){
   var ct=((td&&td.stepDates)||{}).contract||{};
   var signed=ct.signedAllDone||ct.signedDone||ct.done||"";
-  if(isValidDate(signed))return{date:addCalDays(signed,getDur("marAfterContract")),base:signed,firm:true};
+  if(isValidDate(signed))return{date:addDur(signed,"marAfterContract"),base:signed,firm:true};
   var chain=(function(){try{return theoreticalDates(td);}catch(e){return{};}})();
   var est=(chain.contract||{}).effective||(chain.contract||{}).theoretical||"";
-  if(isValidDate(est))return{date:addCalDays(est,getDur("marAfterContract")),base:est,firm:false};
+  if(isValidDate(est))return{date:addDur(est,"marAfterContract"),base:est,firm:false};
   return{date:"",base:"",firm:false};
 }
 // Which documents a material has: the MAR always, the MSS when ticked — or when it already
@@ -878,7 +876,7 @@ function matDoc(td,m,i,kd,marSub){
   if(marSub===undefined)marSub=matDocTheo(td).date;
   return {id:matDocId(m,i,kd),group:"Materials",kind:kd,label:kd.toUpperCase(),sub:m.name||("material "+(i+1)),ref:matDocRef(m,kd),
     cycles:cyclesOfMat(m,kd),theoSub:marSub,
-    theoApproval:isValidDate(marSub)?addCalDays(marSub,getDur("clientResponse")):"",
+    theoApproval:isValidDate(marSub)?addDur(marSub,"clientResponse"):"",
     patchFor:function(list){
       return {materials:(td.materials||[]).map(function(x,j){return (x.id?x.id===m.id:j===i)?matWithCycles(x,kd,list):x;})};
     }};
@@ -917,9 +915,9 @@ function MatDocApproval({doc}){
       {last.returned?fmtDate(last.returned):<i style={{color:"#b35c00"}} title="Code recorded without a date: open + and fill in the returned date">no date</i>}
     </span>;
   }
-  var due=addCalDays(last.submitted,getDur("clientResponse"));
+  var due=addDur(last.submitted,"clientResponse");
   var late=isValidDate(due)&&due<today();
-  return <span title={"Submitted "+fmtDate(last.submitted)+" + "+getDur("clientResponse")+" days client response"}
+  return <span title={"Submitted "+fmtDate(last.submitted)+" + "+durShort("clientResponse")+" client response"}
     style={{fontSize:11,whiteSpace:"nowrap",color:late?"#b3302a":"#0f5299",fontWeight:late?700:500}}>{late?"⚠ due ":"expected "}{fmtDate(due)}</span>;
 }
 
@@ -986,7 +984,7 @@ function purchaseDoc(td,p,k){
   var sub=p[k+"Target"]||"";
   return {id:x.kind+":"+p.id,group:"Purchases",kind:x.kind,label:x.label,sub:purchaseName(p,(td.purchases||[]).indexOf(p)),
     ref:String(p[k+"Ref"]||"").trim(),cycles:cyclesOfPurchase(p,k),theoSub:sub,
-    theoApproval:isValidDate(sub)?addCalDays(sub,getDur("accApproval")):"",
+    theoApproval:isValidDate(sub)?addDur(sub,"accApproval"):"",
     patchFor:function(list){
       return {purchases:(td.purchases||[]).map(function(y){
         if(y.id!==p.id)return y;
@@ -1298,7 +1296,7 @@ function MaterialsPanel({td,updTd,saveT,tasks,tenders,saveTenders,setSelTender,p
                 </td>
                 <td style={{textAlign:"center"}}>
                   {matTheo.date
-                    ?<span title={matTheo.firm?"Contract signed "+fmtDate(matTheo.base)+" + "+getDur("marAfterContract")+" days"
+                    ?<span title={matTheo.firm?"Contract signed "+fmtDate(matTheo.base)+" + "+durShort("marAfterContract")
                                              :"Contract not signed yet — computed from the theoretical signing date "+fmtDate(matTheo.base)}
                       style={{fontSize:11,fontWeight:matTheo.firm?700:600,padding:"2px 7px",borderRadius:5,cursor:"help",
                         color:matTheo.firm?"var(--green,#1e6b3a)":"var(--ink-3,#6f6b62)",
@@ -1637,10 +1635,10 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
         var val=(td.steps||{})[s.key]||"";
         var dates=(td.stepDates||{})[s.key]||{};
         var th=(theoMap[s.key]||{});
-        var lead=s.key==="wms"?getDur("wmsBeforeStart"):getDur("itpBeforeStart");
+        var lead=durShort(s.key==="wms"?"wmsBeforeStart":"itpBeforeStart");
         return <React.Fragment key={s.key}><tr id={"tdoc-"+s.key}>
           <td style={{fontWeight:700,color:"#555",whiteSpace:"nowrap"}}>{chev(s.key)}{s.label}
-            <div style={{fontSize:9,color:"#bbb",fontWeight:400}}>start − {lead} days</div><RefTag td={td} k={s.key}/></td>
+            <div style={{fontSize:9,color:"#bbb",fontWeight:400}}>start − {lead}</div><RefTag td={td} k={s.key}/></td>
           <td>
 {flowDocState(td,s.key)!=="none"?<FlowDocBadge td={td} id={s.key}/>:
             <select value={val} onChange={function(e){updateStep(td.id,s.key,"status",e.target.value);}}
@@ -1650,7 +1648,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
           </td>
           <td style={{textAlign:"center"}}>
             {th.theoretical
-              ?<span title={"Start on site "+fmtDate(td.startOnSite)+" minus "+lead+" days"}
+              ?<span title={"Start on site "+fmtDate(td.startOnSite)+" minus "+lead}
                 style={{fontSize:11,fontWeight:600,cursor:"help",padding:"2px 7px",borderRadius:5,color:"#8b8578",background:"#f2f0eb",border:"1px solid #e0ddd6"}}>{fmtDate(th.theoretical)}</span>
               :<span style={{color:"#ddd",fontSize:11}} title="No start on site yet — link a schedule task to this tender">—</span>}
           </td>
@@ -1726,10 +1724,10 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
       var accApproval=((td.stepDates||{}).acc||{}).approval||"";
 
       // Auto target dates (never overwrite existing manual values)
-      var autoRequestTarget=accApproval?addCalDays(accApproval,getDur("accToRequest")):"";
-      var autoCirculateTarget=ct.requestDone?addCalDays(ct.requestDone,getDur("requestToCirculate")):"";
-      var autoSignedAllTarget=ct.circulateDone?addCalDays(ct.circulateDone,getDur("circulateToSign")):"";
-      var autoSignedTarget=accApproval?addCalDays(accApproval,getDur("accToSigned")):"";
+      var autoRequestTarget=accApproval?addDur(accApproval,"accToRequest"):"";
+      var autoCirculateTarget=ct.requestDone?addDur(ct.requestDone,"requestToCirculate"):"";
+      var autoSignedAllTarget=ct.circulateDone?addDur(ct.circulateDone,"circulateToSign"):"";
+      var autoSignedTarget=accApproval?addDur(accApproval,"accToSigned"):"";
 
       var requestTarget=ct.requestTarget||autoRequestTarget;
       var circulateTarget=ct.circulateTarget||autoCirculateTarget;
@@ -1993,7 +1991,7 @@ function _flowPlanApproval(td,k,theo){
   var sd=((td.stepDates||{})[k])||{};
   var sub=sd.target||((theo[k]||{}).theoretical)||"";
   if(!isValidDate(sub))return"";
-  return k==="acc"?addCalDays(sub,getDur("accApproval")):addCalDays(sub,getDur("clientResponse"));
+  return k==="acc"?addDur(sub,"accApproval"):addDur(sub,"clientResponse");
 }
 
 // ---------------------------------------------------------------------------
@@ -2368,7 +2366,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
     });
     if(!fCt.done&&isValidDate(fCt.date)&&isValidDate(accEnd)&&accEnd<fCt.date){
       cbars.push(seg(cs.started&&cs.started>accEnd?cs.started:accEnd,fCt.date,FLOW_COL.internal,
-        "Forecast: contract signed "+fmtDate(fCt.date)+" ("+getDur("contractSigning")+" days after the ACC approval)",true,"ctf"));
+        "Forecast: contract signed "+fmtDate(fCt.date)+" ("+durShort("contractSigning")+" after the ACC approval)",true,"ctf"));
     }
     lanes.push({k:"contract",label:"Contract",sub:fCt.done?"signed "+fmtDate(fCt.done):"internal ∥ sub",bars:cbars});
     // Every document gets its lane, submitted or not. What has happened is solid; what is
@@ -3010,7 +3008,7 @@ function TenderMiniTimeline({td,range}){
       fut(subD,appD,FLOW_COL.client,"Forecast: "+name+" with the client "+fmtDate(subD)+" → approval "+fmtDate(appD));
     }else if(isValidDate(last.submitted)&&!last.code){
       // the main SD follows the delivery cascade, so its answer date matches the truck
-      var due=main&&isValidDate(fSdA.date)?fSdA.date:addCalDays(last.submitted,getDur("sdApproval"));
+      var due=main&&isValidDate(fSdA.date)?fSdA.date:addDur(last.submitted,"sdApproval");
       fut(now,due>now?due:addCalDays(now,1),FLOW_COL.client,name+" R"+last.rev+" with the client since "+fmtDate(last.submitted)+" — answer expected "+fmtDate(due));
     }else if(main&&isValidDate(pst("sdReappBack").date)){
       var rb=pst("sdResubBack"),ab=pst("sdReappBack");
@@ -3019,7 +3017,7 @@ function TenderMiniTimeline({td,range}){
     }else if(last.code==="C"||last.code==="D"){
       var from=isValidDate(last.returned)?last.returned:now;
       var resub=addCalDays(from>now?from:now,14);
-      var reapp=addCalDays(resub,getDur("sdApproval"));
+      var reapp=addDur(resub,"sdApproval");
       fut(from,resub,FLOW_COL.sub,"Forecast: sub reworks the "+name+" (returned "+last.code+"), resubmission "+fmtDate(resub));
       fut(resub,reapp,FLOW_COL.client,"Forecast: "+name+" R"+(last.rev+1)+" with the client → approval "+fmtDate(reapp));
     }
@@ -4001,7 +3999,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     }
     // Trigger "Get the approval of the Tender result from the client" once ACC/Aconex is submitted (Date done filled)
     if(updatedTd&&step==="acc"&&field==="done"&&val&&!prevAccDone){
-      var apprDueVal=addCalDays(val,getDur("accApproval"));
+      var apprDueVal=addDur(val,"accApproval");
       autoActionForTender(updatedTd,apprText,"Procurement",{due:apprDueVal,importance:3,urgence:calcProcurementUrgence(apprDueVal)});
     }
     // ACC Date done CLEARED (was filled, now empty): undo — remove the two tasks it created, reopen "Submit the Tender Result" if target still set
@@ -4502,7 +4500,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
             updTd(patch);
             sdStepAction(val);
           }
-          var sdDue14=td.sdDone?(function(){var d=new Date(td.sdDone);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
+          var sdDue14=td.sdDone?addDur(td.sdDone,"clientResponse"):"";
           // Overdue = we are still waiting. Once the client answers — approved, rejected,
           // or an approval date recorded — the clock stops.
           var sdAnswered=sdEff==="approved"||sdEff==="rejected"||!!td.sdApprovalDone;
@@ -4848,9 +4846,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 var CONTRACT_LABELS_LIST=["—","To request","To circulate","To sign","✅ Signed"];
                 var CONTRACT_COLORS=["s-default","s-pending","s-pending","s-pending","s-approved-a"];
                 var ctAccApproval=((td.stepDates||{}).acc||{}).approval||"";
-                var autoReqTarget=ctAccApproval?addCalDays(ctAccApproval,getDur("accToRequest")):"";
-                var autoCircTarget=ctc.requestDone?addCalDays(ctc.requestDone,getDur("requestToCirculate")):"";
-                var autoSignAllTarget=ctc.circulateDone?addCalDays(ctc.circulateDone,getDur("circulateToSign")):"";
+                var autoReqTarget=ctAccApproval?addDur(ctAccApproval,"accToRequest"):"";
+                var autoCircTarget=ctc.requestDone?addDur(ctc.requestDone,"requestToCirculate"):"";
+                var autoSignAllTarget=ctc.circulateDone?addDur(ctc.circulateDone,"circulateToSign"):"";
                 var stage=0;
                 var nextTarget="";
                 if(ctc.signedDone||ctc.signedAllDone){stage=4;}
@@ -5308,11 +5306,11 @@ function _calcProcurement(td){
   // (Mon–Fri, public holidays, extra holidays), like the ACC clock of the documents. They
   // used to be added as calendar days, which made every forecast 30–40 % too early.
   // Internal approval (below the ACC threshold): no client clock. Not answered yet: not before today.
-  var accApprTargetAuto = notBefore(_accRoute==="none"?accSubmittal:addCalDays(accSubmittal, getDur("accApproval")));
+  var accApprTargetAuto = notBefore(_accRoute==="none"?accSubmittal:addDur(accSubmittal,"accApproval"));
   var accApprTarget = ov.accApp||accApprTargetAuto;
   steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:getDur("accApproval"), manual:false, autoDate:accApprTargetAuto, overridden:!!(ov.accApp&&ov.accApp!==accApprTargetAuto)});
 
-    var contractTargetAuto = addCalDays(accApproval||accApprTarget, getDur("contractSigning"));
+    var contractTargetAuto = addDur(accApproval||accApprTarget,"contractSigning");
   // La cible saisie à la main dans le tableau Contract (stepDates.contract.signedTarget)
   // est la vraie source de vérité : elle doit primer sur le calcul automatique.
   var contractTarget = _ct.signedTarget||ov.contract||contractTargetAuto;
@@ -5326,7 +5324,7 @@ function _calcProcurement(td){
 
   if(hasSd){
 
-    var sdSubTargetAuto = addCalDays(contractBase, getDur("sdAfterContract"));
+    var sdSubTargetAuto = addDur(contractBase,"sdAfterContract");
     // The SD panel's own Target date takes priority over the computed one — a manual entry there
     // is a commitment, so the whole timeline downstream is rebuilt from it.
     // With transmissions, the shop drawings are approved once the LAST one is: the cascade
@@ -5343,7 +5341,7 @@ function _calcProcurement(td){
       overridden:!_sdPanel&&!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
       fromSdPanel:!!_sdPanel});
 
-    var sdAppTargetAuto = notBefore(addCalDays(_trs.length?(sdSubDone||notBefore(sdSubTarget)):(td.sdDone||notBefore(sdSubTarget)), getDur("sdApproval")));
+    var sdAppTargetAuto = notBefore(addDur(_trs.length?(sdSubDone||notBefore(sdSubTarget)):(td.sdDone||notBefore(sdSubTarget)),"sdApproval"));
     var sdAppTarget = ov.sdApp||sdAppTargetAuto;
     steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:getDur("sdApproval"), manual:false, sd:true,
       review:td.sdReview||"", autoDate:sdAppTargetAuto, overridden:!!(ov.sdApp&&ov.sdApp!==sdAppTargetAuto)});
@@ -5356,7 +5354,7 @@ function _calcProcurement(td){
       var _back=isValidDate(sdBack.returned)?sdBack.returned:(td.sdApprovalDone||today());
       var _rs=addWorkDays(_back,14);
       if(_rs<today())_rs=addWorkDays(today(),7);
-      var _ra=addCalDays(_rs,getDur("sdApproval"));
+      var _ra=addDur(_rs,"sdApproval");
       steps.push({key:"sdResubBack", label:"SD Resubmission (returned "+sdBack.code+")", date:_rs, done:"", duration:14, manual:false, sd:true});
       steps.push({key:"sdReappBack", label:"SD Approval R"+((sdBack.rev||0)+1), date:_ra, done:"", duration:getDur("sdApproval"), manual:false, sd:true});
       lastSdDate=_ra;
@@ -5393,8 +5391,8 @@ function _calcProcurement(td){
       marBase = notBefore(leadMaterial.marApprovalTarget);
     }else{
       // submitted: + client answer; not yet: from its target, else contract + marAfterContract
-      var _mSub = leadMaterial.marDone || notBefore(leadMaterial.marTarget || addCalDays(contractBase, getDur("marAfterContract")));
-      marBase = notBefore(addCalDays(_mSub, getDur("clientResponse")));
+      var _mSub = leadMaterial.marDone || notBefore(leadMaterial.marTarget || addDur(contractBase,"marAfterContract"));
+      marBase = notBefore(addDur(_mSub,"clientResponse"));
     }
   }
 
@@ -5460,7 +5458,9 @@ function _calcProcurement(td){
 
   // Delivered on site (typed in the sheet header): the real date replaces the forecast.
   var deliveredOn = isValidDate(td.deliveredOn) ? td.deliveredOn : "";
-  var deliveryDate = deliveredOn || addWorkDays(fabStart, LEAD);
+  // Lead from the plan (its fabrication and transport, each in its own unit), else calendar days.
+  var _L=(function(){try{return ppLeads(td);}catch(e){return null;}})();
+  var deliveryDate = deliveredOn || (leadSource==="plan"&&_L ? ppShiftLead(ppShiftLead(fabStart,_L.fab,1),_L.transport,1) : addWorkDays(fabStart, LEAD));
   steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:deliveredOn, duration:LEAD, manual:false, highlight:true});
 
   var startOnSite = td.startOnSite||"";
@@ -5610,7 +5610,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
         var nc=ctNoClient(ct,doc.key);
         var subDate=nc?"":ct[doc.key+"Date"]||"";
         var status=ct[doc.key+"Status"]||"";
-        var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
+        var due14=subDate?addDur(subDate,"clientResponse"):"";
         var overdue=status!=="approved"&&due14&&due14<today();
         return <div key={doc.key} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 10px",borderRadius:8,background:doc.bg+"44",border:"1px solid "+doc.color+"33",marginBottom:6}}>
           <div style={{flex:"0 0 80px"}}>
@@ -5677,7 +5677,7 @@ function CollapseContractDetail({ctr,ct,fin,linkedTender,updateCtField,updateAdI
               {["acc","aconex"].map(function(dk){
                 var dLabel=dk==="acc"?"ACC":"ACONEX";var dColor=dk==="acc"?"#0f5299":"#4a4740";
                 var adStatus=ad[dk+"Status"]||"";var nc=ctNoClient(ad,dk);var adDate=nc?"":ad[dk+"Date"]||"";
-                var due14=adDate?(function(){var d=new Date(adDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
+                var due14=adDate?addDur(adDate,"clientResponse"):"";
                 var overdue=adStatus!=="approved"&&due14&&due14<today();
                 return <div key={dk} style={{display:"flex",gap:5,alignItems:"center",padding:"4px 7px",borderRadius:6,background:dk==="acc"?"#e8f0fe55":"#f3e5f555",border:"1px solid "+dColor+"33",flex:1,minWidth:180}}>
                   <span style={{fontSize:10,fontWeight:700,color:dColor,flexShrink:0}}>{dLabel}</span>
@@ -6581,7 +6581,7 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
           else if(st==="under preparation")counts.prep++;
           else{counts.pending++;
             var done=mat[k+"Done"]||"";
-            if(done){var d=new Date(done);d.setDate(d.getDate()+getDur("clientResponse"));if(toISO(d)<todayStr)counts.overdue++;}
+            if(done){if(addDur(done,"clientResponse")<todayStr)counts.overdue++;}
           }
         });
       });
@@ -6592,7 +6592,7 @@ function PackagesView({tasks,tenders,contractors,packages,people,pkgOwners,pkgSu
         else if(st==="rejected")counts.rejected++;
         else if(st==="under preparation")counts.prep++;
         else if(st){counts.pending++;
-          if(t.sdDone){var d2=new Date(t.sdDone);d2.setDate(d2.getDate()+getDur("clientResponse"));if(toISO(d2)<todayStr)counts.overdue++;}
+          if(t.sdDone){if(addDur(t.sdDone,"clientResponse")<todayStr)counts.overdue++;}
         }
       }
     });
@@ -6750,7 +6750,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
     var stageLbl=isFcr?"FCR":"RFI";
     var tdr=(tenders||[]).find(function(x){return x.id===t.tenderRef;})||null;
     var submitted=t.rfiSubmission||"";
-    var due=t.rfiDue||(isValidDate(submitted)?addCalDays(submitted,getDur("clientResponse")):"");
+    var due=t.rfiDue||(isValidDate(submitted)?addDur(submitted,"clientResponse"):"");
     var overdue=due&&due<todayStr&&t.status!=="done";
     var withClient=!!submitted&&t.status!=="done";
     docs.push({
@@ -6772,7 +6772,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
         var subDate=ct[docType.dk+"Date"]||"";
         if(ctNoClient(ct,docType.dk))return;
         if(!subDate&&!status)return;
-        var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
+        var due14=subDate?addDur(subDate,"clientResponse"):"";
         var overdue=status!=="approved"&&!!due14&&due14<todayStr;
         var withClient=!!subDate&&status!=="approved";
         docs.push({
@@ -6790,7 +6790,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
           var subDate=ad[docType.dk+"Date"]||"";
           if(ctNoClient(ad,docType.dk))return;
           if(!subDate&&!status)return;
-          var due14=subDate?(function(){var d=new Date(subDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
+          var due14=subDate?addDur(subDate,"clientResponse"):"";
           var overdue=status!=="approved"&&!!due14&&due14<todayStr;
           var withClient=!!subDate&&status!=="approved";
           docs.push({
@@ -6812,7 +6812,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
     var appDone=td.sdApprovalDone||"";
     var appStatus=td.sdApprovalStatus||"";
     if(!subDone)return;
-    var due14=(function(){var d=new Date(subDone);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}());
+    var due14=addDur(subDone,"clientResponse");
     var overdue=appStatus!=="approved"&&!appDone&&due14<todayStr;
     var withClient=appStatus!=="approved"&&!appDone;
     docs.push({
@@ -6839,8 +6839,8 @@ function buildTrackedDocs(tasks,tenders,contractors){
       var isDone=!!doneDate||isApproved;
       var isApprovalDone=!!approvalDate||isApproved;
 
-      var dueDateFromDone=doneDate?(function(){var d=new Date(doneDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
-      var dueDateFromTarget=targetDate?(function(){var d=new Date(targetDate);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"";
+      var dueDateFromDone=doneDate?addDur(doneDate,"clientResponse"):"";
+      var dueDateFromTarget=targetDate?addDur(targetDate,"clientResponse"):"";
 
       var effectiveDue=doneDate?dueDateFromDone:dueDateFromTarget;
       var effectiveSubmission=doneDate||"";
@@ -6876,7 +6876,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
         var dueDate,overdue,withClient,submissionDate,stepStatus,stageLabel;
         if(isSubmittedPhase&&done){
           // Submitted, waiting on the client's response window.
-          dueDate=(function(){var d=new Date(done);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}());
+          dueDate=addDur(done,"clientResponse");
           overdue=dueDate<todayStr;
           withClient=true;submissionDate=done;stepStatus=approvalStatus||"Pending approval";stageLabel=m.label+" Approval";
         }else if(!done&&target&&target<todayStr){
@@ -6981,7 +6981,7 @@ function collectClientEmailDocs(tasks,tenders,contractors,filters){
       if(!t.done)return;
       // same rule as SDPanel: a verdict or an answer date stops the clock
       if(t.status==="approved"||t.status==="rejected"||t.approvalDone)return;
-      var due=addCalDays(t.done,getDur("clientResponse"));
+      var due=addDur(t.done,"clientResponse");
       var overdue=!!due&&due<todayStr;
       out.push({id:td.id+"_sdtr_"+t.id,type:"SD",label:"SD",ref:String(t.ref||"").trim(),
         title:(td.title||"")+(t.description?" – "+t.description:""),
@@ -7410,7 +7410,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
           </tr></thead>
           <tbody>{shown.map(function(r){
             var kc=KIND_COL[r.kind];
-            var lead=r.k==="wms"?getDur("wmsBeforeStart"):getDur("itpBeforeStart");
+            var lead=durShort(r.k==="wms"?"wmsBeforeStart":"itpBeforeStart");
             var bg=r.key==="late"||r.key==="overdue"?"#fffaf9":"#fff";
             return <tr key={r.td.id+"_"+r.k} style={{background:bg,opacity:r.na?.6:1}}>
               <td style={{fontSize:11,maxWidth:260}}>
@@ -7422,7 +7422,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
               <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}><SchedStartDate td={r.td} onNavZone={onNavZone}/></td>
               <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap"}}>
                 {r.d.theoSub
-                  ?<span title={"Start on site "+fmtDate(r.td.startOnSite)+" minus "+lead+" days"} style={{color:"#8b8578",cursor:"help"}}>{fmtDate(r.d.theoSub)}</span>
+                  ?<span title={"Start on site "+fmtDate(r.td.startOnSite)+" minus "+lead} style={{color:"#8b8578",cursor:"help"}}>{fmtDate(r.d.theoSub)}</span>
                   :<span style={{color:"#ddd"}}>—</span>}
               </td>
               <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",fontWeight:r.sd.target?600:400}}>{r.sd.target?fmtDate(r.sd.target):<span style={{color:"#ddd"}}>—</span>}</td>
