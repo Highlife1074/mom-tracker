@@ -2187,7 +2187,23 @@ function PpFloatScroll({target}){
 }
 // The Package view: every package of the project (Package list and Procurement plan merged).
 // Rendered by TendersView as its list; onOpenTender opens a package sheet in place.
-function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,onOpenTender,onNavZone,onQuickUpdate,actions,primary}){
+// Owner of a Package in the list: the coloured chip, with a list of people laid over it to
+// change it (same field as OWNER in the sheet header, td.ownerTender).
+function PpOwnerCell({td,people,upd}){
+  var ro=isReadOnly(),cur=td.ownerTender||"";
+  var list=(people||[]).slice();if(cur&&list.indexOf(cur)<0)list.unshift(cur);
+  var chip=cur?<OwnerChip owner={cur}/>:<span style={{color:ro?"#ccc":"#9b968b",fontSize:11}}>{ro?"—":"＋ owner"}</span>;
+  if(ro)return chip;
+  return <span style={{position:"relative",display:"inline-block",cursor:"pointer"}} title="Change the owner of this Package">
+    {chip}
+    <select value={cur} onChange={function(e){upd(td,{ownerTender:e.target.value});}} aria-label="Owner"
+      style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0,cursor:"pointer"}}>
+      <option value="">— no owner —</option>
+      {list.map(function(p){return <option key={p} value={p}>{p}</option>;})}
+    </select>
+  </span>;
+}
+function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNavTender,onOpenTender,onNavZone,onQuickUpdate,actions,primary}){
   function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   const [q,setQ]=useState(function(){return lsGet("pp_procplan_q","");});
@@ -2342,7 +2358,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,color:"#1e6b3a",whiteSpace:"nowrap"}}>{ppInstructed(td)?ppInstructed(td).toLocaleString():"—"}</td>}
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",color:vr===null?"#ccc":vr<0?"#b3302a":"#1e6b3a"}}
           title="Budget − instructed">{vr===null?"—":ppSigned(vr)}</td>}
-        {fol&&<td className="sep">{td.ownerTender?<OwnerChip owner={td.ownerTender}/>:<span style={{color:"#ccc"}}>—</span>}</td>}
+        {fol&&<td className="sep"><PpOwnerCell td={td} people={people} upd={upd}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} updTd={function(p){upd(td,p);}}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
