@@ -1788,6 +1788,8 @@ function ppQuStepState(td,key){
   }
   if(key==="contract"){
     if(sd.signedDone||sd.signedAllDone||v==="Signed")return {k:"done",text:"Signed"+(sd.signedAllDone||sd.signedDone?" · "+fmtDate(sd.signedAllDone||sd.signedDone):"")};
+    if(sd.circulateDone)return {k:"run",text:"In circulation · "+fmtDate(sd.circulateDone)};
+    if(sd.requestDone)return {k:"run",text:"Request sent · "+fmtDate(sd.requestDone)};
     return {k:v&&v!=="—"?"run":"todo",text:v&&v!=="—"?v:"Not started"};
   }
   if(key==="kickoff"){
@@ -1798,6 +1800,22 @@ function ppQuStepState(td,key){
   if(key==="pkg"&&v==="Approved")return {k:"done",text:v};
   if(tenderStepClass(key,v)==="s-approved-a")return {k:"done",text:v};
   return {k:v&&v!=="—"?"run":"todo",text:v&&v!=="—"?v:"—"};
+}
+// Contract stages of Quick update, in order, with the date each one fills in
+// stepDates.contract — the same fields as the sheet's Contract section.
+var PP_QU_CT=[
+  {k:"",       label:"Not started",   field:""},
+  {k:"request",label:"Request sent",  field:"requestDone"},
+  {k:"circ",   label:"In circulation",field:"circulateDone"},
+  {k:"signed", label:"Signed",        field:"signedDone"}
+];
+function ppQuCtStage(td){
+  var sd=((td.stepDates||{}).contract)||{};
+  if(((td.steps||{}).contract||"")==="N/A")return "na";
+  if(sd.signedDone||sd.signedAllDone)return "signed";
+  if(sd.circulateDone)return "circ";
+  if(sd.requestDone)return "request";
+  return "";
 }
 function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep,onOpenSheet,onClose}){
   const [allSteps,setAllSteps]=useState(false);
@@ -1828,6 +1846,54 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
     else{var sd=Object.assign({},td.stepDates||{});sd[key]=Object.assign({},sd[key]||{},{[field]:v});updTd({stepDates:sd});}
   }
   function saveDoc(d,list){var patch=d.patchFor(list);updTd(patch);afterSave(td,Object.assign({},td,patch));}
+  // Contract: the chosen stage fills its date (today unless already set) and the earlier
+  // ones left empty; going back clears the later ones. Same automatic actions as the sheet:
+  // the action of the stage reached is closed, the next one opened (signed + SD → SD action).
+  function setContract(stage,date){
+    if(blockIfReadOnly())return;
+    var cur=((td.stepDates||{}).contract)||{};
+    var ct=Object.assign({},cur),steps=Object.assign({},td.steps||{});
+    var idx=PP_QU_CT.findIndex(function(x){return x.k===stage;});
+    if(stage==="na"){steps.contract="N/A";}
+    else{
+      if(!ct.signedDone&&ct.signedAllDone)ct.signedDone=ct.signedAllDone;   // older records
+      PP_QU_CT.forEach(function(x,i){
+        if(!x.field)return;
+        if(i<=idx){
+          if(i===idx&&date!==undefined)ct[x.field]=date;
+          else if(!ct[x.field])ct[x.field]=date||now;
+        }else ct[x.field]="";
+      });
+      ct.signedAllDone=ct.signedDone;   // the sheet writes both signature fields together
+      steps.contract=PP_QU_CT[idx]&&PP_QU_CT[idx].k?PP_QU_CT[idx].label:"—";
+    }
+    var sdAll=Object.assign({},td.stepDates||{});sdAll.contract=ct;
+    var next=Object.assign({},td,{stepDates:sdAll,steps:steps});
+    updTd({stepDates:sdAll,steps:steps});
+    if(!saveTasks)return;
+    var owner=(window._ppPkgOwners||{})[td.package||""]||td.ownerTender||"";
+    var base=flowTaskChanges(td,next,kRef.current||[],owner);
+    var list=base||(kRef.current||[]).slice(),changed=false,title=td.title||"";
+    function idxOf(text,open){return list.findIndex(function(t){return t.tenderRef===td.id&&t.text===text&&(open?t.status!=="done":true);});}
+    function open(text,o){
+      if(idxOf(text,true)>=0)return;
+      var i=idxOf(text,false);
+      if(i>=0&&list[i].addedBy==="System"){list[i]=Object.assign({},list[i],{status:"pending",completedAt:""});changed=true;return;}
+      list.unshift(newTask(Object.assign({text:text,owner:owner,tenderRef:td.id,package:td.package||"",tags:["Contract"],status:"pending",
+        note:"Auto-created from contract/SD status",addedBy:"System"},o||{})));changed=true;
+    }
+    function drop(text){var n=list.filter(function(t){return !(t.tenderRef===td.id&&t.text===text&&t.status!=="done"&&t.addedBy==="System");});if(n.length!==list.length){list=n;changed=true;}}
+    var A1="Contract Request to be sent — "+title,A2="Contract to circulate — "+title,A3="Contract to be signed internally and by the sub — "+title;
+    if(stage==="request"){open(A2);drop(A3);}
+    else if(stage==="circ"){open(A3);}
+    else if(stage===""){drop(A2);drop(A3);if(idxOf(A1,false)>=0)open(A1);}   // reopened, never created here
+    if(stage==="signed"&&td.hasSD){
+      var sdT=["Prepare the SD — "+title,"Get approval for SD — "+title,"Resubmit SD — "+title];
+      var tracked=list.some(function(t){return t.tenderRef===td.id&&t.status!=="done"&&(sdT.indexOf(t.text)>=0||(t.text||"").indexOf("SD to be submitted: "+title)===0);});
+      if(!tracked)open("SD to be submitted: "+title,{tags:[qualityTag(td.package||"")],due:td.sdTarget||""});
+    }
+    if(base||changed)saveTasks(list);
+  }
   var p=ppPlan(td,now),stg=ppStageOf(td,now),st=PP_STATUS[p.status]||PP_STATUS.none;
   var cell={padding:"5px 6px",borderTop:"1px solid #f0ede6",verticalAlign:"middle",fontSize:12};
   var hd={padding:"4px 6px",fontSize:10,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b",textAlign:"left",whiteSpace:"nowrap"};
@@ -1876,7 +1942,13 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
             return <tr key={k} style={x.s.k==="run"?{background:"#f5f8fc"}:null}>
               <td style={Object.assign({},cell,{fontWeight:600,whiteSpace:"nowrap"})}>{k==="acc"?tenderRouteLabel(td):x.def.label}</td>
               <td style={cell}>
-                {ed?<select value={((td.steps||{})[k])||"—"} disabled={ro} onChange={function(e){setStep(k,"status",e.target.value);}}
+                {k==="contract"&&!td.contractCircuit?<select value={ppQuCtStage(td)} disabled={ro} onChange={function(e){setContract(e.target.value);}}
+                    title="Fills the date of the stage (today) in the Contract section of the sheet, with its automatic actions"
+                    style={{fontSize:11.5,padding:"2px 5px",width:"auto",color:STC[x.s.k],fontWeight:600}}>
+                    {PP_QU_CT.map(function(o){return <option key={o.k} value={o.k}>{o.label}</option>;})}
+                    <option value="na">N/A</option></select>
+                :k==="contract"?<span style={{color:STC[x.s.k],fontWeight:600}}>{x.s.text}<span style={{fontSize:10.5,color:"#9b968b",fontWeight:400}}> · tracked desk by desk: open the full sheet</span></span>
+                :ed?<select value={((td.steps||{})[k])||"—"} disabled={ro} onChange={function(e){setStep(k,"status",e.target.value);}}
                     style={{fontSize:11.5,padding:"2px 5px",width:"auto",color:STC[x.s.k],fontWeight:600}}>
                     {x.def.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}</select>
                   :<span style={{color:STC[x.s.k],fontWeight:600}}>{x.s.text}</span>}
@@ -1885,7 +1957,11 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
               <td style={cell}><DraftDateInput value={x.sd.target||""} disabled={ro} onCommit={function(v){setStep(k,"target",v);}}
                 style={Object.assign({},dIn,late?{border:"1.5px solid #e8b4b8",background:"#fff6f6"}:{})}/>
                 {late&&<div style={{fontSize:10,color:"#b3302a",fontWeight:700}}>target passed</div>}</td>
-              <td style={cell}>{ed?<DraftDateInput value={x.sd.done||""} disabled={ro} onCommit={function(v){setStep(k,"done",v);}} style={dIn}/>
+              <td style={cell}>{k==="contract"&&!td.contractCircuit&&(function(){var cs=ppQuCtStage(td),o=PP_QU_CT.find(function(z){return z.k===cs;});return o&&o.field;})()
+                ?(function(){var cs=ppQuCtStage(td),o=PP_QU_CT.find(function(z){return z.k===cs;});
+                  return <DraftDateInput value={(x.sd[o.field]||(cs==="signed"?x.sd.signedAllDone:""))||""} disabled={ro} title={"Date: "+o.label}
+                    onCommit={function(v){if(v)setContract(cs,v);}} style={dIn}/>;})()
+                :ed?<DraftDateInput value={x.sd.done||""} disabled={ro} onCommit={function(v){setStep(k,"done",v);}} style={dIn}/>
                 :<span style={{fontSize:11.5,color:"#6f6b62"}}>{x.s.doc?(function(){var l=x.s.doc.cycles[x.s.doc.cycles.length-1];return l&&l.submitted?"sent "+fmtDate(l.submitted):"—";})():(x.sd.signedAllDone||x.sd.signedDone?fmtDate(x.sd.signedAllDone||x.sd.signedDone):"—")}</span>}</td>
             </tr>;
           })}</tbody>
