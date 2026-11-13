@@ -595,6 +595,14 @@ var PP_SORTS={
   PP_SORTS["ms_"+m]=function(r){return r.p.latest[m]||null;};
 });
 ["sd","mar","mss","wms","itp"].forEach(function(k){PP_SORTS["ms_sub_"+k]=function(r){return k==="wms"||k==="itp"?ppQualityDue(r.p,k).appr||null:r.p.latest[k==="sd"?"sdok":"submittals"]||null;};});
+// Subcontractor column of the Package list (screen and print): the awarded names, else
+// "Self perform" for a procurement closed as such, else "" (not awarded).
+function ppSubName(td){
+  var n=ppAwardedNames(td);
+  if(n.length)return n.join(", ");
+  var c=procClosedOf(td);
+  return c&&c.reason==="self"?"Self perform":"";
+}
 function ppAwardedNames(td){
   var aw=(td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return String(x.subcontractor).trim();});
   return aw.length?aw:(td.contractor?[String(td.contractor).trim()]:[]);
@@ -1422,19 +1430,19 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   }
   var model=withTl&&vis.length?ppNowModel(vis,now):null;
   // Finance alone: no Next deadline column (and no timeline strip)
-  var dl=plan||fol,nb=1+(fin?1:0)+(dl?2:0);   // Budget only with Finance; Next deadline + RFI with Plan or Follow-up
+  var dl=plan||fol,nb=2+(fin?1:0)+(dl?2:0);   // Package + Subcontractor; Budget only with Finance; Next deadline + RFI with Plan or Follow-up
   if(!dl)model=null;
   var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+(fin?90:0)+(dl?370:0)+(plan?1280:0)+(fin?330:0)+(fol?770:0);
+  var tableW=210+140+(fin?90:0)+(dl?370:0)+(plan?1280:0)+(fin?330:0)+(fol?770:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
     '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="'+PP_TABLE_COLS.length+'" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
     (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
-    '<th>Package</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th><th>RFI open</th>':'')+
+    '<th>Package</th><th>Subcontractor</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th><th>RFI open</th>':'')+
     (plan?PP_TABLE_COLS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(ppColLabel(m))+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
     (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
@@ -1448,6 +1456,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     var h='<tr class="ppt-main'+hcls+'"><td><b>'+esc(td.title||"(untitled)")+'</b><div class="sm">'+esc(td.package||"No department")+' · '+esc(ppTypeLabel(ppType(td)))+'</div>'+
       (soon?'<div class="sm" style="color:#b35c00;font-weight:700">starts on site ≤ 21 d</div>':'')+
       (allOk?'<div class="sm" style="color:#1e6b3a;font-weight:700">✓ All validated</div>':'')+'</td>'+
+      '<td>'+(ppSubName(td)?'<b>'+esc(ppSubName(td))+'</b>':'<span style="color:#b9b4a8">Not awarded</span>')+'</td>'+
       (fin?'<td class="r mono">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>':'')+
       (dl?'<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
         (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>'+
@@ -2297,7 +2306,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
   }
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
-  var dl=plan||fol,nb=1+(fin?1:0)+(dl?2:0);   // Budget only with Finance; Next deadline + RFI with Plan or Follow-up
+  var dl=plan||fol,nb=2+(fin?1:0)+(dl?2:0);   // Package + Subcontractor; Budget only with Finance; Next deadline + RFI with Plan or Follow-up
   var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
@@ -2363,6 +2372,8 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
           {onQuickUpdate&&<button className="btn btn-sm" onClick={function(){onQuickUpdate(td.id);}} title="Quick update (meeting): target dates of the running steps, document status and return dates, next steps, blocking points, notes — in one window"
             style={{fontSize:10.5,padding:"1px 8px",marginTop:4}}>⚡ Update</button>}
         </td>
+        <td style={{minWidth:120,maxWidth:180,fontSize:11.5}}>{(function(){var sn=ppSubName(td);
+          return sn?<span style={{fontWeight:600,color:"var(--ink)"}}>{sn}</span>:<span style={{color:"#b9b4a8",fontSize:11}}>Not awarded</span>;})()}</td>
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,whiteSpace:"nowrap"}}>{bud?bud.toLocaleString():"—"}</td>}
         {dl&&<td style={{minWidth:150,maxWidth:190}}>
           {ppNextAct(p)&&<div style={{fontSize:9.5,fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",color:"#9b968b"}}>To do</div>}
@@ -2492,6 +2503,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
           </tr>
           <tr>
             {th("title","Package",{minWidth:160})}
+            {th("awarded","Subcontractor",{minWidth:120,maxWidth:180},"Subcontractor awarded the package (Awards of the sheet, else its contractor). Sorted by name.")}
             {fin&&th("budget","Budget",{textAlign:"right"})}
             {dl&&th("deadline","Next deadline",{minWidth:150},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
             {dl&&th("rfi","RFI",null,"Open RFI / FCR of the package (actions tagged RFI or FCR): sent on, client answer due (sent + client answer time of Settings › Durations, or the date typed) — red when the client is late. Tick = answered: the RFI leaves this list and stays archived in the package sheet (Actions & notes). + RFI to add one. Sorted by number open.")}
