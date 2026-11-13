@@ -7442,6 +7442,26 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
   </div>;
 }
 
+// Free comments on one material (MAR / MSS view), stored on the material as mat.notes.
+// Local draft, saved on leaving the field / Ctrl+Enter, Esc cancels — not on every keystroke.
+function MatNoteCell({value,onCommit}){
+  const [draft,setDraft]=useState(value||"");
+  const [editing,setEditing]=useState(false);
+  useEffect(function(){if(!editing)setDraft(value||"");},[value,editing]);
+  var ro=isReadOnly();
+  function commit(){setEditing(false);if((draft||"")!==(value||""))onCommit(draft.replace(/\s+$/,""));}
+  return <textarea value={draft} readOnly={ro} placeholder={ro?"":"Add a comment…"} rows={Math.min(6,Math.max(2,(draft||"").split("\n").length))}
+    onFocus={function(){setEditing(true);}}
+    onChange={function(e){setDraft(e.target.value);}}
+    onBlur={commit}
+    onKeyDown={function(e){
+      if(e.key==="Escape"){setDraft(value||"");setEditing(false);e.target.blur();}
+      else if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();e.target.blur();}
+    }}
+    title="Comments on this material — saved when you leave the field (Ctrl+Enter), Esc cancels"
+    style={{width:"100%",minWidth:160,fontSize:11,padding:"3px 6px",border:"1px solid #e8e6df",borderRadius:4,boxSizing:"border-box",resize:"vertical",fontFamily:"inherit",lineHeight:1.35}}/>;
+}
+
 function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,setMemory,tasks,saveTasks,pkgOwners}){
   // Everything about a MAR / MSS is edited here too — status, submission and its reference,
   // real dates, client code, resubmission — through the same writers as the package sheet
@@ -7519,7 +7539,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
   });
 
   var filtered=rows.filter(function(r){
-    if(q){var lq=q.toLowerCase();if(!(r.mat.name||"").toLowerCase().includes(lq)&&!(r.td.title||"").toLowerCase().includes(lq))return false;}
+    if(q){var lq=q.toLowerCase();if(!(r.mat.name||"").toLowerCase().includes(lq)&&!(r.td.title||"").toLowerCase().includes(lq)&&!(r.mat.notes||"").toLowerCase().includes(lq))return false;}
     if(fStatus!=="all"){
       if(!matDocKinds(r.mat).some(function(k){return docKey(r,k)===fStatus;}))return false;
     }
@@ -7615,6 +7635,7 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
               <th>Package</th><th>Dept.</th><th>Material</th><th>Lead time</th>
               <th>MSS</th><th>MSS Target</th><th style={{textAlign:"center"}}>MSS Act.</th>
               <th>MAR</th><th>MAR Target</th><th style={{textAlign:"center"}}>MAR Act.</th>
+              <th>Notes</th>
             </tr>
           </thead>
           <tbody>
@@ -7638,10 +7659,11 @@ function MaterialsView({tenders,packages,people,saveTenders,onNavTender,memory,s
                 <td data-l="MAR" style={{minWidth:120}}>{docCell(r,"mar")}</td>
                 <td data-l="MAR target"><input type="date" min="1990-01-01" max="2200-12-31" value={r.mat.marTarget||""} onChange={function(e){updMat(r.td,r.mi,"marTarget",e.target.value);}} style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/></td>
                 <td data-l="MAR actions" style={{textAlign:"center"}}>{(function(){var s=docActionStats(r.td.id,r.mat.id,"MAR");return s.n===0?<span style={{color:"#ddd",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,background:s.late>0?"#fbe6e8":"#f0ede6",color:s.late>0?"#b3302a":"#666"}}>⚑ {s.n}{s.late>0?" ⚠":""}</span>;})()}</td>
+                <td data-l="Notes" style={{minWidth:170}}><MatNoteCell value={r.mat.notes||""} onCommit={function(v){updMat(r.td,r.mi,"notes",v);}}/></td>
               </tr>
               {openKinds.map(function(k){
                 var doc=matDoc(r.td,r.mat,r.mi,k);
-                return <tr key={"ed-"+k}><td colSpan={10} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+                return <tr key={"ed-"+k}><td colSpan={11} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
                   <div style={{fontSize:11,fontWeight:700,color:"#6f6b62",marginBottom:2}}>{k.toUpperCase()} — {r.mat.name||"material"} · {r.td.title}</div>
                   <DocRevisionsEditor td={r.td} d={doc} updTd={updTdFor(r.td)} afterSave={afterSaveFor(r.td)}/>
                 </td></tr>;
