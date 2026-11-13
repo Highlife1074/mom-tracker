@@ -703,8 +703,10 @@ function parseLeadDays(str){
   var s=String(str).toLowerCase().trim();
   var n=parseFloat(s)||0;
   if(!n)return 0;
-  if(s.includes("week")||s.includes("sem")||s.includes("wk")||s.includes("sem"))return Math.round(n*6);
-  if(s.includes("month")||s.includes("mois"))return Math.round(n*26);
+  // Calendar days, like every lead time of the plan and of the delivery forecast
+  // (it used to count 6 / 26 days, i.e. working days, and shortened "4 months" to 104 days).
+  if(s.includes("week")||s.includes("sem")||s.includes("wk"))return Math.round(n*7);
+  if(s.includes("month")||s.includes("mois"))return Math.round(n*30.4);
   return Math.round(n);
 }
 // A shop-drawing transmission: one submission to the client, carrying one or more drawing

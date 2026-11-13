@@ -73,6 +73,8 @@ function ppTemplate(type){
 function _ppNum(v){if(v===undefined||v===null||v==="")return null;var n=Number(v);return isFinite(n)&&n>=0?n:null;}
 // Lead time of each step for this package, and where it comes from.
 //   pkg       typed on the package (td.planLeads)
+//   manual    fabrication = lead time typed in the sheet (td.leadTimeDays, fabrication +
+//             transport, as the delivery forecast reads it) minus the transport
 //   materials fabrication = longest lead time of the package's materials
 //   route     approval = 7 days when the amount needs no client approval (internal only)
 //   template  the type's template
@@ -80,11 +82,14 @@ function ppLeads(td){
   var tpl=ppTemplate(ppType(td)),own=(td&&td.planLeads)||{},out={};
   var route=(function(){try{return tenderApprovalRoute(td).route;}catch(e){return"";}})();
   var matLead=((td&&td.materials)||[]).reduce(function(m,x){var d=parseLeadDays(x.leadTime||"");return d>m?d:m;},0);
+  var manLead=Number(td&&td.leadTimeDays)||0;
+  var trOwn=_ppNum(own.transport),trDays=trOwn!==null?trOwn:tpl.transport;
   PP_STEPS.forEach(function(s){
     var v=_ppNum(own[s.k]);
     if(v!==null){out[s.k]={days:v,src:"pkg"};return;}
     // SD typed together with the submittals before the split: covered by that lead time
     if(s.k==="sd"&&_ppNum(own.submittals)!==null){out[s.k]={days:0,src:"pkg"};return;}
+    if(s.k==="fab"&&manLead>0){out[s.k]={days:Math.max(0,manLead-trDays),src:"manual"};return;}
     if(s.k==="fab"&&matLead>0){out[s.k]={days:matLead,src:"materials"};return;}
     if(s.k==="approval"&&route==="none"){out[s.k]={days:Math.min(7,tpl.approval),src:"route"};return;}
     out[s.k]={days:tpl[s.k],src:"template"};
@@ -196,7 +201,7 @@ function ppPlan(td,now){
   // end of the need week. Landing after the latest delivery date but before that only eats
   // the float (deliveryTight).
   var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
-  return {need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  return {type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
     deliveryLate:!!(dst&&dst.late),
     deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
@@ -270,7 +275,7 @@ function ProcPlanCard({td,updTd}){
     if(v==="")delete n[k];else n[k]=Number(v);
     updTd("planLeads",n);
   }
-  var SRC={pkg:"this package",materials:"longest material lead time",route:"internal approval (below ACC threshold)",template:"template"};
+  var SRC={pkg:"this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval (below ACC threshold)",template:"template"};
   return <div className="card" style={{marginBottom:10}}>
     <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
       <span style={{fontSize:10,color:"#9b968b",width:10}}>{open?"▾":"▸"}</span>
@@ -842,7 +847,7 @@ function ppSubCell(td,p,k,now){
   }else real=[ok+"/"+n+" approved",cl?cl+" at client":"",ret?ret+" returned":"",nn?nn+" not submitted":""].filter(Boolean).join(" · ");
   var cli=ppClientDue(docs,now);
   if(cli)tip+="\n"+cli.tip;
-  if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+(due!==lat?" so that it is approved by "+fmtDate(lat)+" (client answer time)":"");
+  if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+"\n\n"+ppChainTip(p,ms,(nn||ret)?k:"",due);
   return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip},now);
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
@@ -927,10 +932,33 @@ function _ppMinusWd(d,n){
   return toISO(x);
 }
 // Latest date to (re)submit a document so that the client's answer lands by the approval
-// deadline: ACC clock in working days for ACC / Aconex, calendar days for the others.
+// deadline: SD approval time (working days) for shop drawings, ACC clock (working days) for
+// ACC / Aconex, client answer time (calendar days) for the others.
 function ppSubmitBy(kind,lat){
   if(!isValidDate(lat))return "";
+  if(kind==="sd")return _ppMinusWd(lat,Number(getDur("sdApproval"))||0);
   return docAccClock(kind)?_ppMinusWd(lat,Number(getDur("accApproval"))||0):addCalDays(lat,-(Number(getDur("clientResponse"))||0));
+}
+// How a deadline is worked back from the need on site, step by step, for the tooltips:
+// need − float − transport − fabrication … = the milestone; then, for a document still to be
+// (re)submitted, − the client's answer time = the submission deadline.
+var PP_LEAD_SRC={pkg:"typed on this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval",template:"template"};
+function ppChainTip(p,ms,subKind,submitBy){
+  if(!p||!p.need||!p.leads||ms==="need")return "";
+  var out=["How this deadline is worked out:","Need on site "+ppDay(p.need)];
+  for(var i=PP_STEPS.length-1;i>=0;i--){
+    var s=PP_STEPS[i],prev=i?PP_STEPS[i-1].ms:"start",L=p.leads[s.k]||{days:0};
+    out.push("− "+s.label+" "+L.days+" d ("+(PP_LEAD_SRC[L.src]||L.src)+(L.src==="template"?" "+ppTypeLabel(p.type||"")+"":"")+")");
+    if(prev===ms)break;
+  }
+  out.push("= "+(PP_MS_LABEL[ms]||ms)+" by "+ppDay(p.latest[ms]));
+  if(subKind&&submitBy&&submitBy!==p.latest[ms]){
+    var lbl=subKind==="sd"?"SD approval "+getDur("sdApproval")+" working days":docAccClock(subKind)?"client approval "+getDur("accApproval")+" working days":"client answer "+getDur("clientResponse")+" d";
+    out.push("− "+lbl+" (Settings › Durations)");
+    out.push("= to submit by "+ppDay(submitBy));
+  }
+  out.push("Lead times: Submissions › Procurement plan card of the package, or Settings › Durations › templates.");
+  return out.join("\n");
 }
 function ppTodoCell(p,ms,act,due,real,o,now){
   o=o||{};
@@ -992,6 +1020,7 @@ function ppMsCell(td,p,m,now){
   if(!act)act="To do";
   o.tip=isValidDate(due)?"To do: "+act.toLowerCase()+" by "+fmtDate(due)+(due!==lat&&lat?" ("+PP_MS_LABEL[m]+" deadline "+fmtDate(lat)+")":""):
     "No need on site: nothing can be worked back";
+  if(isValidDate(due))o.tip+="\n\n"+ppChainTip(p,m===p.next||ppShownNext(p)!==m?m:p.next,"","");
   if(p.fcDelivery&&m==="delivered")o.tip+="\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":"");
   if(o.cli)o.tip+="\n"+o.cli.tip;
   return ppTodoCell(p,m,act,due,real,o,now);
