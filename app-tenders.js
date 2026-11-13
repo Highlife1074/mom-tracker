@@ -4341,10 +4341,15 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   if(!procDelivery)return null;
                   var marginDays=startOnSite&&isValidDate(procDelivery)?Math.round((parseISODate(startOnSite)-parseISODate(procDelivery))/86400000):null;
                   return <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    <span style={{fontSize:10,color:"#555"}}>→ Procurement delivers: <strong style={{color:marginDays!==null&&marginDays<0?"#b3302a":"#1e6b3a"}}>{fmtDate(procDelivery)}</strong></span>
+                    <span style={{fontSize:10,color:"#555"}}>{isValidDate(td.deliveredOn)?"→ Delivered on site: ":"→ Procurement delivers: "}<strong style={{color:marginDays!==null&&marginDays<0?"#b3302a":"#1e6b3a"}}>{fmtDate(procDelivery)}</strong></span>
                     {marginDays!==null&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:6,background:marginDays<0?"#fbe6e8":marginDays<7?"#faf3e0":"#e6f2e9",color:marginDays<0?"#b3302a":marginDays<7?"#b35c00":"#1e6b3a"}}>{marginDays>0?"+":""}{marginDays}d</span>}
                   </div>;
                 })()}
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}} title="Real date the package was delivered on site (the truck arrived). Once filled, the Delivered milestone is reached (on time or late against its deadline) and the forecast stops.">
+                <span style={{fontSize:10,color:"#aaa",fontWeight:700}}>DELIVERED ON</span>
+                <DraftDateInput value={td.deliveredOn||""} onCommit={function(v){updTd("deliveredOn",v);}}
+                  style={{fontSize:11,border:"1px solid "+(isValidDate(td.deliveredOn)?"#cfe3d5":"#e8e6df"),background:isValidDate(td.deliveredOn)?"#e6f2e9":"#fff",borderRadius:5,padding:"2px 6px"}}/>
               </div>
               <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:500,fontSize:11}}>
                 <input type="checkbox" checked={isReleased} onChange={function(e){updTd("released",e.target.checked);}} style={{width:13,height:13}}/>
@@ -5453,8 +5458,10 @@ function _calcProcurement(td){
   steps.push({key:"fab", label:"Fabrication Launch", date:fabStart, done:"", duration:null, manual:false,
     note:"Lead: "+LEAD+"d — driven by "+fabStartSource});
 
-  var deliveryDate = addWorkDays(fabStart, LEAD);
-  steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:"", duration:LEAD, manual:false, highlight:true});
+  // Delivered on site (typed in the sheet header): the real date replaces the forecast.
+  var deliveredOn = isValidDate(td.deliveredOn) ? td.deliveredOn : "";
+  var deliveryDate = deliveredOn || addWorkDays(fabStart, LEAD);
+  steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:deliveredOn, duration:LEAD, manual:false, highlight:true});
 
   var startOnSite = td.startOnSite||"";
   var margin = "";

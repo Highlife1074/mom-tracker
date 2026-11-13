@@ -142,6 +142,8 @@ function ppActuals(td){
     if(!a.contract&&(ty==="material"||ty==="equipment")&&pos.every(isValidDate))a.contract={date:pos.slice().sort().pop(),po:true};
     if(ty!=="subcontract"&&dls.every(isValidDate))a.delivered={date:dls.slice().sort().pop()};
   }
+  // Delivered on site, typed in the sheet header (any type of package): the real delivery.
+  if(isValidDate(td.deliveredOn))a.delivered={date:td.deliveredOn};
   // MAR / MSS approved = every MAR and MSS approved (WMS / ITP have their own deadline from the
   // start on site and do not hold the fabrication);
   // SD approved = every shop drawing approved. No document of the kind: reached with the contract.
