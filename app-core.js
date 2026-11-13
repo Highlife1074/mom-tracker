@@ -3431,7 +3431,9 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
     if(fOwners.length>0&&!fOwners.includes(a.owner||""))return false;
     if(fTags.length>0&&!(a.tags||[]).some(function(tg){return fTags.includes(tg);}))return false;
     if(fPkg!=="all"&&a.package!==fPkg)return false;
-    if(fTender!=="all"&&a.tenderRef!==fTender)return false;
+    // "__none" = actions linked to no Package (e.g. loose RFIs to sort out)
+    if(fTender==="__none"){if(a.tenderRef)return false;}
+    else if(fTender!=="all"&&a.tenderRef!==fTender)return false;
     if(fContractor!=="all"&&a.contractorRef!==fContractor)return false;
     if(fCC!=="all"){var ccs=getAllCCs(a.tags||[],a.package||"",a.owner||"",tagrules||{},pkgrules||{});if(!ccs.includes(fCC))return false;}
     if(fAddedBy!=="all"){
@@ -3668,7 +3670,8 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
   // Filters held in the panel: counted on its button and listed when it is closed.
   var advLabels=[];
   if(fPkg!=="all")advLabels.push("Department: "+fPkg);
-  if(fTender!=="all"){var _ftd=(tenders||[]).find(function(t){return t.id===fTender;});advLabels.push("Package: "+(_ftd?_ftd.title:"?"));}
+  if(fTender==="__none")advLabels.push("Package: none");
+  else if(fTender!=="all"){var _ftd=(tenders||[]).find(function(t){return t.id===fTender;});advLabels.push("Package: "+(_ftd?_ftd.title:"?"));}
   if(fContractor!=="all"){var _fc=(contractors||[]).find(function(c){return c.id===fContractor;});advLabels.push("Subcontractor: "+(_fc?_fc.name:"?"));}
   if(fCC!=="all")advLabels.push("CC: "+fCC.split(",")[0]);
   if(fScore!=="all")advLabels.push("Score: "+fScore);
@@ -3749,6 +3752,7 @@ function GlobalView({tasks,trackers,tenders,contractors,people,packages,tags,sav
         </select>
         <select value={fTender} onChange={function(e){setFTender(e.target.value);}} style={{width:"auto",padding:"4px 7px",fontSize:11}}>
           <option value="all">All packages</option>
+          <option value="__none">— No Package —</option>
           {(tenders||[]).filter(function(t){
             if(fPkg==="all")return true;
             return t.package===fPkg;
