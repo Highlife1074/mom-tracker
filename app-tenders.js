@@ -1393,7 +1393,9 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
       if(p)setOpenRow(function(o){var n=Object.assign({},o);n[id]=true;return n;});
     });
   }
-  function chev(k){return <button type="button" onClick={function(e){e.stopPropagation();toggleRow(k);}} title="Show or hide the details" style={{background:"none",border:"none",cursor:"pointer",padding:"0 4px 0 0",fontSize:11,color:"#8b8578",fontFamily:"inherit"}}>{openRow[k]?"▾":"▸"}</button>;}
+  // Same visible "+ / −" button as the document revisions (the old ▸ arrow was barely visible).
+  function chev(k){return <RevToggle open={!!openRow[k]} title={openRow[k]?"Hide the details":"Show the details"}
+    onClick={function(e){e.stopPropagation();toggleRow(k);}} style={{marginRight:7,verticalAlign:"top"}}/>;}
   function recordBtn(id){return flowDocState(td,id)==="none"&&updTd?<div><button type="button" className="btn btn-sm" onClick={function(){recordSub(id);}} style={{fontSize:10,padding:"1px 7px",marginTop:2}}>＋ Record submission</button></div>:null;}
 
   var HAS_APPROVAL=["acc","pkg","itp","wms"];

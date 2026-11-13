@@ -341,6 +341,8 @@ function buildProcurementReport(tenders,tasks,packages,opts){
   var o=Object.assign({awards:true,actions:true,mar:true,wmsItp:true},opts||{});
   var t=today();
   var tds=(tenders||[]).slice();
+  // o.depts = list of Departments to print (null / absent = all of them).
+  if(Array.isArray(o.depts))tds=tds.filter(function(x){return o.depts.indexOf(x.package||"— no package —")>=0;});
   var pkgs=[...new Set(tds.map(function(x){return x.package||"— no package —";}))].sort();
   var openAll=(tasks||[]).filter(function(a){return a.status!=="done"&&a.tenderRef;});
 
@@ -348,7 +350,8 @@ function buildProcurementReport(tenders,tasks,packages,opts){
   var signedCount=tds.filter(function(x){return !!procSignedDate(x);}).length;
   var omitted=PROC_REPORT_SECTIONS.filter(function(s){return !o[s.key];}).map(function(s){return s.label;});
 
-  var html='<h1>Procurement Report</h1><div class="sub">Riviera Tower · generated '+esc(fmtDate(t))+' · '+tds.length+' tenders across '+pkgs.length+' packages'+
+  var html='<h1>Procurement Report</h1><div class="sub">Riviera Tower · generated '+esc(fmtDate(t))+' · '+tds.length+' Package'+(tds.length!==1?'s':'')+' across '+pkgs.length+' department'+(pkgs.length!==1?'s':'')+
+    (Array.isArray(o.depts)?' (selection: '+esc(pkgs.join(", "))+')':'')+
     (omitted.length?' · not included: '+esc(omitted.join(", ")):'')+'</div>';
   html+='<div class="kpi">'+
     (o.actions
@@ -509,10 +512,29 @@ var _procReportOpts=null;
 function ProcReportButton({tenders,tasks,packages}){
   const [open,setOpen]=useState(false);
   const [opts,setOpts]=useState(function(){return Object.assign({},PROC_REPORT_DEFAULTS,_procReportOpts||{});});
+  // Departments present in the Package list, with their Package count.
+  var deptCounts={};
+  (tenders||[]).forEach(function(x){var d=x.package||"— no package —";deptCounts[d]=(deptCounts[d]||0)+1;});
+  var allDepts=Object.keys(deptCounts).sort();
+  // opts.depts null = every department (also the ones created later); otherwise the ticked list.
+  var selDepts=Array.isArray(opts.depts)?opts.depts.filter(function(d){return deptCounts[d];}):allDepts;
+  function setDepts(list){
+    var n=Object.assign({},opts);
+    n.depts=list.length===allDepts.length?null:list;
+    setOpts(n);
+  }
+  function toggleDept(d,on){
+    var cur=selDepts.filter(function(x){return x!==d;});
+    if(on)cur.push(d);
+    setDepts(allDepts.filter(function(x){return cur.indexOf(x)>=0;}));
+  }
   function run(){
-    _procReportOpts=Object.assign({},opts);
-    openReport(opts.actions?"Procurement Report":"Procurement Report - status",
-      buildProcurementReport(tenders,tasks,packages,opts));
+    if(!selDepts.length){safeAlert("Select at least one department.");return;}
+    var o=Object.assign({},opts,{depts:selDepts.length===allDepts.length?null:selDepts});
+    _procReportOpts=o;
+    var title=opts.actions?"Procurement Report":"Procurement Report - status";
+    if(o.depts&&o.depts.length<=3)title+=" - "+o.depts.join(", ");
+    openReport(title,buildProcurementReport(tenders,tasks,packages,o));
     setOpen(false);
   }
   return <React.Fragment>
@@ -537,6 +559,25 @@ function ProcReportButton({tenders,tasks,packages}){
               {sec.label}
             </label>;
           })}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:14,marginBottom:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:".06em"}}>
+              Departments <span style={{fontWeight:400}}>· {selDepts.length}/{allDepts.length}</span>
+            </div>
+            <span style={{flex:1}}/>
+            <button className="btn btn-sm" onClick={function(){setDepts(allDepts.slice());}}>All</button>
+            <button className="btn btn-sm" onClick={function(){setDepts([]);}}>None</button>
+          </div>
+          <div style={{maxHeight:240,overflowY:"auto",border:"1px solid var(--rule)",borderRadius:6,padding:"6px 8px"}}>
+            {allDepts.map(function(d){
+              return <label key={d} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:500,textTransform:"none",letterSpacing:"normal",margin:"0 0 6px",cursor:"pointer"}}>
+                <input type="checkbox" checked={selDepts.indexOf(d)>=0} style={{width:13,height:13}}
+                  onChange={function(e){toggleDept(d,e.target.checked);}}/>
+                <span style={{flex:1}}>{d}</span>
+                <span style={{color:"#888",fontSize:11}}>{deptCounts[d]}</span>
+              </label>;
+            })}
+            {!allDepts.length&&<div style={{fontSize:12,color:"#888"}}>No Package yet.</div>}
+          </div>
         </div>
         <div className="modal-footer">
           <button className="btn" onClick={function(){setOpen(false);}}>Cancel</button>
