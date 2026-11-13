@@ -81,7 +81,19 @@ function _ppNum(v){if(v===undefined||v===null||v==="")return null;var n=Number(v
 //             transport, as the delivery forecast reads it) minus the transport
 //   materials fabrication = longest lead time of the package's materials
 //   route     approval = 7 days when the amount needs no client approval (internal only)
+//   settings  approval, contract, MAR / MSS and SD come from Settings › Durations (the same
+//             durations as the delivery forecast and the document clocks): approval =
+//             accApproval, contract = contractSigning, MAR / MSS = marAfterContract +
+//             clientResponse, SD = sdAfterContract + sdApproval
 //   template  the type's template
+var PP_SETTINGS_STEPS=["approval","contract","submittals","sd"];
+function ppSettingsLead(k){
+  if(k==="approval")return Number(getDur("accApproval"))||0;
+  if(k==="contract")return Number(getDur("contractSigning"))||0;
+  if(k==="submittals")return (Number(getDur("marAfterContract"))||0)+(Number(getDur("clientResponse"))||0);
+  if(k==="sd")return (Number(getDur("sdAfterContract"))||0)+(Number(getDur("sdApproval"))||0);
+  return null;
+}
 function ppLeads(td){
   var tpl=ppTemplate(ppType(td)),own=(td&&td.planLeads)||{},out={};
   var route=(function(){try{return tenderApprovalRoute(td).route;}catch(e){return"";}})();
@@ -95,7 +107,9 @@ function ppLeads(td){
     if(s.k==="sd"&&_ppNum(own.submittals)!==null){out[s.k]={days:0,src:"pkg"};return;}
     if(s.k==="fab"&&manLead>0){out[s.k]={days:Math.max(0,manLead-trDays),src:"manual"};return;}
     if(s.k==="fab"&&matLead>0){out[s.k]={days:matLead,src:"materials"};return;}
-    if(s.k==="approval"&&route==="none"){out[s.k]={days:Math.min(7,tpl.approval),src:"route"};return;}
+    if(s.k==="approval"&&route==="none"){out[s.k]={days:7,src:"route"};return;}
+    var sv=ppSettingsLead(s.k);
+    if(sv!==null){out[s.k]={days:sv,src:"settings"};return;}
     out[s.k]={days:tpl[s.k],src:"template"};
   });
   return out;
@@ -290,7 +304,7 @@ function ProcPlanCard({td,updTd}){
     if(v==="")delete n[k];else n[k]=Number(v);
     updTd("planLeads",n);
   }
-  var SRC={pkg:"this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval (below ACC threshold)",template:"template"};
+  var SRC={settings:"Settings › Durations",pkg:"this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval (below ACC threshold)",template:"template"};
   return <div className="card" style={{marginBottom:10}}>
     <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
       <span style={{fontSize:10,color:"#9b968b",width:10}}>{open?"▾":"▸"}</span>
@@ -965,7 +979,7 @@ function ppQualityTip(p,k,qd){
 // How a deadline is worked back from the need on site, step by step, for the tooltips:
 // need − float − transport − fabrication … = the milestone; then, for a document still to be
 // (re)submitted, − the client's answer time = the submission deadline.
-var PP_LEAD_SRC={pkg:"typed on this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval",template:"template"};
+var PP_LEAD_SRC={settings:"Settings › Durations",pkg:"typed on this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval",template:"template"};
 function ppChainTip(p,ms,subKind,submitBy){
   if(!p||!p.need||!p.leads||ms==="need")return "";
   var out=["How this deadline is worked out:","Need on site "+ppDay(p.need)];
@@ -2302,6 +2316,8 @@ function ProcPlanTemplatesEditor({durations,saveDurations}){
     <table className="tbl" style={{fontSize:11.5}}>
       <thead><tr><th>Step</th>{PP_TYPES.map(function(t){return <th key={t.k} style={{textAlign:"right"}}>{t.label}</th>;})}</tr></thead>
       <tbody>{PP_STEPS.map(function(s){
+        if(PP_SETTINGS_STEPS.indexOf(s.k)>=0)return <tr key={s.k}><td>{s.label}</td>
+          <td colSpan={PP_TYPES.length} style={{color:"#9b968b",fontSize:11}}>{ppSettingsLead(s.k)} d — from the durations above (same for every type; can be typed per package)</td></tr>;
         return <tr key={s.k}><td>{s.label}</td>
           {PP_TYPES.map(function(t){
             var v=(cur[t.k]||{})[s.k];var def=ppStepDefault(cur[t.k],t.k,s.k);

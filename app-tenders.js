@@ -5269,8 +5269,14 @@ function _calcProcurement(td){
     if(_sdz && (_sdz.code==="C"||_sdz.code==="D")) sdBack = _sdz;
   }
 
+  // What is not done yet cannot happen before today: a step already late pushes the whole chain
+  // (ACC, contract, SD, MAR, fabrication, delivery) by its delay, it is never assumed caught up.
+  var _t0=today();
+  function notBefore(d){return isValidDate(d)&&d>=_t0?d:_t0;}
   var accDoneActual = ((td.stepDates||{}).acc||{}).done || "";
-  var accSubmittal = accDoneActual || ((td.stepDates||{}).acc||{}).target || "";
+  var _accRoute=(function(){try{return tenderApprovalRoute(td).route;}catch(e){return "";}})();
+  var _accTheo=(function(){try{var c=theoreticalDates(td).acc||{};return c.effective||c.theoretical||"";}catch(e){return "";}})();
+  var accSubmittal = accDoneActual || notBefore(((td.stepDates||{}).acc||{}).target || _accTheo);
   var accApproval = ((td.stepDates||{}).acc||{}).approval||"";
   // contractDone from "Signed contract → Date done" row in the contract section
   var _ct=(td.stepDates||{}).contract||{};
@@ -5286,27 +5292,6 @@ function _calcProcurement(td){
     return toISO(d);
   }
 
-  // Resolves one gating step to a date: done > future theoretical target > today+7 (grace)
-  // when the theoretical target has already passed and nothing is done yet.
-  // Used for contract signing and the lead-driving MAR — so the delivery date keeps
-  // drifting forward day by day instead of freezing on a missed target.
-  function dateOrGrace(done, target){
-    if(done) return done;
-    var t0 = today();
-    if(target && target>=t0) return target;
-    return addWorkDays(t0, 7);
-  }
-
-  // SD needs its own grace: unlike contract signing or material approval, a missed SD
-  // target still has to go through both a submission (1 week) and an approval (2 weeks)
-  // before the tender can rely on it, so the grace fallback is 3 weeks, not 1.
-  function sdDateOrGrace(done, target){
-    if(done) return done;
-    var t0 = today();
-    if(target && target>=t0) return target;
-    return addWorkDays(addWorkDays(t0, 7), 14);
-  }
-
   var steps = [];
   // td.procOverrides is legacy: no screen edits it any more, so a value left there would be a
   // hidden date nobody can see or change. It is ignored; the targets typed in the app rule.
@@ -5317,7 +5302,8 @@ function _calcProcurement(td){
   // Settings › Durations gives these in WORKING days: they follow the project calendar
   // (Mon–Fri, public holidays, extra holidays), like the ACC clock of the documents. They
   // used to be added as calendar days, which made every forecast 30–40 % too early.
-  var accApprTargetAuto = addCalDays(accSubmittal, getDur("accApproval"));
+  // Internal approval (below the ACC threshold): no client clock. Not answered yet: not before today.
+  var accApprTargetAuto = notBefore(_accRoute==="none"?accSubmittal:addCalDays(accSubmittal, getDur("accApproval")));
   var accApprTarget = ov.accApp||accApprTargetAuto;
   steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:getDur("accApproval"), manual:false, autoDate:accApprTargetAuto, overridden:!!(ov.accApp&&ov.accApp!==accApprTargetAuto)});
 
@@ -5327,7 +5313,7 @@ function _calcProcurement(td){
   var contractTarget = _ct.signedTarget||ov.contract||contractTargetAuto;
   steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:getDur("contractSigning"), manual:!!_ct.signedTarget, autoDate:contractTargetAuto, overridden:!!(_ct.signedTarget&&_ct.signedTarget!==contractTargetAuto)||!!(ov.contract&&ov.contract!==contractTargetAuto)});
   // --- fabStart now driven by max(contract, SD approval, lead MAR) instead of contract alone ---
-  var contractBase = dateOrGrace(contractDone, contractTarget);
+  var contractBase = contractDone || notBefore(contractTarget);
   var fabStart = contractBase;
   var fabStartSource = "contract";
 
@@ -5335,7 +5321,7 @@ function _calcProcurement(td){
 
   if(hasSd){
 
-    var sdSubTargetAuto = addCalDays(contractDone||contractTarget, getDur("sdAfterContract"));
+    var sdSubTargetAuto = addCalDays(contractBase, getDur("sdAfterContract"));
     // The SD panel's own Target date takes priority over the computed one — a manual entry there
     // is a commitment, so the whole timeline downstream is rebuilt from it.
     // With transmissions, the shop drawings are approved once the LAST one is: the cascade
@@ -5352,7 +5338,7 @@ function _calcProcurement(td){
       overridden:!_sdPanel&&!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
       fromSdPanel:!!_sdPanel});
 
-    var sdAppTargetAuto = addCalDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
+    var sdAppTargetAuto = notBefore(addCalDays(_trs.length?(sdSubDone||notBefore(sdSubTarget)):(td.sdDone||notBefore(sdSubTarget)), getDur("sdApproval")));
     var sdAppTarget = ov.sdApp||sdAppTargetAuto;
     steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:getDur("sdApproval"), manual:false, sd:true,
       review:td.sdReview||"", autoDate:sdAppTargetAuto, overridden:!!(ov.sdApp&&ov.sdApp!==sdAppTargetAuto)});
@@ -5380,7 +5366,7 @@ function _calcProcurement(td){
 
     // Grace applies to the normal SD approval step; an open resubmission cascade already
     // pushes lastSdDate forward on its own and is not re-graced here.
-    sdBase = sdBack ? lastSdDate : sdDateOrGrace(td.sdApprovalDone, sdAppTarget);
+    sdBase = sdBack ? lastSdDate : (td.sdApprovalDone || notBefore(sdAppTarget));
     if(lastSdDate>sdBase) sdBase=lastSdDate;
   }
 
@@ -5398,8 +5384,12 @@ function _calcProcurement(td){
     }else if(_marApproved){
       marBase = today();
       marFirmByStatus = true;
+    }else if(leadMaterial.marApprovalTarget){
+      marBase = notBefore(leadMaterial.marApprovalTarget);
     }else{
-      marBase = dateOrGrace("", leadMaterial.marTarget||"");
+      // submitted: + client answer; not yet: from its target, else contract + marAfterContract
+      var _mSub = leadMaterial.marDone || notBefore(leadMaterial.marTarget || addCalDays(contractBase, getDur("marAfterContract")));
+      marBase = notBefore(addCalDays(_mSub, getDur("clientResponse")));
     }
   }
 
@@ -5418,7 +5408,7 @@ function _calcProcurement(td){
     if(done) return doneWord+" — date réelle.";
     var t0=today();
     if(target && target>=t0) return "Cible pas encore échue — utilisée telle quelle.";
-    return "Cible dépassée sans date réelle — grâce appliquée à partir d'aujourd'hui.";
+    return "Cible dépassée sans date réelle — reportée à aujourd'hui : le retard se cumule sur la suite.";
   }
 
   var candidates=[{
