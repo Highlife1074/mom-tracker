@@ -2255,8 +2255,8 @@ function BiddersEditor({td,updTd}){
   return bidders();
 }
 
-function TenderFlowPanel({td,updTd,afterSave,onJump}){
-  const [open,setOpen]=useState({timeline:true,cycles:true,circuit:true,bidders:false});
+function TenderFlowPanel({td,updTd,afterSave,onJump,tasks,onOpenActions}){
+  const [open,setOpen]=useState({timeline:true,cycles:true,circuit:true,bidders:false,rfi:true});
   var now=today();
   var theo=(function(){try{return theoreticalDates(td);}catch(e){return{};}})();
   var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
@@ -2515,6 +2515,40 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
     {open.timeline&&timeline()}
     {head("cycles","Submissions",<span style={{fontSize:10.5,color:"#9b968b"}}>{docs.length} documents · {docs.filter(function(d){return sums[d.id].state==="approved";}).length} approved</span>)}
     {open.cycles&&recap()}
+    {(function(){
+      // RFI / FCR of this package: the actions tagged RFI or FCR linked to it (tenderRef) —
+      // the same objects as the Actions view, the RFI column of the Package list and the
+      // Actions & notes tab, read here, edited there.
+      var ix=tasks?(ppActionsIndex(tasks)[td.id]||{rfi:[],rfiDone:[]}):{rfi:[],rfiDone:[]};
+      var rl=ix.rfi.concat(ix.rfiDone);
+      if(!tasks)return null;
+      return <React.Fragment>
+        {head("rfi","RFI / FCR",<span style={{fontSize:10.5,color:"#9b968b"}}>{rl.length} · {ix.rfi.length} open · {ix.rfiDone.length} answered</span>)}
+        {open.rfi&&(rl.length===0
+          ?<div style={{fontSize:11,color:"#9b968b",padding:"2px 0 2px 18px"}}>No RFI / FCR on this package. Add one in the RFI column of the Package list, in Actions &amp; notes, or tag an action RFI and link it to this Package.</div>
+          :<div>
+            <div style={{display:"grid",gridTemplateColumns:"46px minmax(0,2fr) minmax(0,1fr) 90px 90px 90px",gap:8,
+              fontSize:10,color:"#9b968b",textTransform:"uppercase",letterSpacing:".06em",padding:"0 4px 4px 18px"}}>
+              <span>Type</span><span>Subject</span><span>Owner</span><span>Sent</span><span>Answer due</span><span>Answered</span>
+            </div>
+            {rl.map(function(t){
+              var r=ppRfiInfo(t,now);
+              var col=r.done?"#1e6b3a":r.late?"#b3302a":r.sent?"#0f5299":"#9b968b";
+              return <div key={t.id} onClick={function(){if(onOpenActions)onOpenActions();}} title={(onOpenActions?"Open in Actions & notes — ":"")+r.txt}
+                onMouseEnter={function(e){e.currentTarget.style.background="#f7f5f0";}} onMouseLeave={function(e){e.currentTarget.style.background="transparent";}}
+                style={{display:"grid",gridTemplateColumns:"46px minmax(0,2fr) minmax(0,1fr) 90px 90px 90px",gap:8,alignItems:"center",
+                  padding:"5px 4px 5px 18px",borderBottom:"1px solid #f0ede6",cursor:onOpenActions?"pointer":"default",fontSize:12}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#b45309",background:"#fff8f0",border:"1px solid #fed7aa",borderRadius:8,padding:"0 5px",textAlign:"center"}}>{r.kind}</span>
+                <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:r.done?"line-through":"none",color:r.done?"#9b968b":"inherit"}}>{t.text||"—"}</span>
+                <span style={{color:"#6f6b62",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.owner?String(t.owner).split(",")[0]:"—"}</span>
+                <span>{r.sent?fmtDate(r.sent):<span style={{color:"#c9c4b8"}}>not sent</span>}</span>
+                <span style={{color:col,fontWeight:r.late?700:400}}>{r.due?fmtDate(r.due):"—"}{r.late&&<span style={{display:"block",fontSize:10}}>{-r.days} d overdue</span>}</span>
+                <span style={{color:r.done?"#1e6b3a":"#c9c4b8"}}>{r.done?(r.answered?"✓ "+fmtDate(r.answered):"✓"):"—"}</span>
+              </div>;
+            })}
+          </div>)}
+      </React.Fragment>;
+    })()}
     <div style={{fontSize:10.5,color:"#9b968b",marginTop:10}}>The contract circuit is edited in the Contract tab; the tender results (bidders) in the Submissions tab.</div>
   </div>;
 }
@@ -4406,7 +4440,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           var TABS=[
             {k:"docs",icon:"📄",l:"Submissions",n:nWait?nWait+" open":"",tip:"Submission chain, WMS & ITP, shop drawings, materials: record each submission and its reference here"},
             {k:"contract",icon:"📋",l:"Contract & addendums",n:ctt.linked.length?ctt.linked.length+" · "+ctt.adCount+" add.":"",tip:"Request, circulation, signature, then the contracts and their addendums"},
-            {k:"flow",icon:"📈",l:"Flow & history",n:docs.length?docs.length+" docs":"",tip:"Timeline and read-only register of every document"},
+            {k:"flow",icon:"📈",l:"Flow & history",n:(docs.length?docs.length+" docs":"")+(function(){var nr=linkedTasks.filter(ppIsRfi).length;return nr?(docs.length?" · ":"")+nr+" RFI":"";})(),tip:"Timeline and read-only register of every document"},
             {k:"actions",icon:"✅",l:"Actions & notes",n:(nOpen?nOpen+" open":"")+(nNotes?(nOpen?" · ":"")+nNotes+" note"+(nNotes>1?"s":""):""),tip:"Next step, linked actions and notes"}
           ];
           return <div className="td-tabs" style={{display:"flex",gap:4,flexWrap:"wrap",margin:"4px 0 12px",borderBottom:"1.5px solid var(--rule,#ddd9cf)",position:"sticky",top:0,zIndex:20,background:"var(--paper,#f4f3f0)",paddingTop:4}}>
@@ -4552,7 +4586,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         </div>
         </React.Fragment>}
 
-        {tdTab==="flow"&&<TenderFlowPanel td={td} updTd={updTd} afterSave={flowAfterSave} onJump={jumpToDoc}/>}
+        {tdTab==="flow"&&<TenderFlowPanel td={td} updTd={updTd} afterSave={flowAfterSave} onJump={jumpToDoc} tasks={tasks} onOpenActions={function(){setTdTab("actions");}}/>}
 
         {tdTab==="actions"&&<React.Fragment>
         <TenderFollowUpCard td={td} tasks={tasks} saveTasks={saveTasks} updTd={updTd}/>
@@ -6746,9 +6780,11 @@ function buildTrackedDocs(tasks,tenders,contractors){
     var stageKey=isFcr?"fcr":"rfi";
     var stageLbl=isFcr?"FCR":"RFI";
     var tdr=(tenders||[]).find(function(x){return x.id===t.tenderRef;})||null;
-    var submitted=t.rfiSubmission||"";
-    var due=t.rfiDue||(submitted?(function(){var d=new Date(submitted);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"");
-    var overdue=due&&due<todayStr&&t.status!=="done";
+    // Same reading as the RFI column of the Package list (ppRfiInfo): sent on, answer due.
+    var ri=ppRfiInfo(t,todayStr);
+    var submitted=ri.sent;
+    var due=ri.due;
+    var overdue=!!due&&due<todayStr&&t.status!=="done";
     var withClient=!!submitted&&t.status!=="done";
     docs.push({
       id:t.id,stage:stageKey,stageLabel:stageLbl,
@@ -7146,13 +7182,16 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
     {key:"mar",label:"MAR",color:"#6a1b9a",bg:"#f2f0ec"},
     {key:"mss",label:"MSS",color:"#0f5299",bg:"#f4f6f9"},
     {key:"wms",label:"WMS",color:"#00838f",bg:"#e0f7fa"},
-    {key:"itp",label:"ITP",color:"#1e6b3a",bg:"#e6f2e9"}
+    {key:"itp",label:"ITP",color:"#1e6b3a",bg:"#e6f2e9"},
+    {key:"rfi",label:"RFI",color:"#b45309",bg:"#fff8f0"},
+    {key:"fcr",label:"FCR",color:"#8d6e63",bg:"#efebe9"}
   ];
 
   // This view answers one question: what is sitting on the client's desk right now.
-  // Only the five document types that go for approval, and only while they are submitted
-  // and still unanswered.
-  var PENDING_STAGES=["mar","mss","wms","itp","acc"];
+  // The document types that go for approval, plus the RFI / FCR (actions tagged RFI or FCR:
+  // the same objects as the Actions view and the RFI column of the Package list), and only
+  // while they are submitted (sent) and still unanswered.
+  var PENDING_STAGES=["mar","mss","wms","itp","acc","rfi","fcr"];
   var allDocs=buildTrackedDocs(tasks,tenders,contractors).filter(function(d){
     return PENDING_STAGES.indexOf(d.stage)>=0&&d.withClient;
   });
@@ -7232,7 +7271,7 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
           <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
             <thead>
               <tr>
-                <th>Stage</th><th>Item</th><th>Tender</th><th>Package</th><th>Owner</th>
+                <th>Stage</th><th>Item</th><th>Package</th><th>Department</th><th>Owner</th>
                 <th>Submitted</th><th>Response due (+14d)</th><th>Days pending</th><th>Status</th>
               </tr>
             </thead>

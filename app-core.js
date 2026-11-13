@@ -1088,7 +1088,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
         </label>
 
         <div className="fg">
-          <label>Tender</label>
+          <label title="The Package (tender) of the procurement list: an action linked here shows in that Package (list and sheet)">Package</label>
           <select value={tenderRef} onChange={function(e){onTenderChange(e.target.value);}} style={{fontFamily:"inherit"}}>
             <option value="">— none —</option>
             {filteredTenders.map(function(t){return <option key={t.id} value={t.id}>{t.title}{t.package?" ("+t.package+")":""}</option>;})}
@@ -1096,7 +1096,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
         </div>
 
         <div className="fg">
-          <label>Package</label>
+          <label>Department</label>
           <select value={pkg} onChange={function(e){setPkg(e.target.value);if(tenderRef){var td2=(tenders||[]).find(function(t){return t.id===tenderRef;});if(td2&&td2.package!==e.target.value)setTenderRef("");}}} style={{fontFamily:"inherit"}}>
             <option value="">— none —</option>
             {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
@@ -1148,6 +1148,7 @@ function QuickAdd({people,packages,tenders,contractors,trackers,tags,zones,tasks
               <input type="date" min="1990-01-01" max="2200-12-31" value={rfiDue||""} onChange={function(e){setRfiDue(e.target.value);}} style={{padding:"3px 6px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5}}/>
             </div>
           </div>
+          {!tenderRef&&<div style={{fontSize:10.5,color:"#b45309",marginTop:4}}>⚠ Pick its <b>Package</b> above so it shows in the Package list (RFI column) and in that Package’s sheet and document register.</div>}
         </div>}
 
         <div className="fg">
@@ -1199,11 +1200,22 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
               <select value={task.owner||""} title="Owner: who has to act" onChange={function(e){if(onUpdate)onUpdate(ownerChangePatch(task,e.target.value),null,true);}} style={{flex:1,padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid #ddd"}}>
                 <OwnerOptions people={people} emptyLabel="No owner"/>
               </select>
-              <select value={task.package||""} onChange={function(e){upd("package",e.target.value);}} style={{flex:1,padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid #ddd"}}>
-                <option value="">No package</option>
+              <select value={task.package||""} title="Department" onChange={function(e){upd("package",e.target.value);}} style={{flex:1,padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid #ddd"}}>
+                <option value="">No department</option>
                 {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}
               </select>
             </div>
+            {/* The Package (tender) link: what makes the action (an RFI above all) show in the
+                Package list, its sheet and its document register. Picking one also sets the department. */}
+            <select value={task.tenderRef||""} title="Package: the action shows in this Package (list, sheet, RFI column, document register)"
+              onChange={function(e){var tid=e.target.value;var t2=(tenders||[]).find(function(x){return x.id===tid;});
+                var patch={tenderRef:tid};if(t2&&t2.package)patch.package=t2.package;if(onUpdate)onUpdate(patch,null,true);}}
+              style={{padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid "+(task.tenderRef?"#fed7aa":"#ddd"),background:task.tenderRef?"#fff8f0":"#fff"}}>
+              <option value="">📑 No Package</option>
+              {(tenders||[]).filter(function(t){return !task.package||t.package===task.package||t.id===task.tenderRef;})
+                .slice().sort(function(a,b){return (a.title||"").localeCompare(b.title||"");})
+                .map(function(t){return <option key={t.id} value={t.id}>📑 {t.title}{t.package?" ("+t.package+")":""}</option>;})}
+            </select>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <span style={{fontSize:10,fontWeight:800,color:"#8d6e00",whiteSpace:"nowrap"}}>📌 TRACKED BY</span>
               <select value={task.trackedBy||task.addedBy||""} onChange={function(e){upd("trackedBy",e.target.value);}} style={{flex:1,padding:"4px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5,border:"1px solid #e6d9a8"}}>
@@ -1248,6 +1260,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
                 <input type="date" min="1990-01-01" max="2200-12-31" value={localRfiDue} onChange={function(e){setLocalRfiDue(e.target.value);upd("rfiDue",e.target.value);}} style={{padding:"5px 7px",fontSize:11,border:"1px solid #fed7aa",borderRadius:5,width:"100%"}}/>
               </div>
             </div>}
+            {(localTags.includes("RFI")||localTags.includes("FCR"))&&!task.tenderRef&&<div style={{fontSize:10.5,color:"#b45309"}}>⚠ No Package linked: pick one above so this {localTags.includes("FCR")?"FCR":"RFI"} shows in the Package list and in its document register.</div>}
             {localTags.includes("Blocking Point")&&<div style={{padding:"8px",background:"#fff5f7",borderRadius:7,border:"1px solid #ecc3c7"}}>
               <div style={{fontSize:11,fontWeight:800,color:"#b3302a",textTransform:"uppercase",letterSpacing:".4px",marginBottom:5}}>🚧 Blocking point — which rooms are affected?</div>
               <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
@@ -1285,6 +1298,7 @@ function ActionItem({task,onStatusChange,onUpdate,onDelete,people,packages,tags,
             </div>
             {((task.tags||[]).includes("RFI")||(task.tags||[]).includes("FCR"))&&<div style={{fontSize:10,color:"#b45309",marginTop:3,background:"#fff8f0",padding:"5px 8px",borderRadius:5,display:"inline-block"}}>
               📋 {(task.tags||[]).includes("FCR")?"FCR":"RFI"} {task.rfiSubmission?"submitted: "+fmtDate(task.rfiSubmission):"⚠️ No submission date"} {task.rfiDue&&"· due: "+fmtDate(task.rfiDue)}
+              {!task.tenderRef&&<span style={{fontWeight:700,marginLeft:6}} title="Not linked to a Package: it does not show in the Package list. Click the action to pick one.">· ⚠ no Package</span>}
             </div>}
             {(task.links||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:3}}>
               {(task.links||[]).map(function(lk,li){return lk.url?<a key={li} href={lk.url} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3949ab",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:2,padding:"5px 6px",borderRadius:6,background:"#f0f0ff",border:"1px solid #d0d0f0"}} onMouseEnter={function(e){e.currentTarget.style.textDecoration="underline";}} onMouseLeave={function(e){e.currentTarget.style.textDecoration="none";}}>🔗 {lk.label||lk.url}</a>:null;})}
