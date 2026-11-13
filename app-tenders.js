@@ -2648,8 +2648,25 @@ var TENDER_PHASES=[
 //   ctr = ACC approved, the subcontractor has not signed yet
 //   sig = signed by the subcontractor (last stage of the contract circuit; for contracts
 //         not tracked in the circuit, the old Contract signed dates count, as for the row colour)
+// Procurement closed by hand (Quick update): the special cases the chain cannot express —
+// self perform (no contract), bought another way, not needed any more… Nothing is late or
+// expected after that. td.procClosed = {on, reason, note}; absent = open.
+var PROC_CLOSE_REASONS=[
+  {k:"self",label:"Self perform — no contract"},
+  {k:"done",label:"Procurement complete"},
+  {k:"other_way",label:"Bought / covered another way"},
+  {k:"not_needed",label:"Not needed any more"},
+  {k:"other",label:"Other"}
+];
+function procClosedOf(td){var c=td&&td.procClosed;return c&&(c.on||c.reason)?c:null;}
+function procClosedLabel(c){
+  if(!c)return "";
+  var r=PROC_CLOSE_REASONS.find(function(x){return x.k===c.reason;});
+  return (r?r.label:"Closed")+(c.note?" — "+c.note:"");
+}
 function tenderPhase(td){
   if(td.cancelled)return"can";
+  if(procClosedOf(td))return"sig";
   var ct=(td.stepDates||{}).contract||{};
   var signed=td.contractCircuit?!!ct.signedAllDone:!!(ct.signedAllDone||ct.signedDone||/signed/i.test((td.steps||{}).contract||""));
   if(signed)return"sig";
@@ -2678,6 +2695,8 @@ function tenderNow(td,now){
   function since(d){return isValidDate(d)?Math.round((new Date(now)-new Date(d))/86400000):null;}
   var ph=tenderPhase(td);
   if(ph==="can")return {text:"Cancelled",who:"us",days:null};
+  var pcl=procClosedOf(td);
+  if(pcl)return {text:"Procurement closed · "+procClosedLabel(pcl),who:"us",days:null};
   var docs=tenderDocs(td);
   var sums=docs.map(function(d){return {d:d,s:docSummary(d,now)};});
   function docLine(x){
@@ -2725,7 +2744,7 @@ function tenderStage(td,now){
   now=now||today();
   var cur=Object.assign({},tenderNow(td,now));
   var ph=tenderPhase(td);
-  if(ph==="can")return Object.assign(cur,{next:""});
+  if(ph==="can"||procClosedOf(td))return Object.assign(cur,{next:""});
   var sums=tenderDocs(td).map(function(d){return {d:d,s:docSummary(d,now)};});
   function name(d){return docShortName(d);}
   var proc=(function(){try{return calcProcurement(td);}catch(e){return{};}})();
@@ -2834,6 +2853,7 @@ function tenderNeedDate(td,now){
 }
 function tenderWillStartLate(td,p,now){
   now=now||today();
+  if(procClosedOf(td))return false;
   if(!p||!isValidDate(p.deliveryDate))return false;
   var need=tenderNeedDate(td,now);
   if(!need.date||need.date<now)return false;   // the past is the past
