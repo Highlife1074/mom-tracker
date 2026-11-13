@@ -22,14 +22,18 @@ const PP_TYPES=[
   {k:"equipment",label:"Equipment"},
   {k:"material",label:"Material"}
 ];
-// In chronological order. Each step ends on its milestone (ms); "start" comes before the first.
+// In chronological order. Each step ends on its milestone (ms) and starts on the milestone of
+// the step before it (ppStepFrom), except MAR / MSS and shop drawings: both start at the
+// contract and run in parallel; the fabrication starts once BOTH are approved.
+// WMS / ITP are not in the chain: they hang off the start on site (Settings wms/itpBeforeStart),
+// like in the package sheet.
 const PP_STEPS=[
   {k:"prep",label:"Tender documents",ms:"issue",msLabel:"Issue tender"},
   {k:"bidding",label:"Bidding period",ms:"bids",msLabel:"Bids in"},
   {k:"evaluation",label:"Evaluation & negotiation",ms:"recommend",msLabel:"Recommendation"},
   {k:"approval",label:"Approval (internal / ACC / Aconex)",ms:"approved",msLabel:"Approved"},
   {k:"contract",label:"Contract / PO signature",ms:"contract",msLabel:"Contract / PO"},
-  {k:"submittals",label:"MAR / MSS / WMS / ITP approval",ms:"submittals",msLabel:"Submittals OK"},
+  {k:"submittals",label:"MAR / MSS approval",ms:"submittals",msLabel:"MAR / MSS approved"},
   {k:"sd",label:"Shop drawings approval",ms:"sdok",msLabel:"SD approved"},
   {k:"fab",label:"Fabrication / manufacturing",ms:"ready",msLabel:"Ready to ship"},
   {k:"transport",label:"Transport & delivery",ms:"delivered",msLabel:"Delivered"},
@@ -124,7 +128,8 @@ function ppActuals(td){
     if(!a.contract&&(ty==="material"||ty==="equipment")&&pos.every(isValidDate))a.contract={date:pos.slice().sort().pop(),po:true};
     if(ty!=="subcontract"&&dls.every(isValidDate))a.delivered={date:dls.slice().sort().pop()};
   }
-  // Submittals OK = every MAR, MSS, WMS and ITP approved (WMS / ITP set to N/A count as done);
+  // MAR / MSS approved = every MAR and MSS approved (WMS / ITP have their own deadline from the
+  // start on site and do not hold the fabrication);
   // SD approved = every shop drawing approved. No document of the kind: reached with the contract.
   // Steps set to N/A / Not needed in the sheet: not applicable, so never late. They do not
   // count as reached for the milestones before them (ppPlan: na does not cascade).
@@ -146,17 +151,24 @@ function ppActuals(td){
     }
     return ds.length?{date:ds.sort().pop()}:a.contract?{date:"",done:true}:null;
   }
-  var sub=reached(docs.filter(function(d){return d.kind==="mar"||d.kind==="mss"||d.kind==="wms"||d.kind==="itp";}));
+  var sub=reached(docs.filter(function(d){return d.kind==="mar"||d.kind==="mss";}));
   if(sub)a.submittals=sub;
   var sdr=reached(docs.filter(function(d){return d.kind==="sd";}));
   if(sdr)a.sdok=sdr;
   return a;
 }
 var PP_MS_ORDER=["start"].concat(PP_STEPS.map(function(s){return s.ms;}));
+// The milestone a step starts from: the previous one, except MAR / MSS and SD (parallel,
+// both from the contract) and the fabrication (from SD approved, reached together with MAR / MSS).
+function ppStepFrom(i){
+  var s=PP_STEPS[i];
+  if(s&&(s.k==="submittals"||s.k==="sd"))return "contract";
+  return i<=0?"start":PP_STEPS[i-1].ms;
+}
 function ppPlan(td,now){
   now=now||today();
   var leads=ppLeads(td);
-  var total=PP_STEPS.reduce(function(n,s){return n+leads[s.k].days;},0);
+  var total=PP_STEPS.reduce(function(n,s){return n+(s.k==="submittals"||s.k==="sd"?0:leads[s.k].days);},0)+Math.max(leads.submittals.days,leads.sd.days);
   // need on site: Target start, or — once that is past — the next linked schedule task not
   // started yet (tenderNeedDate): the rooms still to come keep the package under watch.
   var nd=tenderNeedDate(td,now);
@@ -166,8 +178,11 @@ function ppPlan(td,now){
     latest.need=need;
     for(var i=PP_STEPS.length-1;i>=0;i--){
       var s=PP_STEPS[i];
-      var prevMs=i===0?"start":PP_STEPS[i-1].ms;
-      latest[prevMs]=addCalDays(latest[s.ms],-leads[s.k].days);
+      if(s.k==="fab"){                                   // fabrication starts once MAR / MSS AND SD are approved
+        latest.sdok=latest.submittals=addCalDays(latest.ready,-leads.fab.days);continue;
+      }
+      var from=ppStepFrom(i),d=addCalDays(latest[s.ms],-leads[s.k].days);
+      if(!latest[from]||d<latest[from])latest[from]=d;   // contract: the longer of MAR / MSS and SD
     }
   }
   var act=ppActuals(td);
@@ -226,8 +241,8 @@ function ppDoneVs(ad,lat){
   var over=Math.round((parseISODate(ad)-parseISODate(lat))/86400000);
   return over>0?over+" d after deadline":"on time";
 }
-// The client's answer for the documents now at the client (ACC clock in working days for
-// ACC / Aconex, calendar days for the others — docResponseDue / docOverdue): the worst overdue
+// The client's answer for the documents now at the client (calendar days: docResponseDue /
+// docOverdue): the worst overdue
 // one in red, else the earliest due date in green. null when nothing is at the client.
 function ppClientDue(docs,now){
   now=now||today();
@@ -239,7 +254,7 @@ function ppClientDue(docs,now){
     else if(isValidDate(due)&&(!first||due<first))first=due;
   });
   if(worst)return {late:true,txt:"Client answer due "+ppDay(worst.due)+" · "+fmtOverdue(worst),
-    tip:"The client has not answered: answer was due "+fmtDate(worst.due)+(worst.unit==="wd"?" (working days)":" (calendar days)")};
+    tip:"The client has not answered: answer was due "+fmtDate(worst.due)+" (calendar days)"};
   if(first){var n=Math.round((parseISODate(first)-parseISODate(now))/86400000);
     return {late:false,txt:"Client answer due "+ppDay(first)+" · "+(n>0?n+" d left":"today"),tip:"Client answer expected by "+fmtDate(first)};}
   return null;
@@ -518,7 +533,7 @@ var PP_SORTS={
 ["start","issue","bids","recommend","approved","contract","submittals","sdok","ready","delivered"].forEach(function(m){
   PP_SORTS["ms_"+m]=function(r){return r.p.latest[m]||null;};
 });
-["sd","mar","mss","wms","itp"].forEach(function(k){PP_SORTS["ms_sub_"+k]=function(r){return r.p.latest[k==="sd"?"sdok":"submittals"]||null;};});
+["sd","mar","mss","wms","itp"].forEach(function(k){PP_SORTS["ms_sub_"+k]=function(r){return k==="wms"||k==="itp"?ppQualityDue(r.p,k).appr||null:r.p.latest[k==="sd"?"sdok":"submittals"]||null;};});
 function ppAwardedNames(td){
   var aw=(td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return String(x.subcontractor).trim();});
   return aw.length?aw:(td.contractor?[String(td.contractor).trim()]:[]);
@@ -591,7 +606,7 @@ function ppGanttModel(vis,now){
     var p=r.p,out={r:r,segs:[],marks:[],need:null,fc:null};
     if(!p.need)return out;
     PP_STEPS.forEach(function(s,i){
-      var prev=i===0?"start":PP_STEPS[i-1].ms;
+      var prev=ppStepFrom(i);
       var d0=p.latest[prev],d1=p.latest[s.ms];
       if(!d0||!d1||d1<=d0)return;
       var c=clip(x(d0),x(d1)-x(d0));if(!c)return;
@@ -821,6 +836,8 @@ function ppColCell(td,p,c,now){return c.indexOf("sub_")===0?ppSubCell(td,p,c.sli
 function ppSubCell(td,p,k,now){
   now=now||today();
   var ms=k==="sd"?"sdok":"submittals",lab=ppColLabel("sub_"+k),lat=p.latest[ms]||"";
+  var qd=k==="wms"||k==="itp"?ppQualityDue(p,k):null;
+  if(qd){ms="q_"+k;lat=qd.appr;}
   if((k==="wms"||k==="itp")&&((td.steps||{})[k]||"")==="N/A")
     return {kind:"na",act:"N/A",due:"",real:"",tip:lab+" not applicable"};
   var docs=[];
@@ -836,7 +853,7 @@ function ppSubCell(td,p,k,now){
   var refs=ppDocRefs(td,docs);
   if(ok===n){var dc=ppDoneCell("✓ Approved"+(last?" "+ppDay(last):""),last,lat,n>1?"all "+n+" docs":"",
     tip+(lat?"\nApproval deadline "+fmtDate(lat):""));dc.refs=refs;return dc;}
-  var act,due,subBy=ppSubmitBy(k,lat);
+  var act,due,subBy=qd?qd.sub:ppSubmitBy(k,lat);
   if(nn){act="To submit"+(n>1?" ("+nn+")":"");due=subBy;}
   else if(ret){act="To resubmit"+(n>1?" ("+ret+")":"");due=subBy;}
   else{act="To be approved"+(n>1?" ("+cl+")":"");due=lat;}
@@ -848,7 +865,7 @@ function ppSubCell(td,p,k,now){
   }else real=[ok+"/"+n+" approved",cl?cl+" at client":"",ret?ret+" returned":"",nn?nn+" not submitted":""].filter(Boolean).join(" · ");
   var cli=ppClientDue(docs,now);
   if(cli)tip+="\n"+cli.tip;
-  if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+"\n\n"+ppChainTip(p,ms,(nn||ret)?k:"",due);
+  if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+"\n\n"+(qd?ppQualityTip(p,k,qd):ppChainTip(p,ms,(nn||ret)?k:"",due));
   return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip,refs:refs},now);
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
@@ -926,19 +943,24 @@ function ppMsInfo(td,m,p,now){
 //   act: "To be approved" / "✓ Approved 30 Jul 26"; due: "by 7 Dec 26 · 25 d left"
 //   real: the status today; realFg: its colour (forecast delivery); cli: client answer pill
 function _ppDaysTo(due,now){return Math.round((parseISODate(due)-parseISODate(now))/86400000);}
-function _ppMinusWd(d,n){
-  if(!isValidDate(d))return "";
-  var x=parseISODate(d),k=0,g=0;
-  while(k<n&&g<4000){x.setDate(x.getDate()-1);g++;if(isWorkingDay(x))k++;}
-  return toISO(x);
-}
 // Latest date to (re)submit a document so that the client's answer lands by the approval
-// deadline: SD approval time (working days) for shop drawings, ACC clock (working days) for
-// ACC / Aconex, client answer time (calendar days) for the others.
+// deadline: the same clock as docResponseDue (calendar days): SD approval time for shop
+// drawings, ACC approval time for ACC / Aconex, client answer time for the others.
 function ppSubmitBy(kind,lat){
   if(!isValidDate(lat))return "";
-  if(kind==="sd")return _ppMinusWd(lat,Number(getDur("sdApproval"))||0);
-  return docAccClock(kind)?_ppMinusWd(lat,Number(getDur("accApproval"))||0):addCalDays(lat,-(Number(getDur("clientResponse"))||0));
+  return addCalDays(lat,-docClientDays(kind));
+}
+// WMS / ITP: submitted wms/itpBeforeStart days before the start on site (the package sheet's
+// rule), answered within the client answer time.
+function ppQualityDue(p,k){
+  if(!p||!p.need)return {sub:"",appr:""};
+  var sub=addCalDays(p.need,-(Number(getDur(k==="wms"?"wmsBeforeStart":"itpBeforeStart"))||0));
+  return {sub:sub,appr:addCalDays(sub,docClientDays(k))};
+}
+function ppQualityTip(p,k,qd){
+  return ["How this deadline is worked out:","Need on site "+ppDay(p.need),
+    "− "+k.toUpperCase()+" before start "+getDur(k==="wms"?"wmsBeforeStart":"itpBeforeStart")+" d (Settings › Durations)",
+    "= to submit by "+ppDay(qd.sub),"+ client answer "+docClientDays(k)+" d = approved by "+ppDay(qd.appr)].join("\n");
 }
 // How a deadline is worked back from the need on site, step by step, for the tooltips:
 // need − float − transport − fabrication … = the milestone; then, for a document still to be
@@ -947,14 +969,20 @@ var PP_LEAD_SRC={pkg:"typed on this package",manual:"lead time typed in the shee
 function ppChainTip(p,ms,subKind,submitBy){
   if(!p||!p.need||!p.leads||ms==="need")return "";
   var out=["How this deadline is worked out:","Need on site "+ppDay(p.need)];
+  function src(L){return (PP_LEAD_SRC[L.src]||L.src)+(L.src==="template"?" "+ppTypeLabel(p.type||""):"");}
   for(var i=PP_STEPS.length-1;i>=0;i--){
-    var s=PP_STEPS[i],prev=i?PP_STEPS[i-1].ms:"start",L=p.leads[s.k]||{days:0};
-    out.push("− "+s.label+" "+L.days+" d ("+(PP_LEAD_SRC[L.src]||L.src)+(L.src==="template"?" "+ppTypeLabel(p.type||"")+"":"")+")");
-    if(prev===ms)break;
+    var s=PP_STEPS[i],L=p.leads[s.k]||{days:0};
+    if(s.k==="sd")continue;                                 // drawn with MAR / MSS below
+    if(s.k==="submittals"){
+      var S=p.leads.sd||{days:0};
+      out.push("− the longer of MAR / MSS "+L.days+" d ("+src(L)+") and SD "+S.days+" d ("+src(S)+"), in parallel");
+    }else out.push("− "+s.label+" "+L.days+" d ("+src(L)+")");
+    var from=s.k==="fab"?"sdok":ppStepFrom(i);
+    if(from===ms||(s.k==="fab"&&ms==="submittals"))break;
   }
   out.push("= "+(PP_MS_LABEL[ms]||ms)+" by "+ppDay(p.latest[ms]));
   if(subKind&&submitBy&&submitBy!==p.latest[ms]){
-    var lbl=subKind==="sd"?"SD approval "+getDur("sdApproval")+" working days":docAccClock(subKind)?"client approval "+getDur("accApproval")+" working days":"client answer "+getDur("clientResponse")+" d";
+    var lbl=(subKind==="sd"?"SD approval ":docAccClock(subKind)?"client approval ":"client answer ")+docClientDays(subKind)+" d";
     out.push("− "+lbl+" (Settings › Durations)");
     out.push("= to submit by "+ppDay(submitBy));
   }
@@ -1126,7 +1154,7 @@ function ppNowInfo(p,now){
   if(p.status==="past")return {kind:"past",need:p.need};
   if(!p.next||p.status==="done")return {kind:"done",need:p.need,proj:p.deliveredOn||p.fcDelivery||""};
   var i=PP_STEPS.findIndex(function(s){return s.ms===p.next;});
-  var step=i>=0?PP_STEPS[i]:null,prevMs=i<=0?"start":PP_STEPS[i-1].ms;
+  var step=i>=0?PP_STEPS[i]:null,prevMs=i<0?"start":ppStepFrom(i);
   var to=p.latest[p.next]||"",from=p.next==="start"?addCalDays(to,-7):(p.latest[prevMs]||to);
   var late=isValidDate(to)&&to<now?_ppDiff(to,now):0;
   var proj,projKind,gap;

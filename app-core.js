@@ -108,15 +108,17 @@ function canEditZoneSchedule(zoneOwners,zone,user){
 }
 // All configurable lead times, in the unit shown to the user. Editable in Settings > Durations.
 const DEFAULT_DURATIONS={
-  accToRequest:3,          // working days: ACC/Aconex approved -> subcontract request to be sent
-  requestToCirculate:7,    // working days: request sent -> contract to circulate
-  circulateToSign:14,      // working days: circulated -> signed by all
-  accToSigned:28,          // working days: ACC approval -> signed contract target
-  accApproval:14,          // working days: ACC submitted -> approval expected
+  // Every procurement duration is in CALENDAR days (they were working days until Nov 2026;
+  // the defaults were converted: 14 working days ≈ 20 calendar days).
+  accToRequest:5,          // calendar days: ACC/Aconex approved -> subcontract request to be sent
+  requestToCirculate:10,   // calendar days: request sent -> contract to circulate
+  circulateToSign:20,      // calendar days: circulated -> signed by all
+  accToSigned:40,          // calendar days: ACC approval -> signed contract target
+  accApproval:20,          // calendar days: ACC submitted -> approval expected
   clientResponse:14,       // calendar days: any document submitted to client -> response expected
-  sdAfterContract:14,      // working days: contract signed -> SD submission
-  sdApproval:14,           // working days: SD submitted -> SD approval
-  contractSigning:28,      // working days: used by the procurement timeline
+  sdAfterContract:20,      // calendar days: contract signed -> SD submission
+  sdApproval:20,           // calendar days: SD submitted -> SD approval
+  contractSigning:40,      // calendar days: used by the procurement timeline
   wmsBeforeStart:28,       // calendar days: WMS must be submitted this long BEFORE the target start
   marAfterContract:14,     // calendar days: MAR is due this long AFTER the contract is signed
   itpBeforeStart:28,       // calendar days: ITP must be submitted this long BEFORE the target start
@@ -2219,14 +2221,14 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
       <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>⏱ Durations &amp; lead times</div>
       <div style={{fontSize:12,color:"#888",marginBottom:14}}>These drive every automatic target date in the app. Changing a value re-computes all future dates immediately; dates you typed manually are never overwritten.</div>
       {[
-        {group:"Contract chain (working days)",items:[
+        {group:"Contract chain (calendar days)",items:[
           {k:"accToRequest",label:"ACC/Aconex approved → subcontract request sent"},
           {k:"requestToCirculate",label:"Request sent → contract to circulate"},
           {k:"circulateToSign",label:"Circulated → signed by all parties"},
           {k:"accToSigned",label:"ACC approval → signed contract (overall target)"},
           {k:"contractSigning",label:"Procurement timeline: ACC approval → contract signing"}
         ]},
-        {group:"Client review (working days)",items:[
+        {group:"Client review (calendar days)",items:[
           {k:"accApproval",label:"ACC/Aconex submitted → approval expected"},
           {k:"sdApproval",label:"Shop drawing submitted → approval expected"}
         ]},
@@ -2236,7 +2238,7 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           {k:"marAfterContract",label:"MAR due this long AFTER the contract is signed"}
         ]},
         {group:"Other",items:[
-          {k:"sdAfterContract",label:"Contract signed → shop drawing submission (working days)"},
+          {k:"sdAfterContract",label:"Contract signed → shop drawing submission (calendar days)"},
           {k:"clientResponse",label:"Any document with client → response due (calendar days)"}
         ]},
         {group:"Subcontract — client approval route (€)",unit:"€",items:[

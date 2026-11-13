@@ -533,20 +533,20 @@ function _tenderDocs(td){
     var sub=th(d.k);
     out.push({id:d.k,group:d.group,kind:d.k,label:d.label,sub:(((td.stepDates||{})[d.k])||{}).reference||"",
       cycles:cyclesOfStep(td,d.k),theoSub:sub,
-      theoApproval:isValidDate(sub)?(d.k==="acc"?addWorkingDays(sub,getDur("accApproval")):addCalDays(sub,getDur("clientResponse"))):"",
+      theoApproval:isValidDate(sub)?(d.k==="acc"?addCalDays(sub,getDur("accApproval")):addCalDays(sub,getDur("clientResponse"))):"",
       patchFor:function(list){var n=tdWithStepCycles(td,d.k,list);return {cycles:n.cycles,stepDates:n.stepDates,steps:n.steps};}});
   });
   // shop drawings: one document per transmission
   var ct=(td.stepDates||{}).contract||{};
   var ctBase=ct.signedDone||ct.signedAllDone||th("contract");
-  var sdSub=isValidDate(ctBase)?addWorkingDays(ctBase,getDur("sdAfterContract")):"";
+  var sdSub=isValidDate(ctBase)?addCalDays(ctBase,getDur("sdAfterContract")):"";
   // The approval is expected from the submission date actually planned: the transmission's
   // own target, then the tender's SD target, then the computed one.
   (td.sdTransmissions||[]).forEach(function(t,i){
     var tSub=t.target||td.sdTarget||sdSub;
     out.push({id:"sd:"+t.id,group:"Shop drawings",kind:"sd",label:t.ref||("SD "+(i+1)),sub:t.description||"",
       cycles:cyclesOfSD(t),theoSub:tSub,
-      theoApproval:isValidDate(tSub)?addWorkingDays(tSub,getDur("sdApproval")):"",
+      theoApproval:isValidDate(tSub)?addCalDays(tSub,getDur("sdApproval")):"",
       patchFor:function(list){
         var tl=(td.sdTransmissions||[]).map(function(x){return x.id===t.id?sdWithCycles(x,list):x;});
         return Object.assign({sdTransmissions:tl},_sdAggregate(tl));
@@ -557,7 +557,7 @@ function _tenderDocs(td){
   if(!(td.sdTransmissions||[]).length&&(td.hasSD||td.sdDone||td.sdApprovalDone||td.sdStatus||(td.sdCycles||[]).length)){
     out.push({id:"sd:_main",group:"Shop drawings",kind:"sd",label:"SD",sub:"whole tender",
       cycles:cyclesOfSdMain(td),theoSub:td.sdTarget||sdSub,
-      theoApproval:isValidDate(td.sdTarget||sdSub)?addWorkingDays(td.sdTarget||sdSub,getDur("sdApproval")):"",
+      theoApproval:isValidDate(td.sdTarget||sdSub)?addCalDays(td.sdTarget||sdSub,getDur("sdApproval")):"",
       patchFor:function(list){return sdMainWithCycles(td,list);}});
   }
   // materials: the MAR, and the MSS when the material needs one (or already has a history).
@@ -576,8 +576,14 @@ function _tenderDocs(td){
   return out;
 }
 var DOC_GROUPS=["Client approval","Shop drawings","Materials","Purchases","Quality"];
-// ACC-like documents follow the ACC clock (working days); every other the calendar one.
+// ACC-like documents follow the ACC clock (accApproval); every other the calendar one.
+// Every procurement duration is in calendar days.
 function docAccClock(kind){return kind==="acc"||kind==="pacc"||kind==="paconex";}
+// The client's answer time for a document, in calendar days: ACC / Aconex accApproval, shop
+// drawings sdApproval, every other document clientResponse.
+function docClientDays(kind){
+  return Number(getDur(docAccClock(kind)?"accApproval":kind==="sd"?"sdApproval":"clientResponse"))||0;
+}
 function isPurchaseDoc(d){return !!d&&(d.kind==="pacc"||d.kind==="paconex");}
 // The short name of a document in actions and the Stage column.
 function docShortName(d){
@@ -586,18 +592,18 @@ function docShortName(d){
   return d.label;
 }
 // When the client's answer is due for a submitted revision, and how late it is.
-// ACC follows accApproval in working days; every other document clientResponse in calendar days.
-// The overdue count uses the same unit as the due date: "wd" (working) or "d" (calendar).
+// Calendar days: accApproval for ACC / Aconex, sdApproval for shop drawings, clientResponse
+// for every other document (docClientDays).
 function docResponseDue(doc,submitted){
   if(!isValidDate(submitted))return"";
-  return docAccClock(doc.kind)?addWorkingDays(submitted,getDur("accApproval")):addCalDays(submitted,getDur("clientResponse"));
+  return addCalDays(submitted,docClientDays(doc.kind));
 }
 function docOverdue(doc,submitted,now){
   now=now||today();
   var due=docResponseDue(doc,submitted);
   if(!isValidDate(due)||!(now>due))return null;
-  var n=docAccClock(doc.kind)?countWorkingDays(due,now):Math.round((parseISODate(now)-parseISODate(due))/86400000);
-  return n>0?{days:n,unit:docAccClock(doc.kind)?"wd":"d",due:due}:null;
+  var n=Math.round((parseISODate(now)-parseISODate(due))/86400000);
+  return n>0?{days:n,unit:"d",due:due}:null;
 }
 function fmtOverdue(o){return o?o.days+" "+o.unit+" overdue":"";}
 function OverdueTag({o,lead}){
@@ -980,7 +986,7 @@ function purchaseDoc(td,p,k){
   var sub=p[k+"Target"]||"";
   return {id:x.kind+":"+p.id,group:"Purchases",kind:x.kind,label:x.label,sub:purchaseName(p,(td.purchases||[]).indexOf(p)),
     ref:String(p[k+"Ref"]||"").trim(),cycles:cyclesOfPurchase(p,k),theoSub:sub,
-    theoApproval:isValidDate(sub)?addWorkingDays(sub,getDur("accApproval")):"",
+    theoApproval:isValidDate(sub)?addCalDays(sub,getDur("accApproval")):"",
     patchFor:function(list){
       return {purchases:(td.purchases||[]).map(function(y){
         if(y.id!==p.id)return y;
@@ -1720,10 +1726,10 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
       var accApproval=((td.stepDates||{}).acc||{}).approval||"";
 
       // Auto target dates (never overwrite existing manual values)
-      var autoRequestTarget=accApproval?addWorkingDays(accApproval,getDur("accToRequest")):"";
-      var autoCirculateTarget=ct.requestDone?addWorkingDays(ct.requestDone,getDur("requestToCirculate")):"";
-      var autoSignedAllTarget=ct.circulateDone?addWorkingDays(ct.circulateDone,getDur("circulateToSign")):"";
-      var autoSignedTarget=accApproval?addWorkingDays(accApproval,getDur("accToSigned")):"";
+      var autoRequestTarget=accApproval?addCalDays(accApproval,getDur("accToRequest")):"";
+      var autoCirculateTarget=ct.requestDone?addCalDays(ct.requestDone,getDur("requestToCirculate")):"";
+      var autoSignedAllTarget=ct.circulateDone?addCalDays(ct.circulateDone,getDur("circulateToSign")):"";
+      var autoSignedTarget=accApproval?addCalDays(accApproval,getDur("accToSigned")):"";
 
       var requestTarget=ct.requestTarget||autoRequestTarget;
       var circulateTarget=ct.circulateTarget||autoCirculateTarget;
@@ -1865,7 +1871,7 @@ function SubmissionSteps({td,TENDER_STEPS,updateStep,tenders,saveTenders,setSelT
             <tr style={{background:"#faf9f7"}}>
               <td style={Object.assign({},labelStyle,{color:"#b45309"})}>
                 🏁 Signed contract
-                <div style={{fontSize:9,color:"#c9a84c",fontWeight:400}}>ACC/Aconex approval +28 working days</div>
+                <div style={{fontSize:9,color:"#c9a84c",fontWeight:400}}>ACC/Aconex approval +28 calendar days</div>
               </td>
               <td style={{textAlign:"center"}}>
                 <input type="date" min="1990-01-01" max="2200-12-31" value={signedTarget}
@@ -1987,7 +1993,7 @@ function _flowPlanApproval(td,k,theo){
   var sd=((td.stepDates||{})[k])||{};
   var sub=sd.target||((theo[k]||{}).theoretical)||"";
   if(!isValidDate(sub))return"";
-  return k==="acc"?addWorkingDays(sub,getDur("accApproval")):addCalDays(sub,getDur("clientResponse"));
+  return k==="acc"?addCalDays(sub,getDur("accApproval")):addCalDays(sub,getDur("clientResponse"));
 }
 
 // ---------------------------------------------------------------------------
@@ -2362,7 +2368,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
     });
     if(!fCt.done&&isValidDate(fCt.date)&&isValidDate(accEnd)&&accEnd<fCt.date){
       cbars.push(seg(cs.started&&cs.started>accEnd?cs.started:accEnd,fCt.date,FLOW_COL.internal,
-        "Forecast: contract signed "+fmtDate(fCt.date)+" ("+getDur("contractSigning")+" working days after the ACC approval)",true,"ctf"));
+        "Forecast: contract signed "+fmtDate(fCt.date)+" ("+getDur("contractSigning")+" days after the ACC approval)",true,"ctf"));
     }
     lanes.push({k:"contract",label:"Contract",sub:fCt.done?"signed "+fmtDate(fCt.done):"internal ∥ sub",bars:cbars});
     // Every document gets its lane, submitted or not. What has happened is solid; what is
@@ -2383,7 +2389,7 @@ function TenderFlowPanel({td,updTd,afterSave,onJump}){
           if(isValidDate(subD)&&isValidDate(appD)&&subD<appD)
             bars.push(seg(subD,appD,FLOW_COL.client,"Forecast: submission "+fmtDate(subD)+" → approval "+fmtDate(appD),true,key+"fa"));
         }else if(last.submitted&&!last.code){
-          var due=d.kind==="sd"?addWorkingDays(last.submitted,getDur("sdApproval")):docResponseDue(d,last.submitted);
+          var due=docResponseDue(d,last.submitted);
           if(due>now)bars.push(seg(now,due,FLOW_COL.client,"Forecast: client answer expected "+fmtDate(due),true,key+"fw"));
         }
       }
@@ -3004,16 +3010,16 @@ function TenderMiniTimeline({td,range}){
       fut(subD,appD,FLOW_COL.client,"Forecast: "+name+" with the client "+fmtDate(subD)+" → approval "+fmtDate(appD));
     }else if(isValidDate(last.submitted)&&!last.code){
       // the main SD follows the delivery cascade, so its answer date matches the truck
-      var due=main&&isValidDate(fSdA.date)?fSdA.date:addWorkingDays(last.submitted,getDur("sdApproval"));
-      fut(now,due>now?due:addWorkingDays(now,1),FLOW_COL.client,name+" R"+last.rev+" with the client since "+fmtDate(last.submitted)+" — answer expected "+fmtDate(due));
+      var due=main&&isValidDate(fSdA.date)?fSdA.date:addCalDays(last.submitted,getDur("sdApproval"));
+      fut(now,due>now?due:addCalDays(now,1),FLOW_COL.client,name+" R"+last.rev+" with the client since "+fmtDate(last.submitted)+" — answer expected "+fmtDate(due));
     }else if(main&&isValidDate(pst("sdReappBack").date)){
       var rb=pst("sdResubBack"),ab=pst("sdReappBack");
       fut(isValidDate(last.returned)?last.returned:now,rb.date,FLOW_COL.sub,"Forecast: sub reworks the "+name+" (returned "+last.code+"), resubmission "+fmtDate(rb.date));
       fut(rb.date,ab.date,FLOW_COL.client,"Forecast: "+name+" R"+(last.rev+1)+" with the client → approval "+fmtDate(ab.date));
     }else if(last.code==="C"||last.code==="D"){
       var from=isValidDate(last.returned)?last.returned:now;
-      var resub=addWorkingDays(from>now?from:now,14);
-      var reapp=addWorkingDays(resub,getDur("sdApproval"));
+      var resub=addCalDays(from>now?from:now,14);
+      var reapp=addCalDays(resub,getDur("sdApproval"));
       fut(from,resub,FLOW_COL.sub,"Forecast: sub reworks the "+name+" (returned "+last.code+"), resubmission "+fmtDate(resub));
       fut(resub,reapp,FLOW_COL.client,"Forecast: "+name+" R"+(last.rev+1)+" with the client → approval "+fmtDate(reapp));
     }
@@ -3995,7 +4001,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     }
     // Trigger "Get the approval of the Tender result from the client" once ACC/Aconex is submitted (Date done filled)
     if(updatedTd&&step==="acc"&&field==="done"&&val&&!prevAccDone){
-      var apprDueVal=addWorkingDays(val,getDur("accApproval"));
+      var apprDueVal=addCalDays(val,getDur("accApproval"));
       autoActionForTender(updatedTd,apprText,"Procurement",{due:apprDueVal,importance:3,urgence:calcProcurementUrgence(apprDueVal)});
     }
     // ACC Date done CLEARED (was filled, now empty): undo — remove the two tasks it created, reopen "Submit the Tender Result" if target still set
@@ -4333,7 +4339,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                   var procDelivery=proc.deliveryDate||"";
                   var startOnSite=td.startOnSite||"";
                   if(!procDelivery)return null;
-                  var marginDays=startOnSite?(function(){var d1=new Date(procDelivery);var d2=new Date(startOnSite);return Math.round((d2-d1)/(1000*60*60*24));})():null;
+                  var marginDays=startOnSite&&isValidDate(procDelivery)?Math.round((parseISODate(startOnSite)-parseISODate(procDelivery))/86400000):null;
                   return <div style={{display:"flex",gap:5,alignItems:"center"}}>
                     <span style={{fontSize:10,color:"#555"}}>→ Procurement delivers: <strong style={{color:marginDays!==null&&marginDays<0?"#b3302a":"#1e6b3a"}}>{fmtDate(procDelivery)}</strong></span>
                     {marginDays!==null&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:6,background:marginDays<0?"#fbe6e8":marginDays<7?"#faf3e0":"#e6f2e9",color:marginDays<0?"#b3302a":marginDays<7?"#b35c00":"#1e6b3a"}}>{marginDays>0?"+":""}{marginDays}d</span>}
@@ -4837,9 +4843,9 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
                 var CONTRACT_LABELS_LIST=["—","To request","To circulate","To sign","✅ Signed"];
                 var CONTRACT_COLORS=["s-default","s-pending","s-pending","s-pending","s-approved-a"];
                 var ctAccApproval=((td.stepDates||{}).acc||{}).approval||"";
-                var autoReqTarget=ctAccApproval?addWorkingDays(ctAccApproval,getDur("accToRequest")):"";
-                var autoCircTarget=ctc.requestDone?addWorkingDays(ctc.requestDone,getDur("requestToCirculate")):"";
-                var autoSignAllTarget=ctc.circulateDone?addWorkingDays(ctc.circulateDone,getDur("circulateToSign")):"";
+                var autoReqTarget=ctAccApproval?addCalDays(ctAccApproval,getDur("accToRequest")):"";
+                var autoCircTarget=ctc.requestDone?addCalDays(ctc.requestDone,getDur("requestToCirculate")):"";
+                var autoSignAllTarget=ctc.circulateDone?addCalDays(ctc.circulateDone,getDur("circulateToSign")):"";
                 var stage=0;
                 var nextTarget="";
                 if(ctc.signedDone||ctc.signedAllDone){stage=4;}
@@ -5270,6 +5276,7 @@ function _calcProcurement(td){
   var _ct=(td.stepDates||{}).contract||{};
   var contractDone = _ct.signedDone||_ct.signedAllDone||"";
 
+  // Calendar days (every procurement duration is in calendar days).
   function addWorkDays(dateStr, days){
     if(!isValidDate(dateStr)) return "";
     var n=Number(days);
@@ -5310,15 +5317,15 @@ function _calcProcurement(td){
   // Settings › Durations gives these in WORKING days: they follow the project calendar
   // (Mon–Fri, public holidays, extra holidays), like the ACC clock of the documents. They
   // used to be added as calendar days, which made every forecast 30–40 % too early.
-  var accApprTargetAuto = addWorkingDays(accSubmittal, getDur("accApproval"));
+  var accApprTargetAuto = addCalDays(accSubmittal, getDur("accApproval"));
   var accApprTarget = ov.accApp||accApprTargetAuto;
-  steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:14, manual:false, autoDate:accApprTargetAuto, overridden:!!(ov.accApp&&ov.accApp!==accApprTargetAuto)});
+  steps.push({key:"accApp", label:"ACC Approval", date:accApprTarget, done:accApproval, duration:getDur("accApproval"), manual:false, autoDate:accApprTargetAuto, overridden:!!(ov.accApp&&ov.accApp!==accApprTargetAuto)});
 
-    var contractTargetAuto = addWorkingDays(accApproval||accApprTarget, getDur("contractSigning"));
+    var contractTargetAuto = addCalDays(accApproval||accApprTarget, getDur("contractSigning"));
   // La cible saisie à la main dans le tableau Contract (stepDates.contract.signedTarget)
   // est la vraie source de vérité : elle doit primer sur le calcul automatique.
   var contractTarget = _ct.signedTarget||ov.contract||contractTargetAuto;
-  steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:28, manual:!!_ct.signedTarget, autoDate:contractTargetAuto, overridden:!!(_ct.signedTarget&&_ct.signedTarget!==contractTargetAuto)||!!(ov.contract&&ov.contract!==contractTargetAuto)});
+  steps.push({key:"contract", label:"Contract Signing", date:contractTarget, done:contractDone, duration:getDur("contractSigning"), manual:!!_ct.signedTarget, autoDate:contractTargetAuto, overridden:!!(_ct.signedTarget&&_ct.signedTarget!==contractTargetAuto)||!!(ov.contract&&ov.contract!==contractTargetAuto)});
   // --- fabStart now driven by max(contract, SD approval, lead MAR) instead of contract alone ---
   var contractBase = dateOrGrace(contractDone, contractTarget);
   var fabStart = contractBase;
@@ -5328,8 +5335,7 @@ function _calcProcurement(td){
 
   if(hasSd){
 
-    var sdSubDate = td.sdDone||(addWorkDays(contractDone||contractTarget, 14));
-    var sdSubTargetAuto = addWorkingDays(contractDone||contractTarget, getDur("sdAfterContract"));
+    var sdSubTargetAuto = addCalDays(contractDone||contractTarget, getDur("sdAfterContract"));
     // The SD panel's own Target date takes priority over the computed one — a manual entry there
     // is a commitment, so the whole timeline downstream is rebuilt from it.
     // With transmissions, the shop drawings are approved once the LAST one is: the cascade
@@ -5342,13 +5348,13 @@ function _calcProcurement(td){
     var _sdPanel = _trTarget||td.sdTarget||"";
     var sdSubTarget = _sdPanel||ov.sdSub||sdSubTargetAuto;
     var sdSubDone = _trNotSent.length?"":(_trs.length?(_trLastSent||td.sdDone||""):(td.sdDone||""));
-    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:sdSubDone, duration:14, manual:false, sd:true, autoDate:sdSubTargetAuto,
+    steps.push({key:"sdSub", label:"SD Submission", date:sdSubTarget, done:sdSubDone, duration:getDur("sdAfterContract"), manual:false, sd:true, autoDate:sdSubTargetAuto,
       overridden:!_sdPanel&&!!(ov.sdSub&&ov.sdSub!==sdSubTargetAuto),
       fromSdPanel:!!_sdPanel});
 
-    var sdAppTargetAuto = addWorkingDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
+    var sdAppTargetAuto = addCalDays(_trs.length?(sdSubDone||sdSubTarget):(td.sdDone||sdSubTarget), getDur("sdApproval"));
     var sdAppTarget = ov.sdApp||sdAppTargetAuto;
-    steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:14, manual:false, sd:true,
+    steps.push({key:"sdApp", label:"SD Approval", date:sdAppTarget, done:td.sdApprovalDone||"", duration:getDur("sdApproval"), manual:false, sd:true,
       review:td.sdReview||"", autoDate:sdAppTargetAuto, overridden:!!(ov.sdApp&&ov.sdApp!==sdAppTargetAuto)});
 
     var lastSdDate = td.sdApprovalDone||sdAppTarget;
@@ -5359,7 +5365,7 @@ function _calcProcurement(td){
       var _back=isValidDate(sdBack.returned)?sdBack.returned:(td.sdApprovalDone||today());
       var _rs=addWorkDays(_back,14);
       if(_rs<today())_rs=addWorkDays(today(),7);
-      var _ra=addWorkingDays(_rs,getDur("sdApproval"));
+      var _ra=addCalDays(_rs,getDur("sdApproval"));
       steps.push({key:"sdResubBack", label:"SD Resubmission (returned "+sdBack.code+")", date:_rs, done:"", duration:14, manual:false, sd:true});
       steps.push({key:"sdReappBack", label:"SD Approval R"+((sdBack.rev||0)+1), date:_ra, done:"", duration:getDur("sdApproval"), manual:false, sd:true});
       lastSdDate=_ra;
@@ -6747,7 +6753,7 @@ function buildTrackedDocs(tasks,tenders,contractors){
     var stageLbl=isFcr?"FCR":"RFI";
     var tdr=(tenders||[]).find(function(x){return x.id===t.tenderRef;})||null;
     var submitted=t.rfiSubmission||"";
-    var due=t.rfiDue||(submitted?(function(){var d=new Date(submitted);d.setDate(d.getDate()+getDur("clientResponse"));return toISO(d);}()):"");
+    var due=t.rfiDue||(isValidDate(submitted)?addCalDays(submitted,getDur("clientResponse")):"");
     var overdue=due&&due<todayStr&&t.status!=="done";
     var withClient=!!submitted&&t.status!=="done";
     docs.push({
