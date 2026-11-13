@@ -5463,7 +5463,13 @@ function _calcProcurement(td){
   // Lead from the plan (its fabrication and transport, each in its own unit), else calendar days.
   var _L=(function(){try{return ppLeads(td);}catch(e){return null;}})();
   var deliveryDate = deliveredOn || (leadSource==="plan"&&_L ? ppShiftLead(ppShiftLead(fabStart,_L.fab,1),_L.transport,1) : addWorkDays(fabStart, LEAD));
-  steps.push({key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:deliveredOn, duration:LEAD, manual:false, highlight:true});
+  // Manpower (labour only, no delivery): the crew can come once the contract is signed, so
+  // the "delivery" used by the schedule and the Late delivery filter is the contract signature.
+  var _noDel=(function(){try{return ppNoDelivery(td);}catch(e){return false;}})();
+  if(_noDel){LEAD=0;leadSource="plan";deliveryDate=contractDone||notBefore(contractTarget);}
+  steps.push(_noDel
+    ?{key:"delivery", label:"👷 Crew can mobilise (contract signed — manpower, no delivery)", date:deliveryDate, done:contractDone, duration:0, manual:false, highlight:true}
+    :{key:"delivery", label:"🚚 Delivery on site", date:deliveryDate, done:deliveredOn, duration:LEAD, manual:false, highlight:true});
 
   var startOnSite = td.startOnSite||"";
   var margin = "";
