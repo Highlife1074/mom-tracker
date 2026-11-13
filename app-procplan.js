@@ -1847,6 +1847,7 @@ function ppQuCtStage(td){
 function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep,onOpenSheet,onClose}){
   const [allSteps,setAllSteps]=useState(false);
   const [allDocs,setAllDocs]=useState(false);
+  const [keepRows,setKeepRows]=useState({});   // WMS / ITP just set to N/A: stay visible until the window closes
   const tRef=useRef(tenders);tRef.current=tenders;
   const kRef=useRef(tasks);kRef.current=tasks;
   var td=(tenders||[]).find(function(t){return t.id===tdId;});
@@ -1931,9 +1932,11 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
     var def=TENDER_STEPS.find(function(x){return x.key===k;});
     return def?{def:def,s:ppQuStepState(td,k),sd:((td.stepDates||{})[k])||{}}:null;
   }).filter(Boolean);
-  var stepsShown=steps.filter(function(x){return allSteps||(x.s.k==="run"||x.s.k==="todo");});
+  var stepsShown=steps.filter(function(x){return allSteps||keepRows[x.def.key]||(x.s.k==="run"||x.s.k==="todo");});
   // documents (client approval, shop drawings, materials, purchases, quality)
-  var docs=tenderDocs(td).map(function(d){return {d:d,sm:docSummary(d,now)};});
+  // WMS / ITP set to N/A: nothing to follow, left out like in the WMS/ITP view.
+  var docs=tenderDocs(td).filter(function(d){return !((d.kind==="wms"||d.kind==="itp")&&((td.steps||{})[d.kind]||"")==="N/A");})
+    .map(function(d){return {d:d,sm:docSummary(d,now)};});
   var docsShown=docs.filter(function(x){return allDocs||x.sm.state!=="approved";});
   var SC={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"};
   function sec(title,sub,right){return <div style={{display:"flex",alignItems:"baseline",gap:8,margin:"14px 0 6px",flexWrap:"wrap"}}>
@@ -1976,11 +1979,16 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
                     {PP_QU_CT.map(function(o){return <option key={o.k} value={o.k}>{o.label}</option>;})}
                     <option value="na">N/A</option></select>
                 :k==="contract"?<span style={{color:STC[x.s.k],fontWeight:600}}>{x.s.text}<span style={{fontSize:10.5,color:"#9b968b",fontWeight:400}}> · tracked desk by desk: edit the desks just below</span></span>
+                :(k==="wms"||k==="itp")&&(x.s.k==="na"||!(x.s.doc&&x.s.doc.cycles.length))
+                  ?<select value={((td.steps||{})[k])||"—"} disabled={ro} title="Not submitted yet: — / N/A / Not done (same choice as the sheet). Submissions are recorded below in Documents."
+                    onChange={function(e){var v=e.target.value;if(v==="N/A")setKeepRows(function(o){return Object.assign({},o,{[k]:true});});setStep(k,"status",v);}}
+                    style={{fontSize:11.5,padding:"2px 5px",width:"auto",color:STC[x.s.k],fontWeight:600}}>
+                    {flowPresubOpts(x.def.opts).map(function(o){return <option key={o} value={o}>{o}</option>;})}</select>
                 :ed?<select value={((td.steps||{})[k])||"—"} disabled={ro} onChange={function(e){setStep(k,"status",e.target.value);}}
                     style={{fontSize:11.5,padding:"2px 5px",width:"auto",color:STC[x.s.k],fontWeight:600}}>
                     {x.def.opts.map(function(o){return <option key={o} value={o}>{o}</option>;})}</select>
                   :<span style={{color:STC[x.s.k],fontWeight:600}}>{x.s.text}</span>}
-                {x.s.doc&&<span style={{fontSize:10.5,color:"#9b968b"}}> · edit below in Documents</span>}
+                {x.s.doc&&x.s.k!=="na"&&<span style={{fontSize:10.5,color:"#9b968b"}}> · {x.s.doc.cycles.length?"edit below in Documents":"submission: below in Documents"}</span>}
               </td>
               <td style={cell}><DraftDateInput value={(k==="contract"?(x.sd.signedTarget||x.sd.target):x.sd.target)||""} disabled={ro}
                 title={k==="contract"?"Target date of the signature (same as Signed contract › Target in the sheet)":undefined}
