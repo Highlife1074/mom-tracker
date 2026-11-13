@@ -246,7 +246,11 @@ function ppPlan(td,now){
   var fcDelivery=isValidDate(proc.deliveryDate)?proc.deliveryDate:"";
   var daysLeft=null,status="none";
   // The past is the past: once the need date is reached, the package is no longer late or due.
-  var past=!!need&&need<now;
+  // The past is the past — but only once the package has really started on site (a linked
+  // task with an actual week, or delivered / contract signed / closed). A need date gone by
+  // while nothing has started is a package LATE: needPassed.
+  var needPassed=!!need&&need<now;
+  var past=needPassed&&tenderStartedOnSite(td);
   if(td.cancelled)status="cancelled";
   else if(closed)status="closed";
   else if(past)status="past";
@@ -261,7 +265,7 @@ function ppPlan(td,now){
   // end of the need week. Landing after the latest delivery date but before that only eats
   // the float (deliveryTight).
   var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
-  return {closed:closed,type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  return {closed:closed,needPassed:needPassed&&!past,type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
     deliveryLate:!!(dst&&dst.late),
     deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
@@ -548,7 +552,7 @@ var PP_KPIS=[
   {k:"soon",label:"Due ≤ 14 d",cls:"warn",tip:"Next milestone due within 14 days"},
   {k:"ok",label:"On track",cls:"good",tip:"Next milestone more than 14 days away, every milestone reached, or procurement closed"},
   {k:"notlaunched",label:"Not launched",cls:"",tip:"Tender not issued yet (and the package not started on site)"},
-  {k:"started",label:"Started",cls:"",tip:"Need on site already past: started on site, never flagged late"},
+  {k:"started",label:"Started",cls:"",tip:"Need on site already past AND really started (an actual week on its schedule task, or delivered / contract signed / closed): never flagged late. A need date past with nothing started counts as late."},
   {k:"noneed",label:"No need date",cls:"",tip:"No Target start and no schedule task linked: nothing can be worked back"}
 ];
 function ppKpiOf(r,k){
@@ -1139,7 +1143,9 @@ function ppMsCell(td,p,m,now){
       if(p.fcDelivery){
         var dd=isValidDate(lat)?_ppDaysTo(p.fcDelivery,lat):0;
         real="Forecast "+ppDay(p.fcDelivery)+(dd>0?" · "+dd+" d after deadline":"");
-        o.realFg=p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":"#1e6b3a";
+        // never green when the forecast lands after its deadline — even for a package already
+        // started (status Started is never counted late, but the colour must not say "fine")
+        o.realFg=p.deliveryLate?"#b3302a":p.deliveryTight||dd>0?"#b35c00":"#1e6b3a";
       }
     }
   }catch(e){}
@@ -1463,7 +1469,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
         '<td class="a">'+(a.rfi.length?a.rfi.map(function(t){var r=ppRfiInfo(t,now);return '<div>'+esc(r.kind+" "+(t.text||""))+'<div class="sm" style="color:'+(r.late?'#b3302a;font-weight:700':r.sent?'#1e6b3a':'#9b968b')+'">'+esc(r.txt)+'</div></div>';}).join(""):'<span style="color:#ccc">—</span>')+'</td>':'');
     if(plan){
       PP_TABLE_COLS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+(m.indexOf("sub_")===0?' sub':'')+'">'+ppMsCellHtml(ppColCell(td,p,m,now))+'</td>';});
-      h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div></td>';
+      h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div>'+(p.needPassed?'<div class="sm" style="color:#b3302a;font-weight:700">passed · not started</div>':'')+'</td>';
     }
     if(fin){
       var v=ppVariance(td);
@@ -2345,6 +2351,9 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
         onClick={function(){openScheduleStart(p.needTask,td,onNavZone);}}
         title={"The first task has started; the next linked task not started yet is \""+(p.needTask.r.label||"task")+"\" in "+(p.needTask.sc.zone||"?")+" — the plan is worked back from it. Click to open it."}>
         next task {fmtDate(p.need)}</div>}
+      {p.needPassed&&<div style={{fontSize:10,color:"#b3302a",fontWeight:700,marginTop:2,whiteSpace:"nowrap"}}
+        title="The need date is past but nothing shows the package has started: no actual week on its schedule task(s), or no contract / delivery. It is late, not started.">
+        passed · not started</div>}
     </React.Fragment>;
   }
   function line(r){

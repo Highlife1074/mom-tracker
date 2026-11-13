@@ -2844,6 +2844,26 @@ function tenderScheduleNextStart(td,now){
   });
   return best;
 }
+// Has the Package really started on site? "The past is the past" only holds when it has:
+//   - linked schedule tasks: one of them has an actual week (cells "actual" / "both");
+//   - no linked task: the procurement is closed, delivered, or the contract is signed
+//     (a typed Target start with no contract yet cannot have started).
+// A need date past while this is false is a package LATE, not started.
+function tenderStartedOnSite(td){
+  if(!td)return false;
+  if(procClosedOf(td)||isValidDate(td.deliveredOn))return true;
+  var linked=false,actual=false;
+  (window._ppSchedules||[]).forEach(function(sc){
+    (sc.rows||[]).forEach(function(r){
+      if(r.tenderRef!==td.id)return;
+      linked=true;
+      var c=r.cells||{};
+      if(Object.keys(c).some(function(w){return c[w]==="actual"||c[w]==="both";}))actual=true;
+    });
+  });
+  if(linked)return actual;
+  return tenderPhase(td)==="sig";
+}
 function tenderNeedDate(td,now){
   now=now||today();
   var sos=isValidDate(td&&td.startOnSite)?td.startOnSite:"";
@@ -2856,7 +2876,8 @@ function tenderWillStartLate(td,p,now){
   if(procClosedOf(td))return false;
   if(!p||!isValidDate(p.deliveryDate))return false;
   var need=tenderNeedDate(td,now);
-  if(!need.date||need.date<now)return false;   // the past is the past
+  if(!need.date)return false;
+  if(need.date<now&&tenderStartedOnSite(td))return false;   // the past is the past — once really started
   var st=procDeliveryState(p.deliveryDate,need.date);
   return !!(st&&st.late);
 }
