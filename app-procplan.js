@@ -845,7 +845,7 @@ function ppExportXlsx(vis,acts){
 var PP_COLSETS=[
   {k:"plan",label:"Plan",tip:"Milestones of the procurement chain and the need on site"},
   {k:"finance",label:"Finance",tip:"Budget, proposed, instructed, variance budget − instructed"},
-  {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points, open RFI and notes"},
+  {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points and notes"},
   {k:"all",label:"All in one",tip:"The three sets on one line: plan, finance and follow-up (scrolls sideways; print it on A3). Click Plan, Finance or Follow-up to show or hide one set: any one, two or three."}
 ];
 // Columns of the table: the Submittals milestone is split by document kind (SD / MAR / MSS / WMS / ITP),
@@ -1383,22 +1383,22 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   }
   var model=withTl&&vis.length?ppNowModel(vis,now):null;
   // Finance alone: no Next deadline column (and no timeline strip)
-  var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
+  var dl=plan||fol,nb=1+(fin?1:0)+(dl?2:0);   // Budget only with Finance; Next deadline + RFI with Plan or Follow-up
   if(!dl)model=null;
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?1280:0)+(fin?330:0)+(fol?970:0);
+  var tableW=210+(fin?90:0)+(dl?370:0)+(plan?1280:0)+(fin?330:0)+(fol?770:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
     '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="'+PP_TABLE_COLS.length+'" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
-    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="5" class="sep">Follow-up</th>':'')+'</tr><tr>'+
-    '<th>Package</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th>':'')+
+    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
+    '<th>Package</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th><th>RFI open</th>':'')+
     (plan?PP_TABLE_COLS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(ppColLabel(m))+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
-    (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>RFI open</th><th>Notes</th>':'')+'</tr>'+
+    (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
     (model?'<tr class="ppt-scale"><td colspan="'+nb+'" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
     '</thead><tbody>';
   function li(l,cls){return l.length?l.map(function(x){return '<div>'+esc(x)+'</div>';}).join(""):'<span style="color:#ccc">—</span>';}
@@ -1409,7 +1409,8 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
       (soon?'<div class="sm" style="color:#b35c00;font-weight:700">starts on site ≤ 21 d</div>':'')+'</td>'+
       (fin?'<td class="r mono">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>':'')+
       (dl?'<td><span class="pill" style="background:'+st.bg+';color:'+st.fg+'">'+esc(ppNextAct(p)||st.label)+'</span>'+
-        (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>':'');
+        (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>'+
+        '<td class="a">'+(a.rfi.length?a.rfi.map(function(t){var r=ppRfiInfo(t,now);return '<div>'+esc(r.kind+" "+(t.text||""))+'<div class="sm" style="color:'+(r.late?'#b3302a;font-weight:700':r.sent?'#1e6b3a':'#9b968b')+'">'+esc(r.txt)+'</div></div>';}).join(""):'<span style="color:#ccc">—</span>')+'</td>':'');
     if(plan){
       PP_TABLE_COLS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+(m.indexOf("sub_")===0?' sub':'')+'">'+ppMsCellHtml(ppColCell(td,p,m,now))+'</td>';});
       h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div></td>';
@@ -1423,7 +1424,6 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
       h+='<td class="sep">'+esc(String(td.ownerTender||"—"))+'</td>'+
         '<td class="a">'+li([td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean))+'</td>'+
         '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
-        '<td class="a">'+(a.rfi.length?a.rfi.map(function(t){var r=ppRfiInfo(t,now);return '<div>'+esc(r.kind+" "+(t.text||""))+'<div class="sm" style="color:'+(r.late?'#b3302a;font-weight:700':r.sent?'#1e6b3a':'#9b968b')+'">'+esc(r.txt)+'</div></div>';}).join(""):'<span style="color:#ccc">—</span>')+'</td>'+
         '<td class="a">'+li(ppNotesText(td))+'</td>';
     }
     h+='</tr>';
@@ -2096,8 +2096,8 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   }
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
-  var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
+  var dl=plan||fol,nb=1+(fin?1:0)+(dl?2:0);   // Budget only with Finance; Next deadline + RFI with Plan or Follow-up
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   var model=tl&&dl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
@@ -2166,6 +2166,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             :p.daysLeft!==null&&<div style={{fontSize:10.5,fontWeight:700,color:st.fg,marginTop:2}}>{ppDaysText(p.daysLeft)}</div>}
           <div dangerouslySetInnerHTML={{__html:ppWhoHtml(stg)}}/>
         </td>}
+        {dl&&<td><PpRfiCell td={td} list={a.rfi} done={a.rfiDone} tasks={tasks} saveTasks={saveTasks}/></td>}
         {plan&&PP_TABLE_COLS.map(function(m,i){
           return <td key={m} className={"ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppColCell(td,p,m,now))}}></td>;
         })}
@@ -2177,7 +2178,6 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         {fol&&<td className="sep">{td.ownerTender?<OwnerChip owner={td.ownerTender}/>:<span style={{color:"#ccc"}}>—</span>}</td>}
         {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} updTd={function(p){upd(td,p);}}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>}
-        {fol&&<td><PpRfiCell td={td} list={a.rfi} done={a.rfiDone} tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
       </tr>
       {model&&<tr className="ppt-strip" style={hl}>
@@ -2283,12 +2283,13 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {plan&&<th colSpan={PP_TABLE_COLS.length} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={3} className="sep">Finance</th>}
-            {fol&&<th colSpan={5} className="sep">Follow-up</th>}
+            {fol&&<th colSpan={4} className="sep">Follow-up</th>}
           </tr>
           <tr>
             {th("title","Package",{minWidth:160})}
             {fin&&th("budget","Budget",{textAlign:"right"})}
             {dl&&th("deadline","Next deadline",{minWidth:150},"What has to be done next on the package, by when at the latest (worked back from the need on site), how late or how many days left, and who holds it now. Red = late, orange = due within 14 days, green = on track.")}
+            {dl&&th("rfi","RFI",null,"Open RFI / FCR of the package (actions tagged RFI or FCR): sent on, client answer due (sent + client answer time of Settings › Durations, or the date typed) — red when the client is late. Tick = answered: the RFI leaves this list and stays archived in the package sheet (Actions & notes). + RFI to add one. Sorted by number open.")}
             {plan&&PP_TABLE_COLS.map(function(m,i){return <React.Fragment key={m}>{th("ms_"+m,ppColLabel(m),null,ppColTip(m),i===0?"sep":"")}</React.Fragment>;})}
             {plan&&th("need","Need on site",{minWidth:112},"Start of the package on site: from its linked schedule task (🗓, change it in the schedule), typed by hand only when no task is linked","sep")}
             {fin&&th("proposed","Proposed",{textAlign:"right"},"ACC / Aconex amount proposed (subcontract + other)","sep")}
@@ -2297,7 +2298,6 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {fol&&th("owner","Owner",null,"Owner of the package","sep")}
             {fol&&th("next","Next steps",null,"Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one. Sorted by number.")}
             {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package — including the automatic “Procurement late” ones from the schedule. Sorted by number.")}
-            {fol&&th("rfi","RFI",null,"Open RFI / FCR of the package (actions tagged RFI or FCR): sent on, client answer due (sent + client answer time of Settings › Durations, or the date typed) — red when the client is late. Tick = answered: the RFI leaves this list and stays archived in the package sheet (Actions & notes). + RFI to add one. Sorted by number open.")}
             {fol&&th("notes","Notes",null,"Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one. Sorted by number.")}
           </tr>
           {model&&<tr className="ppt-scale">
