@@ -121,6 +121,13 @@ function ppActuals(td){
   }
   // Submittals OK = every MAR, MSS, WMS and ITP approved (WMS / ITP set to N/A count as done);
   // SD approved = every shop drawing approved. No document of the kind: reached with the contract.
+  // Steps set to N/A / Not needed in the sheet: not applicable, so never late. They do not
+  // count as reached for the milestones before them (ppPlan: na does not cascade).
+  function isNa(v){return v==="N/A"||v==="Not needed";}
+  var NA={date:"",done:true,na:true};
+  if(isNa(steps.pkg)){if(!a.start)a.start=NA;if(!a.issue)a.issue=NA;if(!a.bids)a.bids=NA;}
+  if(isNa(steps.acc)){if(!a.recommend)a.recommend=NA;if(!a.approved)a.approved=NA;}
+  if(isNa(steps.contract)&&!a.contract)a.contract=NA;
   var docs=tenderDocs(td);
   function reached(list){
     if(!list.length)return a.contract?{date:"",done:true}:null;
@@ -165,6 +172,7 @@ function ppPlan(td,now){
   for(var j=PP_MS_ORDER.length-1;j>=0;j--){
     var m=PP_MS_ORDER[j];
     if(m==="sdok"){done[m]=later||!!act[m];continue;}
+    if(act[m]&&act[m].na){done[m]=true;continue;}
     if(act[m]||act.sdok&&PP_MS_ORDER.indexOf(m)<PP_MS_ORDER.indexOf("submittals"))later=true;
     done[m]=later;
   }
@@ -207,9 +215,6 @@ function ppDaysText(n){if(n===null||n===undefined)return"";if(n<0)return (-n)+" 
 // and the deadline said as the action ("Approve by 7 Dec 26", not a bare "by 07/12/26").
 var PP_MON3=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function ppDay(d){if(!isValidDate(d))return "";var p=String(d).split("-");return (+p[2])+" "+PP_MON3[(+p[1])-1]+" "+p[0].slice(2);}
-var PP_MS_VERB={start:"Start by",issue:"Issue by",bids:"Bids in by",recommend:"Recommend by",approved:"Approve by",contract:"Sign by",
-  submittals:"Approve by",sdok:"Approve by",ready:"Ready by",delivered:"Deliver by",need:"Start by"};
-function ppDue(m,d){return (PP_MS_VERB[m]||"Due")+" "+ppDay(d);}
 // Done: on time, or how many days after the deadline.
 function ppDoneVs(ad,lat){
   if(!ad||!lat)return "";
@@ -234,7 +239,6 @@ function ppClientDue(docs,now){
     return {late:false,txt:"Client answer due "+ppDay(first)+" · "+(n>0?n+" d left":"today"),tip:"Client answer expected by "+fmtDate(first)};}
   return null;
 }
-function ppLateTxt(lat,now){var n=Math.round((parseISODate(now)-parseISODate(lat))/86400000);return n>0?n+" d late":"";}
 
 // One milestone cell: the latest date, or ✓ and the real date once reached.
 function PpMsCell({p,m}){
@@ -777,43 +781,44 @@ function ppColLabel(c){
   return PP_MS_LABEL[c];
 }
 function ppColTip(c){
-  if(c.indexOf("sub_")===0)return ppColLabel(c)+" documents of the package (Submissions). Top line: where they are (approved, at the client, to resubmit, not submitted yet). Bottom line: deadline to get them approved, worked back from the need on site (milestone "+(c==="sub_sd"?"SD approved":"Submittals OK")+") — sorted by that deadline";
-  return "Top line: what really happened. Bottom line: deadline to reach "+PP_MS_LABEL[c]+", worked back from the need on site (once reached: on time or how late) — sorted by that deadline";
+  if(c.indexOf("sub_")===0)return ppColLabel(c)+" documents of the package (Submissions). Top: what is to be done and by when — to submit / to resubmit by the submission deadline (approval deadline minus the client answer time), to be approved by the approval deadline, worked back from the need on site (milestone "+(c==="sub_sd"?"SD approved":"Submittals OK")+"). Bottom: where the documents really are — sorted by the approval deadline";
+  return "Top: what is to be done and by when (deadline to reach "+PP_MS_LABEL[c]+", worked back from the need on site; once reached: ✓ and the date). Bottom: the real status (on time or how late once reached) — sorted by that deadline";
 }
 function ppColCell(td,p,c,now){return c.indexOf("sub_")===0?ppSubCell(td,p,c.slice(4),now):ppMsCell(td,p,c,now);}
-// One submittal kind (sd / mar / mss / wms / itp) of a package, as a milestone cell.
+// One submittal kind (sd / mar / mss / wms / itp) of a package, as a milestone cell:
+// on top what is to be done (to submit / to resubmit by the submission deadline, to be
+// approved by the approval deadline), below where the documents really are.
 function ppSubCell(td,p,k,now){
   now=now||today();
   var ms=k==="sd"?"sdok":"submittals",lab=ppColLabel("sub_"+k),lat=p.latest[ms]||"";
   if((k==="wms"||k==="itp")&&((td.steps||{})[k]||"")==="N/A")
-    return {kind:"done",l1:"N/A",l2:"",tip:lab+" not applicable"};
+    return {kind:"na",act:"N/A",due:"",real:"",tip:lab+" not applicable"};
   var docs=[];
   try{docs=tenderDocs(td).filter(function(d){return d.kind===k;});}catch(e){}
-  if(!docs.length)return {kind:"none",l1:"",l2:"",tip:"No "+lab+" on this package"};
-  var ok=0,cl=0,ret=0,last="",sums=docs.map(function(d){return docSummary(d,now);});
+  if(!docs.length)return {kind:"none",act:"",due:"",real:"",tip:"No "+lab+" on this package"};
+  var ok=0,cl=0,ret=0,nn=0,last="",sums=docs.map(function(d){return docSummary(d,now);});
   sums.forEach(function(s){
     if(s.state==="approved"){ok++;var a=s.stats&&s.stats.approvedOn;if(isValidDate(a)&&a>last)last=a;}
-    else if(s.state==="pending")cl++;else if(s.state==="returned")ret++;
+    else if(s.state==="pending")cl++;else if(s.state==="returned")ret++;else nn++;
   });
   var n=docs.length;
-  var tip=lab+": "+docs.map(function(d,i){return (n>1?docShortName(d)+" — ":"")+sums[i].text;}).join("\n")+(lat?"\n"+(ms==="sdok"?"SD approved":"Submittals OK")+" latest date "+fmtDate(lat):"");
-  if(ok===n){
-    var over=last&&lat&&last>lat?Math.round((parseISODate(last)-parseISODate(lat))/86400000):0;
-    return {kind:over?"doneLate":"done",l1:"✓ Approved"+(last?" "+ppDay(last):""),
-      l2:[n>1?"all "+n+" docs":"",ppDoneVs(last,lat)].filter(Boolean).join(" · "),tip:tip};
-  }
-  var l1;
-  if(n===1){var s0=sums[0];l1=s0.state==="pending"?"At client"+(s0.rev?" (rev "+s0.rev+")":""):s0.state==="returned"?"Returned · to resubmit":"Not submitted yet";}
-  else l1=ok+"/"+n+" approved"+(cl?" · "+cl+" at client":"")+(ret?" · "+ret+" to resubmit":"");
+  var tip=lab+": "+docs.map(function(d,i){return (n>1?docShortName(d)+" — ":"")+sums[i].text;}).join("\n");
+  if(ok===n)return ppDoneCell("✓ Approved"+(last?" "+ppDay(last):""),last,lat,n>1?"all "+n+" docs":"",
+    tip+(lat?"\nApproval deadline "+fmtDate(lat):""));
+  var act,due,subBy=ppSubmitBy(k,lat);
+  if(nn){act="To submit"+(n>1?" ("+nn+")":"");due=subBy;}
+  else if(ret){act="To resubmit"+(n>1?" ("+ret+")":"");due=subBy;}
+  else{act="To be approved"+(n>1?" ("+cl+")":"");due=lat;}
+  var real;
+  if(n===1){
+    var s0=sums[0],c0=docs[0].cycles[docs[0].cycles.length-1]||{};
+    real=s0.state==="pending"?"At client"+(s0.rev?" · rev "+s0.rev:"")+" · "+_ppSince(c0.submitted,now)+" d":
+      s0.state==="returned"?"Returned "+(c0.code||"")+" · "+_ppSince(c0.returned,now)+" d":"Not submitted yet";
+  }else real=[ok+"/"+n+" approved",cl?cl+" at client":"",ret?ret+" returned":"",nn?nn+" not submitted":""].filter(Boolean).join(" · ");
   var cli=ppClientDue(docs,now);
   if(cli)tip+="\n"+cli.tip;
-  if(!lat)return {kind:"none",l1:l1,cli:cli,l2:"",tip:tip};
-  if(ppShownNext(p)===ms){
-    var st=PP_STATUS[p.status]||PP_STATUS.none;
-    return {kind:"next",fg:st.fg,bg:st.bg,l1:l1,cli:cli,l2:ppDue(ms,lat)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),tip:tip};
-  }
-  var overdue=p.status!=="past"&&lat<now;
-  return {kind:overdue?"overdue":"todo",l1:l1,cli:cli,l2:ppDue(ms,lat)+(overdue?" · "+ppLateTxt(lat,now):""),tip:tip};
+  if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+(due!==lat?" so that it is approved by "+fmtDate(lat)+" (client answer time)":"");
+  return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip},now);
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
@@ -861,8 +866,8 @@ function ppMsInfo(td,m,p,now){
       var acc=tenderDocs(td).find(function(d){return d.id==="acc";});
       if(acc&&acc.cycles&&acc.cycles.length){
         var s=docSummary(acc,now),last=acc.cycles[acc.cycles.length-1];
-        if(s.state==="pending")return rl+" · client "+_ppSince(last.submitted,now)+" d";
-        if(s.state==="returned")return rl+" · "+last.code+", to resubmit";
+        if(s.state==="pending")return rl+" at client"+(last.rev?" · rev "+last.rev:"")+" · "+_ppSince(last.submitted,now)+" d";
+        if(s.state==="returned")return rl+" returned "+last.code+" · "+_ppSince(last.returned,now)+" d";
       }
       return rl;
     }
@@ -883,40 +888,96 @@ function ppMsInfo(td,m,p,now){
   }catch(e){}
   return "";
 }
-// One milestone cell, as data (drawn by the screen and by the print from the same object).
-//   kind: done | doneLate | next | overdue | todo | none
+// A milestone / document cell, as data (drawn by the screen and by the print from the same
+// object), in two parts: on top what is to be done — the action and its deadline (only the
+// next milestone of the row is coloured) — and below, the real status today.
+//   kind: done | doneLate | next | todo | none | na
+//   act: "To be approved" / "✓ Approved 30 Jul 26"; due: "by 7 Dec 26 · 25 d left"
+//   real: the status today; realFg: its colour (forecast delivery); cli: client answer pill
+function _ppDaysTo(due,now){return Math.round((parseISODate(due)-parseISODate(now))/86400000);}
+function _ppMinusWd(d,n){
+  if(!isValidDate(d))return "";
+  var x=parseISODate(d),k=0,g=0;
+  while(k<n&&g<4000){x.setDate(x.getDate()-1);g++;if(isWorkingDay(x))k++;}
+  return toISO(x);
+}
+// Latest date to (re)submit a document so that the client's answer lands by the approval
+// deadline: ACC clock in working days for ACC / Aconex, calendar days for the others.
+function ppSubmitBy(kind,lat){
+  if(!isValidDate(lat))return "";
+  return docAccClock(kind)?_ppMinusWd(lat,Number(getDur("accApproval"))||0):addCalDays(lat,-(Number(getDur("clientResponse"))||0));
+}
+function ppTodoCell(p,ms,act,due,real,o,now){
+  o=o||{};
+  var c={act:act,real:real||"",realFg:o.realFg||"",cli:o.cli||null,tip:o.tip||""};
+  if(!isValidDate(due)){c.kind="none";c.due="";return c;}
+  var n=_ppDaysTo(due,now);
+  c.due="by "+ppDay(due)+(p.status==="past"?"":" · "+ppDaysText(n));
+  if(ppShownNext(p)===ms){
+    var st=PP_STATUS[n<0?"late":n<=14?"soon":"ok"];
+    c.kind="next";c.fg=st.fg;c.bg=st.bg;
+  }else c.kind="todo";
+  return c;
+}
+function ppDoneCell(act,ad,lat,extra,tip){
+  var over=!!(ad&&lat&&ad>lat);
+  return {kind:over?"doneLate":"done",act:act,due:"",real:[extra,ppDoneVs(ad,lat)].filter(Boolean).join(" · "),tip:tip||""};
+}
+var PP_MS_DONE={start:"Started",issue:"Issued",approved:"Approved",contract:"Signed",delivered:"Delivered"};
 function ppMsCell(td,p,m,now){
   now=now||today();
   var lat=p.latest[m]||"",a=p.actual[m];
+  if(a&&a.na)return {kind:"na",act:"N/A",due:"",real:"",tip:PP_MS_LABEL[m]+": not applicable (set to N/A in the package sheet)"};
   if(p.done[m]){
     var ad=a&&isValidDate(a.date)?a.date:"";
-    var over=ad&&lat&&ad>lat?Math.round((parseISODate(ad)-parseISODate(lat))/86400000):0;
-    var extra=m==="approved"?(function(){try{return tenderRouteLabel(td);}catch(e){return "";}})():m==="contract"&&a&&a.po?"PO":"";
-    return {kind:over?"doneLate":"done",l1:"✓ "+(ad?ppDay(ad):"done"),
-      l2:[extra,ppDoneVs(ad,lat)].filter(Boolean).join(" · "),
-      tip:PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · latest date "+fmtDate(lat):"")+(over?" — "+over+" d later":"")};
+    var extra=m==="approved"?(function(){try{return tenderRouteLabel(td);}catch(e){return "";}})():"";
+    var lbl=m==="contract"&&a&&a.po?"PO placed":PP_MS_DONE[m]||"Done";
+    return ppDoneCell("✓ "+lbl+(ad?" "+ppDay(ad):""),ad,lat,extra,
+      PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · deadline "+fmtDate(lat):""));
   }
-  var info=ppMsInfo(td,m,p,now);
-  var cli=null;
-  if(m==="approved"){try{cli=ppClientDue(tenderDocs(td).filter(function(d){return d.id==="acc";}),now);}catch(e){}}
-  if(!lat)return {kind:"none",l1:info,cli:cli,l2:"",tip:"No need on site: nothing can be worked back"};
-  if(ppShownNext(p)===m){
-    var st=PP_STATUS[p.status]||PP_STATUS.none,hid=p.next!==m,dl=p.latest[p.next]||lat;
-    return {kind:"next",fg:st.fg,bg:st.bg,l1:info||PP_MS_LABEL[p.next],cli:cli,
-      l2:ppDue(p.next,dl)+(p.daysLeft!==null?" · "+ppDaysText(p.daysLeft):""),
-      tip:"Next milestone: "+PP_MS_LABEL[p.next]+" — latest date "+fmtDate(dl)};
-  }
-  var overdue=p.status!=="past"&&lat<now;
-  var fcCol=m==="delivered"&&p.fcDelivery?(p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":"#1e6b3a"):"";
-  return {kind:overdue?"overdue":"todo",l1:m==="start"||m==="issue"?"":info,l1fg:fcCol,cli:cli,l2:ppDue(m,lat)+(overdue?" · "+ppLateTxt(lat,now):""),
-    tip:"Latest date to reach "+PP_MS_LABEL[m]+": "+fmtDate(lat)+(overdue?" — passed, not reached":"")+
-      (fcCol?"\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":""):"")};
+  var real=ppMsInfo(td,m,p,now),act="",due=lat,o={};
+  try{
+    if(m==="start")act="To start";
+    else if(m==="issue")act="To issue";
+    else if(m==="approved"){
+      var route=tenderApprovalRoute(td).route,rl=tenderRouteLabel(td);
+      var acc=tenderDocs(td).find(function(d){return d.id==="acc";}),s=acc?docSummary(acc,now):{state:"none"};
+      if(p.next==="bids"){act="Bids to receive";due=p.latest.bids||lat;}
+      else if(p.next==="recommend"){act=route==="none"?"To award":"To submit ("+rl+")";due=p.latest.recommend||lat;}
+      else if(s.state==="pending")act="To be approved ("+rl+")";
+      else if(s.state==="returned"){act="To resubmit ("+rl+")";due=ppSubmitBy("acc",lat);}
+      else act=route==="none"?"To approve (internal)":"To be approved ("+rl+")";
+      if(acc)o.cli=ppClientDue([acc],now);
+    }
+    else if(m==="contract"){
+      var pur=(td.purchases||[]).filter(Boolean),ty=ppType(td);
+      act=pur.length&&(ty==="material"||ty==="equipment")?"PO to place":"To sign";
+      if(!real)real="Not started";
+    }
+    else if(m==="delivered"){
+      if(p.next==="ready"){act="To ship";due=p.latest.ready||lat;}else act="To deliver";
+      real="";
+      if(p.fcDelivery){
+        var dd=isValidDate(lat)?_ppDaysTo(p.fcDelivery,lat):0;
+        real="Forecast "+ppDay(p.fcDelivery)+(dd>0?" · "+dd+" d after deadline":"");
+        o.realFg=p.deliveryLate?"#b3302a":p.deliveryTight?"#b35c00":"#1e6b3a";
+      }
+    }
+  }catch(e){}
+  if(!act)act="To do";
+  o.tip=isValidDate(due)?"To do: "+act.toLowerCase()+" by "+fmtDate(due)+(due!==lat&&lat?" ("+PP_MS_LABEL[m]+" deadline "+fmtDate(lat)+")":""):
+    "No need on site: nothing can be worked back";
+  if(p.fcDelivery&&m==="delivered")o.tip+="\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":"");
+  if(o.cli)o.tip+="\n"+o.cli.tip;
+  return ppTodoCell(p,m,act,due,real,o,now);
 }
 function ppMsCellHtml(c){
-  return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'"'+(c.kind==="next"?' style="background:'+c.bg+';border-color:'+c.fg+';color:'+c.fg+'"':'')+'>'+
-    '<div class="l1"'+(c.l1fg?' style="color:'+c.l1fg+';font-weight:700"':'')+'>'+(c.l1?esc(c.l1):'&nbsp;')+'</div>'+
-    (c.cli?'<div class="l3 '+(c.cli.late?'late':'ok')+'" title="'+esc(c.cli.tip||"")+'">'+esc(c.cli.txt)+'</div>':'')+
-    (c.l2?'<div class="l2">'+esc(c.l2)+'</div>':'')+'</div>';
+  var top=c.act||c.due?'<div class="ppc-top"'+(c.kind==="next"?' style="background:'+c.bg+';border-color:'+c.fg+';color:'+c.fg+'"':'')+'>'+
+    (c.act?'<div class="act">'+esc(c.act)+'</div>':'')+(c.due?'<div class="due">'+esc(c.due)+'</div>':'')+'</div>':'';
+  var bot=c.real||c.cli?'<div class="ppc-real">'+
+    (c.real?'<div'+(c.realFg?' style="color:'+c.realFg+';font-weight:700"':'')+'>'+esc(c.real)+'</div>':'')+
+    (c.cli?'<div class="l3 '+(c.cli.late?'late':'ok')+'" title="'+esc(c.cli.tip||"")+'">'+esc(c.cli.txt)+'</div>':'')+'</div>':'';
+  return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'">'+(top||bot?top+bot:'&nbsp;')+'</div>';
 }
 // Where the package is now (who holds it, since when) and the step after it — tenderStage.
 function ppStageOf(td,now){try{return tenderStage(td,now);}catch(e){return {text:"",who:"us",days:null,next:""};}}
@@ -1102,18 +1163,21 @@ var PP_TABLE_CSS=
   '.ppt tr.ppt-strip td{border-right:none;border-left:none;padding-top:0;padding-bottom:7px}'+
   '.ppt tr.ppt-strip td.nx{font-size:11px;color:#6f6b62;line-height:1.35}'+
   '.ppt tr.ppt-scale td{background:#fafaf8;border-right:none;border-left:none;padding-top:4px;padding-bottom:4px}'+
-  '.ppc{padding:3px 6px;border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;border:1.5px solid transparent}'+
-  '.ppc .l1{font-size:11.5px;font-weight:600;color:#6f6b62}'+
-  '.ppc .l1{overflow-wrap:anywhere}'+
-  '.ppc .l2{font-size:10.5px;color:#6f6b62}'+
-  '.ppc .l3{font-size:10.5px;font-weight:700;margin:1px 0;padding:0 4px;border-radius:4px;background:#fff;display:inline-block}'+
+  '.ppc{border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;overflow-wrap:anywhere}'+
+  '.ppc-top{padding:2px 6px;border-radius:6px;border:1.5px solid transparent}'+
+  '.ppc-top .act{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#4a4740}'+
+  '.ppc-top .due{font-size:10.5px;color:#6f6b62}'+
+  '.ppc-next .ppc-top .act,.ppc-next .ppc-top .due{color:inherit;font-weight:700}'+
+  '.ppc-todo .ppc-top .act{color:#6f6b62}'+
+  '.ppc-done .ppc-top .act,.ppc-doneLate .ppc-top .act,.ppc-na .ppc-top .act{text-transform:none;letter-spacing:0;font-size:11.5px}'+
+  '.ppc-done .ppc-top .act{color:#1e6b3a}'+
+  '.ppc-doneLate .ppc-top .act{color:#b35c00}'+
+  '.ppc-none .ppc-top .act{color:#b9b4a8}'+
+  '.ppc-na .ppc-top .act{color:#9b968b}'+
+  '.ppc-real{margin:2px 6px 0;padding:2px 0 1px;border-top:1px dashed #d9d5ca;font-size:10.5px;color:#8a857a}'+
+  '.ppc .l3{font-size:10.5px;font-weight:700;margin:2px 0 0;padding:0 4px;border-radius:4px;background:#fff;display:inline-block}'+
   '.ppc .l3.ok{color:#1e6b3a;box-shadow:inset 0 0 0 1px #9cc9a8}'+
   '.ppc .l3.late{color:#fff;background:#b3302a}'+
-  '.ppc-done .l1{color:#1e6b3a}'+
-  '.ppc-doneLate .l1{color:#b35c00}'+
-  '.ppc-next .l1,.ppc-next .l2{color:inherit;font-weight:700}'+
-  '.ppc-overdue .l2{color:#b3302a;font-weight:700}'+
-  '.ppc-none .l1{color:#b9b4a8}'+
   '.pp-who{font-size:10.5px;margin-top:3px;display:flex;gap:5px;align-items:baseline;line-height:1.3}'+
   '.pp-who i{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block}'+
   '.pps{position:relative;height:16px;min-width:200px}'+
