@@ -73,6 +73,8 @@ function ppTemplate(type){
 function _ppNum(v){if(v===undefined||v===null||v==="")return null;var n=Number(v);return isFinite(n)&&n>=0?n:null;}
 // Lead time of each step for this package, and where it comes from.
 //   pkg       typed on the package (td.planLeads)
+//   manual    fabrication = lead time typed in the sheet (td.leadTimeDays, fabrication +
+//             transport, as the delivery forecast reads it) minus the transport
 //   materials fabrication = longest lead time of the package's materials
 //   route     approval = 7 days when the amount needs no client approval (internal only)
 //   template  the type's template
@@ -80,11 +82,14 @@ function ppLeads(td){
   var tpl=ppTemplate(ppType(td)),own=(td&&td.planLeads)||{},out={};
   var route=(function(){try{return tenderApprovalRoute(td).route;}catch(e){return"";}})();
   var matLead=((td&&td.materials)||[]).reduce(function(m,x){var d=parseLeadDays(x.leadTime||"");return d>m?d:m;},0);
+  var manLead=Number(td&&td.leadTimeDays)||0;
+  var trOwn=_ppNum(own.transport),trDays=trOwn!==null?trOwn:tpl.transport;
   PP_STEPS.forEach(function(s){
     var v=_ppNum(own[s.k]);
     if(v!==null){out[s.k]={days:v,src:"pkg"};return;}
     // SD typed together with the submittals before the split: covered by that lead time
     if(s.k==="sd"&&_ppNum(own.submittals)!==null){out[s.k]={days:0,src:"pkg"};return;}
+    if(s.k==="fab"&&manLead>0){out[s.k]={days:Math.max(0,manLead-trDays),src:"manual"};return;}
     if(s.k==="fab"&&matLead>0){out[s.k]={days:matLead,src:"materials"};return;}
     if(s.k==="approval"&&route==="none"){out[s.k]={days:Math.min(7,tpl.approval),src:"route"};return;}
     out[s.k]={days:tpl[s.k],src:"template"};
@@ -196,7 +201,7 @@ function ppPlan(td,now){
   // end of the need week. Landing after the latest delivery date but before that only eats
   // the float (deliveryTight).
   var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
-  return {need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  return {type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
     deliveryLate:!!(dst&&dst.late),
     deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
@@ -270,7 +275,7 @@ function ProcPlanCard({td,updTd}){
     if(v==="")delete n[k];else n[k]=Number(v);
     updTd("planLeads",n);
   }
-  var SRC={pkg:"this package",materials:"longest material lead time",route:"internal approval (below ACC threshold)",template:"template"};
+  var SRC={pkg:"this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval (below ACC threshold)",template:"template"};
   return <div className="card" style={{marginBottom:10}}>
     <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
       <span style={{fontSize:10,color:"#9b968b",width:10}}>{open?"▾":"▸"}</span>
@@ -422,17 +427,41 @@ function ppStartsSoon(p,now){
 }
 // Open actions of every package, read once per render: Blocking points (tag "Blocking Point")
 // and the other open actions = next steps, soonest due first.
+// RFI / FCR (actions tagged RFI or FCR) have their own column: open ones in rfi (answer due
+// soonest first), answered ones (action done) in rfiDone — kept in the package sheet only.
+function ppIsRfi(t){var g=(t&&t.tags)||[];return g.indexOf("RFI")>=0||g.indexOf("FCR")>=0;}
 function ppActionsIndex(tasks){
   var m={};
   (tasks||[]).forEach(function(t){
-    if(!t||!t.tenderRef||t.status==="done")return;
-    var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[]});
-    ((t.tags||[]).indexOf("Blocking Point")>=0?e.block:e.next).push(t);
+    if(!t||!t.tenderRef)return;
+    var rfi=ppIsRfi(t);
+    if(t.status==="done"&&!rfi)return;
+    var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[],rfi:[],rfiDone:[]});
+    if(rfi)(t.status==="done"?e.rfiDone:e.rfi).push(t);
+    else ((t.tags||[]).indexOf("Blocking Point")>=0?e.block:e.next).push(t);
   });
   function byDue(a,b){var x=a.due||"9999",y=b.due||"9999";return x<y?-1:x>y?1:0;}
-  Object.keys(m).forEach(function(k){m[k].next.sort(byDue);m[k].block.sort(byDue);});
+  function byAns(a,b){var x=ppRfiInfo(a).due||"9999",y=ppRfiInfo(b).due||"9999";return x<y?-1:x>y?1:0;}
+  function byDone(a,b){var x=a.completedAt||"",y=b.completedAt||"";return x<y?1:x>y?-1:0;}
+  Object.keys(m).forEach(function(k){m[k].next.sort(byDue);m[k].block.sort(byDue);m[k].rfi.sort(byAns);m[k].rfiDone.sort(byDone);});
   return m;
 }
+// One RFI / FCR: sent on (rfiSubmission), client answer due (rfiDue, else sent + Settings ›
+// Durations clientResponse), answered (action done, on completedAt).
+function ppRfiInfo(t,now){
+  now=now||today();
+  var kind=((t.tags||[]).indexOf("FCR")>=0)?"FCR":"RFI";
+  var sent=isValidDate(t.rfiSubmission)?t.rfiSubmission:"";
+  var due=isValidDate(t.rfiDue)?t.rfiDue:sent?addCalDays(sent,getDur("clientResponse")):"";
+  var done=t.status==="done",ans=done&&isValidDate(t.completedAt)?t.completedAt:"";
+  var n=due?Math.round((parseISODate(due)-parseISODate(done&&ans?ans:now))/86400000):null;
+  var txt;
+  if(done)txt="Answered"+(ans?" "+ppDay(ans):"")+(n!==null&&n<0?" · "+(-n)+" d late":"");
+  else if(!sent)txt="Not sent yet";
+  else txt="Sent "+ppDay(sent)+" · answer due "+ppDay(due)+" · "+(n<0?(-n)+" d overdue":n===0?"today":n+" d left");
+  return {kind:kind,sent:sent,due:due,done:done,answered:ans,days:n,late:!done&&!!sent&&n!==null&&n<0,txt:txt};
+}
+function ppRfiText(t,now){return ppRfiInfo(t,now).kind+" "+(t.text||"")+" — "+ppRfiInfo(t,now).txt;}
 function ppActText(t){
   var o=String(t.owner||"").split(",")[0].trim();
   return (t.text||"")+(o?" — "+o:"")+(t.due?" ("+fmtDate(t.due)+")":"");
@@ -482,7 +511,8 @@ var PP_SORTS={
   owner:function(r){return String(r.td.ownerTender||"").trim().toLowerCase()||null;},
   next:function(r,acts){var a=(acts||{})[r.td.id];var n=(a?a.next.length:0)+(r.td.nextStep?1:0);return n||null;},
   block:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.block.length)||null;},
-  notes:function(r){return tenderNotesOf(r.td).length||null;}
+  notes:function(r){return tenderNotesOf(r.td).length||null;},
+  rfi:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.rfi.length)||null;}
 };
 // One sort per milestone column: by its LATEST date (bottom line of the cell).
 ["start","issue","bids","recommend","approved","contract","submittals","sdok","ready","delivered"].forEach(function(m){
@@ -727,7 +757,7 @@ function ppExportXlsx(vis,acts){
   function d(v){return isValidDate(v)?{xlDate:_ppDay(v)-EPOCH}:"";}
   var head=["Package","Department","Type","Budget","Need on site","Need from","Status","Next milestone","Days left","Total lead (d)"];
   PP_MS_ORDER.forEach(function(m){if(m==="need")return;head.push(PP_MS_LABEL[m]+" — latest");head.push(PP_MS_LABEL[m]+" — actual");});
-  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Var. budget − instructed","Approval route","Owner","Next steps","Blocking points","Notes");
+  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Var. budget − instructed","Approval route","Owner","Next steps","Blocking points","RFI open","Notes");
   var aoa=[head];
   vis.forEach(function(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status];
@@ -740,13 +770,13 @@ function ppExportXlsx(vis,acts){
       line.push(d(p.latest[m]));
       line.push(a?(a.date?d(a.date):"done"):"");
     });
-    var a=acts[td.id]||{next:[],block:[]};
+    var a=acts[td.id]||{next:[],block:[],rfi:[]};
     var prop=ppProposed(td),bud=ppBudget(td);
     line.push(d(p.fcDelivery),d(p.deliveredOn),p.deliveryLate?"yes":"",ppStartsSoon(p)?"yes":"",
       (td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return x.subcontractor;}).join(", ")||td.contractor||"",
       prop||"",ppInstructed(td)||"",String(td.instructionNumber||"").trim(),ppVariance(td)===null?"":ppVariance(td),
       (function(){try{return tenderRouteLabel(td);}catch(e){return "";}})(),td.ownerTender||"",
-      [td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean).join("\n"),a.block.map(ppActText).join("\n"),ppNotesText(td).join("\n"));
+      [td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean).join("\n"),a.block.map(ppActText).join("\n"),a.rfi.map(function(t){return ppRfiText(t);}).join("\n"),ppNotesText(td).join("\n"));
     aoa.push(line);
   });
   aoa=aoa.map(function(line,ri){return line.map(function(v,ci){if(v&&typeof v==="object"&&"xlDate" in v){dateCells.push([ri,ci]);return v.xlDate;}return v;});});
@@ -769,7 +799,7 @@ function ppExportXlsx(vis,acts){
 var PP_COLSETS=[
   {k:"plan",label:"Plan",tip:"Milestones of the procurement chain and the need on site"},
   {k:"finance",label:"Finance",tip:"Budget, proposed, instructed, variance budget − instructed"},
-  {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points and notes"},
+  {k:"follow",label:"Follow-up",tip:"Owner, next steps, blocking points, open RFI and notes"},
   {k:"all",label:"All in one",tip:"The three sets on one line: plan, finance and follow-up (scrolls sideways; print it on A3). Click Plan, Finance or Follow-up to show or hide one set: any one, two or three."}
 ];
 // Columns of the table: the Submittals milestone is split by document kind (SD / MAR / MSS / WMS / ITP),
@@ -803,8 +833,9 @@ function ppSubCell(td,p,k,now){
   });
   var n=docs.length;
   var tip=lab+": "+docs.map(function(d,i){return (n>1?docShortName(d)+" — ":"")+sums[i].text;}).join("\n");
-  if(ok===n)return ppDoneCell("✓ Approved"+(last?" "+ppDay(last):""),last,lat,n>1?"all "+n+" docs":"",
-    tip+(lat?"\nApproval deadline "+fmtDate(lat):""));
+  var refs=ppDocRefs(td,docs);
+  if(ok===n){var dc=ppDoneCell("✓ Approved"+(last?" "+ppDay(last):""),last,lat,n>1?"all "+n+" docs":"",
+    tip+(lat?"\nApproval deadline "+fmtDate(lat):""));dc.refs=refs;return dc;}
   var act,due,subBy=ppSubmitBy(k,lat);
   if(nn){act="To submit"+(n>1?" ("+nn+")":"");due=subBy;}
   else if(ret){act="To resubmit"+(n>1?" ("+ret+")":"");due=subBy;}
@@ -817,8 +848,8 @@ function ppSubCell(td,p,k,now){
   }else real=[ok+"/"+n+" approved",cl?cl+" at client":"",ret?ret+" returned":"",nn?nn+" not submitted":""].filter(Boolean).join(" · ");
   var cli=ppClientDue(docs,now);
   if(cli)tip+="\n"+cli.tip;
-  if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+(due!==lat?" so that it is approved by "+fmtDate(lat)+" (client answer time)":"");
-  return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip},now);
+  if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+"\n\n"+ppChainTip(p,ms,(nn||ret)?k:"",due);
+  return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip,refs:refs},now);
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
@@ -902,14 +933,49 @@ function _ppMinusWd(d,n){
   return toISO(x);
 }
 // Latest date to (re)submit a document so that the client's answer lands by the approval
-// deadline: ACC clock in working days for ACC / Aconex, calendar days for the others.
+// deadline: SD approval time (working days) for shop drawings, ACC clock (working days) for
+// ACC / Aconex, client answer time (calendar days) for the others.
 function ppSubmitBy(kind,lat){
   if(!isValidDate(lat))return "";
+  if(kind==="sd")return _ppMinusWd(lat,Number(getDur("sdApproval"))||0);
   return docAccClock(kind)?_ppMinusWd(lat,Number(getDur("accApproval"))||0):addCalDays(lat,-(Number(getDur("clientResponse"))||0));
+}
+// How a deadline is worked back from the need on site, step by step, for the tooltips:
+// need − float − transport − fabrication … = the milestone; then, for a document still to be
+// (re)submitted, − the client's answer time = the submission deadline.
+var PP_LEAD_SRC={pkg:"typed on this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval",template:"template"};
+function ppChainTip(p,ms,subKind,submitBy){
+  if(!p||!p.need||!p.leads||ms==="need")return "";
+  var out=["How this deadline is worked out:","Need on site "+ppDay(p.need)];
+  for(var i=PP_STEPS.length-1;i>=0;i--){
+    var s=PP_STEPS[i],prev=i?PP_STEPS[i-1].ms:"start",L=p.leads[s.k]||{days:0};
+    out.push("− "+s.label+" "+L.days+" d ("+(PP_LEAD_SRC[L.src]||L.src)+(L.src==="template"?" "+ppTypeLabel(p.type||"")+"":"")+")");
+    if(prev===ms)break;
+  }
+  out.push("= "+(PP_MS_LABEL[ms]||ms)+" by "+ppDay(p.latest[ms]));
+  if(subKind&&submitBy&&submitBy!==p.latest[ms]){
+    var lbl=subKind==="sd"?"SD approval "+getDur("sdApproval")+" working days":docAccClock(subKind)?"client approval "+getDur("accApproval")+" working days":"client answer "+getDur("clientResponse")+" d";
+    out.push("− "+lbl+" (Settings › Durations)");
+    out.push("= to submit by "+ppDay(submitBy));
+  }
+  out.push("Lead times: Submissions › Procurement plan card of the package, or Settings › Durations › templates.");
+  return out.join("\n");
+}
+// Numbers of the documents (reference typed at submission, else the one of the latest
+// revision), one after the other, for the bottom of the cell.
+function ppDocRefs(td,docs){
+  var out=[];
+  (docs||[]).forEach(function(d){
+    var r="";
+    try{r=docCurRef(td,d);}catch(e){}
+    if(!r){var cs=d.cycles||[];for(var i=cs.length-1;i>=0&&!r;i--)r=String(cs[i].ref||"").trim();}
+    if(r&&out.indexOf(r)<0)out.push(r);
+  });
+  return out.join(", ");
 }
 function ppTodoCell(p,ms,act,due,real,o,now){
   o=o||{};
-  var c={act:act,real:real||"",realFg:o.realFg||"",cli:o.cli||null,tip:o.tip||""};
+  var c={act:act,real:real||"",realFg:o.realFg||"",cli:o.cli||null,tip:o.tip||"",refs:o.refs||""};
   if(!isValidDate(due)){c.kind="none";c.due="";return c;}
   var n=_ppDaysTo(due,now);
   c.due="by "+ppDay(due)+(p.status==="past"?"":" · "+ppDaysText(n));
@@ -932,6 +998,9 @@ function ppMsCell(td,p,m,now){
     var ad=a&&isValidDate(a.date)?a.date:"";
     var extra=m==="approved"?(function(){try{return tenderRouteLabel(td);}catch(e){return "";}})():"";
     var lbl=m==="contract"&&a&&a.po?"PO placed":PP_MS_DONE[m]||"Done";
+    if(m==="approved"){var dc=ppDoneCell("✓ "+lbl+(ad?" "+ppDay(ad):""),ad,lat,extra,PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · deadline "+fmtDate(lat):""));
+      try{dc.refs=ppDocRefs(td,tenderDocs(td).filter(function(d){return d.id==="acc";}));}catch(e){}
+      return dc;}
     return ppDoneCell("✓ "+lbl+(ad?" "+ppDay(ad):""),ad,lat,extra,
       PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · deadline "+fmtDate(lat):""));
   }
@@ -947,7 +1016,7 @@ function ppMsCell(td,p,m,now){
       else if(s.state==="pending")act="To be approved ("+rl+")";
       else if(s.state==="returned"){act="To resubmit ("+rl+")";due=ppSubmitBy("acc",lat);}
       else act=route==="none"?"To approve (internal)":"To be approved ("+rl+")";
-      if(acc)o.cli=ppClientDue([acc],now);
+      if(acc){o.cli=ppClientDue([acc],now);o.refs=ppDocRefs(td,[acc]);}
     }
     else if(m==="contract"){
       var pur=(td.purchases||[]).filter(Boolean),ty=ppType(td);
@@ -967,6 +1036,7 @@ function ppMsCell(td,p,m,now){
   if(!act)act="To do";
   o.tip=isValidDate(due)?"To do: "+act.toLowerCase()+" by "+fmtDate(due)+(due!==lat&&lat?" ("+PP_MS_LABEL[m]+" deadline "+fmtDate(lat)+")":""):
     "No need on site: nothing can be worked back";
+  if(isValidDate(due))o.tip+="\n\n"+ppChainTip(p,m===p.next||ppShownNext(p)!==m?m:p.next,"","");
   if(p.fcDelivery&&m==="delivered")o.tip+="\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":"");
   if(o.cli)o.tip+="\n"+o.cli.tip;
   return ppTodoCell(p,m,act,due,real,o,now);
@@ -977,7 +1047,8 @@ function ppMsCellHtml(c){
   var bot=c.real||c.cli?'<div class="ppc-real">'+
     (c.real?'<div'+(c.realFg?' style="color:'+c.realFg+';font-weight:700"':'')+'>'+esc(c.real)+'</div>':'')+
     (c.cli?'<div class="l3 '+(c.cli.late?'late':'ok')+'" title="'+esc(c.cli.tip||"")+'">'+esc(c.cli.txt)+'</div>':'')+'</div>':'';
-  return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'">'+(top||bot?top+bot:'&nbsp;')+'</div>';
+  var ref=c.refs?'<div class="ppc-ref" title="Document number(s)">'+esc(c.refs)+'</div>':'';
+  return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'">'+(top||bot?top+bot:'&nbsp;')+ref+'</div>';
 }
 // Where the package is now (who holds it, since when) and the step after it — tenderStage.
 function ppStageOf(td,now){try{return tenderStage(td,now);}catch(e){return {text:"",who:"us",days:null,next:""};}}
@@ -1163,6 +1234,7 @@ var PP_TABLE_CSS=
   '.ppt tr.ppt-strip td{border-right:none;border-left:none;padding-top:0;padding-bottom:7px}'+
   '.ppt tr.ppt-strip td.nx{font-size:11px;color:#6f6b62;line-height:1.35}'+
   '.ppt tr.ppt-scale td{background:#fafaf8;border-right:none;border-left:none;padding-top:4px;padding-bottom:4px}'+
+  '.pp-act .pp-act-x{visibility:hidden}.pp-act:hover .pp-act-x{visibility:visible}'+
   '.ppc{border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;overflow-wrap:anywhere}'+
   '.ppc-top{padding:2px 6px;border-radius:6px;border:1.5px solid transparent}'+
   '.ppc-top .act{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#4a4740}'+
@@ -1174,6 +1246,7 @@ var PP_TABLE_CSS=
   '.ppc-doneLate .ppc-top .act{color:#b35c00}'+
   '.ppc-none .ppc-top .act{color:#b9b4a8}'+
   '.ppc-na .ppc-top .act{color:#9b968b}'+
+  '.ppc-ref{margin:2px 6px 0;font-family:var(--font-mono,monospace);font-size:9.5px;color:#5f7ea6;overflow-wrap:anywhere}'+
   '.ppc-real{margin:2px 6px 0;padding:2px 0 1px;border-top:1px dashed #d9d5ca;font-size:10.5px;color:#8a857a}'+
   '.ppc .l3{font-size:10.5px;font-weight:700;margin:2px 0 0;padding:0 4px;border-radius:4px;background:#fff;display:inline-block}'+
   '.ppc .l3.ok{color:#1e6b3a;box-shadow:inset 0 0 0 1px #9cc9a8}'+
@@ -1245,26 +1318,26 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
   if(!dl)model=null;
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?1280:0)+(fin?330:0)+(fol?780:0);
+  var tableW=210+(fin?90:0)+(dl?170:0)+(plan?1280:0)+(fin?330:0)+(fol?970:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
     '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="'+PP_TABLE_COLS.length+'" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
-    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
+    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="5" class="sep">Follow-up</th>':'')+'</tr><tr>'+
     '<th>Package</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th>':'')+
     (plan?PP_TABLE_COLS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(ppColLabel(m))+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
-    (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
+    (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>RFI open</th><th>Notes</th>':'')+'</tr>'+
     (model?'<tr class="ppt-scale"><td colspan="'+nb+'" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
     '</thead><tbody>';
   function li(l,cls){return l.length?l.map(function(x){return '<div>'+esc(x)+'</div>';}).join(""):'<span style="color:#ccc">—</span>';}
   function line(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status],soon=ppStartsSoon(p,now),stg=ppStageOf(td,now);
-    var a=acts[td.id]||{next:[],block:[]};
+    var a=acts[td.id]||{next:[],block:[],rfi:[]};
     var h='<tr class="ppt-main'+(soon?' s21':'')+'"><td><b>'+esc(td.title||"(untitled)")+'</b><div class="sm">'+esc(td.package||"No department")+' · '+esc(ppTypeLabel(ppType(td)))+'</div>'+
       (soon?'<div class="sm" style="color:#b35c00;font-weight:700">starts on site ≤ 21 d</div>':'')+'</td>'+
       (fin?'<td class="r mono">'+(ppBudget(td)?ppBudget(td).toLocaleString():"—")+'</td>':'')+
@@ -1283,6 +1356,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
       h+='<td class="sep">'+esc(String(td.ownerTender||"—"))+'</td>'+
         '<td class="a">'+li([td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean))+'</td>'+
         '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
+        '<td class="a">'+(a.rfi.length?a.rfi.map(function(t){var r=ppRfiInfo(t,now);return '<div>'+esc(r.kind+" "+(t.text||""))+'<div class="sm" style="color:'+(r.late?'#b3302a;font-weight:700':r.sent?'#1e6b3a':'#9b968b')+'">'+esc(r.txt)+'</div></div>';}).join(""):'<span style="color:#ccc">—</span>')+'</td>'+
         '<td class="a">'+li(ppNotesText(td))+'</td>';
     }
     h+='</tr>';
@@ -1300,44 +1374,86 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   openReport("Packages "+now,html);
 }
 // One cell of the Next steps / Blocking points columns: the open actions of the package
-// (the same actions as everywhere else — Actions, the package sheet, the zone), ticked off
-// here, and a box to add one. Next steps also shows the package's own "Next Step" text.
-function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide}){
+// (the same actions as everywhere else — Actions, the package sheet, the zone) and, in Next
+// steps, each line of the package's own "Next Step" text (td.nextStep). Every item can be
+// ticked done, edited (click) or deleted (✕): a ticked Next Step line becomes a done action
+// linked to the package (kept in its history) and leaves the text. + add creates an action.
+function ppNextStepLines(td){return String((td&&td.nextStep)||"").split(/\n/).map(function(x){return x.trim();}).filter(Boolean);}
+function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
   const [open,setOpen]=useState(false);
   const [txt,setTxt]=useState("");
   const [all,setAll]=useState(false);
+  const [edit,setEdit]=useState(null);       // {key:"ns:<i>"|<task id>, text}
   var ro=isReadOnly()||!saveTasks;
   var now=today();
   var block=kind==="block";
-  var shown=all||wide?list:list.slice(0,3);
+  var nsLines=!block&&!noNextStep?ppNextStepLines(td):[];
+  var nsEditable=!ro&&!!updTd;
+  var items=nsLines.map(function(l,i){return {key:"ns:"+i,ns:true,i:i,text:l};})
+    .concat(list.map(function(t){return {key:t.id,t:t,text:t.text||""};}));
+  var shown=all||wide?items:items.slice(0,3);
+  function newAct(o){
+    return newTask(Object.assign({tenderRef:td.id,package:td.package||"",tags:block?["Blocking Point"]:[],
+      importance:block?3:2,urgence:block?3:2,owner:td.ownerTender||"",note:"From the Package list"},o));
+  }
   function add(){
     var v=txt.trim();if(!v||blockIfReadOnly())return;
-    saveTasks([newTask({text:v,tenderRef:td.id,package:td.package||"",tags:block?["Blocking Point"]:[],
-      importance:block?3:2,urgence:block?3:2,owner:td.ownerTender||"",note:"From the Procurement plan"})].concat(tasks||[]));
+    saveTasks([newAct({text:v})].concat(tasks||[]));
     setTxt("");setOpen(false);
   }
-  function close(t){
+  function setLines(l){updTd({nextStep:l.join("\n")});}
+  function done(it){
     if(blockIfReadOnly())return;
-    saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,{status:"done",completedAt:now}));}));
+    if(it.ns){
+      if(!nsEditable)return;
+      saveTasks([newAct({text:it.text,status:"done",completedAt:now,note:"Next Step of the package, done from the Package list"})].concat(tasks||[]));
+      setLines(nsLines.filter(function(x,j){return j!==it.i;}));
+      return;
+    }
+    saveTasks((tasks||[]).map(function(x){return x.id!==it.t.id?x:stampModified(Object.assign({},x,{status:"done",completedAt:now}));}));
+  }
+  function del(it){
+    if(blockIfReadOnly())return;
+    if(it.ns){if(nsEditable&&safeConfirm("Delete this next step?"))setLines(nsLines.filter(function(x,j){return j!==it.i;}));return;}
+    if(!mayDelete()||!safeConfirm("Delete this action?"))return;
+    saveTasks((tasks||[]).filter(function(x){return x.id!==it.t.id;}));
+  }
+  function saveEdit(){
+    if(!edit||blockIfReadOnly())return;
+    var v=String(edit.text||"").trim(),it=items.find(function(x){return x.key===edit.key;});
+    setEdit(null);
+    if(!it||v===it.text)return;
+    if(it.ns){if(!nsEditable)return;var l=nsLines.slice();if(v)l[it.i]=v;else l.splice(it.i,1);setLines(l);return;}
+    if(!v)return;
+    saveTasks((tasks||[]).map(function(x){return x.id!==it.t.id?x:stampModified(Object.assign({},x,{text:v}));}));
   }
   var col=block?"#b3302a":"#16181d";
+  var canDel=function(it){return it.ns?nsEditable:mayDelete();};
   return <div style={{minWidth:wide?190:140,maxWidth:wide?"none":210,fontSize:wide?12:11,lineHeight:1.35,overflowWrap:"anywhere"}}>
-    {!block&&!noNextStep&&td.nextStep&&<div title="Next Step of the package (Follow-up)" style={{color:"#4a4740",fontStyle:"italic",marginBottom:3,whiteSpace:"pre-wrap"}}>{td.nextStep}</div>}
-    {shown.map(function(t){
-      var late=t.due&&t.due<now;
-      return <div key={t.id} style={{display:"flex",gap:5,alignItems:"flex-start",marginBottom:2}}>
-        {!ro&&<input type="checkbox" checked={false} onChange={function(){close(t);}} title="Mark done" style={{width:12,height:12,margin:"2px 0 0",flex:"0 0 auto"}}/>}
-        {ro&&<span style={{color:col}}>{block?"■":"•"}</span>}
-        <span style={{color:block?col:"inherit",fontWeight:block?600:400}} title={ppActText(t)+(t.note?"\n"+t.note:"")}>
-          {t.text||"(no text)"}
-          {t.owner&&<span style={{color:"#9b968b",fontWeight:400}}> · {String(t.owner).split(",")[0]}</span>}
-          {t.due&&<span style={{color:late?"#b3302a":"#9b968b",fontWeight:late?700:400,fontFamily:"var(--font-mono)",fontSize:10}}> {fmtDate(t.due)}</span>}
+    {shown.map(function(it){
+      var t=it.t,late=t&&t.due&&t.due<now,canEdit=!ro&&(!it.ns||nsEditable);
+      if(edit&&edit.key===it.key)return <div key={it.key} style={{display:"flex",gap:3,marginBottom:2}}>
+        <input type="text" autoFocus value={edit.text} onChange={function(e){setEdit({key:it.key,text:e.target.value});}}
+          onKeyDown={function(e){if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEdit(null);}} onBlur={saveEdit}
+          style={{flex:1,minWidth:0,fontSize:11,padding:"2px 6px"}}/>
+      </div>;
+      return <div key={it.key} className="pp-act" style={{display:"flex",gap:5,alignItems:"flex-start",marginBottom:2}}>
+        {canEdit&&<input type="checkbox" checked={false} onChange={function(){done(it);}} title={it.ns?"Done: becomes a done action of the package and leaves the Next Step text":"Mark done"} style={{width:12,height:12,margin:"2px 0 0",flex:"0 0 auto"}}/>}
+        {!canEdit&&<span style={{color:col}}>{block?"■":"•"}</span>}
+        <span onClick={function(){if(canEdit)setEdit({key:it.key,text:it.text});}}
+          style={{flex:1,minWidth:0,cursor:canEdit?"text":"default",color:block?col:it.ns?"#4a4740":"inherit",fontWeight:block?600:400}}
+          title={(it.ns?"Next Step of the package (free text)":ppActText(t)+(t.note?"\n"+t.note:""))+(canEdit?"\nClick to edit":"")}>
+          {it.text||"(no text)"}
+          {t&&t.owner&&<span style={{color:"#9b968b",fontWeight:400}}> · {String(t.owner).split(",")[0]}</span>}
+          {t&&t.due&&<span style={{color:late?"#b3302a":"#9b968b",fontWeight:late?700:400,fontFamily:"var(--font-mono)",fontSize:10}}> {fmtDate(t.due)}</span>}
         </span>
+        {canEdit&&canDel(it)&&<button className="pp-act-x" onClick={function(){del(it);}} title="Delete"
+          style={{background:"none",border:"none",padding:"0 2px",cursor:"pointer",color:"#b9b4a8",fontSize:11,lineHeight:1,flex:"0 0 auto"}}>✕</button>}
       </div>;
     })}
-    {!wide&&list.length>3&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit"}}>
-      {all?"show less":"+ "+(list.length-3)+" more"}</button>}
-    {ro&&!list.length&&!(!block&&!noNextStep&&td.nextStep)&&<span style={{color:"#ccc"}}>—</span>}
+    {!wide&&items.length>3&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit"}}>
+      {all?"show less":"+ "+(items.length-3)+" more"}</button>}
+    {ro&&!items.length&&<span style={{color:"#ccc"}}>—</span>}
     {!ro&&(open
       ?<div style={{display:"flex",gap:3,marginTop:3}}>
         <input type="text" autoFocus value={txt} onChange={function(e){setTxt(e.target.value);}}
@@ -1345,8 +1461,108 @@ function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide}){
           placeholder={block?"Blocking point…":"Next step…"} style={{flex:1,minWidth:0,fontSize:11,padding:"2px 6px"}}/>
         <button className="btn btn-sm" onClick={add} disabled={!txt.trim()} style={{padding:"1px 7px",fontSize:10.5}}>Add</button>
       </div>
-      :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":"Add a next step (an action linked to this package)"}
+      :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":"Add a next step (an action linked to this package, to tick when done)"}
         style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ add</button>)}
+  </div>;
+}
+// RFI column of the Package list, and the RFI block of the package sheet (wide): the open RFI /
+// FCR of the package — actions tagged RFI / FCR, the same as in Actions and With client — with
+// the date sent and the client's theoretical answer date (red when overdue). Ticked = answered:
+// the action is closed, leaves the list and stays archived in the sheet (shown with wide).
+// A click on one edits it (subject, sent, answer due, answered on); + RFI adds one.
+function PpRfiCell({td,list,done,tasks,saveTasks,wide}){
+  const [edit,setEdit]=useState(null);       // {id|null, text, kind, sent, due, dueTyped, answered}
+  const [all,setAll]=useState(false);
+  const [arch,setArch]=useState(false);
+  var ro=isReadOnly()||!saveTasks;
+  var now=today();
+  list=list||[];done=done||[];
+  var shown=all||wide?list:list.slice(0,3);
+  function autoDue(sent){return isValidDate(sent)?addCalDays(sent,getDur("clientResponse")):"";}
+  function openEdit(t){
+    if(ro)return;
+    if(!t){setEdit({id:null,text:"",kind:"RFI",sent:now,due:autoDue(now),dueTyped:false,answered:""});return;}
+    var r=ppRfiInfo(t,now);
+    setEdit({id:t.id,text:t.text||"",kind:r.kind,sent:r.sent,due:r.due,dueTyped:isValidDate(t.rfiDue),answered:r.answered||(r.done?now:"")});
+  }
+  function answer(t,val){
+    if(blockIfReadOnly())return;
+    saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,val?{status:"done",completedAt:now}:{status:"pending",completedAt:""}));}));
+  }
+  function save(){
+    if(blockIfReadOnly())return;
+    var e=edit,txt=String(e.text||"").trim();if(!txt)return;
+    var due=e.dueTyped?e.due:"";
+    var patch={text:txt,rfiSubmission:isValidDate(e.sent)?e.sent:"",rfiDue:isValidDate(due)?due:"",status:isValidDate(e.answered)?"done":"pending",completedAt:isValidDate(e.answered)?e.answered:""};
+    if(e.id)saveTasks((tasks||[]).map(function(x){
+      if(x.id!==e.id)return x;
+      var tg=(x.tags||[]).filter(function(g){return g!=="RFI"&&g!=="FCR";}).concat([e.kind]);
+      return stampModified(Object.assign({},x,patch,{tags:tg}));
+    }));
+    else saveTasks([newTask(Object.assign({tenderRef:td.id,package:td.package||"",tags:[e.kind],importance:2,urgence:2,
+      owner:td.ownerTender||"",note:"From the Package list",due:isValidDate(e.due)?e.due:""},patch))].concat(tasks||[]));
+    setEdit(null);
+  }
+  function del(){
+    if(!edit||!edit.id||blockIfReadOnly()||!mayDelete()||!safeConfirm("Delete this RFI?"))return;
+    saveTasks((tasks||[]).filter(function(x){return x.id!==edit.id;}));setEdit(null);
+  }
+  function row(t){
+    var r=ppRfiInfo(t,now);
+    var col=r.done?"#9b968b":r.late?"#b3302a":r.sent?"#1e6b3a":"#9b968b";
+    return <div key={t.id} style={{display:"flex",gap:5,alignItems:"flex-start",marginBottom:3}}>
+      {!ro&&<input type="checkbox" checked={r.done} onChange={function(){answer(t,!r.done);}} title={r.done?"Answered — untick to reopen":"Tick when the client has answered: the RFI is archived in the package sheet"}
+        style={{width:12,height:12,margin:"2px 0 0",flex:"0 0 auto"}}/>}
+      <div onClick={function(){openEdit(t);}} style={{cursor:ro?"default":"pointer",minWidth:0}} title={(t.text||"")+"\n"+r.txt+(ro?"":"\nClick to edit")}>
+        <span style={{fontWeight:600,color:r.done?"#9b968b":"var(--ink,#16181d)",textDecoration:r.done?"line-through":"none"}}>
+          <span style={{fontSize:9.5,fontWeight:700,color:"#b45309",marginRight:4}}>{r.kind}</span>{t.text||"(no subject)"}</span>
+        <div style={{fontSize:10.5,color:col,fontWeight:r.late?700:400}}>{r.txt}</div>
+      </div>
+    </div>;
+  }
+  return <div style={{minWidth:wide?200:150,maxWidth:wide?"none":220,fontSize:wide?12:11,lineHeight:1.35,overflowWrap:"anywhere"}}>
+    {shown.map(row)}
+    {!wide&&list.length>3&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit"}}>
+      {all?"show less":"+ "+(list.length-3)+" more"}</button>}
+    {!list.length&&(ro||!wide)&&<span style={{color:"#ccc"}}>{ro?"—":""}</span>}
+    {!wide&&done.length>0&&<div style={{fontSize:10,color:"#9b968b",marginTop:2}} title="Answered RFI are archived in the package sheet (Actions & notes)">{done.length} answered · in the sheet</div>}
+    {wide&&done.length>0&&<div style={{marginTop:6}}>
+      <button onClick={function(){setArch(!arch);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:"#0f5299",fontFamily:"inherit"}}>
+        {arch?"▾":"▸"} Answered — archive ({done.length})</button>
+      {arch&&<div style={{marginTop:4,paddingLeft:6,borderLeft:"2px solid #eceae4"}}>{done.map(row)}</div>}
+    </div>}
+    {!ro&&<button onClick={function(){openEdit(null);}} title="Add an RFI to this package (an action tagged RFI, also in Actions and With client)"
+      style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ RFI</button>}
+    {edit&&<div className="overlay" onClick={function(e){if(e.target===e.currentTarget)setEdit(null);}}>
+      <div className="modal" style={{maxWidth:520}}>
+        <div className="modal-hdr">
+          <div className="modal-title">{edit.id?edit.kind:"New "+edit.kind} · {td.title||"(untitled)"}</div>
+          <button onClick={function(){setEdit(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        <div className="modal-body" style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",gap:8}}>
+            <select value={edit.kind} onChange={function(e){setEdit(Object.assign({},edit,{kind:e.target.value}));}} style={{flex:"0 0 80px"}}>
+              <option value="RFI">RFI</option><option value="FCR">FCR</option></select>
+            <input type="text" autoFocus value={edit.text} placeholder="Subject / reference of the RFI…" onChange={function(e){setEdit(Object.assign({},edit,{text:e.target.value}));}}
+              onKeyDown={function(e){if(e.key==="Enter")save();}} style={{flex:1,minWidth:0,fontWeight:600}}/>
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <label style={{fontSize:11,color:"#6f6b62",display:"flex",flexDirection:"column",gap:3}}>Sent to the client
+              <input type="date" min="1990-01-01" max="2200-12-31" value={edit.sent||""} onChange={function(e){var v=e.target.value;setEdit(Object.assign({},edit,{sent:v},edit.dueTyped?{}:{due:autoDue(v)}));}}/></label>
+            <label style={{fontSize:11,color:"#6f6b62",display:"flex",flexDirection:"column",gap:3}}>Answer due (theoretical)
+              <input type="date" min="1990-01-01" max="2200-12-31" value={edit.due||""} onChange={function(e){setEdit(Object.assign({},edit,{due:e.target.value,dueTyped:!!e.target.value}));}}/></label>
+            <label style={{fontSize:11,color:"#6f6b62",display:"flex",flexDirection:"column",gap:3}}>Answered on
+              <input type="date" min="1990-01-01" max="2200-12-31" value={edit.answered||""} onChange={function(e){setEdit(Object.assign({},edit,{answered:e.target.value}));}}/></label>
+          </div>
+          <div style={{fontSize:11,color:"#9b968b"}}>Answer due = sent + {getDur("clientResponse")} calendar days (Settings › Durations, client answer time) unless typed. With an answer date the RFI is archived in the package sheet and leaves the Package list. Same action as in Actions and With client.</div>
+        </div>
+        <div className="modal-footer">
+          {edit.id&&mayDelete()&&<button className="btn" onClick={del} style={{marginRight:"auto",color:"#b3302a"}}>Delete</button>}
+          <button className="btn" onClick={function(){setEdit(null);}}>Cancel</button>
+          <button className="btn btn-gold" onClick={save} disabled={!String(edit.text||"").trim()}>Save</button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 // The notes of a package as lines of text ("Title — content"), for the print and the Excel.
@@ -1803,7 +2019,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   }),sort,acts);
   var budgetVis=vis.reduce(function(s,r){return s+ppBudget(r.td);},0);
   var ft=ppFinanceTotals(vis);
-  var NOACT={next:[],block:[]};
+  var NOACT={next:[],block:[],rfi:[],rfiDone:[]};
   const tdRef=useRef(tenders);tdRef.current=tenders;
   const wrapRef=useRef(null);             // the table box, for the scrollbar fixed at the bottom
   function upd(td,patch){if(blockIfReadOnly())return;saveTenders((tdRef.current||[]).map(function(t){return t.id===td.id?Object.assign({},t,patch):t;}));}
@@ -1814,7 +2030,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=1+(fin?1:0)+(dl?1:0);   // Budget only with Finance
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   var model=tl&&dl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
@@ -1892,8 +2108,9 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",color:vr===null?"#ccc":vr<0?"#b3302a":"#1e6b3a"}}
           title="Budget − instructed">{vr===null?"—":ppSigned(vr)}</td>}
         {fol&&<td className="sep">{td.ownerTender?<OwnerChip owner={td.ownerTender}/>:<span style={{color:"#ccc"}}>—</span>}</td>}
-        {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks}/></td>}
+        {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} updTd={function(p){upd(td,p);}}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>}
+        {fol&&<td><PpRfiCell td={td} list={a.rfi} done={a.rfiDone} tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
       </tr>
       {model&&<tr className="ppt-strip" style={hl}>
@@ -1999,7 +2216,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {plan&&<th colSpan={PP_TABLE_COLS.length} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={3} className="sep">Finance</th>}
-            {fol&&<th colSpan={4} className="sep">Follow-up</th>}
+            {fol&&<th colSpan={5} className="sep">Follow-up</th>}
           </tr>
           <tr>
             {th("title","Package",{minWidth:160})}
@@ -2013,6 +2230,7 @@ function ProcPlanView({tenders,saveTenders,packages,tasks,saveTasks,onNavTender,
             {fol&&th("owner","Owner",null,"Owner of the package","sep")}
             {fol&&th("next","Next steps",null,"Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one. Sorted by number.")}
             {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package — including the automatic “Procurement late” ones from the schedule. Sorted by number.")}
+            {fol&&th("rfi","RFI",null,"Open RFI / FCR of the package (actions tagged RFI or FCR): sent on, client answer due (sent + client answer time of Settings › Durations, or the date typed) — red when the client is late. Tick = answered: the RFI leaves this list and stays archived in the package sheet (Actions & notes). + RFI to add one. Sorted by number open.")}
             {fol&&th("notes","Notes",null,"Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one. Sorted by number.")}
           </tr>
           {model&&<tr className="ppt-scale">
