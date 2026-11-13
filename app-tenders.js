@@ -4454,7 +4454,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         })()}
 
         {tdTab==="docs"&&<React.Fragment>
-        <ProcPlanCard td={td} updTd={updTd}/>
+        <ProcPlanCard td={td} updTd={updTd} tasks={tasks} saveTasks={saveTasks}/>
         <div className="card" style={{marginBottom:10}}>
         <SubmissionSteps part="docs" focus={docFocus} td={td} TENDER_STEPS={TENDER_STEPS} updateStep={updateStep} tenders={tenders} saveTenders={saveTenders} setSelTender={setSelTender} tasks={tasks} saveTasks={saveTasks} pkgOwners={pkgOwners} updTd={updTd} afterSave={flowAfterSave}/>
         </div>

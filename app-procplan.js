@@ -324,7 +324,7 @@ function PpMsCell({p,m}){
 }
 
 // Plan card in the package sheet: type, need date and the lead time of every step.
-function ProcPlanCard({td,updTd}){
+function ProcPlanCard({td,updTd,tasks,saveTasks}){
   const [open,setOpen]=useState(false);
   var p=ppPlan(td);
   var ro=isReadOnly();
@@ -353,7 +353,7 @@ function ProcPlanCard({td,updTd}){
       <span className="badge" style={{background:st.bg,color:st.fg,marginLeft:"auto"}}>
         {st.label}{p.next&&p.daysLeft!==null?" · "+PP_MS_LABEL[p.next]+" "+ppDaysText(p.daysLeft):""}</span>
     </div>
-    {(open||p.closed)&&<PpProcCloseBar td={td} updTd={function(patch){Object.keys(patch).forEach(function(k){updTd(k,patch[k]);});}}/>}
+    {(open||p.closed)&&<PpProcCloseBar td={td} tasks={tasks} saveTasks={saveTasks} updTd={function(patch){Object.keys(patch).forEach(function(k){updTd(k,patch[k]);});}}/>}
     {open&&<div style={{marginTop:10}}>
       {!p.need&&<div style={{fontSize:11.5,color:"#b35c00",marginBottom:8}}>Fill the Target start (need on site) of this package: every latest date is computed back from it.</div>}
       <table className="tbl" style={{fontSize:12}}>
@@ -1856,16 +1856,33 @@ function ppQuCtStage(td){
   return "";
 }
 // Close / reopen the procurement of a Package by hand (Quick update): self perform, bought
-// another way… td.procClosed = {on, reason, note, by}. Every milestone then counts as reached.
-function PpProcCloseBar({td,updTd}){
+// another way… td.procClosed = {on, reason, note, by, autoClosed}. Every milestone then counts
+// as reached. Closing also closes the Package's open AUTOMATIC actions (addedBy "System") —
+// the ones typed by someone (RFI, blocking points…) stay open; their ids are kept in
+// autoClosed so that a reopen reopens exactly those.
+function PpProcCloseBar({td,updTd,tasks,saveTasks}){
   const [form,setForm]=useState(null);
   var c=procClosedOf(td),ro=isReadOnly();
+  var autoOpen=(tasks||[]).filter(function(t){return t.tenderRef===td.id&&t.status!=="done"&&t.addedBy==="System";});
+  function closeAuto(on){
+    if(!saveTasks||!autoOpen.length)return [];
+    var ids=autoOpen.map(function(t){return t.id;});
+    saveTasks((tasks||[]).map(function(t){return ids.indexOf(t.id)>=0?stampModified(Object.assign({},t,{status:"done",completedAt:on||today()})):t;}));
+    return ids;
+  }
+  function reopenAuto(){
+    var ids=(c&&c.autoClosed)||[];
+    if(!saveTasks||!ids.length)return;
+    saveTasks((tasks||[]).map(function(t){return ids.indexOf(t.id)>=0&&t.status==="done"?stampModified(Object.assign({},t,{status:"pending",completedAt:""})):t;}));
+  }
   var box={margin:"10px 0 0",padding:"8px 10px",borderRadius:8,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",fontSize:12};
   if(c)return <div style={Object.assign({},box,{background:"var(--green-soft,#e6f2e9)",border:"1px solid #cfe3d5",color:"#1e6b3a"})}>
     <b>✓ Procurement closed</b><span>{c.on?fmtDate(c.on)+" · ":""}{procClosedLabel(c)}</span>
     {c.by&&<span style={{color:"#6f6b62",fontSize:11}}>· by {c.by}</span>}
+    {(c.autoClosed||[]).length>0&&<span style={{color:"#6f6b62",fontSize:11}}>· {c.autoClosed.length} automatic action{c.autoClosed.length>1?"s":""} closed</span>}
     {!ro&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){
-      if(safeConfirm("Reopen the procurement of this Package? Its milestones are followed again."))updTd({procClosed:null});}}>↺ Reopen</button>}
+      var n=((c.autoClosed)||[]).length;
+      if(safeConfirm("Reopen the procurement of this Package? Its milestones are followed again."+(n?"\n\n"+n+" automatic action"+(n>1?"s":"")+" closed with it will be reopened.":""))){reopenAuto();updTd({procClosed:null});}}}>↺ Reopen</button>}
   </div>;
   if(!form)return <div style={Object.assign({},box,{background:"#fbfaf7",border:"1px dashed #d9d5ca",color:"#6f6b62"})}>
     <span>Special case — self perform, no contract needed, bought another way…?</span>
@@ -1881,10 +1898,12 @@ function PpProcCloseBar({td,updTd}){
     <button className="btn btn-sm" onClick={function(){setForm(null);}}>Cancel</button>
     <button className="btn btn-sm btn-pri" onClick={function(){
       if(blockIfReadOnly())return;
-      updTd({procClosed:{on:form.on||today(),reason:form.reason,note:(form.note||"").trim(),by:(window._currentUser&&window._currentUser.name)||""}});
+      var ids=closeAuto(form.on);
+      updTd({procClosed:{on:form.on||today(),reason:form.reason,note:(form.note||"").trim(),by:(window._currentUser&&window._currentUser.name)||"",autoClosed:ids}});
       setForm(null);
     }}>Close</button>
-    <div style={{flexBasis:"100%",fontSize:10.5,color:"#9b968b"}}>Every milestone then counts as reached: nothing is late any more, the row turns green, the schedule stops waiting for a delivery. Reopen at any time.</div>
+    <div style={{flexBasis:"100%",fontSize:10.5,color:"#9b968b"}}>Every milestone then counts as reached: nothing is late any more, the row turns green, the schedule stops waiting for a delivery.
+      {autoOpen.length?" "+autoOpen.length+" open automatic action"+(autoOpen.length>1?"s":"")+" ("+autoOpen.map(function(t){return (t.text||"").split(" — ")[0];}).slice(0,3).join(", ")+(autoOpen.length>3?"…":"")+") will be closed; actions typed by someone stay open.":""} Reopen at any time.</div>
   </div>;
 }
 function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep,onOpenSheet,onClose}){
@@ -2005,7 +2024,7 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
       </div>
       <div className="modal-body" style={{maxHeight:"72vh",overflowY:"auto",paddingTop:0}}>
         {ro&&<div style={{fontSize:11.5,color:"#b35c00",marginTop:8}}>Read-only account: nothing can be changed here.</div>}
-        <PpProcCloseBar td={td} updTd={updTd}/>
+        <PpProcCloseBar td={td} updTd={updTd} tasks={tasks} saveTasks={saveTasks}/>
         {sec("Steps",allSteps?"every step":"steps still to do or running — finished and N/A hidden",tog(allSteps,setAllSteps,"Show all steps"))}
         {stepsShown.length===0?<div style={{fontSize:12,color:"#9b968b"}}>Every step is done.</div>:
         <table style={{width:"100%",borderCollapse:"collapse"}}>
