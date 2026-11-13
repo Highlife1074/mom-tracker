@@ -64,7 +64,7 @@ function newTenderNote(o){
 function TenderFollowStrip({td,tasks,onOpen}){
   var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[],rfi:[]};
   var notes=tenderNotesOf(td).filter(function(n){return String(n.title||"").trim()||String(n.content||"").trim();});
-  var next=(td.nextStep?[String(td.nextStep)]:[]).concat(a.next.map(function(t){return t.text||"";}));
+  var next=a.next.map(function(t){return t.text||"";});
   if(!a.block.length&&!next.length&&!notes.length&&!a.rfi.length)return null;
   function part(icon,label,n,items,col){
     if(!n)return null;
@@ -99,10 +99,8 @@ function TenderFollowUpCard({td,tasks,saveTasks,updTd}){
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:"12px 0",margin:"0 -12px"}}>
       <div style={Object.assign({},col,{borderLeft:"none"})}>
-        <div style={Object.assign({},h,{color:"var(--brand-ink,#173b63)"})}>▸ Next steps ({(td.nextStep?1:0)+a.next.length})</div>
-        <textarea value={td.nextStep||""} disabled={ro} onChange={function(e){updTd("nextStep",e.target.value);}} placeholder="Next step of the package (free text)…"
-          style={{width:"100%",minHeight:48,padding:"6px 8px",fontSize:12,border:"1.5px solid #ddd9cf",borderRadius:7,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:6}}/>
-        <PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} noNextStep wide/>
+        <div style={Object.assign({},h,{color:"var(--brand-ink,#173b63)"})}>▸ Next steps ({a.next.length})</div>
+        <PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} wide/>
       </div>
       <div style={col}>
         <div style={Object.assign({},h,{color:"#b3302a"})}>⛔ Blocking points ({a.block.length})</div>
@@ -3875,6 +3873,19 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
   useEffect(function(){lsSet("pp_tv_sortCol",sortCol);},[sortCol]);
   useEffect(function(){lsSet("pp_tv_sortDir",sortDir);},[sortDir]);
   useEffect(function(){lsSet("pp_tv_selTenderId",selTender?selTender.id:"");},[selTender]);
+  // One-off: the free "Next Step" text of every Package becomes real actions linked to it
+  // (visible in Actions, the sheet and the Next steps column), then the text is emptied.
+  // Only once both lists are loaded, never from a read-only account; tasks saved first.
+  const nsDone=useRef(false);
+  useEffect(function(){
+    if(nsDone.current||isReadOnly()||!saveTasks||!(tenders||[]).length||!(tasks||[]).length)return;
+    var m=ppMigrateNextSteps(tenders,tasks);
+    nsDone.current=true;
+    if(!m)return;
+    saveTasks(m.tasks);
+    saveTenders(m.tenders);
+  },[tenders,tasks]);
+  var _nsIdx=ppActionsIndex(tasks);
 
   useEffect(function(){
     function onPop(e){
@@ -4936,7 +4947,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
               </td>;
             })}
             <td className="tcol-sep" style={{minWidth:160,verticalAlign:"top"}} onClick={function(e){e.stopPropagation();}}>
-              <textarea value={td.nextStep||""} onChange={function(e){var el=e.target;el.style.height="auto";el.style.height=el.scrollHeight+"px";var d=(tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,{nextStep:e.target.value});});saveTenders(d);}} ref={function(el){if(el){el.style.height="auto";el.style.height=el.scrollHeight+"px";}}} placeholder="Next step…" rows={1} style={{width:"100%",fontSize:11,padding:"3px 7px",border:"1px solid #e8e6df",borderRadius:5,fontFamily:"inherit",boxSizing:"border-box",resize:"none",overflow:"hidden",lineHeight:1.4,minWidth:160,whiteSpace:"pre-wrap"}}/>
+              <PpActionsCell td={td} list={((_nsIdx[td.id])||{next:[]}).next} kind="next" tasks={tasks} saveTasks={saveTasks}/>
             </td>
           </tr>
           {_now&&<tr className="tp-tl" style={{cursor:"pointer",background:rowBg}} onClick={function(){openSheetFrom(td,"list");}}>

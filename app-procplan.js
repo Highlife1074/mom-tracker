@@ -589,7 +589,7 @@ var PP_SORTS={
   variance:function(r){return ppVariance(r.td);},
   route:function(r){try{return tenderRouteLabel(r.td)||null;}catch(e){return null;}},
   owner:function(r){return String(r.td.ownerTender||"").trim().toLowerCase()||null;},
-  next:function(r,acts){var a=(acts||{})[r.td.id];var n=(a?a.next.length:0)+(r.td.nextStep?1:0);return n||null;},
+  next:function(r,acts){var a=(acts||{})[r.td.id];var n=a?a.next.length:0;return n||null;},
   block:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.block.length)||null;},
   notes:function(r){return tenderNotesOf(r.td).length||null;},
   rfi:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.rfi.length)||null;}
@@ -866,7 +866,7 @@ function ppExportXlsx(vis,acts){
       (td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return x.subcontractor;}).join(", ")||td.contractor||"",
       prop||"",ppInstructed(td)||"",String(td.instructionNumber||"").trim(),ppVariance(td)===null?"":ppVariance(td),
       (function(){try{return tenderRouteLabel(td);}catch(e){return "";}})(),td.ownerTender||"",
-      [td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean).join("\n"),a.block.map(ppActText).join("\n"),a.rfi.map(function(t){return ppRfiText(t);}).join("\n"),ppNotesText(td).join("\n"));
+      a.next.map(ppActText).join("\n"),a.block.map(ppActText).join("\n"),a.rfi.map(function(t){return ppRfiText(t);}).join("\n"),ppNotesText(td).join("\n"));
     aoa.push(line);
   });
   aoa=aoa.map(function(line,ri){return line.map(function(v,ci){if(v&&typeof v==="object"&&"xlDate" in v){dateCells.push([ri,ci]);return v.xlDate;}return v;});});
@@ -1478,7 +1478,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     }
     if(fol){
       h+='<td class="sep">'+esc(String(td.ownerTender||"—"))+'</td>'+
-        '<td class="a">'+li([td.nextStep||""].concat(a.next.map(ppActText)).filter(Boolean))+'</td>'+
+        '<td class="a">'+li(a.next.map(ppActText))+'</td>'+
         '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
         '<td class="a">'+li(ppNotesText(td))+'</td>';
     }
@@ -1496,12 +1496,35 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     '</div>'+(model?'<div style="margin-top:8px">'+ppLegendHtml("strip")+'</div>':'')+'</div>';
   openReport("Packages "+now,html);
 }
-// One cell of the Next steps / Blocking points columns: the open actions of the package
-// (the same actions as everywhere else — Actions, the package sheet, the zone) and, in Next
-// steps, each line of the package's own "Next Step" text (td.nextStep). Every item can be
-// ticked done, edited (click) or deleted (✕): a ticked Next Step line becomes a done action
-// linked to the package (kept in its history) and leaves the text. + add creates an action.
+// One cell of the Next steps / Blocking points columns: the open actions of the package —
+// real actions only, the same as everywhere else (Actions, the package sheet, the zone).
+// The former free "Next Step" text (td.nextStep) is converted once into actions
+// (ppMigrateNextSteps) and can no longer be typed. Every item can be ticked done, edited
+// (click) or deleted (✕). + add creates an action.
 function ppNextStepLines(td){return String((td&&td.nextStep)||"").split(/\n/).map(function(x){return x.trim();}).filter(Boolean);}
+// One-off conversion of every Package's Next Step text into actions linked to it (owner =
+// the Package's department owner, else its owner). Ids are derived from the Package and the
+// line, so two people converting at the same time produce the same actions (merged, not
+// doubled). Returns {tasks, tenders} to save, or null when there is nothing to convert.
+function _ppNsHash(s){var h=0;s=String(s);for(var i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return (h>>>0).toString(36);}
+function ppMigrateNextSteps(tenders,tasks){
+  var todo=(tenders||[]).filter(function(td){return td&&ppNextStepLines(td).length;});
+  if(!todo.length)return null;
+  var ids={};(tasks||[]).forEach(function(t){ids[t.id]=1;});
+  var add=[];
+  todo.forEach(function(td){
+    var owner=(window._ppPkgOwners||{})[td.package||""]||td.ownerTender||"";
+    if(Array.isArray(owner))owner=owner[0]||"";
+    ppNextStepLines(td).forEach(function(l,i){
+      var id="ns_"+td.id+"_"+i+"_"+_ppNsHash(l);
+      if(ids[id])return;ids[id]=1;
+      add.push(newTask({id:id,text:l,tenderRef:td.id,package:td.package||"",owner:owner,importance:2,urgence:2,
+        note:"From the Package's Next Step text"}));
+    });
+  });
+  var set={};todo.forEach(function(td){set[td.id]=1;});
+  return {tasks:add.concat(tasks||[]),tenders:(tenders||[]).map(function(td){return set[td.id]?Object.assign({},td,{nextStep:""}):td;}),n:add.length};
+}
 function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
   const [open,setOpen]=useState(false);
   const [txt,setTxt]=useState("");
@@ -1510,7 +1533,7 @@ function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
   var ro=isReadOnly()||!saveTasks;
   var now=today();
   var block=kind==="block";
-  var nsLines=!block&&!noNextStep?ppNextStepLines(td):[];
+  var nsLines=[];   // the Next Step text is converted into actions (ppMigrateNextSteps)
   var nsEditable=!ro&&!!updTd;
   var items=nsLines.map(function(l,i){return {key:"ns:"+i,ns:true,i:i,text:l};})
     .concat(list.map(function(t){return {key:t.id,t:t,text:t.text||""};}));
