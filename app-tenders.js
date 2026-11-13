@@ -7285,8 +7285,28 @@ function ClientSubmissionsView({tasks,tenders,contractors,packages,people,saveTa
 // Revisions are recorded in the tender (Submission steps → WMS & ITP), where they also open
 // and close the automatic actions: the tender name opens it. Only the reference is written
 // from here, because it has no automatic action attached.
-function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,memory,setMemory}){
+function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,memory,setMemory,tasks,saveTasks,pkgOwners}){
+  // Edited here like the Materials view: status before submission, target date, submissions
+  // and their revisions, reference and notes — through the same writers as the tender sheet
+  // (recordDocSubmission / DocRevisionsEditor / flowTaskChanges), so both stay identical.
   var mem=memory||{};
+  const [openDoc,setOpenDoc]=useState({});
+  function toggleDoc(id){setOpenDoc(function(o){var n=Object.assign({},o);n[id]=!o[id];return n;});}
+  function ownerOf(td){return (pkgOwners||window._ppPkgOwners||{})[td.package||""]||td.ownerTender||"";}
+  function updTdFor(td){
+    return function(field,val){
+      if(isReadOnly())return;
+      var patch=(field&&typeof field==="object")?field:{[field]:val};
+      saveTenders((tenders||[]).map(function(t){return t.id!==td.id?t:Object.assign({},t,patch);}));
+    };
+  }
+  function afterSaveFor(td){
+    return function(prev,next){
+      if(!saveTasks||!tasks)return;
+      var n=flowTaskChanges(prev,next,tasks,ownerOf(next));
+      if(n)saveTasks(n);
+    };
+  }
   var QD_FILTERS={late:"Late — not submitted",overdue:"Client answer overdue",returned:"To resubmit",
     pending:"With client",none:"Not submitted",approved:"Approved"};
   const [fPkg,setFPkg]=useState(mem.fPkg||"all");
@@ -7323,7 +7343,8 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
     if(fKind!=="all"&&r.kind!==fKind)return false;
     if(q){var lq=q.toLowerCase();
       if(!(r.td.title||"").toLowerCase().includes(lq)&&!(r.td.package||"").toLowerCase().includes(lq)
-        &&!String(r.sd.reference||"").toLowerCase().includes(lq))return false;}
+        &&!String(r.sd.reference||"").toLowerCase().includes(lq)
+        &&!String(((r.td.stepComments||{})[r.k])||"").toLowerCase().includes(lq))return false;}
     return true;
   });
   function matches(r,f){
@@ -7339,19 +7360,38 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
   var counts={};
   Object.keys(QD_FILTERS).forEach(function(f){counts[f]=scoped.filter(function(r){return matches(r,f);}).length;});
 
-  // One write per edit.
-  function updRef(td,k,val){
-    var d=(tenders||[]).map(function(t){
-      if(t.id!==td.id)return t;
-      var sd=Object.assign({},t.stepDates||{});
-      sd[k]=Object.assign({},sd[k]||{},{reference:val});
-      return Object.assign({},t,{stepDates:sd});
-    });
-    saveTenders(d);
+  // One write per edit: status (steps), target / reference (stepDates), notes (stepComments).
+  function updStep(td,k,field,val){
+    if(blockIfReadOnly())return;
+    var cur=(tenders||[]).find(function(t){return t.id===td.id;})||td;
+    var nt;
+    if(field==="status"){var st=Object.assign({},cur.steps||{});st[k]=val;nt=Object.assign({},cur,{steps:st});}
+    else if(field==="comment"){var sc=Object.assign({},cur.stepComments||{});sc[k]=val;nt=Object.assign({},cur,{stepComments:sc});}
+    else{var sd=Object.assign({},cur.stepDates||{});sd[k]=Object.assign({},sd[k]||{});sd[k][field]=val;nt=Object.assign({},cur,{stepDates:sd});}
+    saveTenders((tenders||[]).map(function(t){return t.id!==td.id?t:nt;}));
+    if(field==="target")syncSubmitAction(cur,nt,k,val);
   }
+  // Same automatic action as the tender sheet: a target date without a submission creates or
+  // re-dates "Submit the WMS / ITP — …"; clearing the target removes it while still pending.
+  function syncSubmitAction(prevTd,td,k,target){
+    if(!saveTasks||!tasks)return;
+    var text=(k==="wms"?"Submit the WMS — ":"Submit the ITP — ")+td.title;
+    var mine=function(t){return t.tenderRef===td.id&&t.text===text&&t.status!=="done";};
+    if(!target){
+      if(((prevTd.stepDates||{})[k]||{}).target&&tasks.some(function(t){return mine(t)&&t.addedBy==="System";}))
+        saveTasks(tasks.filter(function(t){return !(mine(t)&&t.addedBy==="System");}));
+      return;
+    }
+    if(flowDocState(td,k)!=="none"||((td.stepDates||{})[k]||{}).done)return;
+    var tag=k==="itp"?qualityTag(td.package||""):null;
+    var ov={due:target,importance:3,urgence:calcProcurementUrgence(target),tags:tag?[tag]:[]};
+    if(tasks.some(mine))saveTasks(tasks.map(function(t){return mine(t)?Object.assign({},t,ov):t;}));
+    else saveTasks([newTask(Object.assign({text:text,owner:ownerOf(td),tenderRef:td.id,package:td.package||"",status:"pending",
+      note:"Auto-created from contract/ACC status",addedBy:"System"},ov))].concat(tasks));
+  }
+  var QD_OPTS={};TENDER_STEPS.forEach(function(s){if(s.key==="wms"||s.key==="itp")QD_OPTS[s.key]=flowPresubOpts(s.opts);});
 
-  function statusCell(r){
-    if(r.na)return <span title="Not applicable — nothing to do" style={{fontSize:10,color:"#1e6b3a",fontWeight:700,background:"#e6f2e9",border:"1px solid #cfe3d5",padding:"1px 6px",borderRadius:4}}>N/A</span>;
+  function stateTxt(r){
     if(r.key==="late")return <span style={{fontSize:11,fontWeight:700,color:"#b3302a"}}
       title="Not submitted and the due date has passed">⚠ Not submitted · due {fmtDate(r.due)}</span>;
     var col={approved:"#1e6b3a",pending:"#0f5299",returned:"#b35c00",none:"#9b968b"}[r.s.state];
@@ -7359,6 +7399,27 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
       {r.s.codes.filter(Boolean).map(function(c,i){var k=FLOW_CODE_COL[c];
         return <span key={i} style={{background:k[0],color:k[1],border:"1px solid "+k[1],borderRadius:3,fontSize:9.5,padding:"0 3px"}}>{c}</span>;})}
       {r.s.text}<OverdueTag o={r.s.overdue}/></span>;
+  }
+  function statusCell(r){
+    var ro=isReadOnly();
+    var key=r.td.id+"|"+r.k;
+    var sent=r.d.cycles.length>0;
+    var val=((r.td.steps||{})[r.k])||"";
+    return <div style={{display:"flex",flexDirection:"column",gap:3}}>
+      <div style={{display:"flex",alignItems:"center",gap:4}}>
+        {sent&&<RevToggle open={openDoc[key]} onClick={function(){toggleDoc(key);}} title="Revisions: real submission date, returned date, code, reference, resubmission"/>}
+        {sent?stateTxt(r)
+          :<select value={val} disabled={ro} onChange={function(e){updStep(r.td,r.k,"status",e.target.value);}}
+            className={"chip "+tenderStepClass(r.k,val)} title="Before the first submission: Not done, or N/A if this document is not needed"
+            style={{padding:"3px 6px",fontSize:11,fontFamily:"inherit",borderRadius:5}}>
+            {QD_OPTS[r.k].map(function(o){return <option key={o} value={o}>{o}</option>;})}
+          </select>}
+      </div>
+      {!sent&&r.key==="late"&&stateTxt(r)}
+      {!ro&&!r.na&&canAddCycle(r.d.cycles)&&<button type="button" className="btn btn-sm" style={{fontSize:10,padding:"0 7px",height:22,alignSelf:"flex-start"}}
+        onClick={function(){recordDocSubmission(r.td,r.d,updTdFor(r.td),afterSaveFor(r.td)).then(function(p){if(p)setOpenDoc(function(o){var n=Object.assign({},o);n[key]=true;return n;});});}}>
+        {sent?"↻ Resubmit R"+(r.last.rev+1):"＋ Record submission"}</button>}
+    </div>;
   }
 
   var chipCol={late:"#b3302a",overdue:"#b3302a",returned:"#b35c00",pending:"#0f5299",none:"#6f6b62",approved:"#1e6b3a"};
@@ -7368,7 +7429,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
     <div className="page-hdr">
       <div>
         <div className="page-title">WMS / ITP</div>
-        <div className="page-sub">{shown.length} document{shown.length!==1?"s":""} across {new Set(shown.map(function(r){return r.td.id;})).size} tenders · revisions are recorded in each tender, under Submission steps → WMS &amp; ITP</div>
+        <div className="page-sub">{shown.length} document{shown.length!==1?"s":""} across {new Set(shown.map(function(r){return r.td.id;})).size} packages — WMS / ITP edited here: status, target, submissions and references, revisions, client codes, notes</div>
       </div>
     </div>
 
@@ -7383,7 +7444,7 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
     </div>
 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
-      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Tender, package, reference…" style={{width:220,padding:"5px 10px",fontSize:12}}/>
+      <input type="text" value={q} onChange={function(e){setQ(e.target.value);}} placeholder="🔍 Package, department, reference, note…" style={{width:220,padding:"5px 10px",fontSize:12}}/>
       <select value={fPkg} onChange={function(e){setFPkg(e.target.value);}} style={{width:"auto",padding:"5px 10px",fontSize:12,border:"1px solid #e8e6df",borderRadius:8,fontFamily:"inherit"}}>
         <option value="all">All departments</option>
         {pkgList.map(function(p){return <option key={p} value={p}>{p}</option>;})}
@@ -7398,44 +7459,58 @@ function QualityDocsView({tenders,packages,saveTenders,onNavTender,onNavZone,mem
     {shown.length===0
       ?<div className="empty"><div className="empty-ico">🛡️</div><div className="empty-txt">No WMS or ITP matches these filters.</div></div>
       :<div style={{background:"#fff",borderRadius:12,border:"1px solid #ede9e3",overflow:"hidden"}}>
-        <table className="tbl" style={{width:"100%",borderCollapse:"collapse"}}>
+        <table className="tbl tbl-cards" style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            <th>Tender</th><th>Package</th><th>Doc</th>
+            <th>Package</th><th>Dept.</th><th>Doc</th>
             <th style={{textAlign:"center"}} title="Earliest schedule task linked to the tender">Start on site</th>
             <th style={{textAlign:"center"}} title="Start on site minus the lead time set in Settings › Durations">Theoretical</th>
             <th style={{textAlign:"center"}}>Target</th>
             <th style={{minWidth:200}}>Status</th>
             <th style={{textAlign:"center"}} title="Date the latest revision was sent to the client">Submitted</th>
             <th style={{minWidth:110}}>Reference</th>
+            <th style={{minWidth:170}}>Notes</th>
           </tr></thead>
           <tbody>{shown.map(function(r){
             var kc=KIND_COL[r.kind];
             var lead=durShort(r.k==="wms"?"wmsBeforeStart":"itpBeforeStart");
             var bg=r.key==="late"||r.key==="overdue"?"#fffaf9":"#fff";
-            return <tr key={r.td.id+"_"+r.k} style={{background:bg,opacity:r.na?.6:1}}>
-              <td style={{fontSize:11,maxWidth:260}}>
-                <button onClick={function(){if(onNavTender)onNavTender(r.td.id,"qadocs");}} title="Open the tender to record a submission or a client answer"
+            var key=r.td.id+"|"+r.k;
+            return <React.Fragment key={r.td.id+"_"+r.k}><tr style={{background:bg,verticalAlign:"top"}}>
+              <td data-l="Package" className="card-main" style={{fontSize:11,maxWidth:260,opacity:r.na?.6:1}}>
+                <button onClick={function(){if(onNavTender)onNavTender(r.td.id,"qadocs");}} title="Open the package sheet"
                   style={{background:"none",border:"none",cursor:"pointer",color:"#3949ab",fontSize:11,fontWeight:500,textDecoration:"underline",padding:0,fontFamily:"inherit",textAlign:"left"}}>{r.td.title||"(untitled)"}</button>
               </td>
-              <td style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{r.td.package||"—"}</td>
-              <td><span className="badge" style={{background:kc[0],color:kc[1],fontWeight:700}}>{r.kind}</span></td>
-              <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}><SchedStartDate td={r.td} onNavZone={onNavZone}/></td>
-              <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap"}}>
+              <td data-l="Dept." style={{fontSize:11,color:"#888",whiteSpace:"nowrap"}}>{r.td.package||"—"}</td>
+              <td data-l="Doc"><span className="badge" style={{background:kc[0],color:kc[1],fontWeight:700}}>{r.kind}</span></td>
+              <td data-l="Start on site" style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",color:"#555"}}><SchedStartDate td={r.td} onNavZone={onNavZone}/></td>
+              <td data-l="Theoretical" style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap"}}>
                 {r.d.theoSub
                   ?<span title={"Start on site "+fmtDate(r.td.startOnSite)+" minus "+lead} style={{color:"#8b8578",cursor:"help"}}>{fmtDate(r.d.theoSub)}</span>
                   :<span style={{color:"#ddd"}}>—</span>}
               </td>
-              <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap",fontWeight:r.sd.target?600:400}}>{r.sd.target?fmtDate(r.sd.target):<span style={{color:"#ddd"}}>—</span>}</td>
-              <td>{statusCell(r)}</td>
-              <td style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap"}}>
+              <td data-l="Target" style={{textAlign:"center",whiteSpace:"nowrap"}}>
+                <DraftDateInput value={r.sd.target||""} disabled={isReadOnly()} onCommit={function(v){updStep(r.td,r.k,"target",v);}}
+                  title={"Submission target — creates the action “Submit the "+r.kind+"” until it is submitted"}
+                  style={{fontSize:10,padding:"2px 5px",border:"1px solid #e8e6df",borderRadius:4}}/>
+                {!r.sd.target&&r.d.theoSub&&!isReadOnly()&&<div><button type="button" onClick={function(){updStep(r.td,r.k,"target",r.d.theoSub);}}
+                  style={{fontSize:8,padding:"0 5px",marginTop:2,border:"1px solid #e8e6df",borderRadius:4,background:"#fff",cursor:"pointer",fontFamily:"inherit",color:"#888"}}>use theoretical</button></div>}
+              </td>
+              <td data-l="Status" style={{minWidth:170}}>{statusCell(r)}</td>
+              <td data-l="Submitted" style={{textAlign:"center",fontSize:11,whiteSpace:"nowrap"}}>
                 {r.last&&r.last.submitted
                   ?<span>{fmtDate(r.last.submitted)}{r.last.rev>0&&<span style={{fontSize:9.5,color:"#b35c00",fontWeight:700,marginLeft:4}}>R{r.last.rev}</span>}</span>
                   :<span style={{color:"#ddd"}}>—</span>}
               </td>
-              <td><input type="text" value={r.sd.reference||""} onChange={function(e){updRef(r.td,r.k,e.target.value);}}
+              <td data-l="Reference"><input type="text" value={r.sd.reference||""} readOnly={isReadOnly()} onChange={function(e){updStep(r.td,r.k,"reference",e.target.value);}}
                 placeholder="Ref…" title="Transmittal or document number"
                 style={{fontFamily:"var(--font-mono)",fontSize:11,padding:"3px 6px",width:"100%",boxSizing:"border-box"}}/></td>
-            </tr>;
+              <td data-l="Notes" style={{minWidth:170}}><MatNoteCell value={((r.td.stepComments||{})[r.k])||""} onCommit={function(v){updStep(r.td,r.k,"comment",v);}}/></td>
+            </tr>
+            {openDoc[key]&&r.d.cycles.length>0&&<tr><td colSpan={10} style={{background:"#faf9f6",padding:"6px 12px 10px 24px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#6f6b62",marginBottom:2}}>{r.kind} — {r.td.title}</div>
+              <DocRevisionsEditor td={r.td} d={r.d} updTd={updTdFor(r.td)} afterSave={afterSaveFor(r.td)}/>
+            </td></tr>}
+            </React.Fragment>;
           })}</tbody>
         </table>
       </div>}
