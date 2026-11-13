@@ -1086,9 +1086,31 @@ function ppDocRefs(td,docs,full){
   });
   return out.join(", ");
 }
+// Why the delivery forecast lands where it does — the chain of calcProcurement, in words:
+// short = the line under the forecast in the cell ("fab. from 3 Feb 27 (SD approved) + 365 d
+// lead time typed"), lines = every step with its date (done ✓ / forecast ≈) for the tooltip.
+var PP_LEAD_SRC={manual:"lead time typed in the sheet",plan:"fab. + transport of the Procurement plan",material:"longest material lead time",default:"default 30 d (no lead time anywhere)"};
+var PP_FAB_FROM={contract:"contract signed",sd:"SD approved",material:"MAR approved"};
+function ppForecastWhy(td){
+  var pr=(function(){try{return calcProcurement(td);}catch(e){return null;}})();
+  if(!pr||!isValidDate(pr.deliveryDate))return null;
+  if(isValidDate(td.deliveredOn))return {short:"",lines:["Delivered on "+fmtDate(td.deliveredOn)+" (typed in the sheet)"]};
+  var src=PP_LEAD_SRC[pr.leadSource]||"lead time";
+  if(pr.leadSource==="material"&&pr.leadMaterial)src+=" ("+pr.leadMaterial+")";
+  var lines=[];
+  (pr.steps||[]).forEach(function(x){
+    if(x.key==="delivery"||x.key==="fab")return;
+    var d=x.done||x.date;if(!isValidDate(d))return;
+    lines.push((x.done?"✓ ":"≈ ")+x.label+": "+fmtDate(d)+(x.done?"":" (forecast)"));
+  });
+  var from=PP_FAB_FROM[pr.fabStartSource]||pr.fabStartSource||"";
+  lines.push("→ Fabrication from "+fmtDate(pr.fabStart)+(from?" (after "+from+")":""));
+  lines.push("+ "+pr.LEAD+" d "+src+" → delivery "+fmtDate(pr.deliveryDate));
+  return {short:"Fab. from "+ppDay(pr.fabStart)+(from?" ("+from+")":"")+" + "+pr.LEAD+" d — "+src,lines:lines};
+}
 function ppTodoCell(p,ms,act,due,real,o,now){
   o=o||{};
-  var c={act:act,real:real||"",realFg:o.realFg||"",cli:o.cli||null,tip:o.tip||"",refs:o.refs||"",refsFull:o.refsFull||""};
+  var c={act:act,real:real||"",realFg:o.realFg||"",why:o.why||"",cli:o.cli||null,tip:o.tip||"",refs:o.refs||"",refsFull:o.refsFull||""};
   if(!isValidDate(due)){c.kind="none";c.due="";return c;}
   var n=_ppDaysTo(due,now);
   c.due="by "+ppDay(due)+(p.status==="past"?"":" · "+ppDaysText(n));
@@ -1146,6 +1168,8 @@ function ppMsCell(td,p,m,now){
         // never green when the forecast lands after its deadline — even for a package already
         // started (status Started is never counted late, but the colour must not say "fine")
         o.realFg=p.deliveryLate?"#b3302a":p.deliveryTight||dd>0?"#b35c00":"#1e6b3a";
+        var why=ppForecastWhy(td);
+        if(why){o.why=why.short;o.whyLines=why.lines;}
       }
     }
   }catch(e){}
@@ -1153,7 +1177,8 @@ function ppMsCell(td,p,m,now){
   o.tip=isValidDate(due)?"To do: "+act.toLowerCase()+" by "+fmtDate(due)+(due!==lat&&lat?" ("+PP_MS_LABEL[m]+" deadline "+fmtDate(lat)+")":""):
     "No need on site: nothing can be worked back";
   if(isValidDate(due))o.tip+="\n\n"+ppChainTip(p,m===p.next||ppShownNext(p)!==m?m:p.next,"","");
-  if(p.fcDelivery&&m==="delivered")o.tip+="\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":"");
+  if(p.fcDelivery&&m==="delivered")o.tip+="\nForecast delivery "+fmtDate(p.fcDelivery)+(p.deliveryLate?" — after the week of the need on site":p.deliveryTight?" — after the latest delivery date: float used up":"")+
+    (o.whyLines?"\n\nHow the forecast is built (delivery forecast of the sheet):\n"+o.whyLines.join("\n"):"");
   if(o.cli)o.tip+="\n"+o.cli.tip;
   return ppTodoCell(p,m,act,due,real,o,now);
 }
@@ -1162,6 +1187,7 @@ function ppMsCellHtml(c){
     (c.act?'<div class="act">'+esc(c.act)+'</div>':'')+(c.due?'<div class="due">'+esc(c.due)+'</div>':'')+'</div>':'';
   var bot=c.real||c.cli?'<div class="ppc-real">'+
     (c.real?'<div'+(c.realFg?' style="color:'+c.realFg+';font-weight:700"':'')+'>'+esc(c.real)+'</div>':'')+
+    (c.why?'<div class="ppc-why">'+esc(c.why)+'</div>':'')+
     (c.cli?'<div class="l3 '+(c.cli.late?'late':'ok')+'" title="'+esc(c.cli.tip||"")+'">'+esc(c.cli.txt)+'</div>':'')+'</div>':'';
   var ref=c.refs?'<div class="ppc-ref" title="'+esc(c.refsFull||c.refs)+'">'+esc(c.refs)+'</div>':'';
   return '<div class="ppc ppc-'+c.kind+'" title="'+esc(c.tip||"")+'">'+(top||bot?top+bot:'&nbsp;')+ref+'</div>';
@@ -1366,6 +1392,7 @@ var PP_TABLE_CSS=
   '.ppc-none .ppc-top .act{color:#b9b4a8}'+
   '.ppc-na .ppc-top .act{color:#9b968b}'+
   '.ppc-ref{margin:2px 6px 0;font-family:var(--font-mono,monospace);font-size:9.5px;color:#5f7ea6;overflow-wrap:break-word}'+
+  '.ppc-why{font-size:9.5px;color:#6f6b62;margin-top:1px;line-height:1.3}'+
   '.ppc-real{margin:2px 6px 0;padding:2px 0 1px;border-top:1px dashed #d9d5ca;font-size:10.5px;color:#8a857a}'+
   '.ppc .l3{font-size:10.5px;font-weight:700;margin:2px 0 0;padding:0 4px;border-radius:4px;background:#fff;display:inline-block}'+
   '.ppc .l3.ok{color:#1e6b3a;box-shadow:inset 0 0 0 1px #9cc9a8}'+
