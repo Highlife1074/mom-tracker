@@ -4648,7 +4648,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>;
   if(!classic)return <div>
     {gapsModal}{quickModal}
-    <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} tasks={tasks} saveTasks={saveTasks} onNavZone={onNavZone}
+    <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveTasks} onNavZone={onNavZone}
       onOpenTender={function(t){openSheetFrom(t,"list");}} onQuickUpdate={setQuickId}
       actions={<React.Fragment>
         <button className="btn" onClick={function(){setClassic(true);}} title="The former Package table (Submission steps, Stage…), kept for a few weeks">Classic list</button>
