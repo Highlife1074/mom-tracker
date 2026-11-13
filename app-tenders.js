@@ -62,10 +62,10 @@ function newTenderNote(o){
 // next steps and notes — the same ones as the Follow-up columns of the Package list. A click
 // opens the Actions & notes tab where they are edited (TenderFollowUpCard).
 function TenderFollowStrip({td,tasks,onOpen}){
-  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[]};
+  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[],rfi:[]};
   var notes=tenderNotesOf(td).filter(function(n){return String(n.title||"").trim()||String(n.content||"").trim();});
   var next=(td.nextStep?[String(td.nextStep)]:[]).concat(a.next.map(function(t){return t.text||"";}));
-  if(!a.block.length&&!next.length&&!notes.length)return null;
+  if(!a.block.length&&!next.length&&!notes.length&&!a.rfi.length)return null;
   function part(icon,label,n,items,col){
     if(!n)return null;
     return <div style={{flex:"1 1 220px",minWidth:0}}>
@@ -79,6 +79,7 @@ function TenderFollowStrip({td,tasks,onOpen}){
       borderLeft:"3px solid "+(a.block.length?"#b3302a":"var(--gold,#c9a84c)"),borderRadius:6,background:"#fffdf6",cursor:"pointer",fontSize:12,lineHeight:1.4}}>
     {part("⛔","Blocking points",a.block.length,a.block.map(function(t){return t.text||"";}),"#b3302a")}
     {part("▸","Next steps",next.length,next,"var(--brand-ink,#173b63)")}
+    {part("📋","RFI open",a.rfi.length,a.rfi.map(function(t){return (t.text||"")+" — "+ppRfiInfo(t).txt;}),"#b45309")}
     {part("📝","Notes",notes.length,notes.map(function(n){var c=String(n.content||"").trim();return (n.title||"")+(n.title&&c?" — ":"")+c;}),"var(--gold-ink,#8a6a1e)")}
   </div>;
 }
@@ -87,14 +88,14 @@ function TenderFollowStrip({td,tasks,onOpen}){
 // very same components and data as the Follow-up columns of the Package list, so whatever is
 // added, ticked or edited in one shows in the other.
 function TenderFollowUpCard({td,tasks,saveTasks,updTd}){
-  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[]};
+  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[],rfi:[],rfiDone:[]};
   var ro=isReadOnly();
   var h={fontWeight:700,fontSize:13,marginBottom:6};
   var col={flex:"1 1 260px",minWidth:0,padding:"0 12px",borderLeft:"1px solid #eceae4"};
   return <div className="card" style={{marginBottom:10}}>
     <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:10}}>
       <div style={{fontWeight:700,fontSize:14}}>Follow-up</div>
-      <span style={{fontSize:11,color:"#9b968b"}}>the same next steps, blocking points and notes as the Follow-up columns of the Package list</span>
+      <span style={{fontSize:11,color:"#9b968b"}}>the same next steps, blocking points, RFI and notes as the Follow-up columns of the Package list</span>
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:"12px 0",margin:"0 -12px"}}>
       <div style={Object.assign({},col,{borderLeft:"none"})}>
@@ -106,6 +107,10 @@ function TenderFollowUpCard({td,tasks,saveTasks,updTd}){
       <div style={col}>
         <div style={Object.assign({},h,{color:"#b3302a"})}>⛔ Blocking points ({a.block.length})</div>
         <PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks} wide/>
+      </div>
+      <div style={col}>
+        <div style={Object.assign({},h,{color:"#b45309"})}>📋 RFI ({a.rfi.length} open{a.rfiDone.length?" · "+a.rfiDone.length+" answered":""})</div>
+        <PpRfiCell td={td} list={a.rfi} done={a.rfiDone} tasks={tasks} saveTasks={saveTasks} wide/>
       </div>
       <div style={col}>
         <div style={Object.assign({},h,{color:"var(--gold-ink,#8a6a1e)"})}>📝 Notes ({tenderNotesOf(td).length})</div>
