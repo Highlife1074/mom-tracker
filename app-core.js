@@ -322,6 +322,22 @@ function scoreStyle(s){
 }
 
 const OWNER_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#f4f6f9|#0f5299","#fbe9e7|#bf360c","#f9fbe7|#827717"];
+// Automatic "Procurement late for: …" actions (created by the zone schedules) are an ALERT,
+// not a blocking point: tagged Warning, never Blocking Point. ppProcLateUnblock(tasks) turns the
+// Blocking Point tag of the open ones created before this rule into Warning → new array, or
+// null when nothing changes (one write, never from a read-only account — callers check).
+function isProcLateAuto(t){return !!t&&t.addedBy==="System"&&(String(t.autoKey||"").indexOf("proclate:")===0||String(t.text||"").indexOf("Procurement late for: ")===0);}
+function ppProcLateUnblock(tasks){
+  var n=0;
+  var out=(tasks||[]).map(function(t){
+    if(!isProcLateAuto(t)||t.status==="done"||(t.tags||[]).indexOf("Blocking Point")<0)return t;
+    n++;
+    var tg=(t.tags||[]).filter(function(x){return x!=="Blocking Point";});
+    if(tg.indexOf("Warning")<0)tg.push("Warning");
+    return Object.assign({},t,{tags:tg});
+  });
+  return n?out:null;
+}
 function ownerColor(n){let h=0;if(!n)return{bg:"#f5f4f0",accent:"#888"};for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%OWNER_COLORS.length;const p=OWNER_COLORS[h].split("|");return{bg:p[0],accent:p[1]};}
 const TAG_COLORS=["#e8eaf6|#3949ab","#fbe6e8|#c2185b","#e0f2f1|#00796b","#fff3e0|#e65100","#f2f0ec|#4a4740","#e6f2e9|#1e6b3a","#faf3e0|#b35c00","#fbe9e7|#bf360c","#f4f6f9|#0f5299","#f9fbe7|#827717"];
 function tagColor(t){

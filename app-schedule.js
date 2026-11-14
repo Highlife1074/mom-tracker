@@ -1982,7 +1982,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         autoKey:key,
         owner:(pkgOwners||{})[pr.tender.package||""]||pr.tender.ownerTender||"",
         zone:curZone,package:pr.tender.package||"",tenderRef:pr.tender.id,scheduleRowRef:r.id,
-        tags:["Blocking Point"],importance:3,urgence:3,due:r.startWeek,
+        tags:["Warning"],importance:3,urgence:3,due:r.startWeek,   // an alert, not a blocking point
         note:"Delivery expected "+fmtDate(pr.delivery)+" but the task starts week of "+fmtDate(r.startWeek)+" ("+pr.weeksLate+" week"+(pr.weeksLate!==1?"s":"")+" late)",
         addedBy:"System"
       }),...next];
@@ -2007,6 +2007,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       changed=true;
       return Object.assign({},t,{status:"done",completedAt:today()});
     });
+
+    // 4. the ones created before were tagged Blocking Point: an alert is a Warning
+    var unb=ppProcLateUnblock(next);
+    if(unb){next=unb;changed=true;}
 
     if(changed){
       autoBusyRef.current=true;

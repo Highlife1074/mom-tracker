@@ -518,7 +518,7 @@ function ppActionsIndex(tasks){
     if(t.status==="done"&&!rfi)return;
     var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[],rfi:[],rfiDone:[]});
     if(rfi)(t.status==="done"?e.rfiDone:e.rfi).push(t);
-    else ((t.tags||[]).indexOf("Blocking Point")>=0?e.block:e.next).push(t);
+    else ((t.tags||[]).indexOf("Blocking Point")>=0&&!isProcLateAuto(t)?e.block:e.next).push(t);   // auto "Procurement late" = alert, never a blocking point
   });
   function byDue(a,b){var x=a.due||"9999",y=b.due||"9999";return x<y?-1:x>y?1:0;}
   function byAns(a,b){var x=ppRfiInfo(a).due||"9999",y=ppRfiInfo(b).due||"9999";return x<y?-1:x>y?1:0;}
@@ -2599,7 +2599,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
             {fin&&th("variance","Var. budget − instructed",{textAlign:"right"},"Budget − instructed: positive = under budget (green), negative = over budget (red). Empty until the package is instructed.")}
             {fol&&th("owner","Owner",null,"Owner of the package","sep")}
             {fol&&th("next","Next steps",null,"Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one. Sorted by number.")}
-            {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package — including the automatic “Procurement late” ones from the schedule. Sorted by number.")}
+            {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package. The automatic “Procurement late” alerts are not blocking points (they are in Next steps). Sorted by number.")}
             {fol&&th("notes","Notes",null,"Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one. Sorted by number.")}
           </tr>
           {model&&<tr className="ppt-scale">

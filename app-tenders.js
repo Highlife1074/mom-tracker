@@ -3881,9 +3881,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     if(nsDone.current||isReadOnly()||!saveTasks||!(tenders||[]).length||!(tasks||[]).length)return;
     var m=ppMigrateNextSteps(tenders,tasks);
     nsDone.current=true;
-    if(!m)return;
-    saveTasks(m.tasks);
-    saveTenders(m.tenders);
+    // automatic "Procurement late" actions: an alert (Warning), not a blocking point
+    var unb=ppProcLateUnblock(m?m.tasks:tasks);
+    if(!m&&!unb)return;
+    saveTasks(unb||m.tasks);
+    if(m)saveTenders(m.tenders);
   },[tenders,tasks]);
   var _nsIdx=ppActionsIndex(tasks);
 
