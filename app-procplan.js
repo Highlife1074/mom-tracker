@@ -1182,6 +1182,9 @@ function ppMsCell(td,p,m,now){
   if(o.cli)o.tip+="\n"+o.cli.tip;
   return ppTodoCell(p,m,act,due,real,o,now);
 }
+// A milestone / document cell that is reached (on time or late): the whole cell is pale green,
+// like a closed / all-validated package row (td.ms-ok, screen and print). N/A stays grey.
+function ppCellDone(c){return !!c&&(c.kind==="done"||c.kind==="doneLate");}
 function ppMsCellHtml(c){
   var top=c.act||c.due?'<div class="ppc-top"'+(c.kind==="next"?' style="background:'+c.bg+';border-color:'+c.fg+';color:'+c.fg+'"':'')+'>'+
     (c.act?'<div class="act">'+esc(c.act)+'</div>':'')+(c.due?'<div class="due">'+esc(c.due)+'</div>':'')+'</div>':'';
@@ -1380,6 +1383,7 @@ var PP_TABLE_CSS=
   '.ppt tr.ppt-strip td.nx{font-size:11px;color:#6f6b62;line-height:1.35}'+
   '.ppt tr.ppt-scale td{background:#fafaf8;border-right:none;border-left:none;padding-top:4px;padding-bottom:4px}'+
   '.pp-act .pp-act-x{visibility:hidden}.pp-act:hover .pp-act-x{visibility:visible}'+
+  '.ppt td.ms.ms-ok{background:#e6f2e9!important}'+
   '.ppc{border-radius:6px;min-height:34px;box-sizing:border-box;line-height:1.3;overflow-wrap:break-word}'+
   '.ppc-top{padding:2px 6px;border-radius:6px;border:1.5px solid transparent}'+
   '.ppc-top .act{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#4a4740}'+
@@ -1495,7 +1499,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
         (ppNextAct(p)?'<div class="dd" style="color:'+st.fg+'">'+esc(ppNextBy(p))+'</div>':p.daysLeft!==null?'<div class="dd" style="color:'+st.fg+'">'+ppDaysText(p.daysLeft)+'</div>':'')+ppWhoHtml(stg)+'</td>'+
         '<td class="a">'+(a.rfi.length?a.rfi.map(function(t){var r=ppRfiInfo(t,now);return '<div>'+esc(r.kind+" "+(t.text||""))+'<div class="sm" style="color:'+(r.late?'#b3302a;font-weight:700':r.sent?'#1e6b3a':'#9b968b')+'">'+esc(r.txt)+'</div></div>';}).join(""):'<span style="color:#ccc">—</span>')+'</td>':'');
     if(plan){
-      PP_TABLE_COLS.forEach(function(m,i){h+='<td class="ms'+(i===0?' sep':'')+(m.indexOf("sub_")===0?' sub':'')+'">'+ppMsCellHtml(ppColCell(td,p,m,now))+'</td>';});
+      PP_TABLE_COLS.forEach(function(m,i){var c=ppColCell(td,p,m,now);h+='<td class="ms'+(i===0?' sep':'')+(m.indexOf("sub_")===0?' sub':'')+(ppCellDone(c)?' ms-ok':'')+'">'+ppMsCellHtml(c)+'</td>';});
       h+='<td class="sep" style="white-space:nowrap">'+(p.need?fmtDate(p.need):"—")+'<div class="sm">'+(p.needNext?"next task":tenderScheduleStart(td)?"schedule":p.need?"typed":"")+'</div>'+(p.needPassed?'<div class="sm" style="color:#b3302a;font-weight:700">passed · not started</div>':'')+'</td>';
     }
     if(fin){
@@ -2276,6 +2280,21 @@ function PpFloatScroll({target}){
 // Rendered by TendersView as its list; onOpenTender opens a package sheet in place.
 // Owner of a Package in the list: the coloured chip, with a list of people laid over it to
 // change it (same field as OWNER in the sheet header, td.ownerTender).
+// "✓ Delivered" in the Delivered cell of the list: asks the date (today by default, DD/MM/YYYY
+// or YYYY-MM-DD) and writes td.deliveredOn — the same field as DELIVERED ON in the sheet header.
+function ppMarkDelivered(td,upd){
+  if(blockIfReadOnly())return;
+  ppPrompt({title:"Delivered on site · "+(td.title||"Package"),message:"Date of the delivery on site (DD/MM/YYYY). It is the DELIVERED ON date of the Package sheet; clear it there to undo.",
+    value:fmtDate(today()),placeholder:"DD/MM/YYYY",okLabel:"Delivered"}).then(function(v){
+    if(v===null)return;
+    v=String(v).trim();var iso="";
+    var m=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+    if(m){var y=m[3].length===2?"20"+m[3]:m[3];iso=y+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[1]).slice(-2);}
+    else if(/^\d{4}-\d{2}-\d{2}$/.test(v))iso=v;
+    if(!isValidDate(iso)){safeAlert("Date not understood: "+v+"\n\nType it as DD/MM/YYYY.");return;}
+    upd(td,{deliveredOn:iso});
+  });
+}
 function PpOwnerCell({td,people,upd}){
   var ro=isReadOnly(),cur=td.ownerTender||"";
   var list=(people||[]).slice();if(cur&&list.indexOf(cur)<0)list.unshift(cur);
@@ -2443,7 +2462,14 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
         </td>}
         {dl&&<td><PpRfiCell td={td} list={a.rfi} done={a.rfiDone} tasks={tasks} saveTasks={saveTasks}/></td>}
         {plan&&PP_TABLE_COLS.map(function(m,i){
-          return <td key={m} className={"ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(ppColCell(td,p,m,now))}}></td>;
+          var c=ppColCell(td,p,m,now),cls="ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")+(ppCellDone(c)?" ms-ok":"");
+          // Delivered not reached yet: "✓ Delivered" button = the "Delivered on" date of the sheet
+          if(m==="delivered"&&!ppCellDone(c)&&c.kind!=="na"&&!isReadOnly())return <td key={m} className={cls}>
+            <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
+            <button className="btn btn-sm" style={{marginTop:4,fontSize:10,padding:"1px 6px"}} title="Mark this Package as delivered on site (the DELIVERED ON date of the Package sheet)"
+              onClick={function(e){e.stopPropagation();ppMarkDelivered(td,upd);}}>✓ Delivered</button>
+          </td>;
+          return <td key={m} className={cls} dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}></td>;
         })}
         {plan&&<td className="sep" style={{minWidth:112}}>{needCell(td,p)}</td>}
         {fin&&<td className="sep" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,color:"#0f5299",whiteSpace:"nowrap"}}>{prop?prop.toLocaleString():"—"}</td>}
