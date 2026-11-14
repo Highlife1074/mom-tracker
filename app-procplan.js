@@ -86,7 +86,7 @@ function _ppNum(v){if(v===undefined||v===null||v==="")return null;var n=Number(v
 //   manual    fabrication = lead time typed in the sheet (td.leadTimeDays, fabrication +
 //             transport, as the delivery forecast reads it) minus the transport
 //   materials fabrication = longest lead time of the package's materials
-//   route     approval = 7 days when the amount needs no client approval (internal only)
+//   route     approval = 0: below the ACC threshold there is no client approval step (N/A)
 //   settings  approval, contract, MAR / MSS and SD come from Settings › Durations (the same
 //             durations as the delivery forecast and the document clocks): approval =
 //             accApproval, contract = contractSigning, MAR / MSS = marAfterContract +
@@ -130,7 +130,7 @@ function ppLeads(td){
     if(noDel&&(s.k==="fab"||s.k==="transport"||s.k==="submittals"||s.k==="sd")){out[s.k]=ppLead(0,"type","cd");return;}
     if(s.k==="fab"&&manLead>0){out[s.k]=ppLead(Math.max(0,manLead-trDays),"manual","cd");return;}
     if(s.k==="fab"&&matLead>0){out[s.k]=ppLead(matLead,"materials","cd");return;}
-    if(s.k==="approval"&&route==="none"){out[s.k]=ppLead(7,"route","cd");return;}
+    if(s.k==="approval"&&route==="none"){out[s.k]=ppLead(0,"route","cd");return;}   // below the ACC threshold: no client approval, no step
     var sp=ppSettingsLeadParts(s.k);
     if(sp){out[s.k]=ppLead(ppSettingsLead(s.k),"settings","",sp);return;}
     out[s.k]=ppLead(tpl[s.k],"template",tu);
@@ -148,10 +148,13 @@ function ppActuals(td){
   var acc=cyclesOfStep(td,"acc"),st=cycleStats(acc);
   var awarded=biddersOf(td).some(function(b){return b.result==="awarded";});
   var internal=(function(){try{return tenderApprovalRoute(td).route==="none";}catch(e){return false;}})();
+  // Below the ACC threshold (internal route) there is no client approval: Recommendation and
+  // Approved are not applicable (grey N/A, never late), unless an ACC was really recorded.
+  var NA0={date:"",done:true,na:true};
   if(isValidDate(st.firstSubmitted))a.recommend={date:st.firstSubmitted};
-  else if(internal&&awarded)a.recommend={date:"",done:true};
+  else if(internal)a.recommend=NA0;
   if(isValidDate(st.approvedOn))a.approved={date:st.approvedOn};
-  else if(internal&&awarded)a.approved={date:"",done:true};
+  else if(internal)a.approved=NA0;
   var ct=sd.contract||{};
   var signed=ct.signedAllDone||ct.signedDone||"";
   if(isValidDate(signed))a.contract={date:signed};
@@ -340,7 +343,7 @@ function ProcPlanCard({td,updTd,tasks,saveTasks}){
     if(v==="")delete n[k];else n[k]=Number(v);
     updTd("planLeads",n);
   }
-  var SRC={type:"manpower: nothing made or delivered",settings:"Settings › Durations",pkg:"this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval (below ACC threshold)",template:"template"};
+  var SRC={type:"manpower: nothing made or delivered",settings:"Settings › Durations",pkg:"this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"no client approval (below ACC threshold)",template:"template"};
   return <div className="card" style={{marginBottom:10}}>
     <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={function(){setOpen(!open);}}>
       <span style={{fontSize:10,color:"#9b968b",width:10}}>{open?"▾":"▸"}</span>
@@ -516,14 +519,16 @@ function ppActionsIndex(tasks){
     if(!t||!t.tenderRef)return;
     var rfi=ppIsRfi(t);
     if(t.status==="done"&&!rfi)return;
-    var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[],rfi:[],rfiDone:[]});
+    var e=m[t.tenderRef]||(m[t.tenderRef]={next:[],block:[],rfi:[],rfiDone:[],client:[]});
     if(rfi)(t.status==="done"?e.rfiDone:e.rfi).push(t);
-    else ((t.tags||[]).indexOf("Blocking Point")>=0&&!isProcLateAuto(t)?e.block:e.next).push(t);   // auto "Procurement late" = alert, never a blocking point
+    else if((t.tags||[]).indexOf("Blocking Point")>=0&&!isProcLateAuto(t))e.block.push(t);
+    else if(t.atClient)e.client.push(t);          // marked "waiting for the client" (At client column)
+    else e.next.push(t);   // auto "Procurement late" = alert, never a blocking point
   });
   function byDue(a,b){var x=a.due||"9999",y=b.due||"9999";return x<y?-1:x>y?1:0;}
   function byAns(a,b){var x=ppRfiInfo(a).due||"9999",y=ppRfiInfo(b).due||"9999";return x<y?-1:x>y?1:0;}
   function byDone(a,b){var x=a.completedAt||"",y=b.completedAt||"";return x<y?1:x>y?-1:0;}
-  Object.keys(m).forEach(function(k){m[k].next.sort(byDue);m[k].block.sort(byDue);m[k].rfi.sort(byAns);m[k].rfiDone.sort(byDone);});
+  Object.keys(m).forEach(function(k){m[k].next.sort(byDue);m[k].block.sort(byDue);m[k].client.sort(byDue);m[k].rfi.sort(byAns);m[k].rfiDone.sort(byDone);});
   return m;
 }
 // One RFI / FCR: sent on (rfiSubmission), client answer due (rfiDue, else sent + Settings ›
@@ -592,6 +597,7 @@ var PP_SORTS={
   next:function(r,acts){var a=(acts||{})[r.td.id];var n=a?a.next.length:0;return n||null;},
   block:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.block.length)||null;},
   notes:function(r){return tenderNotesOf(r.td).length||null;},
+  client:function(r,acts){var a=(acts||{})[r.td.id];return (ppClientWaits(r.td,PP_CTRS,a?a.rfi:[]).length+(a?a.client.length:0))||null;},
   addenda:function(r){return ppAddendaOpen(r.td,PP_CTRS)||null;},   // open addendums + final account
   rfi:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.rfi.length)||null;}
 };
@@ -850,7 +856,7 @@ function ppExportXlsx(vis,acts,ctrs){
   function d(v){return isValidDate(v)?{xlDate:_ppDay(v)-EPOCH}:"";}
   var head=["Package","Department","Type","Budget","Need on site","Need from","Status","Next milestone","Days left","Total lead (d)"];
   PP_MS_ORDER.forEach(function(m){if(m==="need")return;head.push(PP_MS_LABEL[m]+" — latest");head.push(PP_MS_LABEL[m]+" — actual");});
-  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Var. budget − instructed","Approval route","Owner","Addendums / Final account","Next steps","Blocking points","RFI open","Notes");
+  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Var. budget − instructed","Approval route","Owner","Addendums / Final account","At client","With us","Blocking points","RFI open","Notes");
   var aoa=[head];
   vis.forEach(function(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status];
@@ -863,13 +869,14 @@ function ppExportXlsx(vis,acts,ctrs){
       line.push(d(p.latest[m]));
       line.push(a?(a.date?d(a.date):"done"):"");
     });
-    var a=acts[td.id]||{next:[],block:[],rfi:[]};
+    var a=acts[td.id]||{next:[],block:[],rfi:[],rfiDone:[],client:[]};
     var prop=ppProposed(td),bud=ppBudget(td);
     line.push(d(p.fcDelivery),d(p.deliveredOn),p.deliveryLate?"yes":"",ppStartsSoon(p)?"yes":"",
       (td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return x.subcontractor;}).join(", ")||td.contractor||"",
       prop||"",ppInstructed(td)||"",String(td.instructionNumber||"").trim(),ppVariance(td)===null?"":ppVariance(td),
       (function(){try{return tenderRouteLabel(td);}catch(e){return "";}})(),td.ownerTender||"",
       ppAddendaText(td,ctrs||[]).join("\n"),
+      ppClientWaits(td,ctrs||[],a.rfi).map(ppClientWaitsText).concat(a.client.map(ppActText)).join("\n"),
       a.next.map(ppActText).join("\n"),a.block.map(ppActText).join("\n"),a.rfi.map(function(t){return ppRfiText(t);}).join("\n"),ppNotesText(td).join("\n"));
     aoa.push(line);
   });
@@ -1046,7 +1053,7 @@ function ppQualityTip(p,k,qd){
 // How a deadline is worked back from the need on site, step by step, for the tooltips:
 // need − float − transport − fabrication … = the milestone; then, for a document still to be
 // (re)submitted, − the client's answer time = the submission deadline.
-var PP_LEAD_SRC={settings:"Settings › Durations",pkg:"typed on this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"internal approval",template:"template"};
+var PP_LEAD_SRC={settings:"Settings › Durations",pkg:"typed on this package",manual:"lead time typed in the sheet − transport",materials:"longest material lead time",route:"no client approval (below ACC threshold)",template:"template"};
 function ppChainTip(p,ms,subKind,submitBy){
   if(!p||!p.need||!p.leads||ms==="need")return "";
   var out=["How this deadline is worked out:","Need on site "+ppDay(p.need)];
@@ -1133,7 +1140,12 @@ function ppMsCell(td,p,m,now){
   now=now||today();
   var lat=p.latest[m]||"",a=p.actual[m];
   if(p.closed&&!(a&&(isValidDate(a.date)||a.done)))return {kind:"na",act:"N/A",due:"",real:"",tip:PP_MS_LABEL[m]+": procurement closed — "+procClosedLabel(p.closed)};
-  if(a&&a.na)return {kind:"na",act:"N/A",due:"",real:"",tip:PP_MS_LABEL[m]+": not applicable"+((m==="ready"||m==="delivered")&&ppNoDelivery(td)?" (manpower — no delivery)":" (set to N/A in the package sheet)")};
+  if(a&&a.na){
+    var naWhy=(m==="ready"||m==="delivered")&&ppNoDelivery(td)?" (manpower — no delivery)"
+      :(m==="approved"||m==="recommend")&&(function(){try{return tenderApprovalRoute(td).route==="none";}catch(e){return false;}})()?" (below the ACC threshold "+momEur(getDur("subAccMin"))+": no client approval)"
+      :" (set to N/A in the package sheet)";
+    return {kind:"na",act:"N/A",due:"",real:"",tip:PP_MS_LABEL[m]+": not applicable"+naWhy};
+  }
   if(p.done[m]){
     var ad=a&&isValidDate(a.date)?a.date:"";
     var extra=m==="approved"?(function(){try{return tenderRouteLabel(td);}catch(e){return "";}})():"";
@@ -1434,7 +1446,11 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   var paper=opts.paper==="A3"?"A3":"A4",withTl=!!opts.tl;
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   var now=today();
+  // The table is zoomed down to the page width (often 35–50 %): fonts and rules are drawn
+  // bigger and darker than on screen so they stay readable once shrunk, and the colours
+  // (pale green done / validated, orange starts soon…) print without "Background graphics".
   var css='<style>@page{size:'+paper+' landscape;margin:9mm 8mm 10mm}body{max-width:none}'+
+    '*{-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
     '.pp h1{font-size:19px;margin:0 0 2px}.pp .sub{color:#666;font-size:11px;margin-bottom:8px}'+
     '.pp .kpis{display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap}.pp .k{border:1px solid #e6e2d8;border-radius:6px;padding:4px 10px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.04em}'+
     '.pp .k b{display:block;font-size:15px;color:#14171c;letter-spacing:0}.pp .k small{display:block;font-size:9px;text-transform:none;letter-spacing:0;color:#888}'+
@@ -1448,7 +1464,15 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     '.pp .ppt tr.s21 td{background:#fdf1e0}.pp .ppt tr.ppt-main.s21 td:first-child{box-shadow:inset 3px 0 0 #b35c00}'+
     '.pp .ppt tr.aok td{background:#e6f2e9}.pp .ppt tr.ppt-main.aok td:first-child{box-shadow:inset 3px 0 0 #1e6b3a}.pp .ppt td.a{min-width:120px;font-size:10px}.pp .ppt td.b{color:#b3302a;font-weight:600}'+
     '.pp .ppt tr.g td{background:#fafaf8;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:10px}'+
-    PP_TABLE_CSS+PP_GANTT_CSS+'.pp .ppg{min-width:0}.pp .ppg-l{flex-basis:230px;width:230px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;padding:3px 8px}'+
+    PP_TABLE_CSS+
+    // print only: bigger type, thicker and darker rules (after PP_TABLE_CSS so they win)
+    '.pp table.ppt{font-size:14px;border:2px solid #8f8a7e}.pp .ppt th,.pp .ppt td{border-bottom:1.5px solid #a9a497;border-right:1.5px solid #a9a497;padding:6px 7px;color:#14171c}'+
+    '.pp .ppt th{font-size:12px;color:#14171c}.pp .ppt tr.ppt-g th{font-size:12px;border-bottom:2px solid #7f95b3}.pp .ppt th.sep,.pp .ppt td.sep{border-left:2.5px solid #7f95b3}'+
+    '.pp .ppt .sm{font-size:12.5px;color:#4a4740}.pp .ppt td.a{font-size:12.5px}.pp .ppt .pill,.pp .ppt .dd{font-size:12.5px}'+
+    '.pp .ppc-top .act{font-size:12.5px}.pp .ppc-top .due{font-size:12.5px;color:#4a4740}.pp .ppc-real{font-size:12.5px;color:#4a4740;border-top:1.5px dashed #a9a497}'+
+    '.pp .ppc-why,.pp .ppc-ref{font-size:11.5px}.pp .ppc-done .ppc-top .act,.pp .ppc-doneLate .ppc-top .act,.pp .ppc-na .ppc-top .act{font-size:13.5px}'+
+    '.pp .ppt td.ms{min-width:140px;max-width:175px}.pp .ppt td.ms.sub{min-width:130px;max-width:160px}'+
+    PP_GANTT_CSS+'.pp .ppg{min-width:0}.pp .ppg-l{flex-basis:230px;width:230px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;padding:3px 8px}'+
     '.pp .ppg-l .t{white-space:normal;flex:none;font-size:10.5px;line-height:1.2}.pp .ppg-l .ppg-st{font-size:8.5px}.pp .ppg-hd .ppg-l{flex-direction:row;align-items:center}.pp .ppg-ov{left:230px}</style>';
   var html=css+'<div class="pp">';
   html+='<h1>Riviera Tower — Packages</h1><div class="sub">Printed '+fmtDate(now)+' · '+vis.length+' package'+(vis.length>1?"s":"")+
@@ -1473,26 +1497,26 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=2+(fin?1:0)+(dl?2:0);   // Package + Subcontractor; Budget only with Finance; Next deadline + RFI with Plan or Follow-up
   if(!dl)model=null;
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?6:0);
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+140+(fin?90:0)+(dl?370:0)+(plan?1280:0)+(fin?330:0)+(fol?960:0);
+  var tableW=210+140+(fin?90:0)+(dl?370:0)+(plan?1280:0)+(fin?330:0)+(fol?1150:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
     '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="'+PP_TABLE_COLS.length+'" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
-    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="5" class="sep">Follow-up</th>':'')+'</tr><tr>'+
+    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="6" class="sep">Follow-up</th>':'')+'</tr><tr>'+
     '<th>Package</th><th>Subcontractor</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th><th>RFI open</th>':'')+
     (plan?PP_TABLE_COLS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(ppColLabel(m))+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
-    (fol?'<th class="sep">Owner</th><th>Addendums / Final account</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
+    (fol?'<th class="sep">Owner</th><th>Addendums / Final account</th><th>At client</th><th>With us</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
     (model?'<tr class="ppt-scale"><td colspan="'+nb+'" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
     '</thead><tbody>';
   function li(l,cls){return l.length?l.map(function(x){return '<div>'+esc(x)+'</div>';}).join(""):'<span style="color:#ccc">—</span>';}
   function line(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status],allOk=ppAllValid(td,p),soon=!allOk&&ppStartsSoon(p,now),stg=ppStageOf(td,now);
-    var a=acts[td.id]||{next:[],block:[],rfi:[]};
+    var a=acts[td.id]||{next:[],block:[],rfi:[],rfiDone:[],client:[]};
     var hcls=allOk?' aok':soon?' s21':'';
     var h='<tr class="ppt-main'+hcls+'"><td><b>'+esc(td.title||"(untitled)")+'</b><div class="sm">'+esc(td.package||"No department")+' · '+esc(ppTypeLabel(ppType(td)))+'</div>'+
       (soon?'<div class="sm" style="color:#b35c00;font-weight:700">starts on site ≤ 21 d</div>':'')+
@@ -1514,6 +1538,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     if(fol){
       h+='<td class="sep">'+esc(String(td.ownerTender||"—"))+'</td>'+
         '<td class="a">'+ppAddendaHtml(td,opts.contractors||[],now)+'</td>'+
+        '<td class="a">'+(function(){var w=ppClientWaits(td,opts.contractors||[],a.rfi,now);return w.length||a.client.length?ppClientWaitsHtml(w)+(a.client.length?li(a.client.map(ppActText)):''):li([]);})()+'</td>'+
         '<td class="a">'+li(a.next.map(ppActText))+'</td>'+
         '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
         '<td class="a">'+li(ppNotesText(td))+'</td>';
@@ -1561,6 +1586,68 @@ function ppMigrateNextSteps(tenders,tasks){
   var set={};todo.forEach(function(td){set[td.id]=1;});
   return {tasks:add.concat(tasks||[]),tenders:(tenders||[]).map(function(td){return set[td.id]?Object.assign({},td,{nextStep:""}):td;}),n:add.length};
 }
+// ============================================================================================
+// Next steps split in two: AT CLIENT (waiting for the client) and WITH US (ours to do).
+// At client = automatic: every validation waiting for the client — documents of tenderDocs at
+// the client (ACC / Aconex, MAR, MSS, WMS, ITP, SD, purchases), RFI / FCR sent and not answered,
+// addendums and final account submitted — plus the actions marked "at client" (t.atClient,
+// added by hand in the column). With us = the other open actions of the Package.
+// ============================================================================================
+function ppClientWaits(td,contractors,rfis,now){
+  now=now||today();
+  var out=[];
+  function days(a,b){return Math.round((parseISODate(b)-parseISODate(a))/86400000);}
+  function push(txt,since,due,tip){
+    var late=!!(isValidDate(due)&&due<now);
+    out.push({txt:txt,since:since,due:due,late:late,tip:tip||"",
+      sub:(isValidDate(since)?"since "+ppDay(since)+" · "+days(since,now)+" d":"")+(isValidDate(due)?(since?" · ":"")+(late?days(due,now)+" d overdue":"answer due "+ppDay(due)):"")});
+  }
+  try{
+    tenderDocs(td).forEach(function(d){
+      var s=docSummary(d,now);if(s.state!=="pending")return;
+      var last=d.cycles[d.cycles.length-1]||{};
+      var ref=String(last.ref||last.reference||"").trim();
+      push(docShortName(d)+(d.cycles.length>1?" · rev "+(d.cycles.length-1):"")+(ref?" · "+ppShortRef(ref):""),last.submitted,docResponseDue(d,last.submitted),ref);
+    });
+  }catch(e){}
+  (rfis||[]).forEach(function(t){
+    var r=ppRfiInfo(t,now);if(!r.sent)return;
+    push(r.kind+" "+(t.text||""),r.sent,r.due);
+  });
+  try{
+    ppAddenda(td,contractors||[],now).forEach(function(x){x.ads.forEach(function(a){
+      if(a.i.stage!=="sent")return;
+      push("Addendum "+(a.ad.number||"?")+" ("+PP_AD_ROUTE_LABEL[a.i.route]+")"+(a.ad.amount?" · "+ppMoneyShort(a.ad.amount):""),a.i.sent,a.i.due,a.ad.description||"");
+    });});
+    var fa=td.finalAccount;
+    if(fa&&!fa.na&&isValidDate(fa.sentOn)&&!isValidDate(fa.approvedOn))
+      push("Final account ("+PP_AD_ROUTE_LABEL[fa.route==="aconex"||fa.route==="none"?fa.route:"acc"]+")",fa.sentOn,addDur(fa.sentOn,"accApproval"),fa.ref||"");
+  }catch(e){}
+  out.sort(function(a,b){return (b.late?1:0)-(a.late?1:0)||String(a.due||"9999").localeCompare(String(b.due||"9999"));});
+  return out;
+}
+function ppClientWaitsText(w){return w.txt+(w.sub?" — "+w.sub:"");}
+function ppClientWaitsHtml(waits){
+  return waits.map(function(w){return '<div><b>'+esc(w.txt)+'</b><div class="sm" style="color:'+(w.late?'#b3302a;font-weight:700':'#0f5299')+'">'+esc(w.sub)+'</div></div>';}).join("");
+}
+// Column "At client": the automatic list (read-only, each line explains since when and when the
+// answer is due, red when overdue) then the actions marked at client (tick / edit / + add).
+function PpClientCell({td,waits,list,tasks,saveTasks,wide}){
+  const [all,setAll]=useState(false);
+  var shown=all||wide?waits:waits.slice(0,4);
+  return <div style={{minWidth:wide?190:150,maxWidth:wide?"none":220,fontSize:wide?12:11,lineHeight:1.35,overflowWrap:"break-word"}}>
+    {shown.map(function(w,i){
+      return <div key={i} title={(w.tip?w.tip+"\n":"")+"Automatic: waiting for the client"+(w.due?"\nAnswer due "+fmtDate(w.due):"")}
+        style={{marginBottom:3,padding:"1px 5px",borderLeft:"2px solid "+(w.late?"#b3302a":"#7f95b3"),background:w.late?"#fdf0ef":"#f4f7fb",borderRadius:"0 4px 4px 0"}}>
+        <div style={{fontWeight:600,color:"var(--ink,#16181d)"}}>{w.txt}</div>
+        {w.sub&&<div style={{fontSize:10,color:w.late?"#b3302a":"#5f7ea6",fontWeight:w.late?700:400}}>{w.sub}</div>}
+      </div>;
+    })}
+    {!wide&&waits.length>4&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit",display:"block"}}>
+      {all?"show less":"+ "+(waits.length-4)+" more"}</button>}
+    <PpActionsCell td={td} list={list} kind="client" tasks={tasks} saveTasks={saveTasks} wide={wide}/>
+  </div>;
+}
 function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
   const [open,setOpen]=useState(false);
   const [txt,setTxt]=useState("");
@@ -1575,7 +1662,7 @@ function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
     .concat(list.map(function(t){return {key:t.id,t:t,text:t.text||""};}));
   var shown=all||wide?items:items.slice(0,3);
   function newAct(o){
-    return newTask(Object.assign({tenderRef:td.id,package:td.package||"",tags:block?["Blocking Point"]:[],
+    return newTask(Object.assign({tenderRef:td.id,package:td.package||"",tags:block?["Blocking Point"]:[],atClient:kind==="client"?true:undefined,
       importance:block?3:2,urgence:block?3:2,owner:td.ownerTender||"",note:"From the Package list"},o));
   }
   function add(){
@@ -1640,10 +1727,10 @@ function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
       ?<div style={{display:"flex",gap:3,marginTop:3}}>
         <input type="text" autoFocus value={txt} onChange={function(e){setTxt(e.target.value);}}
           onKeyDown={function(e){if(e.key==="Enter")add();if(e.key==="Escape"){setOpen(false);setTxt("");}}}
-          placeholder={block?"Blocking point…":"Next step…"} style={{flex:1,minWidth:0,fontSize:11,padding:"2px 6px"}}/>
+          placeholder={block?"Blocking point…":kind==="client"?"Waiting for the client…":"Next step…"} style={{flex:1,minWidth:0,fontSize:11,padding:"2px 6px"}}/>
         <button className="btn btn-sm" onClick={add} disabled={!txt.trim()} style={{padding:"1px 7px",fontSize:10.5}}>Add</button>
       </div>
-      :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":"Add a next step (an action linked to this package, to tick when done)"}
+      :<button onClick={function(){setOpen(true);}} title={block?"Add a blocking point (an action tagged Blocking Point, linked to this package)":kind==="client"?"Add something we wait for from the client (an action linked to this package, marked at client)":"Add a next step (an action linked to this package, to tick when done)"}
         style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ add</button>)}
   </div>;
 }
@@ -2616,7 +2703,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
   }),sort,acts);
   var budgetVis=vis.reduce(function(s,r){return s+ppBudget(r.td);},0);
   var ft=ppFinanceTotals(vis);
-  var NOACT={next:[],block:[],rfi:[],rfiDone:[]};
+  var NOACT={next:[],block:[],rfi:[],rfiDone:[],client:[]};
   const tdRef=useRef(tenders);tdRef.current=tenders;
   const wrapRef=useRef(null);             // the table box, for the scrollbar fixed at the bottom
   function upd(td,patch){if(blockIfReadOnly())return;saveTenders((tdRef.current||[]).map(function(t){return t.id===td.id?Object.assign({},t,patch):t;}));}
@@ -2627,7 +2714,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=2+(fin?1:0)+(dl?2:0);   // Package + Subcontractor; Budget only with Finance; Next deadline + RFI with Plan or Follow-up
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?6:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   var model=tl&&dl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
@@ -2723,6 +2810,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
           title="Budget − instructed">{vr===null?"—":ppSigned(vr)}</td>}
         {fol&&<td className="sep"><PpOwnerCell td={td} people={people} upd={upd}/></td>}
         {fol&&<td><PpAddendaCell td={td} contractors={contractors} saveContractors={saveContractors} upd={upd} onOpenTender={onOpenTender}/></td>}
+        {fol&&<td><PpClientCell td={td} waits={ppClientWaits(td,contractors,a.rfi)} list={a.client||[]} tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} updTd={function(p){upd(td,p);}}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
@@ -2830,7 +2918,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
             {plan&&<th colSpan={PP_TABLE_COLS.length} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={3} className="sep">Finance</th>}
-            {fol&&<th colSpan={5} className="sep">Follow-up</th>}
+            {fol&&<th colSpan={6} className="sep">Follow-up</th>}
           </tr>
           <tr>
             {th("title","Package",{minWidth:160})}
@@ -2845,7 +2933,8 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
             {fin&&th("variance","Var. budget − instructed",{textAlign:"right"},"Budget − instructed: positive = under budget (green), negative = over budget (red). Empty until the package is instructed.")}
             {fol&&th("owner","Owner",null,"Owner of the package","sep")}
             {fol&&th("addenda","Addendums / Final account",null,"Addendums of the contracts linked to the package and its final account — simplified ACC / Aconex workflow: to submit → at the client (answer due, red when overdue) → approved. Click to update, + addendum / + final account to add. Same addendums as the sheet (Contract & addendums). Sorted by number still open.")}
-            {fol&&th("next","Next steps",null,"Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one. Sorted by number.")}
+            {fol&&th("client","At client",null,"Waiting for the client — automatic: every validation at the client (ACC / Aconex, MAR, MSS, WMS, ITP, SD, purchases, RFI sent, addendums, final account) with since when and when the answer is due (red when overdue); then what you add by hand (+ add). Sorted by number.")}
+            {fol&&th("next","With us",null,"Our next steps: open actions linked to the package (not Blocking Point, not at client), soonest due first. Tick to close, + add to create one. Sorted by number.")}
             {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package. The automatic “Procurement late” alerts are not blocking points (they are in Next steps). Sorted by number.")}
             {fol&&th("notes","Notes",null,"Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one. Sorted by number.")}
           </tr>
