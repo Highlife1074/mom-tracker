@@ -588,7 +588,18 @@ function ProcReportButton({tenders,tasks,packages}){
   </React.Fragment>;
 }
 
+// A table whose first row holds only <th> cells gets that row moved into a <thead>, so the
+// browser repeats it at the top of every printed page (most reports write their header
+// row as a plain <tr><th>…, which prints once only). Tables that already have a <thead>
+// are left alone; the rows after it fall into the implicit <tbody>.
+function reportHeadRows(html){
+  return String(html).replace(/<table\b([^>]*)>(\s*)(<tr\b[^>]*>((?:(?!<\/tr>)[\s\S])*)<\/tr>)/gi,function(all,attrs,sp,row,cells){
+    if(/<td\b/i.test(cells)||!/<th\b/i.test(cells)||/<table\b/i.test(cells))return all;
+    return '<table'+attrs+'>'+sp+'<thead>'+row+'</thead>';
+  });
+}
 function openReport(title,bodyHtml){
+  bodyHtml=reportHeadRows(bodyHtml);
   var w=window.open("","_blank");
   if(!w){safeAlert("Your browser blocked the report window.\n\nAllow pop-ups for this site, then try again.");return;}
   // The document title is what Chrome, Edge and Safari propose as the PDF file name in
