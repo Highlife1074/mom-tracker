@@ -23,7 +23,8 @@ const PP_TYPES=[
   {k:"supply_install",label:"Supply & install"},
   {k:"equipment",label:"Equipment"},
   {k:"material",label:"Material"},
-  {k:"manpower",label:"Manpower (no delivery)"}
+  {k:"manpower",label:"Manpower (no delivery)"},
+  {k:"order",label:"Order (ACC · MAR · delivery)"}   // direct order, no tender (+ Order, PpOrderModal)
 ];
 // In chronological order. Each step ends on its milestone (ms) and starts on the milestone of
 // the step before it (ppStepFrom), except MAR / MSS and shop drawings: both start at the
@@ -60,8 +61,11 @@ const PP_DEFAULT_TEMPLATES={
   supply_install:{prep:14,bidding:21,evaluation:14,approval:21,contract:28,submittals:21,sd:21,fab:56, transport:14,buffer:7},
   equipment:     {prep:14,bidding:28,evaluation:14,approval:21,contract:21,submittals:14,sd:14,fab:112,transport:21,buffer:14},
   material:      {prep:7, bidding:14,evaluation:7, approval:21,contract:14,submittals:21,sd:7, fab:42, transport:14,buffer:7},
-  manpower:      {prep:7, bidding:14,evaluation:7, approval:21,contract:21,submittals:0, sd:0, fab:0,  transport:0, buffer:14}
+  manpower:      {prep:7, bidding:14,evaluation:7, approval:21,contract:21,submittals:0, sd:0, fab:0,  transport:0, buffer:14},
+  order:         {prep:0, bidding:0, evaluation:0, approval:21,contract:7, submittals:21,sd:0, fab:42, transport:14,buffer:7}
 };
+// Direct order: no tender — Start / Issue / Bids in / Recommendation are not applicable.
+function ppIsOrder(td){return ppType(td)==="order";}
 // Labour only: nothing is made or delivered.
 function ppNoDelivery(td){return ppType(td)==="manpower";}
 function ppType(td){var t=td&&td.procType;return PP_DEFAULT_TEMPLATES[t]?t:"subcontract";}
@@ -128,6 +132,7 @@ function ppLeads(td){
     // SD typed together with the submittals before the split: covered by that lead time
     if(s.k==="sd"&&_ppNum(own.submittals)!==null){out[s.k]=ppLead(0,"pkg");return;}
     if(noDel&&(s.k==="fab"||s.k==="transport"||s.k==="submittals"||s.k==="sd")){out[s.k]=ppLead(0,"type","cd");return;}
+    if(ppIsOrder(td)&&(s.k==="prep"||s.k==="bidding"||s.k==="evaluation")){out[s.k]=ppLead(0,"type","cd");return;}   // order: no tender
     if(s.k==="fab"&&manLead>0){out[s.k]=ppLead(Math.max(0,manLead-trDays),"manual","cd");return;}
     if(s.k==="fab"&&matLead>0){out[s.k]=ppLead(matLead,"materials","cd");return;}
     if(s.k==="approval"&&route==="none"){out[s.k]=ppLead(0,"route","cd");return;}   // below the ACC threshold: no client approval, no step
@@ -178,6 +183,7 @@ function ppActuals(td){
   function isNa(v){return v==="N/A"||v==="Not needed";}
   var NA={date:"",done:true,na:true};
   if(isNa(steps.pkg)){if(!a.start)a.start=NA;if(!a.issue)a.issue=NA;if(!a.bids)a.bids=NA;}
+  if(ppIsOrder(td)){if(!a.start)a.start=NA;if(!a.issue)a.issue=NA;if(!a.bids)a.bids=NA;if(!a.recommend)a.recommend=NA;}   // direct order: no tender
   if(isNa(steps.acc)){if(!a.recommend)a.recommend=NA;if(!a.approved)a.approved=NA;}
   if(isNa(steps.contract)&&!a.contract)a.contract=NA;
   var docs=tenderDocs(td);
@@ -399,6 +405,7 @@ function ProcPlanCard({td,updTd,tasks,saveTasks}){
 function _ppParseType(v){
   var t=String(v||"").toLowerCase();
   if(!t)return"";
+  if(/order|commande|\bpo\b/.test(t))return"order";
   if(/equip/.test(t))return"equipment";
   if(/man ?power|labou?r|main[- ]d/.test(t))return"manpower";
   if(/install|s&i|s & i|supply.*install/.test(t))return"supply_install";
@@ -414,6 +421,71 @@ function _ppParseDate(v){
   if(m){var y=m[3].length===2?"20"+m[3]:m[3];var d=y+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[1]).slice(-2);return isValidDate(d)?d:"";}
   if(/^\d{5}$/.test(s)){var dt=new Date(Date.UTC(1899,11,30)+Number(s)*86400000);return toISO(new Date(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate()));}
   return"";
+}
+// "+ Order": a direct order followed in the Package list without a tender — simplified to
+// ACC (by amount: below subAccMin no client approval) / MAR / delivery. It is an ordinary
+// Package of type "order" (procType), so every column, filter, Quick update, sheet, print and
+// the schedule link work as for the others: amount → proposed ACC amount (accAmountSubcontract,
+// sets the route), supplier → contractor, PO date → contract signed (stepDates.contract), MAR
+// needed → one material (its MAR is a document of the Package), lead time → leadTimeDays.
+function PpOrderModal({packages,tenders,saveTenders,onClose,onOpen}){
+  const [f,setF]=useState({title:"",dept:"",supplier:"",amount:"",need:"",lead:"",mar:true,po:"",owner:(window._currentUser||{}).name||""});
+  function set(p){setF(Object.assign({},f,p));}
+  var amt=Number(f.amount)||0;
+  var route=!amt?"":amt>=getDur("subAconexMin")?"Aconex":amt>=getDur("subAccMin")?"ACC":"no client approval (below "+momEur(getDur("subAccMin"))+")";
+  function create(open){
+    if(blockIfReadOnly())return;
+    var title=String(f.title||"").trim();if(!title)return;
+    var lead=parseLeadDays(f.lead);
+    var td=newTender({title:title,package:f.dept,procType:"order",ownerTender:f.owner,contractor:String(f.supplier||"").trim(),
+      accAmountSubcontract:amt||"",budget:amt||"",startOnSite:isValidDate(f.need)?f.need:"",leadTimeDays:lead||""});
+    td.steps=Object.assign({},td.steps,{pkg:"N/A",bidders:"N/A"});
+    if(isValidDate(f.po)){
+      td.stepDates=Object.assign({},td.stepDates,{contract:Object.assign({},td.stepDates.contract,{done:f.po,signedDone:f.po,signedAllDone:f.po})});
+      td.steps.contract="Signed";
+    }
+    if(f.mar)td.materials=[{id:uuid(),name:title,specified:"",proposed:"",leadTime:f.lead||"",marStatus:"",marTarget:"",marDone:"",marApprovalStatus:"",marApprovalTarget:"",marApprovalDone:"",marReview:"",marNumber:"",hasPO:!!f.po,poNumber:"",poStatus:""}];
+    saveTenders([td].concat(tenders||[]));
+    onClose();
+    if(open&&onOpen)onOpen(td);
+  }
+  var lbl={fontSize:11,color:"#6f6b62",display:"block",marginBottom:2};
+  var row={display:"flex",gap:10,flexWrap:"wrap",marginBottom:10};
+  return <div className="overlay" onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:600}}>
+      <div className="modal-hdr">
+        <div className="modal-title">New order</div>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+      </div>
+      <div className="modal-body">
+        <div style={{fontSize:12,color:"#6f6b62",marginBottom:10}}>A direct order, without a tender: followed as <b>ACC → MAR → delivery</b> in the Package list (type Order). Tender steps are N/A.</div>
+        <div style={row}>
+          <label style={{margin:0,flex:"2 1 240px"}}><span style={lbl}>What is ordered</span><input type="text" autoFocus value={f.title} onChange={function(e){set({title:e.target.value});}} placeholder="e.g. Fire doors level 3" style={{width:"100%",boxSizing:"border-box"}}/></label>
+          <label style={{margin:0,flex:"1 1 160px"}}><span style={lbl}>Department</span>
+            <select value={f.dept} onChange={function(e){set({dept:e.target.value});}} style={{width:"100%"}}><option value="">—</option>
+              {(packages||[]).map(function(p){return <option key={p} value={p}>{p}</option>;})}</select></label>
+        </div>
+        <div style={row}>
+          <label style={{margin:0,flex:"1 1 180px"}}><span style={lbl}>Supplier</span><input type="text" value={f.supplier} onChange={function(e){set({supplier:e.target.value});}} style={{width:"100%",boxSizing:"border-box"}}/></label>
+          <label style={{margin:0}}><span style={lbl}>Amount (excl. tax)</span><input type="number" value={f.amount} onChange={function(e){set({amount:e.target.value});}} style={{width:130,textAlign:"right"}}/></label>
+          <div style={{alignSelf:"flex-end",fontSize:11.5,color:"#0f5299",paddingBottom:6}}>{route?"Approval: "+route:""}</div>
+        </div>
+        <div style={row}>
+          <label style={{margin:0}}><span style={lbl}>Need on site</span><input type="date" value={f.need} onChange={function(e){set({need:e.target.value});}}/></label>
+          <label style={{margin:0}}><span style={lbl}>Lead time (fabrication + transport)</span><input type="text" value={f.lead} onChange={function(e){set({lead:e.target.value});}} placeholder="e.g. 6 weeks" style={{width:130}}/></label>
+          <label style={{margin:0}}><span style={lbl}>PO placed on (if already)</span><input type="date" value={f.po} onChange={function(e){set({po:e.target.value});}}/></label>
+        </div>
+        <label style={{display:"flex",alignItems:"center",gap:6,textTransform:"none",letterSpacing:"normal",fontSize:12,margin:0}}>
+          <input type="checkbox" checked={f.mar} onChange={function(e){set({mar:e.target.checked});}} style={{width:14,height:14}}/>A MAR is needed (material approval by the client)</label>
+        <div style={{fontSize:11,color:"#9b968b",marginTop:8}}>Then follow it in the list: ⚡ Update records the ACC and MAR submissions, the PO (contract = PO) and ✓ Delivered the delivery. Everything stays editable in the sheet.</div>
+      </div>
+      <div className="modal-footer">
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={function(){create(true);}} disabled={!String(f.title).trim()}>Create &amp; open</button>
+        <button className="btn btn-gold" onClick={function(){create(false);}} disabled={!String(f.title).trim()}>Create</button>
+      </div>
+    </div>
+  </div>;
 }
 function ProcPlanPasteModal({tenders,saveTenders,packages,onClose}){
   const [txt,setTxt]=useState("");
@@ -1149,7 +1221,7 @@ function ppMsCell(td,p,m,now){
   if(p.done[m]){
     var ad=a&&isValidDate(a.date)?a.date:"";
     var extra=m==="approved"?(function(){try{return tenderRouteLabel(td);}catch(e){return "";}})():"";
-    var lbl=m==="contract"&&a&&a.po?"PO placed":PP_MS_DONE[m]||"Done";
+    var lbl=m==="contract"&&a&&(a.po||ppIsOrder(td))?"PO placed":PP_MS_DONE[m]||"Done";
     if(m==="approved"){var dc=ppDoneCell("✓ "+lbl+(ad?" "+ppDay(ad):""),ad,lat,extra,PP_MS_LABEL[m]+" reached"+(ad?" "+fmtDate(ad):"")+(lat?" · deadline "+fmtDate(lat):""));
       try{var _ad=tenderDocs(td).filter(function(d){return d.id==="acc";});dc.refs=ppDocRefs(td,_ad);dc.refsFull=ppDocRefs(td,_ad,true);}catch(e){}
       return dc;}
@@ -1167,12 +1239,13 @@ function ppMsCell(td,p,m,now){
       else if(p.next==="recommend"){act=route==="none"?"To award":"To submit ("+rl+")";due=p.latest.recommend||lat;}
       else if(s.state==="pending")act="To be approved ("+rl+")";
       else if(s.state==="returned"){act="To resubmit ("+rl+")";due=ppSubmitBy("acc",lat);}
+      else if(ppIsOrder(td)&&s.state==="none"){act="To submit ("+rl+")";due=ppSubmitBy("acc",lat);}   // order: no recommendation step before
       else act=route==="none"?"To approve (internal)":"To be approved ("+rl+")";
       if(acc){o.cli=ppClientDue([acc],now);o.refs=ppDocRefs(td,[acc]);o.refsFull=ppDocRefs(td,[acc],true);}
     }
     else if(m==="contract"){
       var pur=(td.purchases||[]).filter(Boolean),ty=ppType(td);
-      act=pur.length&&(ty==="material"||ty==="equipment")?"PO to place":"To sign";
+      act=pur.length&&(ty==="material"||ty==="equipment")||ty==="order"?"PO to place":"To sign";
       if(!real)real="Not started";
     }
     else if(m==="delivered"){
@@ -2667,6 +2740,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
   useEffect(function(){lsSet("pp_procplan_sort",JSON.stringify(sort));},[sort]);
   useEffect(function(){lsSet("pp_procplan_owner",ownerF);lsSet("pp_procplan_awd",awdF);},[ownerF,awdF]);
   const [paste,setPaste]=useState(false);
+  const [orderNew,setOrderNew]=useState(false);
   const [printOpen,setPrintOpen]=useState(false);
   useEffect(function(){lsSet("pp_procplan_horizon",horizon);},[horizon]);
   useEffect(function(){lsSet("pp_procplan_view",mode);},[mode]);
@@ -2846,9 +2920,11 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
         <button className="btn" disabled={!vis.length} title="Print the packages shown: choose the columns, A4 or A3, with or without the timelines"
           onClick={function(){setPrintOpen(true);}}>Print</button>
         {!ro&&<button className="btn" onClick={function(){setPaste(true);}} title="Create or update packages from a list pasted from Excel">Paste list from Excel</button>}
+        {!ro&&<button className="btn" onClick={function(){setOrderNew(true);}} title="A direct order without a tender, followed as ACC → MAR → delivery">＋ Order</button>}
         {primary}
       </div>
     </div>
+    {orderNew&&<PpOrderModal packages={packages} tenders={tenders} saveTenders={saveTenders} onClose={function(){setOrderNew(false);}} onOpen={onOpenTender}/>}
     {paste&&<ProcPlanPasteModal tenders={tenders} saveTenders={saveTenders} packages={packages} onClose={function(){setPaste(false);}}/>}
     {printOpen&&<PpPrintModal mode={mode} cols={cols} tl={tl} onClose={function(){setPrintOpen(false);}}
       onPrint={function(o){setPrintOpen(false);ppOpenReport(vis,filterLabel(),mode,grouped,acts,Object.assign({},o,{contractors:contractors}));}}/>}
