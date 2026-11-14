@@ -590,7 +590,7 @@ function isPurchaseDoc(d){return !!d&&(d.kind==="pacc"||d.kind==="paconex");}
 // The short name of a document in actions and the Stage column.
 function docShortName(d){
   if(d.kind==="mar"||d.kind==="mss"||isPurchaseDoc(d))return d.label+" "+d.sub;
-  if(d.kind==="sd")return d.id==="sd:_main"?"SD":"SD "+d.label;
+  if(d.kind==="sd")return d.id==="sd:_main"?"SD":/^sd\b/i.test(d.label)?d.label:"SD "+d.label;
   return d.label;
 }
 // When the client's answer is due for a submitted revision, and how late it is.
@@ -724,6 +724,18 @@ function newSDTransmission(o){
   return Object.assign({id:uuid(),ref:"",description:"",target:"",done:"",approvalDone:"",
     status:"",numbers:[]},o||{});
 }
+// Several shop drawings per Package: one transmission each (td.sdTransmissions). Adds one →
+// patch for updTd. The first one added to a Package whose shop drawings were followed as a
+// whole (sd:_main, no transmission) takes that history over as "SD 1", so nothing is hidden.
+function sdAddPatch(td,o){
+  var list=(td.sdTransmissions||[]).slice();
+  if(!list.length){
+    var main=cyclesOfSdMain(td)||[];
+    if(main.length)list.push(sdWithCycles(newSDTransmission({description:"whole package (before split)"}),main));
+  }
+  list.push(newSDTransmission(o||{}));
+  return Object.assign({hasSD:true,sdTransmissions:list},_sdAggregate(list));
+}
 function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,focus}){
   var list=td.sdTransmissions||[];
   const [openIds,setOpenIds]=useState({});
@@ -777,9 +789,9 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,foc
     <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)",flexWrap:"wrap"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Shop drawings</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
-        one line per transmission · several drawing numbers inside each{list.length>0?" · "+list.length+" transmission"+(list.length!==1?"s":""):""}</span>
-      <button className="btn btn-sm" style={{marginLeft:"auto"}}
-        onClick={function(){save([...(list),newSDTransmission()]);}}>＋ Transmission</button>
+        several SD per package: one line each (its own submissions and approval) · several drawing numbers inside each{list.length>0?" · "+list.length+" SD":""}</span>
+      <button className="btn btn-sm" style={{marginLeft:"auto"}} title="Add a shop drawing (a transmission to the client) to this package"
+        onClick={function(){if(blockIfReadOnly())return;updTd(sdAddPatch(td));}}>＋ SD</button>
     </div>
 
     {list.length===0&&!flowDocOf(td,"sd:_main")&&<div style={{fontSize:12,color:"var(--ink-4,#9b968b)",padding:"4px 2px"}}>

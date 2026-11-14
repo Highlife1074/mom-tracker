@@ -2236,7 +2236,10 @@ function PpQuickUpdateModal({tdId,tenders,saveTenders,tasks,saveTasks,updateStep
           {ro?<div style={{fontSize:11.5,color:"#9b968b"}}>Read-only account.</div>
             :<ContractCircuitEditor td={td} updTd={function(patch){updTd(patch);}} afterSave={afterSave}/>}
         </div>}
-        {sec("Documents",allDocs?"every document":"documents not approved yet — approved ones hidden",tog(allDocs,setAllDocs,"Show approved"))}
+        {sec("Documents",allDocs?"every document":"documents not approved yet — approved ones hidden",<span style={{display:"inline-flex",gap:10,alignItems:"center"}}>
+          {!ro&&<button className="btn btn-sm" style={{fontSize:10.5,padding:"1px 8px"}} title="Add a shop drawing to this package (several SD per package, each followed on its own)"
+            onClick={function(){updTd(sdAddPatch(td));}}>＋ SD</button>}
+          {tog(allDocs,setAllDocs,"Show approved")}</span>)}
         {docsShown.length===0?<div style={{fontSize:12,color:"#9b968b"}}>{docs.length?"Every document is approved.":"No document for this package."}</div>:
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr><th style={hd}>Document</th><th style={hd}>Status</th><th style={hd}>Ref.</th><th style={hd}>Submitted</th><th style={hd}>Returned</th><th style={hd}>Code</th><th style={hd}></th></tr></thead>
@@ -2796,6 +2799,12 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
         {plan&&PP_TABLE_COLS.map(function(m,i){
           var c=ppColCell(td,p,m,now),cls="ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")+(ppCellDone(c)?" ms-ok":"");
           // Delivered not reached yet: "✓ Delivered" button = the "Delivered on" date of the sheet
+          // SD: several per package — "+ SD" adds one (a transmission, as in the sheet)
+          if(m==="sub_sd"&&!isReadOnly())return <td key={m} className={cls}>
+            <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
+            <button className="btn btn-sm" style={{marginTop:4,fontSize:10,padding:"1px 6px"}} title="Add a shop drawing to this package (several SD per package, each followed on its own; record its submission in Quick update or the sheet)"
+              onClick={function(e){e.stopPropagation();upd(td,sdAddPatch(td));}}>＋ SD</button>
+          </td>;
           if(m==="delivered"&&!ppCellDone(c)&&c.kind!=="na"&&!isReadOnly())return <td key={m} className={cls}>
             <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
             <button className="btn btn-sm" style={{marginTop:4,fontSize:10,padding:"1px 6px"}} title="Mark this Package as delivered on site (the DELIVERED ON date of the Package sheet)"
