@@ -2280,6 +2280,21 @@ function PpFloatScroll({target}){
 // Rendered by TendersView as its list; onOpenTender opens a package sheet in place.
 // Owner of a Package in the list: the coloured chip, with a list of people laid over it to
 // change it (same field as OWNER in the sheet header, td.ownerTender).
+// "✓ Delivered" in the Delivered cell of the list: asks the date (today by default, DD/MM/YYYY
+// or YYYY-MM-DD) and writes td.deliveredOn — the same field as DELIVERED ON in the sheet header.
+function ppMarkDelivered(td,upd){
+  if(blockIfReadOnly())return;
+  ppPrompt({title:"Delivered on site · "+(td.title||"Package"),message:"Date of the delivery on site (DD/MM/YYYY). It is the DELIVERED ON date of the Package sheet; clear it there to undo.",
+    value:fmtDate(today()),placeholder:"DD/MM/YYYY",okLabel:"Delivered"}).then(function(v){
+    if(v===null)return;
+    v=String(v).trim();var iso="";
+    var m=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+    if(m){var y=m[3].length===2?"20"+m[3]:m[3];iso=y+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[1]).slice(-2);}
+    else if(/^\d{4}-\d{2}-\d{2}$/.test(v))iso=v;
+    if(!isValidDate(iso)){safeAlert("Date not understood: "+v+"\n\nType it as DD/MM/YYYY.");return;}
+    upd(td,{deliveredOn:iso});
+  });
+}
 function PpOwnerCell({td,people,upd}){
   var ro=isReadOnly(),cur=td.ownerTender||"";
   var list=(people||[]).slice();if(cur&&list.indexOf(cur)<0)list.unshift(cur);
@@ -2447,8 +2462,14 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
         </td>}
         {dl&&<td><PpRfiCell td={td} list={a.rfi} done={a.rfiDone} tasks={tasks} saveTasks={saveTasks}/></td>}
         {plan&&PP_TABLE_COLS.map(function(m,i){
-          var c=ppColCell(td,p,m,now);
-          return <td key={m} className={"ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")+(ppCellDone(c)?" ms-ok":"")} dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}></td>;
+          var c=ppColCell(td,p,m,now),cls="ms"+(i===0?" sep":"")+(m.indexOf("sub_")===0?" sub":"")+(ppCellDone(c)?" ms-ok":"");
+          // Delivered not reached yet: "✓ Delivered" button = the "Delivered on" date of the sheet
+          if(m==="delivered"&&!ppCellDone(c)&&c.kind!=="na"&&!isReadOnly())return <td key={m} className={cls}>
+            <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
+            <button className="btn btn-sm" style={{marginTop:4,fontSize:10,padding:"1px 6px"}} title="Mark this Package as delivered on site (the DELIVERED ON date of the Package sheet)"
+              onClick={function(e){e.stopPropagation();ppMarkDelivered(td,upd);}}>✓ Delivered</button>
+          </td>;
+          return <td key={m} className={cls} dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}></td>;
         })}
         {plan&&<td className="sep" style={{minWidth:112}}>{needCell(td,p)}</td>}
         {fin&&<td className="sep" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,color:"#0f5299",whiteSpace:"nowrap"}}>{prop?prop.toLocaleString():"—"}</td>}
