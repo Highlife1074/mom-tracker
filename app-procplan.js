@@ -592,6 +592,7 @@ var PP_SORTS={
   next:function(r,acts){var a=(acts||{})[r.td.id];var n=a?a.next.length:0;return n||null;},
   block:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.block.length)||null;},
   notes:function(r){return tenderNotesOf(r.td).length||null;},
+  addenda:function(r){return ppAddendaOpen(r.td,PP_CTRS)||null;},   // open addendums + final account
   rfi:function(r,acts){var a=(acts||{})[r.td.id];return (a&&a.rfi.length)||null;}
 };
 // One sort per milestone column: by its LATEST date (bottom line of the cell).
@@ -611,6 +612,8 @@ function ppAwardedNames(td){
   var aw=(td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return String(x.subcontractor).trim();});
   return aw.length?aw:(td.contractor?[String(td.contractor).trim()]:[]);
 }
+// Contractors (contracts + addendums) of the last ProcPlanView render: read by the Addendums sort.
+var PP_CTRS=[];
 function ppSortRows(list,sort,acts){
   var g=PP_SORTS[sort.k]||PP_SORTS.deadline,d=sort.dir<0?-1:1;
   function get(r){return g(r,acts);}
@@ -838,7 +841,7 @@ function ProcPlanGantt({vis,grouped,onNavTender}){
 
 // Excel export of the rows shown (same filters, same order): one line per package, the latest
 // and actual date of every milestone, real dates so Excel can sort and filter them.
-function ppExportXlsx(vis,acts){
+function ppExportXlsx(vis,acts,ctrs){
   acts=acts||{};
   if(!window.XLSX||!window.XLSX.utils||!window.XLSX.writeFile){safeAlert("The Excel library is not loaded.");return;}
   // Dates as Excel day numbers (formatted dd/mm/yyyy): a JS Date picks up the timezone's
@@ -847,7 +850,7 @@ function ppExportXlsx(vis,acts){
   function d(v){return isValidDate(v)?{xlDate:_ppDay(v)-EPOCH}:"";}
   var head=["Package","Department","Type","Budget","Need on site","Need from","Status","Next milestone","Days left","Total lead (d)"];
   PP_MS_ORDER.forEach(function(m){if(m==="need")return;head.push(PP_MS_LABEL[m]+" — latest");head.push(PP_MS_LABEL[m]+" — actual");});
-  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Var. budget − instructed","Approval route","Owner","Next steps","Blocking points","RFI open","Notes");
+  head.push("Forecast delivery","Delivered","Delivery late","Starts ≤ 21 d","Awarded to","Proposed","Instructed","Instruction","Var. budget − instructed","Approval route","Owner","Addendums / Final account","Next steps","Blocking points","RFI open","Notes");
   var aoa=[head];
   vis.forEach(function(r){
     var td=r.td,p=r.p,st=PP_STATUS[p.status];
@@ -866,6 +869,7 @@ function ppExportXlsx(vis,acts){
       (td.awards||[]).filter(function(x){return x.subcontractor;}).map(function(x){return x.subcontractor;}).join(", ")||td.contractor||"",
       prop||"",ppInstructed(td)||"",String(td.instructionNumber||"").trim(),ppVariance(td)===null?"":ppVariance(td),
       (function(){try{return tenderRouteLabel(td);}catch(e){return "";}})(),td.ownerTender||"",
+      ppAddendaText(td,ctrs||[]).join("\n"),
       a.next.map(ppActText).join("\n"),a.block.map(ppActText).join("\n"),a.rfi.map(function(t){return ppRfiText(t);}).join("\n"),ppNotesText(td).join("\n"));
     aoa.push(line);
   });
@@ -1469,20 +1473,20 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=2+(fin?1:0)+(dl?2:0);   // Package + Subcontractor; Budget only with Finance; Next deadline + RFI with Plan or Follow-up
   if(!dl)model=null;
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   function tlCells(inner){return '<td colspan="'+tlSpan+'">'+inner+'</td>'+(tlRest>0?'<td colspan="'+tlRest+'"></td>':'');}
   // The table is laid out at screen width, then zoomed to the width of the page.
-  var tableW=210+140+(fin?90:0)+(dl?370:0)+(plan?1280:0)+(fin?330:0)+(fol?770:0);
+  var tableW=210+140+(fin?90:0)+(dl?370:0)+(plan?1280:0)+(fin?330:0)+(fol?960:0);
   var pageW=paper==="A3"?1520:1060;
   var zoom=Math.min(1,pageW/tableW);
   html+='<table class="ppt'+(withTl?' ppt-tl':'')+'" style="width:'+Math.max(tableW,Math.round(pageW/zoom))+'px;zoom:'+zoom.toFixed(3)+'"><thead>'+
     '<tr class="ppt-g"><th colspan="'+nb+'">Package</th>'+(plan?'<th colspan="'+PP_TABLE_COLS.length+'" class="sep">Procurement milestones · ✓ reached · “by” = latest date</th><th class="sep">Site</th>':'')+
-    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="4" class="sep">Follow-up</th>':'')+'</tr><tr>'+
+    (fin?'<th colspan="3" class="sep">Finance</th>':'')+(fol?'<th colspan="5" class="sep">Follow-up</th>':'')+'</tr><tr>'+
     '<th>Package</th><th>Subcontractor</th>'+(fin?'<th class="r">Budget</th>':'')+(dl?'<th>Next deadline</th><th>RFI open</th>':'')+
     (plan?PP_TABLE_COLS.map(function(m,i){return '<th'+(i===0?' class="sep"':'')+'>'+esc(ppColLabel(m))+'</th>';}).join("")+'<th class="sep">Need on site</th>':'')+
     (fin?'<th class="sep r">Proposed</th><th class="r">Instructed</th><th class="r">Var. budget − instructed</th>':'')+
-    (fol?'<th class="sep">Owner</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
+    (fol?'<th class="sep">Owner</th><th>Addendums / Final account</th><th>Next steps</th><th>Blocking points</th><th>Notes</th>':'')+'</tr>'+
     (model?'<tr class="ppt-scale"><td colspan="'+nb+'" class="sm">Now · delay → projected arrival</td>'+tlCells(ppScaleHtml(model))+'</tr>':'')+
     '</thead><tbody>';
   function li(l,cls){return l.length?l.map(function(x){return '<div>'+esc(x)+'</div>';}).join(""):'<span style="color:#ccc">—</span>';}
@@ -1509,6 +1513,7 @@ function ppOpenReport(vis,filterLabel,mode,grouped,acts,opts){
     }
     if(fol){
       h+='<td class="sep">'+esc(String(td.ownerTender||"—"))+'</td>'+
+        '<td class="a">'+ppAddendaHtml(td,opts.contractors||[],now)+'</td>'+
         '<td class="a">'+li(a.next.map(ppActText))+'</td>'+
         '<td class="a b">'+li(a.block.map(ppActText))+'</td>'+
         '<td class="a">'+li(ppNotesText(td))+'</td>';
@@ -2295,6 +2300,245 @@ function ppMarkDelivered(td,upd){
     upd(td,{deliveredOn:iso});
   });
 }
+// ============================================================================================
+// Addendums / Final account column of the Package list — a SIMPLIFIED ACC workflow.
+// Addendums are the ones of the contracts linked to the Package (contractors[].contracts[] with
+// ct.tenderRef = td.id — the same objects as the sheet tab "Contract & addendums" and the
+// Contracts view). Per addendum: route ACC / Aconex / Internal (ad.route; older data read from
+// the fields filled: aconex* → Aconex, accNoClient → Internal, else ACC), stage Draft → Submitted
+// (at the client, <route>Status "pending approval", <route>Date = submitted on) → Approved
+// (<route>Status "approved", <route>ApprovedOn) / Rejected. Internal: internalStatus /
+// internalApprovedOn. Client answer due = submitted + Settings › Durations accApproval.
+// Final account of the Package: td.finalAccount {na, amount, agreedOn (with the subcontractor),
+// route, sentOn (submitted to the client), approvedOn, ref, note}.
+// ============================================================================================
+var PP_AD_ROUTE_LABEL={acc:"ACC",aconex:"Aconex",none:"Internal"};
+var PP_AD_STAGES=[["draft","Draft (not submitted)"],["sent","Submitted — at the client"],["approved","Approved"],["rejected","Rejected"]];
+function ppAdRoute(ad){
+  if(!ad)return "acc";
+  if(ad.route==="acc"||ad.route==="aconex"||ad.route==="none")return ad.route;
+  if(ad.aconexStatus||ad.aconexDate)return "aconex";
+  if(ad.accNoClient)return "none";
+  return "acc";
+}
+// Route proposed for a new addendum, from its amount (same thresholds as the subcontract).
+function ppAdRouteAuto(amount){
+  var a=Math.abs(Number(amount)||0);
+  if(!a)return "acc";
+  return a>=getDur("subAconexMin")?"aconex":a>=getDur("subAccMin")?"acc":"none";
+}
+function ppAdKey(r){return r==="none"?"internal":r;}
+function ppAdInfo(ad,now){
+  now=now||today();
+  var r=ppAdRoute(ad),k=ppAdKey(r);
+  var status=ad[k+"Status"]||"";
+  var sent=r==="none"?"":(isValidDate(ad[k+"Date"])?ad[k+"Date"]:"");
+  var appr=isValidDate(ad[k+"ApprovedOn"])?ad[k+"ApprovedOn"]:"";
+  var stage=status==="approved"?"approved":status==="rejected"?"rejected":(status==="pending approval"||sent)&&r!=="none"?"sent":"draft";
+  var due=stage==="sent"&&sent?addDur(sent,"accApproval"):"";
+  var late=!!(due&&due<now);
+  var days=sent?Math.round((parseISODate(now)-parseISODate(sent))/86400000):null;
+  var txt;
+  if(stage==="approved")txt="✓ Approved"+(appr?" "+ppDay(appr):"")+(r==="none"?" (internal)":" ("+PP_AD_ROUTE_LABEL[r]+")");
+  else if(stage==="rejected")txt="Rejected ("+PP_AD_ROUTE_LABEL[r]+")";
+  else if(stage==="sent")txt="At client ("+PP_AD_ROUTE_LABEL[r]+")"+(days!==null?" · "+days+" d":"")+(due?" · "+(late?(Math.round((parseISODate(now)-parseISODate(due))/86400000)+" d overdue"):"answer due "+ppDay(due)):"");
+  else txt=r==="none"?"To approve (internal)":"To submit ("+PP_AD_ROUTE_LABEL[r]+")";
+  var col=stage==="approved"?"#1e6b3a":stage==="rejected"?"#9b968b":late?"#b3302a":stage==="sent"?"#0f5299":"#b35c00";
+  return {route:r,key:k,stage:stage,sent:sent,approved:appr,due:due,late:late,txt:txt,col:col};
+}
+// Contracts linked to the Package, with their addendums in number order.
+function ppAddenda(td,contractors,now){
+  var out=[];
+  (contractors||[]).forEach(function(ctr){(ctr.contracts||[]).forEach(function(ct){
+    if(ct.tenderRef!==td.id)return;
+    var ads=(ct.addendums||[]).slice().sort(function(a,b){var na=ctAddNo(a),nb=ctAddNo(b);if(na!=null&&nb!=null&&na!==nb)return na-nb;return String(a.date||"").localeCompare(String(b.date||""));});
+    out.push({ctr:ctr,ct:ct,ads:ads.map(function(ad){return {ad:ad,i:ppAdInfo(ad,now)};})});
+  });});
+  return out;
+}
+function ppFaInfo(td,now){
+  var fa=td&&td.finalAccount;
+  if(!fa)return null;
+  now=now||today();
+  if(fa.na)return {stage:"na",txt:"N/A",col:"#9b968b"};
+  var r=fa.route==="aconex"||fa.route==="none"?fa.route:"acc";
+  var due=isValidDate(fa.sentOn)&&!isValidDate(fa.approvedOn)?addDur(fa.sentOn,"accApproval"):"";
+  var late=!!(due&&due<now);
+  if(isValidDate(fa.approvedOn))return {stage:"approved",txt:"✓ Approved "+ppDay(fa.approvedOn)+" ("+PP_AD_ROUTE_LABEL[r]+")",col:"#1e6b3a",route:r};
+  if(isValidDate(fa.sentOn))return {stage:"sent",txt:"At client ("+PP_AD_ROUTE_LABEL[r]+") since "+ppDay(fa.sentOn)+" · "+(late?(Math.round((parseISODate(now)-parseISODate(due))/86400000)+" d overdue"):"answer due "+ppDay(due)),col:late?"#b3302a":"#0f5299",late:late,route:r};
+  if(isValidDate(fa.agreedOn))return {stage:"agreed",txt:"Agreed with the subcontractor "+ppDay(fa.agreedOn)+" · to submit ("+PP_AD_ROUTE_LABEL[r]+")",col:"#b35c00",route:r};
+  if(isValidDate(fa.startedOn)||fa.amount)return {stage:"prep",txt:"In preparation",col:"#b35c00",route:r};
+  return null;
+}
+function ppMoneyShort(n){var v=Number(n)||0;return v?Math.round(v).toLocaleString():"";}
+// One line of text per addendum + the final account (print, Excel).
+function ppAddendaLines(td,contractors,now){
+  var L=[],links=ppAddenda(td,contractors,now),many=links.length>1;
+  links.forEach(function(x){x.ads.forEach(function(a){
+    L.push({txt:(many&&x.ct.number?x.ct.number+" · ":"")+"Add. "+(a.ad.number||"?")+(a.ad.amount?" · "+ppMoneyShort(a.ad.amount):"")+(a.ad.description?" · "+a.ad.description:""),
+      sub:a.i.txt,col:a.i.col});
+  });});
+  var fa=ppFaInfo(td,now);
+  if(fa)L.push({fa:true,txt:"Final account"+(td.finalAccount.amount?" · "+ppMoneyShort(td.finalAccount.amount):""),sub:fa.txt,col:fa.col});
+  return L;
+}
+function ppAddendaText(td,contractors,now){return ppAddendaLines(td,contractors,now).map(function(l){return l.txt+" — "+l.sub;});}
+function ppAddendaHtml(td,contractors,now){
+  var L=ppAddendaLines(td,contractors,now);
+  if(!L.length)return '<span style="color:#ccc">—</span>';
+  return L.map(function(l){return '<div style="margin-bottom:3px'+(l.fa?';border-top:1px dashed #d9d5ca;padding-top:2px':'')+'"><b>'+esc(l.txt)+'</b><div class="sm" style="color:'+l.col+';font-weight:700">'+esc(l.sub)+'</div></div>';}).join("");
+}
+// Sort key: open addendums (draft + at client), late first.
+function ppAddendaOpen(td,contractors){
+  var n=0;ppAddenda(td,contractors).forEach(function(x){x.ads.forEach(function(a){if(a.i.stage==="draft"||a.i.stage==="sent")n++;});});
+  var fa=ppFaInfo(td);if(fa&&fa.stage!=="approved"&&fa.stage!=="na")n++;
+  return n;
+}
+function PpAddendaCell({td,contractors,saveContractors,upd,onOpenTender}){
+  const [edit,setEdit]=useState(null);
+  var ro=isReadOnly(),now=today();
+  var links=ppAddenda(td,contractors,now),many=links.length>1;
+  var fa=ppFaInfo(td,now);
+  function saveCt(ctrId,ctId,fn){
+    if(blockIfReadOnly()||!saveContractors)return;
+    saveContractors((contractors||[]).map(function(c){
+      if(c.id!==ctrId)return c;
+      return Object.assign({},c,{contracts:(c.contracts||[]).map(function(ct){return ct.id!==ctId?ct:fn(ct);})});
+    }));
+  }
+  function openAd(x,a){
+    var ad=a?a.ad:null,i=a?a.i:null;
+    setEdit({kind:"ad",ctrId:x.ctr.id,ctId:x.ct.id,adId:ad?ad.id:null,number:ad?ad.number||"":"",description:ad?ad.description||"":"",
+      amount:ad?ad.amount||"":"",route:i?i.route:"",origRoute:i?i.route:"",routeTyped:!!ad,stage:i?i.stage:"draft",sent:i?i.sent:"",approved:i?i.approved:"",ins:ad?ad.instructionNumber||"":""});
+  }
+  function newAd(){
+    if(ro)return;
+    if(!links.length){
+      if(safeConfirm("No contract is linked to this Package yet.\n\nOpen the Package sheet (tab Contract & addendums) to link or create it?")&&onOpenTender)onOpenTender(td);
+      return;
+    }
+    var x=links[0],nums=(x.ct.addendums||[]).map(ctAddNo).filter(function(n){return n!=null;});
+    openAd(x,null);
+    setEdit(function(e){return Object.assign({},e,{number:String((nums.length?Math.max.apply(null,nums):0)+1)});});
+  }
+  function saveAd(){
+    var e=edit,r=e.route||ppAdRouteAuto(e.amount),k=ppAdKey(r);
+    var x=links.find(function(y){return y.ct.id===e.ctId;});
+    if(!x){setEdit(null);return;}
+    saveCt(x.ctr.id,x.ct.id,function(ct){
+      var base=e.adId?(ct.addendums||[]).find(function(a){return a.id===e.adId;}):Object.assign(newAddendum(),{date:today()});
+      var u=Object.assign({},base,{number:e.number,description:e.description,amount:e.amount===""?0:Number(e.amount)||0,instructionNumber:e.ins,route:r});
+      u.accNoClient=r==="none";u.aconexNoClient=r==="none";
+      // route changed: ACC or Aconex (or internal), never two — the other channels are emptied
+      if(e.origRoute&&e.origRoute!==r)["acc","aconex","internal"].forEach(function(o){if(o!==k){u[o+"Status"]="";u[o+"Date"]="";u[o+"ApprovedOn"]="";}});
+      u[k+"Status"]=e.stage==="approved"?"approved":e.stage==="rejected"?"rejected":e.stage==="sent"?"pending approval":"not submitted";
+      if(r!=="none")u[k+"Date"]=e.stage==="draft"?"":(e.sent||"");
+      u[k+"ApprovedOn"]=e.stage==="approved"?(e.approved||today()):"";
+      var ads=e.adId?(ct.addendums||[]).map(function(a){return a.id===e.adId?u:a;}):(ct.addendums||[]).concat([u]);
+      return Object.assign({},ct,{addendums:ads});
+    });
+    setEdit(null);
+  }
+  function delAd(){
+    if(!mayDelete()&&!isAppAdmin((window._currentUser||{}).name)){safeAlert("Deleting is not allowed for your account.");return;}
+    var e=edit;if(!safeConfirm("Delete addendum "+(e.number||"")+"?"))return;
+    saveCt(e.ctrId,e.ctId,function(ct){return Object.assign({},ct,{addendums:(ct.addendums||[]).filter(function(a){return a.id!==e.adId;})});});
+    setEdit(null);
+  }
+  function openFa(){
+    if(ro)return;
+    var f=td.finalAccount||{};
+    setEdit({kind:"fa",na:!!f.na,amount:f.amount||"",startedOn:f.startedOn||"",agreedOn:f.agreedOn||"",route:f.route||ppAdRouteAuto(f.amount||tenderContractTotals(td,contractors).current),
+      sentOn:f.sentOn||"",approvedOn:f.approvedOn||"",ref:f.ref||"",note:f.note||""});
+  }
+  function saveFa(){
+    var e=edit;
+    var f={na:!!e.na,amount:e.amount===""?0:Number(e.amount)||0,startedOn:e.startedOn,agreedOn:e.agreedOn,route:e.route,sentOn:e.sentOn,approvedOn:e.approvedOn,ref:e.ref,note:e.note};
+    var empty=!f.na&&!f.amount&&!f.startedOn&&!f.agreedOn&&!f.sentOn&&!f.approvedOn&&!f.ref&&!f.note;
+    upd(td,{finalAccount:empty?null:f});
+    setEdit(null);
+  }
+  function set(p){setEdit(Object.assign({},edit,p));}
+  var lbl={fontSize:11,color:"#6f6b62",display:"block",marginBottom:2};
+  var row={display:"flex",gap:10,flexWrap:"wrap",marginBottom:10};
+  var line={marginBottom:3,padding:"2px 5px",borderLeft:"2px solid #c7d5e6",background:"#f8fafd",cursor:ro?"default":"pointer",borderRadius:"0 4px 4px 0"};
+  return <div style={{minWidth:150,maxWidth:220,fontSize:11,lineHeight:1.35,overflowWrap:"break-word"}}>
+    {links.map(function(x){return x.ads.map(function(a){
+      return <div key={a.ad.id} style={Object.assign({},line,{borderLeftColor:a.i.col})} onClick={function(){if(!ro)openAd(x,a);}}
+        title={(a.ad.description||"")+(a.ad.instructionNumber?"\nINS "+a.ad.instructionNumber:"")+(a.i.due?"\nClient answer due "+fmtDate(a.i.due):"")+(ro?"":"\nClick to update")}>
+        <div style={{fontWeight:600,color:"var(--ink,#16181d)"}}>{many&&x.ct.number?x.ct.number+" · ":""}Add. {a.ad.number||"?"}{a.ad.amount?" · "+ppMoneyShort(a.ad.amount):""}</div>
+        {a.ad.description&&<div style={{color:"#4a4740",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.ad.description}</div>}
+        <div style={{color:a.i.col,fontWeight:700,fontSize:10.5}}>{a.i.txt}</div>
+      </div>;
+    });})}
+    {fa&&<div style={Object.assign({},line,{borderLeftColor:fa.col,background:"#fbfaf6"})} onClick={openFa} title={(td.finalAccount.ref?"Ref "+td.finalAccount.ref+"\n":"")+(td.finalAccount.note||"")+(ro?"":"\nClick to update")}>
+      <div style={{fontWeight:600,color:"var(--ink,#16181d)"}}>Final account{td.finalAccount.amount?" · "+ppMoneyShort(td.finalAccount.amount):""}</div>
+      <div style={{color:fa.col,fontWeight:700,fontSize:10.5}}>{fa.txt}</div>
+    </div>}
+    {ro&&!fa&&!links.some(function(x){return x.ads.length;})&&<span style={{color:"#ccc"}}>—</span>}
+    {!ro&&<div style={{display:"flex",gap:8,marginTop:2}}>
+      <button onClick={newAd} title="Add an addendum to the contract of this Package (also in the sheet, Contract & addendums)" style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit"}}>+ addendum</button>
+      {!fa&&<button onClick={openFa} title="Follow the final account of this Package" style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit"}}>+ final account</button>}
+    </div>}
+    {edit&&<div className="overlay" onClick={function(e){if(e.target===e.currentTarget)setEdit(null);}}>
+      <div className="modal" style={{maxWidth:560}}>
+        <div className="modal-hdr">
+          <div className="modal-title">{edit.kind==="fa"?"Final account":edit.adId?"Addendum "+(edit.number||""):"New addendum"} · {td.title||"(untitled)"}</div>
+          <button onClick={function(){setEdit(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+        </div>
+        {edit.kind==="ad"?<div className="modal-body">
+          {!edit.adId&&many&&<div style={{marginBottom:10}}><span style={lbl}>Contract</span>
+            <select value={edit.ctId} onChange={function(e){var x=links.find(function(y){return y.ct.id===e.target.value;});set({ctId:x.ct.id,ctrId:x.ctr.id});}}>
+              {links.map(function(x){return <option key={x.ct.id} value={x.ct.id}>{(x.ctr.name||"")+(x.ct.number?" · "+x.ct.number:"")}</option>;})}</select></div>}
+          <div style={row}>
+            <label style={{margin:0}}><span style={lbl}>Add. no.</span><input type="text" value={edit.number} onChange={function(e){set({number:e.target.value});}} style={{width:70}}/></label>
+            <label style={{margin:0,flex:1}}><span style={lbl}>Description</span><input type="text" autoFocus value={edit.description} placeholder="What changes…" onChange={function(e){set({description:e.target.value});}} style={{width:"100%",boxSizing:"border-box"}}/></label>
+          </div>
+          <div style={row}>
+            <label style={{margin:0}}><span style={lbl}>Amount (excl. tax)</span><input type="number" value={edit.amount} onChange={function(e){var v=e.target.value;set({amount:v,route:edit.routeTyped?edit.route:ppAdRouteAuto(v)});}} style={{width:130,textAlign:"right"}}/></label>
+            <label style={{margin:0}}><span style={lbl}>Approval route</span>
+              <select value={edit.route||ppAdRouteAuto(edit.amount)} onChange={function(e){set({route:e.target.value,routeTyped:true});}}>
+                <option value="acc">ACC</option><option value="aconex">Aconex</option><option value="none">Internal only</option></select></label>
+            <label style={{margin:0}}><span style={lbl}>INS #</span><input type="text" value={edit.ins} onChange={function(e){set({ins:e.target.value});}} style={{width:100}}/></label>
+          </div>
+          <div style={row}>
+            <label style={{margin:0}}><span style={lbl}>Stage</span>
+              <select value={edit.stage} onChange={function(e){var s=e.target.value;set({stage:s,sent:s!=="draft"&&!edit.sent&&(edit.route||ppAdRouteAuto(edit.amount))!=="none"?today():edit.sent,approved:s==="approved"&&!edit.approved?today():edit.approved});}}>
+                {PP_AD_STAGES.filter(function(o){return !((edit.route||ppAdRouteAuto(edit.amount))==="none"&&o[0]==="sent");}).map(function(o){return <option key={o[0]} value={o[0]}>{o[1]}</option>;})}</select></label>
+            {edit.stage!=="draft"&&(edit.route||ppAdRouteAuto(edit.amount))!=="none"&&<label style={{margin:0}}><span style={lbl}>Submitted on</span><input type="date" value={edit.sent} onChange={function(e){set({sent:e.target.value});}}/></label>}
+            {edit.stage==="approved"&&<label style={{margin:0}}><span style={lbl}>Approved on</span><input type="date" value={edit.approved} onChange={function(e){set({approved:e.target.value});}}/></label>}
+          </div>
+          <div style={{fontSize:11,color:"#9b968b"}}>Route proposed from the amount (Settings › Durations: internal below {momEur(getDur("subAccMin"))}, Aconex from {momEur(getDur("subAconexMin"))}). Client answer due = submitted + {durShort("accApproval")}. Same addendum as the Package sheet (Contract &amp; addendums) and the Contracts view.</div>
+        </div>
+        :<div className="modal-body">
+          <label style={{display:"flex",alignItems:"center",gap:6,marginBottom:10,textTransform:"none",letterSpacing:"normal",fontSize:12}}>
+            <input type="checkbox" checked={edit.na} onChange={function(e){set({na:e.target.checked});}} style={{width:14,height:14}}/>Not applicable (no final account for this Package)</label>
+          {!edit.na&&<React.Fragment>
+            <div style={row}>
+              <label style={{margin:0}}><span style={lbl}>Final amount (excl. tax)</span><input type="number" value={edit.amount} onChange={function(e){set({amount:e.target.value});}} style={{width:140,textAlign:"right"}}/></label>
+              <label style={{margin:0}}><span style={lbl}>Route</span>
+                <select value={edit.route} onChange={function(e){set({route:e.target.value});}}><option value="acc">ACC</option><option value="aconex">Aconex</option><option value="none">Internal only</option></select></label>
+              <label style={{margin:0}}><span style={lbl}>Reference</span><input type="text" value={edit.ref} onChange={function(e){set({ref:e.target.value});}} style={{width:150}}/></label>
+            </div>
+            <div style={row}>
+              <label style={{margin:0}}><span style={lbl}>1 · Preparation started</span><input type="date" value={edit.startedOn} onChange={function(e){set({startedOn:e.target.value});}}/></label>
+              <label style={{margin:0}}><span style={lbl}>2 · Agreed with the subcontractor</span><input type="date" value={edit.agreedOn} onChange={function(e){set({agreedOn:e.target.value});}}/></label>
+              {edit.route!=="none"&&<label style={{margin:0}}><span style={lbl}>3 · Submitted to the client</span><input type="date" value={edit.sentOn} onChange={function(e){set({sentOn:e.target.value});}}/></label>}
+              <label style={{margin:0}}><span style={lbl}>{edit.route!=="none"?"4":"3"} · Approved</span><input type="date" value={edit.approvedOn} onChange={function(e){set({approvedOn:e.target.value});}}/></label>
+            </div>
+          </React.Fragment>}
+          <textarea value={edit.note} placeholder="Note…" onChange={function(e){set({note:e.target.value});}} style={{width:"100%",minHeight:60,boxSizing:"border-box",fontFamily:"inherit",fontSize:12}}/>
+          <div style={{fontSize:11,color:"#9b968b",marginTop:6}}>Fill each date when the step is done. Client answer due = submitted + {durShort("accApproval")}. Empty everything to remove the final account.</div>
+        </div>}
+        <div className="modal-footer">
+          {edit.kind==="ad"&&edit.adId&&<button className="btn" onClick={delAd} style={{marginRight:"auto",color:"#b3302a"}}>Delete</button>}
+          <button className="btn" onClick={function(){setEdit(null);}}>Cancel</button>
+          <button className="btn btn-gold" onClick={edit.kind==="fa"?saveFa:saveAd}>Save</button>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
 function PpOwnerCell({td,people,upd}){
   var ro=isReadOnly(),cur=td.ownerTender||"";
   var list=(people||[]).slice();if(cur&&list.indexOf(cur)<0)list.unshift(cur);
@@ -2309,7 +2553,7 @@ function PpOwnerCell({td,people,upd}){
     </select>
   </span>;
 }
-function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNavTender,onOpenTender,onNavZone,onQuickUpdate,actions,primary}){
+function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,saveContractors,onNavTender,onOpenTender,onNavZone,onQuickUpdate,actions,primary}){
   function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   const [q,setQ]=useState(function(){return lsGet("pp_procplan_q","");});
@@ -2361,6 +2605,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
     return true;
   });
   var acts=ppActionsIndex(tasks);
+  PP_CTRS=contractors||[];
   var vis=ppSortRows(base.filter(function(r){
     if(kpiF&&!ppKpiOf(r,kpiF))return false;
     if(horizon==="4w"||horizon==="8w"){
@@ -2382,7 +2627,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
   var plan=ppColsHas(cols,"plan"),fin=ppColsHas(cols,"finance"),fol=ppColsHas(cols,"follow");
   // Finance alone: no Next deadline column (and no timeline strip)
   var dl=plan||fol,nb=2+(fin?1:0)+(dl?2:0);   // Package + Subcontractor; Budget only with Finance; Next deadline + RFI with Plan or Follow-up
-  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?4:0);
+  var nCols=nb+(plan?PP_TABLE_COLS.length+1:0)+(fin?3:0)+(fol?5:0);
   // The timeline strip sits under the milestone columns (or under everything without them).
   var tlSpan=plan?PP_TABLE_COLS.length+1:nCols-nb,tlRest=nCols-nb-tlSpan;
   var model=tl&&dl&&mode==="table"&&vis.length?ppNowModel(vis,now):null;
@@ -2477,6 +2722,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
         {fin&&<td style={{textAlign:"right",fontFamily:"var(--font-mono)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",color:vr===null?"#ccc":vr<0?"#b3302a":"#1e6b3a"}}
           title="Budget − instructed">{vr===null?"—":ppSigned(vr)}</td>}
         {fol&&<td className="sep"><PpOwnerCell td={td} people={people} upd={upd}/></td>}
+        {fol&&<td><PpAddendaCell td={td} contractors={contractors} saveContractors={saveContractors} upd={upd} onOpenTender={onOpenTender}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} updTd={function(p){upd(td,p);}}/></td>}
         {fol&&<td><PpActionsCell td={td} list={a.block} kind="block" tasks={tasks} saveTasks={saveTasks}/></td>}
         {fol&&<td><PpNotesCell td={td} upd={upd}/></td>}
@@ -2499,7 +2745,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
       <div className="page-actions">
         {actions}
         <button className="btn" disabled={!vis.length} title="Excel file of the packages shown (current filters and order): latest and actual date of every milestone, finance and follow-up"
-          onClick={function(){ppExportXlsx(vis,acts);}}>Excel</button>
+          onClick={function(){ppExportXlsx(vis,acts,contractors);}}>Excel</button>
         <button className="btn" disabled={!vis.length} title="Print the packages shown: choose the columns, A4 or A3, with or without the timelines"
           onClick={function(){setPrintOpen(true);}}>Print</button>
         {!ro&&<button className="btn" onClick={function(){setPaste(true);}} title="Create or update packages from a list pasted from Excel">Paste list from Excel</button>}
@@ -2508,7 +2754,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
     </div>
     {paste&&<ProcPlanPasteModal tenders={tenders} saveTenders={saveTenders} packages={packages} onClose={function(){setPaste(false);}}/>}
     {printOpen&&<PpPrintModal mode={mode} cols={cols} tl={tl} onClose={function(){setPrintOpen(false);}}
-      onPrint={function(o){setPrintOpen(false);ppOpenReport(vis,filterLabel(),mode,grouped,acts,o);}}/>}
+      onPrint={function(o){setPrintOpen(false);ppOpenReport(vis,filterLabel(),mode,grouped,acts,Object.assign({},o,{contractors:contractors}));}}/>}
     <div className="kpi-strip">
       {PP_KPIS.map(function(k){
         var l=base.filter(function(r){return ppKpiOf(r,k.k);});
@@ -2584,7 +2830,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
             {plan&&<th colSpan={PP_TABLE_COLS.length} className="sep">Procurement milestones · ✓ reached · “by” = latest date</th>}
             {plan&&<th className="sep">Site</th>}
             {fin&&<th colSpan={3} className="sep">Finance</th>}
-            {fol&&<th colSpan={4} className="sep">Follow-up</th>}
+            {fol&&<th colSpan={5} className="sep">Follow-up</th>}
           </tr>
           <tr>
             {th("title","Package",{minWidth:160})}
@@ -2598,6 +2844,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,onNav
             {fin&&th("instructed","Instructed",{textAlign:"right"},"Amount instructed by the client")}
             {fin&&th("variance","Var. budget − instructed",{textAlign:"right"},"Budget − instructed: positive = under budget (green), negative = over budget (red). Empty until the package is instructed.")}
             {fol&&th("owner","Owner",null,"Owner of the package","sep")}
+            {fol&&th("addenda","Addendums / Final account",null,"Addendums of the contracts linked to the package and its final account — simplified ACC / Aconex workflow: to submit → at the client (answer due, red when overdue) → approved. Click to update, + addendum / + final account to add. Same addendums as the sheet (Contract & addendums). Sorted by number still open.")}
             {fol&&th("next","Next steps",null,"Open actions linked to the package (not Blocking Point), soonest due first, and its Next Step text. Tick to close, + add to create one. Sorted by number.")}
             {fol&&th("block","Blocking points",null,"Open actions tagged Blocking Point linked to the package. The automatic “Procurement late” alerts are not blocking points (they are in Next steps). Sorted by number.")}
             {fol&&th("notes","Notes",null,"Notes of the package — the same notes as in the package sheet (Actions & notes). Click a note to edit it, + note to add one. Sorted by number.")}

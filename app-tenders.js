@@ -3581,9 +3581,9 @@ var AD_STATUS_OPTS=[["","— status —"],["not submitted","Not submitted"],["pe
 function ctNoClient(o,dk){return !!(o&&o[dk+"NoClient"]);}
 // One word per addendum: approved when the client approved it on either channel.
 function addendumState(ad){
-  var a=(ad&&ad.accStatus)||"",b=(ad&&ad.aconexStatus)||"";
-  if(a==="approved"||b==="approved")return"approved";
-  if(a==="rejected"||b==="rejected")return"rejected";
+  var a=(ad&&ad.accStatus)||"",b=(ad&&ad.aconexStatus)||"",c=(ad&&ad.internalStatus)||"";   // internal: Package list, Addendums column
+  if(a==="approved"||b==="approved"||c==="approved")return"approved";
+  if(a==="rejected"||b==="rejected"||c==="rejected")return"rejected";
   if(a==="pending approval"||b==="pending approval")return"pending";
   return"draft";
 }
@@ -4682,7 +4682,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>;
   if(!classic)return <div>
     {gapsModal}{quickModal}
-    <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveTasks} onNavZone={onNavZone}
+    <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveTasks} contractors={contractors} saveContractors={saveContractors} onNavZone={onNavZone}
       onOpenTender={function(t){openSheetFrom(t,"list");}} onQuickUpdate={setQuickId}
       actions={<React.Fragment>
         <button className="btn" onClick={function(){setClassic(true);}} title="The former Package table (Submission steps, Stage…), kept for a few weeks">Classic list</button>
