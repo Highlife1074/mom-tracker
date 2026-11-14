@@ -2689,7 +2689,7 @@ function tenderPhase(td){
   var acc=cyclesOfStep(td,"acc");var last=acc[acc.length-1];
   if(last&&(last.code==="A"||last.code==="B"))return"ctr";
   // Internal approval only (below the ACC threshold): the contract starts once a bidder is awarded.
-  if(!acc.length&&tenderApprovalRoute(td).route==="none"&&(ct.requestDone||biddersOf(td).some(function(b){return b.result==="awarded";})))return"ctr";
+  if(!acc.length&&tenderApprovalRoute(td).route==="none"&&(ct.requestDone||td.procType==="order"||biddersOf(td).some(function(b){return b.result==="awarded";})))return"ctr";
   return"pre";
 }
 var TENDER_PHASE_ORDER={pre:0,ctr:1,sig:2,can:3};
@@ -2729,6 +2729,7 @@ function tenderNow(td,now){
     if(pOpen.length&&!td.tenderIssued)return docLine(pOpen[0]);
     if(td.tenderIssued&&!td.bidsReceived)return {text:"Tender out · bidders pricing",who:"sub",days:since(td.tenderIssued)};
     if(td.bidsReceived)return {text:"Bid evaluation · "+(tenderApprovalRoute(td).route==="none"?"internal approval":tenderRouteLabel(td)+" to submit"),who:"us",days:since(td.bidsReceived)};
+    if(td.procType==="order")return {text:tenderRouteLabel(td)+" to submit (order)",who:"us",days:null};   // direct order: no tender
     return {text:"Tender preparation",who:"us",days:null};
   }
   if(ph==="ctr"){

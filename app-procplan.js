@@ -439,7 +439,7 @@ function PpOrderModal({packages,tenders,saveTenders,onClose,onOpen}){
     var lead=parseLeadDays(f.lead);
     var td=newTender({title:title,package:f.dept,procType:"order",ownerTender:f.owner,contractor:String(f.supplier||"").trim(),
       accAmountSubcontract:amt||"",budget:amt||"",startOnSite:isValidDate(f.need)?f.need:"",leadTimeDays:lead||""});
-    td.steps=Object.assign({},td.steps,{pkg:"N/A",bidders:"N/A"});
+    td.steps=Object.assign({},td.steps,{pkg:"N/A",bidders:"N/A",wms:"N/A",itp:"N/A"});   // an order: no tender, no WMS / ITP
     if(isValidDate(f.po)){
       td.stepDates=Object.assign({},td.stepDates,{contract:Object.assign({},td.stepDates.contract,{done:f.po,signedDone:f.po,signedAllDone:f.po})});
       td.steps.contract="Signed";
@@ -1685,7 +1685,8 @@ function ppClientWaits(td,contractors,rfis,now){
   }catch(e){}
   (rfis||[]).forEach(function(t){
     var r=ppRfiInfo(t,now);if(!r.sent)return;
-    push(r.kind+" "+(t.text||""),r.sent,r.due);
+    var tx=String(t.text||"");
+    push((new RegExp("^"+r.kind+"\\b","i").test(tx)?"":r.kind+" ")+tx,r.sent,r.due);
   });
   try{
     ppAddenda(td,contractors||[],now).forEach(function(x){x.ads.forEach(function(a){
