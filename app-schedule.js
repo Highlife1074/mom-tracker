@@ -1518,6 +1518,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     pushStartOnSiteFromSchedule(tenderRefsOf(cur.rows,snap.rows),snap.rows||[],snap.id);
     setUndoTick(function(n){return n+1;});
   }
+  // Small note after a change made on the grid, with its own ↶ Undo button (Ctrl+Z works too).
+  const [undoHint,setUndoHint]=useState(null);   // {text, t}
+  function hintUndo(text){setUndoHint({text:text,t:Date.now()});}
+  useEffect(function(){
+    if(!undoHint)return;
+    var tm=setTimeout(function(){setUndoHint(null);},6000);
+    return function(){clearTimeout(tm);};
+  },[undoHint]);
   const undoFnRef=useRef(null);
   undoFnRef.current=undoRedo;
   useEffect(function(){
@@ -2968,11 +2976,17 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   dragEndRef.current=function(d){
     var row=rowById(d.rowId);
     if(!row)return;
-    if(d.type==="paint")paintRange(row,d.from,d.to,d.erase);
-    else if(d.type==="move"){var dl=workingDelta(d.from,d.to);if(dl)shiftRows([row.id],dl);}
+    // A plain click on the grid (no slide) never changes the plan of another task: it opens
+    // that task in the side panel. Once the task is open, a click paints one week, as before.
+    if((d.type==="paint"||d.type==="move"||d.type==="resizeS"||d.type==="resizeE")&&d.from===d.to&&panelRowId!==row.id){
+      setCtxMenu(null);setPanelRowId(row.id);return;
+    }
+    if(d.type==="paint"){paintRange(row,d.from,d.to,d.erase);hintUndo(d.erase?"Week(s) erased":"Week(s) painted");}
+    else if(d.type==="move"){var dl=workingDelta(d.from,d.to);if(dl){shiftRows([row.id],dl);hintUndo("Task moved");}}
     else if(d.type==="resizeS"||d.type==="resizeE"){
       if(d.to===d.from)return;
       if(d.type==="resizeS")applySpan(row,{startWeek:d.to});else applySpan(row,{endWeek:d.to});
+      hintUndo("Dates changed");
     }
     else if(d.type==="link"&&d.target)linkRows(row.id,d.target);
     else if(d.type==="relink"){
@@ -3337,6 +3351,16 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   }
 
   return <div className={fullScreen?"sched-fs":""} style={fullScreen?{position:"fixed",inset:0,zIndex:1200,background:"#f4f3f0",padding:"10px 14px",overflowY:"auto"}:null}>
+    {undoHint&&canEdit!==false&&<div className="sched-noprint" role="status"
+      style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:1300,display:"flex",alignItems:"center",gap:10,
+        background:"var(--brand,#1f3a5f)",color:"#fff",borderRadius:8,padding:"7px 8px 7px 14px",fontSize:12.5,fontWeight:600,boxShadow:"0 4px 16px rgba(0,0,0,.25)"}}>
+      <span>{undoHint.text}</span>
+      <button type="button" onClick={function(){setUndoHint(null);undoRedo(-1);}}
+        style={{border:"1px solid rgba(255,255,255,.5)",background:"rgba(255,255,255,.12)",color:"#fff",borderRadius:6,padding:"3px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}}>↶ Undo</button>
+      <span style={{fontSize:10.5,opacity:.75}}>Ctrl+Z</span>
+      <button type="button" onClick={function(){setUndoHint(null);}} title="Close"
+        style={{border:"none",background:"none",color:"#fff",cursor:"pointer",fontSize:13,opacity:.7,padding:"0 4px"}}>✕</button>
+    </div>}
     {fullScreen&&<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
       <button className="btn btn-pri" onClick={function(){setFullScreen(false);}} title="Back to the zone (Esc)"
         style={{fontSize:13,padding:"7px 16px"}}>← Back</button>
@@ -3971,6 +3995,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   </tr>;
                 })}
                 <tr data-rowid={row.id} className={"sched-row"+(panelRowId===row.id?" sched-row-on":"")}
+                  onClick={function(e){
+                    // anywhere on the row opens it in the side panel — not only its name.
+                    // The week cells (gestures) and the row's own controls keep their behaviour.
+                    if(e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
+                    var t=e.target;
+                    if(!t||!t.closest||t.closest("td[data-wk],button,input,select,textarea,a,label"))return;
+                    if(editRowId===row.id)return;
+                    setCtxMenu(null);setPanelRowId(row.id);
+                  }}
                   onContextMenu={function(e){
                     if(dragRef.current||longPressRef.current){e.preventDefault();return;}
                     if(canEdit===false)return;
@@ -4254,11 +4287,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         // a quick tap with a finger paints one week, like a click
                         if(!longPressRef.current)return;
                         clearLongPress();
-                        if(!isCat&&!hol&&paintMode!=="progress"&&canEdit!==false)toggleCell(row,wk);
+                        if(isCat||hol||paintMode==="progress"||canEdit===false)return;
+                        if(panelRowId!==row.id){setCtxMenu(null);setPanelRowId(row.id);return;}
+                        toggleCell(row,wk);hintUndo("Week painted");
                       }}
                       onPointerCancel={clearLongPress}
                       data-wk={wk}
-                      title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(v==="plan"||v==="both")?(paintMode==="plan"?"Drag the bar to move the task (the tasks after it follow) · drag its ends to change the dates · Alt+drag to erase weeks":"Drag along the row to paint or erase"):"Click, or drag along the row to paint several weeks")}
+                      title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(panelRowId!==row.id?"Click: open this task · ":"")+((v==="plan"||v==="both")?(paintMode==="plan"?"Drag the bar to move the task (the tasks after it follow) · drag its ends to change the dates · Alt+drag to erase weeks":"Drag along the row to paint or erase"):(panelRowId===row.id?"Click to paint this week, or drag along the row to paint several weeks":"drag along the row to paint several weeks"))+" · Ctrl+Z: undo")}
                       className={(isCat||hol)?"sched-wk sched-wk-nc":"sched-wk"}
                       style={Object.assign({},
                         hol?{background:"repeating-linear-gradient(45deg,#e8e4da,#e8e4da 3px,#dcd8ce 3px,#dcd8ce 6px)"}:
