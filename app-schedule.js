@@ -1276,10 +1276,10 @@ function buildScheduleXer(sc,opts){
 const SCHED_HEALTH_CHECKS=[
   {k:"nobar",lvl:"high",label:"No planned bar",tip:"No planned week: the task has no duration, so it is not scheduled, not in the critical path and not printed as a bar."},
   {k:"offgrid",lvl:"high",label:"Bars outside the grid",tip:"Weeks painted outside the weeks of this schedule (its start week or number of weeks changed since): they are neither shown nor counted. Widen the schedule (Settings) to see them."},
-  {k:"conflict",lvl:"high",label:"Starts before its predecessor ends",tip:"Drawn earlier than its “starts after” link allows (red arrow). Move it, or remove the link."},
+  {k:"conflict",lvl:"high",label:"Starts earlier than its link allows",tip:"Drawn earlier than its “starts after” link allows, gap included (red arrow). A negative gap (overlap you set) is not a conflict. Move it, change the gap, or remove the link."},
   {k:"behind",lvl:"high",label:"Behind schedule",tip:"A planned week is over, it was not marked done on site and the task is not at 100 %."},
   {k:"proc",lvl:"high",label:"Procurement late",tip:"The forecast delivery of the linked Package lands after the week the task starts."},
-  {k:"outseq",lvl:"mid",label:"Out of sequence",tip:"Work recorded on site while the task it starts after is not finished."},
+  {k:"outseq",lvl:"mid",label:"Out of sequence",tip:"Work recorded on site while the task it starts after is not finished (with a negative gap: while it has not started)."},
   {k:"future",lvl:"mid",label:"Done on site in the future",tip:"A week marked done on site (blue) that has not started yet: the progress is overstated."},
   {k:"notawarded",lvl:"mid",label:"Package not awarded, starts within 8 weeks",tip:"Linked to a Package with nobody in its Awarded section, and the task starts in the next 8 weeks (or should already have started)."},
   {k:"nocompany",lvl:"mid",label:"No company, starts within 8 weeks",tip:"Nobody is doing this task yet (no subcontractor on the task, no awarded Package), and it starts in the next 8 weeks."},
@@ -1893,7 +1893,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       var started=act.length>0||(pr!==null&&pr>0);
       if(started)rPreds.some(function(x){
         var pp=rowProgress(byId[x.id]);
-        if(pp!==null&&pp<100){add("outseq","“"+(byId[x.id].label||"untitled")+"” is at "+pp+" %");return true;}
+        // a negative gap (finish-to-start − N weeks) is a planned overlap: starting before the
+        // predecessor is finished is fine, as long as the predecessor has started
+        if(pp!==null&&(x.lag<0?pp<=0:pp<100)){add("outseq","“"+(byId[x.id].label||"untitled")+"” is at "+pp+" %");return true;}
         return false;
       });
       var fut=act.filter(function(w){return w>t;});
