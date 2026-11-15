@@ -1323,6 +1323,29 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [showDocs,setShowDocs]=useState(false);
   const [newDoc,setNewDoc]=useState({title:"",url:"",kind:"Setting-out plan",roomId:""});
   // Keep the pinned scrollbar and the real one in step, without bouncing between the two.
+  // ✋ Hand: drag the grid to move around it (sideways and up / down) instead of painting.
+  // Toggle in the toolbar (localStorage pp_sched_pan); the middle mouse button pans in any mode.
+  const [panMode,setPanModeRaw]=useState(function(){try{return localStorage.getItem("pp_sched_pan")==="1";}catch(e){return false;}});
+  function setPanMode(v){setPanModeRaw(v);try{localStorage.setItem("pp_sched_pan",v?"1":"0");}catch(e){}}
+  const [panning,setPanning]=useState(false);
+  const pannedRef=useRef(false);   // a pan that moved: the click that ends it opens nothing
+  function startPan(e){
+    var w=wrapRef.current;if(!w)return;
+    e.preventDefault();e.stopPropagation();
+    var x0=e.clientX,y0=e.clientY,l0=w.scrollLeft,t0=w.scrollTop;
+    pannedRef.current=false;setPanning(true);
+    function mv(ev){
+      var dx=ev.clientX-x0,dy=ev.clientY-y0;
+      if(Math.abs(dx)+Math.abs(dy)>3)pannedRef.current=true;
+      w.scrollLeft=l0-dx;w.scrollTop=t0-dy;
+    }
+    function up(){
+      window.removeEventListener("pointermove",mv);window.removeEventListener("pointerup",up);window.removeEventListener("pointercancel",up);
+      setPanning(false);
+      setTimeout(function(){pannedRef.current=false;},0);
+    }
+    window.addEventListener("pointermove",mv);window.addEventListener("pointerup",up);window.addEventListener("pointercancel",up);
+  }
   function syncScroll(from){
     var w=wrapRef.current,m=mirrorRef.current;
     if(!w||!m||syncingRef.current)return;
@@ -3321,7 +3344,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       setSchedScrollW(function(prev){return prev===need?prev:need;});
       var r=w.getBoundingClientRect();
       var visible=need>0&&r.bottom>60&&r.top<window.innerHeight-40;
-      var next={show:visible,left:Math.round(r.left),width:Math.round(r.width)};
+      // the side panel (fixed, 400 px on the right) covers the end of the grid: stop the bar before it
+      var pane=document.querySelector(".sched-sidepanel");
+      var rightEdge=Math.min(r.right,pane?pane.getBoundingClientRect().left-8:r.right);
+      var next={show:visible,left:Math.round(r.left),width:Math.max(80,Math.round(rightEdge-r.left))};
       setMirrorBox(function(p){
         return (p.show===next.show&&p.left===next.left&&p.width===next.width)?p:next;
       });
@@ -3691,6 +3717,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             {fGroup&&<button className="btn btn-sm" title="Show every company" onClick={function(){setFGroup("");}} style={{padding:"2px 7px"}}>✕</button>}
             {fGroup&&<span style={{fontSize:10,color:"#00695c",fontWeight:700}}>{groupRows.filter(function(r){return r.kind!=="category";}).length} task(s)</span>}
           </span>
+          {!monthView&&<button className={"btn btn-sm"+(panMode?" btn-pri":"")} onClick={function(){setPanMode(!panMode);}}
+            title={panMode?"Hand on: drag the grid to move around it — click to go back to editing (painting, moving bars)":"Hand: drag the grid to move around it, sideways and up / down, without changing anything\n(the middle mouse button or the wheel + Shift also move sideways)"}
+            style={{padding:"2px 8px",fontSize:10}}>✋ {panMode?"Hand on":"Hand"}</button>}
           <button className={"btn btn-sm"+(monthView?" btn-pri":"")} onClick={function(){setMonthView(!monthView);}}
             title={monthView?"Back to the full week grid":"Phone view: the next four weeks, task by task, grouped by room"}
             style={{padding:"2px 8px",fontSize:10}}>{monthView?"▦ Grid":"📱 Next 4 weeks"}</button>
@@ -3930,7 +3959,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           })}
         </div>}
 
-        {!monthView&&<div className="sched-wrap" ref={wrapRef} onScroll={function(){syncScroll("wrap");}} style={{overflowX:"auto",overflowY:"auto",maxHeight:fullScreen?"calc(100vh - 175px)":"62vh",border:"1px solid #e8e6df",borderRadius:"8px 8px 0 0",background:"#fff"}}>
+        {!monthView&&<div className={"sched-wrap"+(panMode?" sched-pan":"")+(panning?" sched-panning":"")} ref={wrapRef} onScroll={function(){syncScroll("wrap");}}
+          onPointerDownCapture={function(e){
+            if(e.pointerType==="touch")return;            // a finger already scrolls the grid
+            var t=e.target;
+            if(e.button===1||(panMode&&e.button===0&&!(t&&t.closest&&t.closest("button,input,select,textarea,a,label"))))startPan(e);
+          }}
+          onAuxClick={function(e){if(e.button===1)e.preventDefault();}}
+          onClickCapture={function(e){if(pannedRef.current){e.stopPropagation();e.preventDefault();}}}
+          style={{overflowX:"auto",overflowY:"auto",maxHeight:fullScreen?"calc(100vh - 175px)":"62vh",border:"1px solid #e8e6df",borderRadius:"8px 8px 0 0",background:"#fff"}}>
           <style>{".sched-row .sched-link-handle{opacity:0;transition:opacity .12s}.sched-row:hover .sched-link-handle,.sched-row.sched-row-on .sched-link-handle{opacity:1}.sched-link-hit{cursor:pointer}.sched-link-hit:hover+.sched-link-line{stroke-width:2.6}"}</style>
           <div ref={tableBoxRef} style={{position:"relative",width:"max-content",minWidth:"100%"}}>
           <table className={"sched-z-"+zoom} style={{borderCollapse:"collapse",width:"max-content",minWidth:"100%",fontSize:11}}>
@@ -4412,7 +4449,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             after scrolling the page. This mirror stays pinned to the bottom of the viewport
             and drives the real one, both ways. */}
         {!monthView&&<div className="sched-noprint sched-mirror" ref={mirrorRef} onScroll={function(){syncScroll("mirror");}}
-          style={{display:mirrorBox.show&&!panelRowId?"block":"none",position:"fixed",left:mirrorBox.left,width:mirrorBox.width,
+          style={{display:mirrorBox.show?"block":"none",position:"fixed",left:mirrorBox.left,width:mirrorBox.width,
             bottom:12,zIndex:1250,overflowX:"auto",overflowY:"hidden",height:18,
             background:"#faf9f6",border:"1px solid #e8e6df",borderRadius:9,
             boxShadow:"0 2px 10px rgba(0,0,0,.12)"}}>
@@ -4856,7 +4893,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             else if(v==="__none__")updRow(row.id,{tenderRef:"",tenderFromHeader:"-"});
             else updRow(row.id,{tenderRef:v,tenderFromHeader:""});
           }
-          return <div className="sched-noprint" onClick={function(e){e.stopPropagation();}}
+          return <div className="sched-noprint sched-sidepanel" onClick={function(e){e.stopPropagation();}}
             style={{position:"fixed",top:0,right:0,bottom:0,width:400,maxWidth:"100vw",zIndex:800,background:"#fff",
               borderLeft:"1.5px solid #e0ddd6",boxShadow:"-10px 0 36px rgba(0,0,0,.18)",display:"flex",flexDirection:"column"}}>
             {pop&&pop.rowId===row.id&&pop.kind==="tender"&&(function(){

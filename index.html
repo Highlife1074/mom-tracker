@@ -337,6 +337,9 @@ tr:hover>td>.sched-rh{opacity:.85}
    so there is never a second, unreachable bar. Vertical scrolling is untouched. */
 .sched-wrap::-webkit-scrollbar:horizontal{height:0}
 .sched-mirror{scrollbar-width:auto;scrollbar-color:#c9a84c #f0ede6;}
+/* ✋ Hand mode of the schedule: the grid is dragged around instead of painted */
+.sched-pan,.sched-pan td,.sched-pan th,.sched-pan span{cursor:grab!important}
+.sched-panning,.sched-panning *{cursor:grabbing!important;user-select:none}
 .sched-mirror::-webkit-scrollbar{height:14px}
 .sched-mirror::-webkit-scrollbar-track{background:#f0ede6;border-radius:7px}
 .sched-mirror::-webkit-scrollbar-thumb{background:#c9a84c;border-radius:7px;border:3px solid #f0ede6}
