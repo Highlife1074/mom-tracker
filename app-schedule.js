@@ -1323,6 +1323,29 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   const [showDocs,setShowDocs]=useState(false);
   const [newDoc,setNewDoc]=useState({title:"",url:"",kind:"Setting-out plan",roomId:""});
   // Keep the pinned scrollbar and the real one in step, without bouncing between the two.
+  // ✋ Hand: drag the grid to move around it (sideways and up / down) instead of painting.
+  // Toggle in the toolbar (localStorage pp_sched_pan); the middle mouse button pans in any mode.
+  const [panMode,setPanModeRaw]=useState(function(){try{return localStorage.getItem("pp_sched_pan")==="1";}catch(e){return false;}});
+  function setPanMode(v){setPanModeRaw(v);try{localStorage.setItem("pp_sched_pan",v?"1":"0");}catch(e){}}
+  const [panning,setPanning]=useState(false);
+  const pannedRef=useRef(false);   // a pan that moved: the click that ends it opens nothing
+  function startPan(e){
+    var w=wrapRef.current;if(!w)return;
+    e.preventDefault();e.stopPropagation();
+    var x0=e.clientX,y0=e.clientY,l0=w.scrollLeft,t0=w.scrollTop;
+    pannedRef.current=false;setPanning(true);
+    function mv(ev){
+      var dx=ev.clientX-x0,dy=ev.clientY-y0;
+      if(Math.abs(dx)+Math.abs(dy)>3)pannedRef.current=true;
+      w.scrollLeft=l0-dx;w.scrollTop=t0-dy;
+    }
+    function up(){
+      window.removeEventListener("pointermove",mv);window.removeEventListener("pointerup",up);window.removeEventListener("pointercancel",up);
+      setPanning(false);
+      setTimeout(function(){pannedRef.current=false;},0);
+    }
+    window.addEventListener("pointermove",mv);window.addEventListener("pointerup",up);window.addEventListener("pointercancel",up);
+  }
   function syncScroll(from){
     var w=wrapRef.current,m=mirrorRef.current;
     if(!w||!m||syncingRef.current)return;
@@ -1518,6 +1541,14 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     pushStartOnSiteFromSchedule(tenderRefsOf(cur.rows,snap.rows),snap.rows||[],snap.id);
     setUndoTick(function(n){return n+1;});
   }
+  // Small note after a change made on the grid, with its own ↶ Undo button (Ctrl+Z works too).
+  const [undoHint,setUndoHint]=useState(null);   // {text, t}
+  function hintUndo(text){setUndoHint({text:text,t:Date.now()});}
+  useEffect(function(){
+    if(!undoHint)return;
+    var tm=setTimeout(function(){setUndoHint(null);},6000);
+    return function(){clearTimeout(tm);};
+  },[undoHint]);
   const undoFnRef=useRef(null);
   undoFnRef.current=undoRedo;
   useEffect(function(){
@@ -2582,6 +2613,42 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(ls.weeks===0)return;
     shiftRows([row.id],-ls.weeks);
   }
+  // Rows where the task starts exactly when its predecessors allow: the end of the one that
+  // sets the date + 1 week + its gap (a negative gap = starts that many weeks BEFORE it ends).
+  // Earlier or later, the task moves and the tasks after it follow. A task already started
+  // on site (blue weeks) is never moved. Returns null when bars would fall off the grid.
+  function snapAfterPreds(rows,rowId){
+    var wl=scheduleWeeks(sc),hol=sc.holidayWeeks||[];
+    var working=wl.filter(function(w){return hol.indexOf(w)<0;});
+    var byId={};rows.forEach(function(r){byId[r.id]=r;});
+    var row=byId[rowId];if(!row)return rows;
+    var cells=row.cells||{};
+    if(Object.keys(cells).some(function(w){return cells[w]==="actual"||cells[w]==="both";}))return rows;
+    var ss=spanFromCells(cells,wl,null);if(!ss.startWeek)return rows;
+    var is=working.indexOf(ss.startWeek);if(is<0)return rows;
+    var best=null;
+    predsOf(row).forEach(function(pl){
+      var p=byId[pl.id];if(!p)return;
+      var ps=spanFromCells(p.cells,wl,null);if(!ps.endWeek)return;
+      var ie=working.indexOf(ps.endWeek);if(ie<0)return;
+      var e=ie+1+pl.lag;
+      if(best===null||e>best)best=e;
+    });
+    if(best===null||best===is)return rows;
+    var out=shiftRowCascade(rows.slice(),rowId,best-is,wl,{},hol);
+    return plannedCellCount(out)<plannedCellCount(rows)?null:out;
+  }
+  // Saves the predecessors of a task and places it after them, in ONE write (Ctrl+Z undoes both).
+  function savePredsSnapped(rowId,list,baseRows){
+    var rows=(baseRows||sc.rows||[]).map(function(r){return r.id===rowId?Object.assign({},r,predsPatch(list)):r;});
+    var snapped=snapAfterPreds(rows,rowId);
+    if(!snapped){
+      safeAlert("Linked, but the task was not moved: its bars (or the tasks after it) would fall outside the weeks of this schedule.\n\nIncrease \"Nb weeks\" or the start week of the schedule first.");
+      snapped=rows;
+    }
+    upd(sc.id,{rows:snapped});
+    if(snapped!==rows)hintUndo("Linked — the task moved after its predecessor");
+  }
   // "succ starts after pred" — created by dropping the ● of pred on succ, or from the panel.
   function linkRows(predId,succId){
     if(!sc)return;
@@ -2597,7 +2664,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     }
     // A task may wait for several tasks: the new link is ADDED to its predecessors
     // (the side panel or the arrow menu removes one; Ctrl+Z undoes).
-    updRow(succId,predsPatch(predsOf(succ).concat([{id:predId,lag:0}])));
+    savePredsSnapped(succId,predsOf(succ).concat([{id:predId,lag:0}]));
   }
   // No browser dialogs: Chrome can block them silently. Ctrl+Z undoes any of these.
   // removeLink(succ): every predecessor; removeLink(succ, pred): only that one.
@@ -2618,10 +2685,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     if(targetId===predId||targetId===succId)return;
     var rows=(sc.rows||[]).map(function(r){return r.id===succId?Object.assign({},r,predsPatch(predsOf(r).filter(function(p){return p.id!==predId;}))):r;});
     if(linkMakesLoop(rows,predId,targetId)){safeAlert("Not moved: this link would make a loop.");return;}
-    upd(sc.id,{rows:rows.map(function(r){
-      if(r.id!==targetId||predIdsOf(r).indexOf(predId)>=0)return r;
-      return Object.assign({},r,predsPatch(predsOf(r).concat([{id:predId,lag:0}])));
-    })});
+    var tgtRow=rows.find(function(r){return r.id===targetId;});
+    if(predIdsOf(tgtRow).indexOf(predId)>=0){upd(sc.id,{rows:rows});return;}
+    savePredsSnapped(targetId,predsOf(tgtRow).concat([{id:predId,lag:0}]),rows);
   }
   // Neutralising a week pushes every planned bar from that week onwards one week later
   // (and re-activating pulls them back), so the plan reflows around a shutdown automatically.
@@ -2968,11 +3034,17 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   dragEndRef.current=function(d){
     var row=rowById(d.rowId);
     if(!row)return;
-    if(d.type==="paint")paintRange(row,d.from,d.to,d.erase);
-    else if(d.type==="move"){var dl=workingDelta(d.from,d.to);if(dl)shiftRows([row.id],dl);}
+    // A plain click on the grid (no slide) never changes the plan of another task: it opens
+    // that task in the side panel. Once the task is open, a click paints one week, as before.
+    if((d.type==="paint"||d.type==="move"||d.type==="resizeS"||d.type==="resizeE")&&d.from===d.to&&panelRowId!==row.id){
+      setCtxMenu(null);setPanelRowId(row.id);return;
+    }
+    if(d.type==="paint"){paintRange(row,d.from,d.to,d.erase);hintUndo(d.erase?"Week(s) erased":"Week(s) painted");}
+    else if(d.type==="move"){var dl=workingDelta(d.from,d.to);if(dl){shiftRows([row.id],dl);hintUndo("Task moved");}}
     else if(d.type==="resizeS"||d.type==="resizeE"){
       if(d.to===d.from)return;
       if(d.type==="resizeS")applySpan(row,{startWeek:d.to});else applySpan(row,{endWeek:d.to});
+      hintUndo("Dates changed");
     }
     else if(d.type==="link"&&d.target)linkRows(row.id,d.target);
     else if(d.type==="relink"){
@@ -3103,7 +3175,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
         if(!pc||!scl)return;
         var a=pc.getBoundingClientRect(),c=scl.getBoundingClientRect();
         out.push({id:r.id,predId:p.id,x1:Math.round(a.right-b.left),y1:Math.round(a.top+a.height/2-b.top),
-          x2:Math.round(c.left-b.left),y2:Math.round(c.top+c.height/2-b.top),bad:ss.startWeek<=ps.endWeek,
+          x2:Math.round(c.left-b.left),y2:Math.round(c.top+c.height/2-b.top),bad:(function(){
+            var hol=sc.holidayWeeks||[],wk2=wl.filter(function(w){return hol.indexOf(w)<0;});
+            var ie=wk2.indexOf(ps.endWeek),is=wk2.indexOf(ss.startWeek);
+            return ie<0||is<0?ss.startWeek<=ps.endWeek:is<ie+1+pl.lag;
+          })(),
           label:(p.label||"untitled")+" → "+(r.label||"untitled")});
       });});
     }
@@ -3268,7 +3344,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       setSchedScrollW(function(prev){return prev===need?prev:need;});
       var r=w.getBoundingClientRect();
       var visible=need>0&&r.bottom>60&&r.top<window.innerHeight-40;
-      var next={show:visible,left:Math.round(r.left),width:Math.round(r.width)};
+      // the side panel (fixed, 400 px on the right) covers the end of the grid: stop the bar before it
+      var pane=document.querySelector(".sched-sidepanel");
+      var rightEdge=Math.min(r.right,pane?pane.getBoundingClientRect().left-8:r.right);
+      var next={show:visible,left:Math.round(r.left),width:Math.max(80,Math.round(rightEdge-r.left))};
       setMirrorBox(function(p){
         return (p.show===next.show&&p.left===next.left&&p.width===next.width)?p:next;
       });
@@ -3337,6 +3416,16 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   }
 
   return <div className={fullScreen?"sched-fs":""} style={fullScreen?{position:"fixed",inset:0,zIndex:1200,background:"#f4f3f0",padding:"10px 14px",overflowY:"auto"}:null}>
+    {undoHint&&canEdit!==false&&<div className="sched-noprint" role="status"
+      style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:1300,display:"flex",alignItems:"center",gap:10,
+        background:"var(--brand,#1f3a5f)",color:"#fff",borderRadius:8,padding:"7px 8px 7px 14px",fontSize:12.5,fontWeight:600,boxShadow:"0 4px 16px rgba(0,0,0,.25)"}}>
+      <span>{undoHint.text}</span>
+      <button type="button" onClick={function(){setUndoHint(null);undoRedo(-1);}}
+        style={{border:"1px solid rgba(255,255,255,.5)",background:"rgba(255,255,255,.12)",color:"#fff",borderRadius:6,padding:"3px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}}>↶ Undo</button>
+      <span style={{fontSize:10.5,opacity:.75}}>Ctrl+Z</span>
+      <button type="button" onClick={function(){setUndoHint(null);}} title="Close"
+        style={{border:"none",background:"none",color:"#fff",cursor:"pointer",fontSize:13,opacity:.7,padding:"0 4px"}}>✕</button>
+    </div>}
     {fullScreen&&<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
       <button className="btn btn-pri" onClick={function(){setFullScreen(false);}} title="Back to the zone (Esc)"
         style={{fontSize:13,padding:"7px 16px"}}>← Back</button>
@@ -3628,6 +3717,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             {fGroup&&<button className="btn btn-sm" title="Show every company" onClick={function(){setFGroup("");}} style={{padding:"2px 7px"}}>✕</button>}
             {fGroup&&<span style={{fontSize:10,color:"#00695c",fontWeight:700}}>{groupRows.filter(function(r){return r.kind!=="category";}).length} task(s)</span>}
           </span>
+          {!monthView&&<button className={"btn btn-sm"+(panMode?" btn-pri":"")} onClick={function(){setPanMode(!panMode);}}
+            title={panMode?"Hand on: drag the grid to move around it — click to go back to editing (painting, moving bars)":"Hand: drag the grid to move around it, sideways and up / down, without changing anything\n(the middle mouse button or the wheel + Shift also move sideways)"}
+            style={{padding:"2px 8px",fontSize:10}}>✋ {panMode?"Hand on":"Hand"}</button>}
           <button className={"btn btn-sm"+(monthView?" btn-pri":"")} onClick={function(){setMonthView(!monthView);}}
             title={monthView?"Back to the full week grid":"Phone view: the next four weeks, task by task, grouped by room"}
             style={{padding:"2px 8px",fontSize:10}}>{monthView?"▦ Grid":"📱 Next 4 weeks"}</button>
@@ -3867,7 +3959,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           })}
         </div>}
 
-        {!monthView&&<div className="sched-wrap" ref={wrapRef} onScroll={function(){syncScroll("wrap");}} style={{overflowX:"auto",overflowY:"auto",maxHeight:fullScreen?"calc(100vh - 175px)":"62vh",border:"1px solid #e8e6df",borderRadius:"8px 8px 0 0",background:"#fff"}}>
+        {!monthView&&<div className={"sched-wrap"+(panMode?" sched-pan":"")+(panning?" sched-panning":"")} ref={wrapRef} onScroll={function(){syncScroll("wrap");}}
+          onPointerDownCapture={function(e){
+            if(e.pointerType==="touch")return;            // a finger already scrolls the grid
+            var t=e.target;
+            if(e.button===1||(panMode&&e.button===0&&!(t&&t.closest&&t.closest("button,input,select,textarea,a,label"))))startPan(e);
+          }}
+          onAuxClick={function(e){if(e.button===1)e.preventDefault();}}
+          onClickCapture={function(e){if(pannedRef.current){e.stopPropagation();e.preventDefault();}}}
+          style={{overflowX:"auto",overflowY:"auto",maxHeight:fullScreen?"calc(100vh - 175px)":"62vh",border:"1px solid #e8e6df",borderRadius:"8px 8px 0 0",background:"#fff"}}>
           <style>{".sched-row .sched-link-handle{opacity:0;transition:opacity .12s}.sched-row:hover .sched-link-handle,.sched-row.sched-row-on .sched-link-handle{opacity:1}.sched-link-hit{cursor:pointer}.sched-link-hit:hover+.sched-link-line{stroke-width:2.6}"}</style>
           <div ref={tableBoxRef} style={{position:"relative",width:"max-content",minWidth:"100%"}}>
           <table className={"sched-z-"+zoom} style={{borderCollapse:"collapse",width:"max-content",minWidth:"100%",fontSize:11}}>
@@ -3971,6 +4071,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   </tr>;
                 })}
                 <tr data-rowid={row.id} className={"sched-row"+(panelRowId===row.id?" sched-row-on":"")}
+                  onClick={function(e){
+                    // anywhere on the row opens it in the side panel — not only its name.
+                    // The week cells (gestures) and the row's own controls keep their behaviour.
+                    if(e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
+                    var t=e.target;
+                    if(!t||!t.closest||t.closest("td[data-wk],button,input,select,textarea,a,label"))return;
+                    if(editRowId===row.id)return;
+                    setCtxMenu(null);setPanelRowId(row.id);
+                  }}
                   onContextMenu={function(e){
                     if(dragRef.current||longPressRef.current){e.preventDefault();return;}
                     if(canEdit===false)return;
@@ -4254,11 +4363,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         // a quick tap with a finger paints one week, like a click
                         if(!longPressRef.current)return;
                         clearLongPress();
-                        if(!isCat&&!hol&&paintMode!=="progress"&&canEdit!==false)toggleCell(row,wk);
+                        if(isCat||hol||paintMode==="progress"||canEdit===false)return;
+                        if(panelRowId!==row.id){setCtxMenu(null);setPanelRowId(row.id);return;}
+                        toggleCell(row,wk);hintUndo("Week painted");
                       }}
                       onPointerCancel={clearLongPress}
                       data-wk={wk}
-                      title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(v==="plan"||v==="both")?(paintMode==="plan"?"Drag the bar to move the task (the tasks after it follow) · drag its ends to change the dates · Alt+drag to erase weeks":"Drag along the row to paint or erase"):"Click, or drag along the row to paint several weeks")}
+                      title={hol?"Neutralised week":hasWp?"Progress at this week: "+wpVal+"%":(paintMode==="progress"?"Click to record progress % for this week":(panelRowId!==row.id?"Click: open this task · ":"")+((v==="plan"||v==="both")?(paintMode==="plan"?"Drag the bar to move the task (the tasks after it follow) · drag its ends to change the dates · Alt+drag to erase weeks":"Drag along the row to paint or erase"):(panelRowId===row.id?"Click to paint this week, or drag along the row to paint several weeks":"drag along the row to paint several weeks"))+" · Ctrl+Z: undo")}
                       className={(isCat||hol)?"sched-wk sched-wk-nc":"sched-wk"}
                       style={Object.assign({},
                         hol?{background:"repeating-linear-gradient(45deg,#e8e4da,#e8e4da 3px,#dcd8ce 3px,#dcd8ce 6px)"}:
@@ -4325,7 +4436,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     setLinkMenu(null);
                     startDrag({type:"relink",rowId:g.id,predId:g.predId,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,target:""});
                   }}>
-                  <title>{g.label+(g.bad?"\n⚠ starts before the previous task ends":"")+(canEdit?"\nClick: options · Drag onto another task: move the link to it":"")}</title>
+                  <title>{g.label+(g.bad?"\n⚠ starts earlier than this link allows":"")+(canEdit?"\nClick: options · Drag onto another task: move the link to it":"")}</title>
                 </path>
                 <path className="sched-link-line" d={d} fill="none" stroke={g.bad?"#b3302a":"#8f8a7e"} strokeWidth={g.bad?1.8:1.2}
                   strokeDasharray={g.bad?"4 3":"none"} markerEnd={"url(#"+(g.bad?"sched-arr-bad":"sched-arr-ok")+")"} style={{pointerEvents:"none"}}/>
@@ -4338,7 +4449,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             after scrolling the page. This mirror stays pinned to the bottom of the viewport
             and drives the real one, both ways. */}
         {!monthView&&<div className="sched-noprint sched-mirror" ref={mirrorRef} onScroll={function(){syncScroll("mirror");}}
-          style={{display:mirrorBox.show&&!panelRowId?"block":"none",position:"fixed",left:mirrorBox.left,width:mirrorBox.width,
+          style={{display:mirrorBox.show?"block":"none",position:"fixed",left:mirrorBox.left,width:mirrorBox.width,
             bottom:12,zIndex:1250,overflowX:"auto",overflowY:"hidden",height:18,
             background:"#faf9f6",border:"1px solid #e8e6df",borderRadius:9,
             boxShadow:"0 2px 10px rgba(0,0,0,.12)"}}>
@@ -4782,7 +4893,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             else if(v==="__none__")updRow(row.id,{tenderRef:"",tenderFromHeader:"-"});
             else updRow(row.id,{tenderRef:v,tenderFromHeader:""});
           }
-          return <div className="sched-noprint" onClick={function(e){e.stopPropagation();}}
+          return <div className="sched-noprint sched-sidepanel" onClick={function(e){e.stopPropagation();}}
             style={{position:"fixed",top:0,right:0,bottom:0,width:400,maxWidth:"100vw",zIndex:800,background:"#fff",
               borderLeft:"1.5px solid #e0ddd6",boxShadow:"-10px 0 36px rgba(0,0,0,.18)",display:"flex",flexDirection:"column"}}>
             {pop&&pop.rowId===row.id&&pop.kind==="tender"&&(function(){
@@ -4965,7 +5076,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 {(function(){
                   var plist=predsOf(row);
                   var states={};((ls&&ls.all)||[]).forEach(function(x){states[x.pred.id]=x;});
-                  function setList(l){updRow(row.id,predsPatch(l));}
+                  // adding a link or changing a gap places the task; removing one leaves it where it is
+                  function setList(l,place){if(place)savePredsSnapped(row.id,l);else updRow(row.id,predsPatch(l));}
                   return <div>
                     <label style={lbl}>Starts after{plist.length>1?" — all of them":""}</label>
                     {plist.length===0&&<div style={{fontSize:12,color:"var(--ink-4)",padding:"4px 0 6px"}}>— nothing (free start) —</div>}
@@ -4976,14 +5088,19 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       return <div key={pl.id} style={{display:"flex",alignItems:"center",gap:6,border:"1px solid var(--brand-line)",borderRadius:8,padding:"5px 8px",background:"var(--brand-soft)",marginBottom:5}}>
                         <a onClick={function(){if(pr)setPanelRowId(pr.id);}} style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"var(--brand-ink)",cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
                           title="Open this task">🔗 {pr?(pr.label||"(untitled)"):"(deleted task)"}</a>
-                        {st&&<span style={{fontSize:10,fontWeight:700,whiteSpace:"nowrap",color:st.weeks<0?"var(--red)":st.weeks===0?"var(--green)":"var(--ink-3)"}}>
-                          {st.weeks<0?(-st.weeks)+" wk early":st.weeks===0?"right after":st.weeks+" wk slack"}</span>}
+                        {st&&<span onClick={canEdit&&st.weeks!==0?function(){savePredsSnapped(row.id,plist);}:null}
+                          title={st.weeks===0?"Starts exactly when this link allows"
+                            :(st.weeks<0?"Drawn "+(-st.weeks)+" week(s) earlier":"Drawn "+st.weeks+" week(s) later")+" than this link allows"+(canEdit?" — click to place the task after it (the tasks after it follow)":"")}
+                          style={{fontSize:10,fontWeight:700,whiteSpace:"nowrap",cursor:canEdit&&st.weeks!==0?"pointer":"default",
+                            textDecoration:canEdit&&st.weeks!==0?"underline dotted":"none",color:st.weeks<0?"var(--red)":st.weeks===0?"var(--green)":"var(--ink-3)"}}>
+                          {st.weeks<0?(-st.weeks)+" wk too early":st.weeks===0?"✓ placed":st.weeks+" wk later"}</span>}
                         {drives&&<span title="This one sets the start" style={{fontSize:9.5,fontWeight:700,color:"var(--red)",background:"var(--red-soft)",borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap"}}>sets the date</span>}
-                        <span style={{fontSize:10,color:"var(--ink-3)"}}>+</span>
+                        <span style={{fontSize:10,color:"var(--ink-3)"}} title="Gap after its end, in working weeks">gap</span>
                         {canEdit
-                          ?<SchedBufInput type="number" value={pl.lag||""} placeholder="0" title="Weeks to wait after it ends (curing, drying…)"
-                            onCommit={function(v){setList(plist.map(function(x,j){return j===i?{id:x.id,lag:Math.max(0,Math.round(Number(v)||0))}:x;}));}}
-                            style={{padding:"3px 4px",fontSize:11.5,width:40}}/>
+                          ?<SchedBufInput type="number" value={pl.lag||""} placeholder="0"
+                            title={"Gap in working weeks after it ends — the task moves to match.\n0 = starts the week after it ends · 2 = waits 2 weeks (curing, drying…) · −1 = starts 1 week before it ends (overlap)"}
+                            onCommit={function(v){setList(plist.map(function(x,j){return j===i?{id:x.id,lag:Math.round(Number(v)||0)}:x;}),true);}}
+                            style={{padding:"3px 4px",fontSize:11.5,width:44}}/>
                           :<span style={{fontSize:11.5}}>{pl.lag||0}</span>}
                         <span style={{fontSize:10,color:"var(--ink-3)"}}>wk</span>
                         {canEdit&&<button type="button" title="Remove this link" onClick={function(){setList(plist.filter(function(x){return x.id!==pl.id;}));}}
@@ -5000,7 +5117,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         if(linkMakesLoop(allRows,r.id,row.id))return "would make a loop";
                         return "";
                       }}
-                      onPick={function(id){if(id)setList(plist.concat([{id:id,lag:0}]));setPickAfter(false);}}
+                      onPick={function(id){if(id)setList(plist.concat([{id:id,lag:0}]),true);setPickAfter(false);}}
                       onClose={function(){setPickAfter(false);}}/>}
                   </div>;
                 })()}
