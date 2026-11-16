@@ -3408,7 +3408,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       var need=w.scrollWidth>w.clientWidth+1?w.scrollWidth:0;
       setSchedScrollW(function(prev){return prev===need?prev:need;});
       var r=w.getBoundingClientRect();
-      var visible=need>0&&r.bottom>60&&r.top<window.innerHeight-40;
+      // only while the grid's own scrollbar (bottom of its box) is out of sight
+      var visible=need>0&&r.bottom>window.innerHeight-4&&r.top<window.innerHeight-80;
       // the side panel (fixed, 400 px on the right) covers the end of the grid: stop the bar before it
       var pane=document.querySelector(".sched-sidepanel");
       var rightEdge=Math.min(r.right,pane?pane.getBoundingClientRect().left-8:r.right);

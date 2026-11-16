@@ -333,9 +333,9 @@ label{font-family:var(--font-mono);font-size:var(--fs-micro);font-weight:600;col
 tr:hover>td>.sched-rh{opacity:.85}
 .sched-rh:hover{opacity:1!important}
 /* Pinned mirror of the schedule scrollbar: same look, always within reach */
-/* Only the pinned bar shows a horizontal scrollbar — the one inside the box is hidden
-   so there is never a second, unreachable bar. Vertical scrolling is untouched. */
-.sched-wrap::-webkit-scrollbar:horizontal{height:0}
+/* The grid keeps its own horizontal scrollbar (always at the bottom of its box, thick enough
+   to grab); the pinned mirror only shows when the bottom of the box is below the screen. */
+.sched-wrap::-webkit-scrollbar:horizontal{height:16px}
 .sched-mirror{scrollbar-width:auto;scrollbar-color:#c9a84c #f0ede6;}
 /* ✋ Hand mode of the schedule: the grid is dragged around instead of painted */
 .sched-pan,.sched-pan td,.sched-pan th,.sched-pan span{cursor:grab!important}
