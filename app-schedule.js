@@ -220,16 +220,39 @@ function scheduleWeeks(sc){
 }
 // A meeting records attendance for one lookahead session in one zone.
 // attendance = {"LASTNAME, First":"present"|"absent"|"excused"}
+// Muted, print-friendly tones (any other colour can be picked with the colour wheel).
+// Colours saved before stay as they are: a task keeps its hex code whatever this list holds.
 const SCHED_PALETTE=[
-  {hex:"#c9a84c",name:"Gold"},      {hex:"#1e6b3a",name:"Green"},
-  {hex:"#4a4740",name:"Purple"},    {hex:"#00838f",name:"Teal"},
-  {hex:"#e65100",name:"Orange"},    {hex:"#5d4037",name:"Brown"},
-  {hex:"#c2185b",name:"Pink"},      {hex:"#455a64",name:"Slate"},
-  {hex:"#f9a825",name:"Amber"},     {hex:"#6d4c41",name:"Cocoa"},
-  {hex:"#827717",name:"Olive"},     {hex:"#4527a0",name:"Indigo"},
-  {hex:"#ad1457",name:"Magenta"},   {hex:"#00695c",name:"Emerald"},
-  {hex:"#bf360c",name:"Rust"},      {hex:"#37474f",name:"Graphite"}
+  {hex:"#2f4b6e",name:"Navy"},      {hex:"#5b7fa6",name:"Steel blue"},
+  {hex:"#8fa9c4",name:"Light blue"},{hex:"#4f8a8b",name:"Teal"},
+  {hex:"#4f7556",name:"Forest"},    {hex:"#7d9a7e",name:"Sage"},
+  {hex:"#a9bb9a",name:"Pale sage"}, {hex:"#8a8a5c",name:"Olive"},
+  {hex:"#b8995a",name:"Gold"},      {hex:"#c8b48a",name:"Sand"},
+  {hex:"#b5785e",name:"Terracotta"},{hex:"#a0665a",name:"Clay"},
+  {hex:"#7e6a8f",name:"Plum"},      {hex:"#a08299",name:"Mauve"},
+  {hex:"#9b8b7a",name:"Taupe"},     {hex:"#6b7a8f",name:"Slate"},
+  {hex:"#8c8c8c",name:"Grey"},      {hex:"#4a4f57",name:"Charcoal"}
 ];
+// The browser's own colour picker (every colour, hex code). It saves once, when the picker
+// is closed (native "change"), never at each move of the cursor — one write, one Ctrl+Z.
+function SchedColorInput({value,onCommit,title}){
+  const ref=useRef(null);
+  const cbRef=useRef(onCommit);cbRef.current=onCommit;
+  useEffect(function(){
+    var el=ref.current;if(!el)return;
+    function ch(){cbRef.current(el.value);}
+    el.addEventListener("change",ch);
+    return function(){el.removeEventListener("change",ch);};
+  },[]);
+  useEffect(function(){var el=ref.current;if(el&&/^#[0-9a-f]{6}$/i.test(value||""))el.value=value;},[value]);
+  return <label title={title||"Any colour…"} style={{position:"relative",display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",
+      height:26,padding:"0 8px",borderRadius:6,border:"1px solid var(--brand-line,#ccd6e3)",background:"#fff",fontSize:11,fontWeight:700,color:"var(--brand-ink,#1f3a5f)",textTransform:"none",letterSpacing:0,margin:0}}>
+    <span style={{width:14,height:14,borderRadius:"50%",background:"conic-gradient(#d9534f,#e8b04a,#8fbf6a,#4fa3a5,#5b7fa6,#8a6fb0,#d9534f)",border:"1px solid rgba(0,0,0,.15)"}}></span>
+    Any colour…
+    <input ref={ref} type="color" defaultValue={/^#[0-9a-f]{6}$/i.test(value||"")?value:"#5b7fa6"}
+      style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",border:"none",padding:0}}/>
+  </label>;
+}
 function paletteName(hex){var f=SCHED_PALETTE.find(function(c){return c.hex===hex;});return f?f.name:hex;}
 
 // Which tender a schedule row should belong to, given the rules.
@@ -1276,10 +1299,10 @@ function buildScheduleXer(sc,opts){
 const SCHED_HEALTH_CHECKS=[
   {k:"nobar",lvl:"high",label:"No planned bar",tip:"No planned week: the task has no duration, so it is not scheduled, not in the critical path and not printed as a bar."},
   {k:"offgrid",lvl:"high",label:"Bars outside the grid",tip:"Weeks painted outside the weeks of this schedule (its start week or number of weeks changed since): they are neither shown nor counted. Widen the schedule (Settings) to see them."},
-  {k:"conflict",lvl:"high",label:"Starts before its predecessor ends",tip:"Drawn earlier than its “starts after” link allows (red arrow). Move it, or remove the link."},
+  {k:"conflict",lvl:"high",label:"Starts earlier than its link allows",tip:"Drawn earlier than its “starts after” link allows, gap included (red arrow). A negative gap (overlap you set) is not a conflict. Move it, change the gap, or remove the link."},
   {k:"behind",lvl:"high",label:"Behind schedule",tip:"A planned week is over, it was not marked done on site and the task is not at 100 %."},
   {k:"proc",lvl:"high",label:"Procurement late",tip:"The forecast delivery of the linked Package lands after the week the task starts."},
-  {k:"outseq",lvl:"mid",label:"Out of sequence",tip:"Work recorded on site while the task it starts after is not finished."},
+  {k:"outseq",lvl:"mid",label:"Out of sequence",tip:"Work recorded on site while the task it starts after is not finished (with a negative gap: while it has not started)."},
   {k:"future",lvl:"mid",label:"Done on site in the future",tip:"A week marked done on site (blue) that has not started yet: the progress is overstated."},
   {k:"notawarded",lvl:"mid",label:"Package not awarded, starts within 8 weeks",tip:"Linked to a Package with nobody in its Awarded section, and the task starts in the next 8 weeks (or should already have started)."},
   {k:"nocompany",lvl:"mid",label:"No company, starts within 8 weeks",tip:"Nobody is doing this task yet (no subcontractor on the task, no awarded Package), and it starts in the next 8 weeks."},
@@ -1893,7 +1916,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
       var started=act.length>0||(pr!==null&&pr>0);
       if(started)rPreds.some(function(x){
         var pp=rowProgress(byId[x.id]);
-        if(pp!==null&&pp<100){add("outseq","“"+(byId[x.id].label||"untitled")+"” is at "+pp+" %");return true;}
+        // a negative gap (finish-to-start − N weeks) is a planned overlap: starting before the
+        // predecessor is finished is fine, as long as the predecessor has started
+        if(pp!==null&&(x.lag<0?pp<=0:pp<100)){add("outseq","“"+(byId[x.id].label||"untitled")+"” is at "+pp+" %");return true;}
         return false;
       });
       var fut=act.filter(function(w){return w>t;});
@@ -4806,39 +4831,47 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           if(!row)return null;
           var grp=rowGroup(row);
           function setTask(hex){updRow(row.id,{color:hex});}
+          // colours already used on this schedule that are not in the palette (picked with the wheel)
+          var inPal={};SCHED_PALETTE.forEach(function(c){inPal[c.hex.toLowerCase()]=1;});
+          var used=[],seenU={};
+          (sc.rows||[]).map(function(r){return r.color;}).concat(Object.keys(sc.groupColors||{}).map(function(k){return sc.groupColors[k];}))
+            .forEach(function(h){var k=String(h||"").toLowerCase();if(k&&!inPal[k]&&!seenU[k]){seenU[k]=1;used.push(h);}});
+          var swatches=SCHED_PALETTE.concat(used.slice(0,8).map(function(h){return{hex:h,name:h+" (used on this schedule)"};}));
           function setGroup(hex){
             var gc=Object.assign({},(sc.groupColors)||{});
             if(hex)gc[grp]=hex;else delete gc[grp];
             upd(sc.id,{groupColors:gc});
           }
           return <div className="sched-noprint" style={{position:"fixed",zIndex:950,left:"50%",top:"50%",transform:"translate(-50%,-50%)",
-            background:"#fff",border:"1.5px solid #e8e6df",borderRadius:12,boxShadow:"0 16px 50px rgba(0,0,0,.25)",padding:"16px 18px",width:330}}>
+            background:"#fff",border:"1.5px solid #e8e6df",borderRadius:12,boxShadow:"0 16px 50px rgba(0,0,0,.25)",padding:"16px 18px",width:360}}>
             <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>Colour — {row.label||"task"}</div>
             <div style={{fontSize:10,color:"#aaa",marginBottom:12}}>Planned bars only. Actual bars stay blue everywhere.</div>
 
             {grp&&<div style={{marginBottom:14}}>
               <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:6}}>All tasks of {grp} — this schedule</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {SCHED_PALETTE.map(function(c){
+                {swatches.map(function(c){
                   var on=((sc.groupColors)||{})[grp]===c.hex;
                   return <button key={c.hex} title={c.name} onClick={function(){setGroup(c.hex);}}
                     style={{width:26,height:26,borderRadius:6,cursor:"pointer",background:c.hex,border:on?"3px solid #1c1c1e":"1px solid rgba(0,0,0,.15)"}}></button>;
                 })}
                 <button onClick={function(){setGroup("");}} title="Back to the colour set in Settings, or gold"
                   style={{width:26,height:26,borderRadius:6,cursor:"pointer",fontSize:13,color:"#aaa",background:"#fff",border:"1px dashed #ccc"}}>×</button>
+                <SchedColorInput value={((sc.groupColors)||{})[grp]||""} onCommit={setGroup} title={"Any colour for every task of "+grp}/>
               </div>
             </div>}
 
             <div>
               <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:6}}>This task only</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {SCHED_PALETTE.map(function(c){
+                {swatches.map(function(c){
                   var on=row.color===c.hex;
                   return <button key={c.hex} title={c.name} onClick={function(){setTask(c.hex);}}
                     style={{width:26,height:26,borderRadius:6,cursor:"pointer",background:c.hex,border:on?"3px solid #0f5299":"1px solid rgba(0,0,0,.15)"}}></button>;
                 })}
                 <button onClick={function(){setTask("");}} title="Follow the subcontractor colour again"
                   style={{width:26,height:26,borderRadius:6,cursor:"pointer",fontSize:13,color:"#aaa",background:"#fff",border:"1px dashed #ccc"}}>×</button>
+                <SchedColorInput value={row.color||""} onCommit={setTask} title="Any colour for this task"/>
               </div>
             </div>
 

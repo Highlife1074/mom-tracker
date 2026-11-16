@@ -2163,6 +2163,8 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
           <button onClick={function(){var m=Object.assign({},subColors||{});delete m[colorPick];saveSubColors(m);}}
             title="No colour — back to the default gold"
             style={{width:30,height:30,borderRadius:7,cursor:"pointer",fontSize:14,color:"#aaa",background:"#fff",border:"1px dashed #ccc"}}>×</button>
+          <SchedColorInput key={colorPick} value={(subColors||{})[colorPick]||""} title={"Any colour for "+colorPick}
+            onCommit={function(hex){var m=Object.assign({},subColors||{});m[colorPick]=hex;saveSubColors(m);}}/>
           <button className="btn btn-sm" onClick={function(){setColorPick("");}} style={{marginLeft:8}}>Done</button>
         </div>
         <div style={{fontSize:10,color:"#aaa",marginTop:8}}>Used for this company's planned bars in every zone schedule. A single task can still be given its own colour from the schedule.</div>
