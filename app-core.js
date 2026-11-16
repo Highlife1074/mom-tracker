@@ -2155,11 +2155,8 @@ function SettingsView({subList,saveSubList,subColors,saveSubColors,contractors,t
       {colorPick&&<div style={{marginTop:14,padding:"12px 14px",border:"1.5px solid #e0ddd6",borderRadius:10,background:"#fafaf8"}}>
         <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Schedule colour for <span style={{color:"#00695c"}}>{colorPick}</span></div>
         <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-          {SCHED_PALETTE.map(function(c){
-            var on=(subColors||{})[colorPick]===c.hex;
-            return <button key={c.hex} title={c.name} onClick={function(){var m=Object.assign({},subColors||{});m[colorPick]=c.hex;saveSubColors(m);}}
-              style={{width:30,height:30,borderRadius:7,cursor:"pointer",background:c.hex,border:on?"3px solid #1c1c1e":"1px solid rgba(0,0,0,.15)"}}></button>;
-          })}
+          <SchedSwatches sc={null} size={30} current={(subColors||{})[colorPick]}
+            onPick={function(hex){var m=Object.assign({},subColors||{});m[colorPick]=hex;saveSubColors(m);}}/>
           <button onClick={function(){var m=Object.assign({},subColors||{});delete m[colorPick];saveSubColors(m);}}
             title="No colour — back to the default gold"
             style={{width:30,height:30,borderRadius:7,cursor:"pointer",fontSize:14,color:"#aaa",background:"#fff",border:"1px dashed #ccc"}}>×</button>

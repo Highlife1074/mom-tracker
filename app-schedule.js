@@ -233,6 +233,46 @@ const SCHED_PALETTE=[
   {hex:"#9b8b7a",name:"Taupe"},     {hex:"#6b7a8f",name:"Slate"},
   {hex:"#8c8c8c",name:"Grey"},      {hex:"#4a4f57",name:"Charcoal"}
 ];
+// Colours picked with the colour wheel come back as quick swatches ("Your colours"): the ones
+// picked last by this person (localStorage pp_sched_colors, 12 max), then the off-palette colours
+// already used — on the given schedule and in Settings (company colours) — so no hex code has
+// to be looked up again.
+function schedRememberColor(hex){
+  if(!/^#[0-9a-f]{6}$/i.test(hex||""))return;
+  var k=hex.toLowerCase();
+  try{
+    var l=JSON.parse(localStorage.getItem("pp_sched_colors")||"[]");if(!Array.isArray(l))l=[];
+    l=[k].concat(l.filter(function(x){return x!==k;})).slice(0,12);
+    localStorage.setItem("pp_sched_colors",JSON.stringify(l));
+  }catch(e){}
+}
+function schedCustomColors(sc){
+  var inPal={};SCHED_PALETTE.forEach(function(c){inPal[c.hex.toLowerCase()]=1;});
+  var out=[],seen={};
+  function add(h){var k=String(h||"").toLowerCase();if(/^#[0-9a-f]{6}$/.test(k)&&!inPal[k]&&!seen[k]){seen[k]=1;out.push(k);}}
+  try{(JSON.parse(localStorage.getItem("pp_sched_colors")||"[]")||[]).forEach(add);}catch(e){}
+  if(sc){(sc.rows||[]).forEach(function(r){add(r.color);});var gc=sc.groupColors||{};Object.keys(gc).forEach(function(k){add(gc[k]);});}
+  var sub=window._ppSubColors||{};Object.keys(sub).forEach(function(k){add(sub[k]);});
+  return out.slice(0,16);
+}
+// Quick swatches: "Your colours" (custom) on their own line, then the palette.
+function SchedSwatches({sc,current,onPick,size,ring}){
+  var sz=size||26;
+  var cur=String(current||"").toLowerCase();
+  var mine=schedCustomColors(sc);
+  function sw(hex,name){
+    var on=cur===hex.toLowerCase();
+    return <button key={hex} type="button" title={name} onClick={function(){onPick(hex);}}
+      style={{width:sz,height:sz,borderRadius:6,cursor:"pointer",background:hex,padding:0,border:on?"3px solid "+(ring||"#1c1c1e"):"1px solid rgba(0,0,0,.15)"}}></button>;
+  }
+  return <React.Fragment>
+    {mine.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center",width:"100%",marginBottom:4}}>
+      <span style={{fontSize:9,fontWeight:800,color:"#9b968b",textTransform:"uppercase",letterSpacing:".05em",marginRight:2}}>Your colours</span>
+      {mine.map(function(h){return sw(h,h+" — picked before");})}
+    </div>}
+    {SCHED_PALETTE.map(function(c){return sw(c.hex,c.name);})}
+  </React.Fragment>;
+}
 // The browser's own colour picker (every colour, hex code). It saves once, when the picker
 // is closed (native "change"), never at each move of the cursor — one write, one Ctrl+Z.
 function SchedColorInput({value,onCommit,title}){
@@ -240,7 +280,7 @@ function SchedColorInput({value,onCommit,title}){
   const cbRef=useRef(onCommit);cbRef.current=onCommit;
   useEffect(function(){
     var el=ref.current;if(!el)return;
-    function ch(){cbRef.current(el.value);}
+    function ch(){schedRememberColor(el.value);cbRef.current(el.value);}
     el.addEventListener("change",ch);
     return function(){el.removeEventListener("change",ch);};
   },[]);
@@ -4831,12 +4871,6 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           if(!row)return null;
           var grp=rowGroup(row);
           function setTask(hex){updRow(row.id,{color:hex});}
-          // colours already used on this schedule that are not in the palette (picked with the wheel)
-          var inPal={};SCHED_PALETTE.forEach(function(c){inPal[c.hex.toLowerCase()]=1;});
-          var used=[],seenU={};
-          (sc.rows||[]).map(function(r){return r.color;}).concat(Object.keys(sc.groupColors||{}).map(function(k){return sc.groupColors[k];}))
-            .forEach(function(h){var k=String(h||"").toLowerCase();if(k&&!inPal[k]&&!seenU[k]){seenU[k]=1;used.push(h);}});
-          var swatches=SCHED_PALETTE.concat(used.slice(0,8).map(function(h){return{hex:h,name:h+" (used on this schedule)"};}));
           function setGroup(hex){
             var gc=Object.assign({},(sc.groupColors)||{});
             if(hex)gc[grp]=hex;else delete gc[grp];
@@ -4850,11 +4884,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             {grp&&<div style={{marginBottom:14}}>
               <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:6}}>All tasks of {grp} — this schedule</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {swatches.map(function(c){
-                  var on=((sc.groupColors)||{})[grp]===c.hex;
-                  return <button key={c.hex} title={c.name} onClick={function(){setGroup(c.hex);}}
-                    style={{width:26,height:26,borderRadius:6,cursor:"pointer",background:c.hex,border:on?"3px solid #1c1c1e":"1px solid rgba(0,0,0,.15)"}}></button>;
-                })}
+                <SchedSwatches sc={sc} current={((sc.groupColors)||{})[grp]} onPick={setGroup}/>
                 <button onClick={function(){setGroup("");}} title="Back to the colour set in Settings, or gold"
                   style={{width:26,height:26,borderRadius:6,cursor:"pointer",fontSize:13,color:"#aaa",background:"#fff",border:"1px dashed #ccc"}}>×</button>
                 <SchedColorInput value={((sc.groupColors)||{})[grp]||""} onCommit={setGroup} title={"Any colour for every task of "+grp}/>
@@ -4864,11 +4894,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
             <div>
               <div style={{fontSize:10,fontWeight:800,color:"#888",textTransform:"uppercase",marginBottom:6}}>This task only</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {swatches.map(function(c){
-                  var on=row.color===c.hex;
-                  return <button key={c.hex} title={c.name} onClick={function(){setTask(c.hex);}}
-                    style={{width:26,height:26,borderRadius:6,cursor:"pointer",background:c.hex,border:on?"3px solid #0f5299":"1px solid rgba(0,0,0,.15)"}}></button>;
-                })}
+                <SchedSwatches sc={sc} current={row.color} onPick={setTask} ring="#0f5299"/>
                 <button onClick={function(){setTask("");}} title="Follow the subcontractor colour again"
                   style={{width:26,height:26,borderRadius:6,cursor:"pointer",fontSize:13,color:"#aaa",background:"#fff",border:"1px dashed #ccc"}}>×</button>
                 <SchedColorInput value={row.color||""} onCommit={setTask} title="Any colour for this task"/>
