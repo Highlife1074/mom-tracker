@@ -220,6 +220,9 @@ function scheduleWeeks(sc){
 }
 // A meeting records attendance for one lookahead session in one zone.
 // attendance = {"LASTNAME, First":"present"|"absent"|"excused"}
+// Width of the fixed columns of the grid (px): kept narrow so the weeks get the room.
+// Their content is clipped with an ellipsis; the full text is in the tooltip and the side panel.
+var SCHED_COLW={task:230,status:108,company:104,qty:80,rate:64};
 // Muted, print-friendly tones (any other colour can be picked with the colour wheel).
 // Colours saved before stay as they are: a task keeps its hex code whatever this list holds.
 const SCHED_PALETTE=[
@@ -3279,12 +3282,12 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           var shown=row.group||rs.name||"";
                           var col=shown?planColor(row):"";
                           // A chip, not a drop-down: one list per row was heavy to scan and to draw.
-                          return <button type="button" disabled={canEdit===false} title={tip}
+                          return <button type="button" disabled={canEdit===false} title={(shown?shown+"\n":"")+tip}
                             onClick={function(e){setPop({kind:"company",rowId:row.id,rect:e.currentTarget.getBoundingClientRect()});}}
-                            style={{display:"flex",alignItems:"center",gap:5,width:"100%",minWidth:0,padding:big?"5px 9px":"2px 7px",fontSize:big?12.5:10.5,
+                            style={{display:"flex",alignItems:"center",gap:5,width:"100%",minWidth:0,padding:big?"5px 9px":"1px 6px",fontSize:big?12.5:9.5,
                               border:"1px solid "+look.b,borderRadius:20,fontFamily:"inherit",cursor:canEdit===false?"default":"pointer",textAlign:"left",
                               color:look.c,fontWeight:look.w,background:look.bg,fontStyle:rs.source==="pending"?"italic":"normal"}}>
-                            {col&&<span style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0}}></span>}
+                            {col&&big&&<span style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0}}></span>}
                             <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.group||emptyLabel}</span>
                           </button>;
   }
@@ -4048,15 +4051,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           <table className={"sched-z-"+zoom} style={{borderCollapse:"collapse",width:"max-content",minWidth:"100%",fontSize:11}}>
             <thead>
               <tr>
-                <th style={{position:"sticky",left:0,top:0,background:"#f5f4f0",zIndex:4,width:320,minWidth:320,maxWidth:320,textAlign:"left",padding:"6px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>
+                <th style={{position:"sticky",left:0,top:0,background:"#f5f4f0",zIndex:4,width:SCHED_COLW.task,minWidth:SCHED_COLW.task,maxWidth:SCHED_COLW.task,textAlign:"left",padding:"6px 10px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>
                   {canEdit&&<input type="checkbox" className="sched-noprint" checked={selRows.length>0&&selRows.length===selectableIds.length}
                     onChange={function(e){setSelRows(e.target.checked?selectableIds.slice():[]);}}
                     title="Select every task" style={{width:12,height:12,marginRight:6,verticalAlign:"middle",cursor:"pointer"}}/>}
                   Task</th>
-                {colStatus&&<th className="sched-noprint" title="Alert, progress, float, prerequisites and procurement delivery for the row" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:190,minWidth:190,maxWidth:190,textAlign:"left",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Status</th>}
-                {colCompany&&<th style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:120,minWidth:120,maxWidth:120,textAlign:"left",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Subcont.</th>}
-                {advanced&&<th title="Quantity of work on the row — typed here or in the side panel" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Qty</th>}
-                {advanced&&<th title={"Quantity divided by the working weeks of the row, and by "+WORK_DAYS_PER_WEEK+" working days a week"} style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888",borderRight:"1.5px solid #e8e6df"}}>Rate</th>}
+                {colStatus&&<th className="sched-noprint" title="Alert, progress, float, prerequisites and procurement delivery for the row" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:SCHED_COLW.status,minWidth:SCHED_COLW.status,maxWidth:SCHED_COLW.status,textAlign:"left",padding:"6px 6px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Status</th>}
+                {colCompany&&<th style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:SCHED_COLW.company,minWidth:SCHED_COLW.company,maxWidth:SCHED_COLW.company,textAlign:"left",padding:"6px 6px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Subcont.</th>}
+                {advanced&&<th title="Quantity of work on the row — typed here or in the side panel" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:SCHED_COLW.qty,minWidth:SCHED_COLW.qty,maxWidth:SCHED_COLW.qty,textAlign:"right",padding:"6px 6px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Qty</th>}
+                {advanced&&<th title={"Quantity divided by the working weeks of the row, and by "+WORK_DAYS_PER_WEEK+" working days a week"} style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:SCHED_COLW.rate,minWidth:SCHED_COLW.rate,maxWidth:SCHED_COLW.rate,textAlign:"right",padding:"6px 6px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888",borderRight:"1.5px solid #e8e6df"}}>Rate</th>}
                 {gridWks.map(function(wk,wi){
                   var isCur=wk<=todayStr&&todayStr<=addCalDays(wk,6);
                   var hol=isHoliday(wk);
@@ -4163,7 +4166,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   }}
                   style={{background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff"}}>
                   <td style={{position:"sticky",left:0,zIndex:1,background:(drag&&drag.type==="link"&&drag.target===row.id)?"#d6e6fb":panelRowId===row.id?(isSection?"#d3deec":"#fff3cd"):focusRow===row.id?"#faf3e0":isSel?"#e8f0fe":isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",padding:isSection?"5px 10px":"3px 10px",borderBottom:isSection?"1.5px solid var(--brand-line)":"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",boxShadow:focusRow===row.id?"inset 3px 0 0 #b35c00":onCrit?"inset 3px 0 0 var(--amber,#b35c00)":(critPath&&critPath.zeroFloat[row.id])?"inset 3px 0 0 #e6c48c":"none"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:3}}>
+                    <div style={{display:"flex",alignItems:"center",gap:3,width:SCHED_COLW.task-20,overflow:"hidden"}}>
                       {canEdit&&!isCat&&<input type="checkbox" className="sched-noprint" checked={isSel}
                         onChange={function(){}} onClick={function(e){clickSelRow(row.id,e);}}
                         title="Select this task for bulk editing — Shift+click selects a range" style={{width:12,height:12,flexShrink:0,cursor:"pointer",marginRight:2}}/>}
@@ -4175,7 +4178,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         <button onClick={function(){moveRow(row.id,1);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:8,padding:0}} title="Move down">▼</button>
                       </span>}
                       {(function(){
-                        var nameStyle={flex:1,minWidth:120,fontSize:isSection?12.5:isCat?12:11,fontWeight:isSection?800:isCat?700:500,
+                        var nameStyle={flex:1,minWidth:40,fontSize:isSection?11.5:isCat?11:10.5,fontWeight:isSection?800:isCat?700:500,
                           letterSpacing:isSection?".08em":"normal",textTransform:isCat?"uppercase":"none",
                           color:isSection?"var(--brand-ink)":rowDocs.length>0?"#0f5299":isCat?"#555":"#333",
                           padding:"2px 0",paddingLeft:isCat?0:12,fontFamily:"inherit"};
@@ -4236,7 +4239,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     </div>
                   </td>
                   {colStatus&&<td className="sched-noprint" style={{padding:"3px 6px",borderBottom:"1px solid #f5f4f0",borderRight:"1.5px solid #e8e6df",background:isSection?"#e3e9f2":isCat?"#f0ede6":"#fff",whiteSpace:"nowrap"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"nowrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"nowrap",width:SCHED_COLW.status-12,overflow:"hidden"}}>
                       {activeBl&&(function(){
                         if(isCat){
                           var rv=blRoll[row.id];
@@ -4322,11 +4325,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         var aw0=tenderAwardees(td0);
                         return <span onClick={function(){setPanelRowId(row.id);}}
                           title={"Tender of this "+(isSection?"section":"room")+": "+td0.title+"\nUsed by every task below that has no tender of its own"+(aw0.length?"\nAwarded to "+aw0.join(", "):"\nNot awarded yet")}
-                          style={{display:"inline-block",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",verticalAlign:"middle",
+                          style={{display:"inline-block",maxWidth:SCHED_COLW.company-14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",verticalAlign:"middle",
                             fontSize:9.5,fontWeight:700,cursor:"pointer",color:isSection?"var(--brand-ink)":"#00695c"}}>📑 {aw0.length?aw0.join(" / "):td0.title}</span>;
                       })()
                       :canEdit
-                        ?<div style={{display:"flex",alignItems:"center",gap:3}}>
+                        ?<div style={{display:"flex",alignItems:"center",gap:3,width:SCHED_COLW.company-12,overflow:"hidden"}}>
                         <span className="sched-noprint" title="Choose a colour for this task or for the whole subcontractor"
                           onClick={function(){setColorRowId(colorRowId===row.id?null:row.id);}}
                           style={{width:11,height:11,borderRadius:3,flexShrink:0,cursor:"pointer",background:planColor(row),border:"1px solid rgba(0,0,0,.15)",boxShadow:row.color?"0 0 0 1.5px #0f5299":"none"}}></span>
@@ -4350,10 +4353,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                         ?<div className="sched-noprint" style={{display:"flex",alignItems:"center",gap:2,justifyContent:"flex-end"}}>
                           <SchedBufInput type="number" value={row.qty||""} onCommit={function(v){updRow(row.id,{qty:v});}} placeholder="—"
                             title="Quantity of work on this task — feeds the Rate column"
-                            style={{width:46,padding:"2px 3px",fontSize:10,textAlign:"right",border:"1px solid "+(row.qty?"#e6c48c":"#e8e6df"),borderRadius:4,fontFamily:"inherit",fontWeight:row.qty?700:400,color:row.qty?"#b45309":"#bbb",background:"#fff"}}/>
+                            style={{width:38,padding:"2px 3px",fontSize:10,textAlign:"right",border:"1px solid "+(row.qty?"#e6c48c":"#e8e6df"),borderRadius:4,fontFamily:"inherit",fontWeight:row.qty?700:400,color:row.qty?"#b45309":"#bbb",background:"#fff"}}/>
                           <SchedBufInput type="text" value={row.unit||""} onCommit={function(v){updRow(row.id,{unit:v});}} placeholder="unit"
                             title="Unit — lm, m2, nr, t…"
-                            style={{width:34,padding:"2px 3px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit",color:row.unit?"#888":"#ccc"}}/>
+                            style={{width:26,padding:"2px 3px",fontSize:9,border:"1px solid #e8e6df",borderRadius:4,fontFamily:"inherit",color:row.unit?"#888":"#ccc"}}/>
                         </div>
                         :<span style={{fontSize:10,fontWeight:700,color:row.qty?"#b45309":"#ddd"}}>{row.qty?fmtQty(Number(row.qty))+(row.unit?" "+row.unit:""):"—"}</span>}
                     {!isCat&&canEdit&&<span className="sched-printcell" style={{fontSize:10,fontWeight:700,color:"#b45309"}}>
