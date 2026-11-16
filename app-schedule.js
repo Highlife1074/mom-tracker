@@ -1559,6 +1559,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   // wide — the whole job fits on one screen. A per-person choice (localStorage pp_sched_zoom).
   const [zoom,setZoomRaw]=useState(function(){try{var z=localStorage.getItem("pp_sched_zoom");return z==="m"||z==="q"?z:"w";}catch(e){return "w";}});
   function setZoom(z){setZoomRaw(z);try{localStorage.setItem("pp_sched_zoom",z);}catch(e){}}
+  // "Hide past": the grid starts at the current week — display only, nothing is changed
+  // (per person, localStorage pp_sched_hidepast). Spans, links and checks still use every week.
+  const [hidePast,setHidePastRaw]=useState(function(){try{return localStorage.getItem("pp_sched_hidepast")==="1";}catch(e){return false;}});
+  function setHidePast(v){setHidePastRaw(v);try{localStorage.setItem("pp_sched_hidepast",v?"1":"0");}catch(e){}}
   // Optional columns of the grid (per person, localStorage pp_sched_cols): Status and Company.
   const [cols,setColsRaw]=useState(function(){try{var c=JSON.parse(localStorage.getItem("pp_sched_cols")||"null");if(c&&typeof c==="object")return c;}catch(e){}return {};});
   function setCol(k,v){var n=Object.assign({},cols);n[k]=v;setColsRaw(n);try{localStorage.setItem("pp_sched_cols",JSON.stringify(n));}catch(e){}}
@@ -3206,6 +3210,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   },[gridId,gridFull]);
   var gridRows=gridFull?visibleRows:visibleRows.slice(0,GRID_FIRST_ROWS);
   // the current week: a red line down the grid, on every row
+  // Weeks drawn in the grid: every week, or from the current week on when the past is hidden
+  var gridWks=hidePast?(function(){var t=today();var g=wks.filter(function(w){return addCalDays(w,6)>=t;});return g.length?g:wks.slice(-1);})():wks;
   var curWkKey=(function(){var t=today();for(var i=0;i<wks.length;i++){if(wks[i]<=t&&t<=addCalDays(wks[i],6))return wks[i];}return "";})();
   // "＋ Add a task" line at the end of each open room: last visible row of the room → the room.
   // Not while a company filter or the critical path hides rows (the new task would vanish).
@@ -3250,7 +3256,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     }
     var key=JSON.stringify(out);
     if(key!==arrowKeyRef.current){arrowKeyRef.current=key;setArrowGeo(out);}
-  },[sc,tasks,tenders,wks.length?wks[0]+wks.length:"",showLinks,monthView,visKey,editRowId,arrowTick]);
+  },[sc,tasks,tenders,wks.length?wks[0]+wks.length:"",showLinks,monthView,visKey,editRowId,arrowTick,hidePast,zoom]);
   // Who does the task: the select used in the grid and in the side panel.
   function subSelect(row,big){
                           var rs=rowSub(row);
@@ -3749,6 +3755,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               if(th)el.scrollLeft=Math.max(0,th.offsetLeft-el.clientWidth/2);
             }} title="Jump to the current week" style={{padding:"2px 8px",fontSize:11}}>Today</button>
             <button className="btn btn-sm" onClick={function(){var el=document.querySelector(".sched-wrap");if(el)el.scrollLeft+=400;}} title="Scroll forward in time" style={{padding:"2px 8px",fontSize:11}}>▶▶</button>
+            {!monthView&&<button className={"btn btn-sm"+(hidePast?" btn-pri":"")} onClick={function(){setHidePast(!hidePast);var el=document.querySelector(".sched-wrap");if(el)el.scrollLeft=0;}}
+              title={hidePast?"The weeks before the current week are hidden — click to show the whole schedule again":"Hide every week before the current week (display only: nothing is changed)"}
+              style={{padding:"2px 8px",fontSize:11}}>{hidePast?"⟲ Show past":"⇥ Hide past"}</button>}
           </span>
           {!monthView&&<span style={{position:"relative",display:"inline-block"}}>
             <button className={"btn btn-sm"+(colsMenu?" btn-pri":"")} onClick={function(){setColsMenu(!colsMenu);}} title="Columns shown in the grid — your choice only">Columns ▾</button>
@@ -4048,13 +4057,13 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 {colCompany&&<th style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:120,minWidth:120,maxWidth:120,textAlign:"left",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Subcont.</th>}
                 {advanced&&<th title="Quantity of work on the row — typed here or in the side panel" style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888"}}>Qty</th>}
                 {advanced&&<th title={"Quantity divided by the working weeks of the row, and by "+WORK_DAYS_PER_WEEK+" working days a week"} style={{position:"sticky",top:0,background:"#f5f4f0",zIndex:3,width:96,minWidth:96,maxWidth:96,textAlign:"right",padding:"6px 8px",borderBottom:"1.5px solid #e8e6df",fontSize:10,textTransform:"uppercase",color:"#888",borderRight:"1.5px solid #e8e6df"}}>Rate</th>}
-                {wks.map(function(wk,wi){
+                {gridWks.map(function(wk,wi){
                   var isCur=wk<=todayStr&&todayStr<=addCalDays(wk,6);
                   var hol=isHoliday(wk);
                   var cw=zoom==="q"?7:zoom==="m"?14:40;
                   // Months / quarters: the month name on its first week, written across the next columns
                   var MN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-                  var newMonth=wi===0||wks[wi-1].slice(5,7)!==wk.slice(5,7);
+                  var newMonth=wi===0||gridWks[wi-1].slice(5,7)!==wk.slice(5,7);
                   var mIdx=Number(wk.slice(5,7))-1;
                   var lbl=zoom==="w"?(hol?"⊘":fmtDate(wk).slice(0,5))
                     :newMonth&&(zoom==="m"||mIdx%3===0||wi===0)?(zoom==="q"?"Q"+(Math.floor(mIdx/3)+1)+" "+wk.slice(2,4):MN[mIdx]+" "+wk.slice(2,4)):"";
@@ -4070,7 +4079,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                               </tr>
             </thead>
             <tbody>
-              {(sc.rows||[]).length===0&&<tr><td colSpan={wks.length+1+(colStatus?1:0)+(colCompany?1:0)+(advanced?2:0)} style={{padding:"14px",textAlign:"center",color:"#bbb",fontSize:12}}>No rows yet. Add a category or a task below.</td></tr>}
+              {(sc.rows||[]).length===0&&<tr><td colSpan={gridWks.length+1+(colStatus?1:0)+(colCompany?1:0)+(advanced?2:0)} style={{padding:"14px",textAlign:"center",color:"#bbb",fontSize:12}}>No rows yet. Add a category or a task below.</td></tr>}
               {gridRows.map(function(row){
                 var pqRows=(row.kind==="category")?[]:prereqsOf(row.id);
                 var isSection=row.kind==="section";
@@ -4129,7 +4138,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     {colCompany&&<td style={{padding:"1px 6px",borderBottom:"1px dashed #e8e6df",background:ok?"#f3f8f3":"#fffdf3",fontSize:9,color:"#aaa",whiteSpace:"nowrap"}}>prerequisite{pq.due?" · "+fmtDate(pq.due):""}</td>}
                     {advanced&&<td style={{borderBottom:"1px dashed #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>}
                     {advanced&&<td style={{borderBottom:"1px dashed #e8e6df",borderRight:"1.5px solid #e8e6df",background:ok?"#f3f8f3":"#fffdf3"}}></td>}
-                    {wks.map(function(w){
+                    {gridWks.map(function(w){
                       var hit=pq.due&&w<=pq.due&&pq.due<=addCalDays(w,6);
                       return <td key={w} style={{borderBottom:"1px dashed #e8e6df",borderLeft:"1px solid #f5f4f0",height:14,textAlign:"center",fontSize:8,
                         background:ok?"#f3f8f3":"#fffdf3",color:ok?"#1e6b3a":"#b35c00"}}>{hit?"◆":""}</td>;
@@ -4365,7 +4374,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                       </span>;
                     })()}
                   </td>}
-                  {wks.map(function(wk){
+                  {gridWks.map(function(wk){
                     var v=shownCells[wk]||"";
                     // A collapsed room shows a rolled-up bar of everything hidden underneath it
                     if(isCat&&collapsed){
@@ -4475,7 +4484,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                   })}
                 </tr>
                 {addAfter[row.id]&&<tr className="sched-noprint sched-addrow">
-                  <td colSpan={wks.length+1+(colStatus?1:0)+(colCompany?1:0)+(advanced?2:0)} style={{padding:"2px 0 3px 34px",borderBottom:"1px solid #f5f4f0",background:"#fff"}}>
+                  <td colSpan={gridWks.length+1+(colStatus?1:0)+(colCompany?1:0)+(advanced?2:0)} style={{padding:"2px 0 3px 34px",borderBottom:"1px solid #f5f4f0",background:"#fff"}}>
                     <button type="button" onClick={function(){insertTaskAfter(row.id);}}
                       title={"New task at the end of "+(addAfter[row.id].label||"this room")+" — it starts after the task above (Enter on its name adds the next one)"}
                       style={{border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:600,color:"var(--brand-2)",padding:"2px 4px",position:"sticky",left:34}}>
