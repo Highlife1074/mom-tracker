@@ -1001,6 +1001,27 @@ function newMom(o){
     createdAt:today(),createdBy:window._currentUser?window._currentUser.name:""
   },o||{});
 }
+// One-off clean-up: number every subcontractor's MoMs MOM-001, 002… in date order (ties: creation order).
+// MoMs without a subcontractor are left alone. Stored references to a previous / imported MoM follow.
+function momRenumberBySub(list){
+  var bySub={};
+  (list||[]).forEach(function(m,i){if(m.subcontractor){(bySub[m.subcontractor]=bySub[m.subcontractor]||[]).push({m:m,i:i});}});
+  var newNum={};
+  Object.keys(bySub).forEach(function(k){
+    bySub[k].sort(function(a,b){
+      return (a.m.date||"").localeCompare(b.m.date||"")||(a.m.createdAt||"").localeCompare(b.m.createdAt||"")||(b.i-a.i);
+    }).forEach(function(x,n){newNum[x.m.id]="MOM-"+String(n+1).padStart(3,"0");});
+  });
+  var byId={};
+  (list||[]).forEach(function(m){byId[m.id]=newNum[m.id]||m.number||"";});
+  return (list||[]).map(function(m){
+    var o=Object.assign({},m);
+    if(newNum[m.id]){o.number=newNum[m.id];o.numAuto=true;}
+    if(m.previousMomId&&byId[m.previousMomId])o.previousMomNumber=byId[m.previousMomId];
+    if(m.importedFromId&&byId[m.importedFromId])o.importedFromNumber=byId[m.importedFromId];
+    return o;
+  });
+}
 function newTenderReview(o){
   return newMom(Object.assign({
     momType:"tender-review",reviewStage:"mid",
@@ -1452,6 +1473,12 @@ function MomView({moms,saveMoms,tenders,packages,people,contractors,tasks,saveTa
           <div className="page-sub">{list.length} MoM{list.length!==1?"s":""}{subs.length?" · "+subs.length+" subcontractors":""}</div>
         </div>
         {!isReadOnly()&&<div style={{display:"flex",gap:8}}>
+          {isAppAdmin(window._currentUser?window._currentUser.name:"")&&<button className="btn" title="Number each subcontractor's MoMs MOM-001, 002… in date order" onClick={function(){
+            var next=momRenumberBySub(list),ch=next.filter(function(m,i){return m.number!==list[i].number;}).length;
+            if(!ch){safeAlert("Numbers already follow each subcontractor.");return;}
+            if(!safeConfirm("Renumber "+ch+" MoM"+(ch!==1?"s":"")+" per subcontractor, in date order?\n\nMoMs without a subcontractor keep their number. Actions keep their link to the MoM and show the new number. Numbers already printed or sent will no longer match."))return;
+            save(next);
+          }}>↻ Renumber by subcontractor</button>}
           <button className="btn" onClick={function(){
             var m=newTenderReview({number:"",numAuto:true,preparedBy:(window._currentUser?window._currentUser.name:"")});
             save([m,...list]);setSelId(m.id);
