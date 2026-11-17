@@ -545,7 +545,10 @@ function _tenderDocs(td){
   var sdSub=isValidDate(ctBase)?addDur(ctBase,"sdAfterContract"):"";
   // The approval is expected from the submission date actually planned: the transmission's
   // own target, then the tender's SD target, then the computed one.
-  (td.sdTransmissions||[]).forEach(function(t,i){
+  // "Shop Drawing (SD)" unticked on the package = no shop drawing, even if old SD dates or
+  // transmissions are still stored (they stay hidden, and come back if it is ticked again).
+  var sdOn=td.hasSD!==false;
+  (sdOn?td.sdTransmissions||[]:[]).forEach(function(t,i){
     var tSub=t.target||td.sdTarget||sdSub;
     out.push({id:"sd:"+t.id,group:"Shop drawings",kind:"sd",label:t.ref||("SD "+(i+1)),sub:t.description||"",
       cycles:cyclesOfSD(t),theoSub:tSub,
@@ -557,7 +560,7 @@ function _tenderDocs(td){
   });
   // Tenders followed without transmissions keep their shop drawings at tender level
   // (sdDone / sdApprovalDone / sdStatus / sdReview). They are one document, "SD".
-  if(!(td.sdTransmissions||[]).length&&(td.hasSD||td.sdDone||td.sdApprovalDone||td.sdStatus||(td.sdCycles||[]).length)){
+  if(sdOn&&!(td.sdTransmissions||[]).length&&(td.hasSD||td.sdDone||td.sdApprovalDone||td.sdStatus||(td.sdCycles||[]).length)){
     out.push({id:"sd:_main",group:"Shop drawings",kind:"sd",label:"SD",sub:"whole tender",
       cycles:cyclesOfSdMain(td),theoSub:td.sdTarget||sdSub,
       theoApproval:isValidDate(td.sdTarget||sdSub)?addDur(td.sdTarget||sdSub,"sdApproval"):"",
