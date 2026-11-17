@@ -1055,13 +1055,36 @@ function printAddDays(iso,n){
   var d=new Date(iso+"T00:00:00");if(isNaN(d.getTime()))return"";
   d.setDate(d.getDate()+n);return toISO(d);
 }
-// Weeks to print: the whole schedule, or those between From (snapped to Monday) and To.
+// Weeks to print: the whole schedule, from a date (snapped to Monday) to the end,
+// or those between From (snapped to Monday) and To.
 function printWeeksOf(all,o){
-  if(!o||o.range!=="custom")return all;
+  if(!o||(o.range!=="custom"&&o.range!=="from"))return all;
   var f=printMonday(o.from);
-  if(!f||!o.to)return[];
+  if(!f)return[];
+  if(o.range==="from")return all.filter(function(w){return w>=f;});
+  if(!o.to)return[];
   return all.filter(function(w){return w>=f&&w<=o.to;});
 }
+// Rows to print for a period: with "hide empty", a task with no planned / actual week in
+// the printed weeks is left out (finished before, or starting after), and so is a room /
+// section heading left with no task under it. Whole schedule = every row, as before.
+function printRowsOf(rows,pw,o){
+  if(!o||o.range==="all"||!o.hideEmpty||!pw.length)return rows;
+  var inP={};pw.forEach(function(w){inP[w]=1;});
+  var lvl=function(r){return r.kind==="section"?0:r.kind==="category"?1:2;};
+  var keep=rows.map(function(r){
+    if(lvl(r)<2)return false;
+    var c=r.cells||{};
+    return Object.keys(c).some(function(w){return inP[w]&&c[w];});
+  });
+  // A heading stays when a kept task follows it before the next heading of its level or above.
+  for(var i=0;i<rows.length;i++){
+    var L=lvl(rows[i]);if(L>=2)continue;
+    for(var j=i+1;j<rows.length&&lvl(rows[j])>L;j++){if(lvl(rows[j])===2&&keep[j]){keep[i]=true;break;}}
+  }
+  return rows.filter(function(r,i){return keep[i];});
+}
+var SCHED_PRINT_LS="pp_sched_print";
 // Day number of an ISO date (UTC, so summer time never shifts the progress line).
 function plDay(iso){var p=String(iso||"").split("-");return Date.UTC(+p[0],(+p[1])-1,+p[2])/864e5;}
 
@@ -2920,7 +2943,12 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
   function openPrint(){
     var all=sc?scheduleWeeks(sc):[];
     // sheets:0 = automatic (one sheet up to 26 weeks, then as many as needed)
-    setPrintOpts({risks:true,progress:false,range:"all",from:all[0]||"",to:all.length?printAddDays(all[all.length-1],6):"",size:"A4",sheets:0,
+    // Last period choice remembered on this browser (range, From of "from a date", hide empty).
+    var mem={};try{mem=JSON.parse(localStorage.getItem(SCHED_PRINT_LS)||"{}")||{};}catch(e){mem={};}
+    var range=mem.range==="from"||mem.range==="custom"?mem.range:"all";
+    var from=range==="from"&&mem.from?mem.from:range==="from"?printMonday(today()):(all[0]||"");
+    setPrintOpts({risks:true,progress:false,range:range,from:from,to:all.length?printAddDays(all[all.length-1],6):"",size:"A4",sheets:0,
+      hideEmpty:mem.hideEmpty!==false,
       pline:true,plDate:today(),plLbl:true,plShade:true,plCols:true,plSum:true});
   }
   // Progress line (as in Primavera): a vertical line at the data date that bends, on each
@@ -2964,6 +2992,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     ];
   }
   function runPrint(opts){
+    try{localStorage.setItem(SCHED_PRINT_LS,JSON.stringify({range:opts.range,from:opts.range==="from"?opts.from:"",hideEmpty:!!opts.hideEmpty}));}catch(e){}
     setPrintOpts(null);
     setPrintPlan(opts);
     setTimeout(function(){
@@ -3700,7 +3729,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
 
         <div className="sched-print-only">
           <div style={{fontSize:16,fontWeight:800}}>{sc.title}{fGroup?" — "+fGroup:""}</div>
-          <div style={{fontSize:11,color:"#555"}}>{curZone} · {fmtDate(wks[0]||sc.startDate)} → {fmtDate(wks[wks.length-1]||sc.startDate)} · printed {fmtDate(todayStr)}{fGroup?" · subcontractor: "+fGroup:""}</div>
+          <div style={{fontSize:11,color:"#555"}}>{curZone} · {(function(){var pw=printPlan?printWeeksOf(wks,printPlan):wks;if(!pw.length)pw=wks;return fmtDate(pw[0]||sc.startDate)+" → "+fmtDate(pw[pw.length-1]||sc.startDate);})()}{printPlan&&printPlan.range==="from"?" (from "+fmtDate(printMonday(printPlan.from))+")":""} · printed {fmtDate(todayStr)}{fGroup?" · subcontractor: "+fGroup:""}</div>
         </div>
 
 
@@ -4579,7 +4608,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.map(function(r){
+                    {printRowsOf(visibleRows,pw,printPlan).map(function(r){
                       var cat=r.kind==="category";
                       var risk=(!cat&&printPlan.risks)?procRisk(r):null;
                       return <tr key={r.id} style={{pageBreakInside:"avoid"}}>
@@ -4817,8 +4846,15 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                 <div style={lbl}>Period</div>
                 <select value={printOpts.range} onChange={function(e){up({range:e.target.value});}} style={Object.assign({},sel,{width:"100%",marginBottom:8})}>
                   <option value="all">Whole schedule</option>
-                  <option value="custom">Custom period</option>
+                  <option value="from">From a date → end of the schedule</option>
+                  <option value="custom">Custom period (From → To)</option>
                 </select>
+                {printOpts.range==="from"&&<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+                  <span style={{fontSize:11,color:"#888"}}>From</span>
+                  <input type="date" value={printOpts.from} onChange={function(e){up({from:e.target.value});}} style={Object.assign({},sel,{flex:1})}/>
+                  <button className="btn btn-sm" onClick={function(){up({from:printMonday(today())});}} title="Start at the Monday of the current week">This week</button>
+                  <button className="btn btn-sm" onClick={function(){up({from:printAddDays(printMonday(today()),-14)});}} title="Start 2 weeks before the current week">−2 wk</button>
+                </div>}
                 {printOpts.range==="custom"&&<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
                   <span style={{fontSize:11,color:"#888"}}>From</span>
                   <input type="date" value={printOpts.from} onChange={function(e){up({from:e.target.value});}} style={Object.assign({},sel,{flex:1})}/>
@@ -4839,6 +4875,11 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     </select>
                   </div>
                 </div>
+                {printOpts.range!=="all"&&<label style={{display:"flex",gap:8,alignItems:"flex-start",cursor:"pointer",textTransform:"none",letterSpacing:"normal",marginBottom:10,color:"#333",fontSize:12}}>
+                  <input type="checkbox" checked={!!printOpts.hideEmpty} onChange={function(e){up({hideEmpty:e.target.checked});}} style={{width:14,height:14,marginTop:2}}/>
+                  <span>Only tasks with work in this period <span style={{color:"#999"}}>— leaves out tasks finished before (or starting after), and empty rooms / sections
+                    {" · "+printRowsOf(visibleRows,pw,printOpts).filter(function(r){return r.kind!=="category"&&r.kind!=="section";}).length+" task(s) printed"}</span></span>
+                </label>}
                 <div style={{fontSize:12,color:pw.length?"#555":"#b3302a",marginBottom:16,padding:"8px 10px",background:pw.length?"#f8f7f4":"#fdecea",borderRadius:8}}>
                   {pw.length?pw.length+" week"+(pw.length!==1?"s":"")+" · "+nS+" sheet"+(nS!==1?"s":"")+" · "+per+" weeks across · "+printOpts.size+" landscape"+(pw.length?" · "+fmtDate(pw[0])+" → "+fmtDate(pw[pw.length-1]):""):"No week in this period — check From and To."}
                 </div>
