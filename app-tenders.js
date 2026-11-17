@@ -62,10 +62,10 @@ function newTenderNote(o){
 // next steps and notes — the same ones as the Follow-up columns of the Package list. A click
 // opens the Actions & notes tab where they are edited (TenderFollowUpCard).
 function TenderFollowStrip({td,tasks,onOpen}){
-  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[],rfi:[]};
+  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[],rfi:[],rfiDone:[],client:[]};
   var notes=tenderNotesOf(td).filter(function(n){return String(n.title||"").trim()||String(n.content||"").trim();});
   var next=a.next.map(function(t){return t.text||"";});
-  if(!a.block.length&&!next.length&&!notes.length&&!a.rfi.length)return null;
+  if(!a.block.length&&!next.length&&!notes.length&&!a.rfi.length&&!a.client.length)return null;
   function part(icon,label,n,items,col){
     if(!n)return null;
     return <div style={{flex:"1 1 220px",minWidth:0}}>
@@ -78,7 +78,8 @@ function TenderFollowStrip({td,tasks,onOpen}){
     style={{display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap",margin:"0 0 8px",padding:"7px 12px",border:"1px solid #e6e2d8",
       borderLeft:"3px solid "+(a.block.length?"#b3302a":"var(--gold,#c9a84c)"),borderRadius:6,background:"#fffdf6",cursor:"pointer",fontSize:12,lineHeight:1.4}}>
     {part("⛔","Blocking points",a.block.length,a.block.map(function(t){return t.text||"";}),"#b3302a")}
-    {part("▸","Next steps",next.length,next,"var(--brand-ink,#173b63)")}
+    {part("⏳","At client",a.client.length,a.client.map(function(t){return t.text||"";}),"#0f5299")}
+    {part("▸","With us",next.length,next,"var(--brand-ink,#173b63)")}
     {part("📋","RFI open",a.rfi.length,a.rfi.map(function(t){return (t.text||"")+" — "+ppRfiInfo(t).txt;}),"#b45309")}
     {part("📝","Notes",notes.length,notes.map(function(n){var c=String(n.content||"").trim();return (n.title||"")+(n.title&&c?" — ":"")+c;}),"var(--gold-ink,#8a6a1e)")}
   </div>;
@@ -87,8 +88,9 @@ function TenderFollowStrip({td,tasks,onOpen}){
 // text + open actions), Blocking points (open actions tagged Blocking Point) and Notes — the
 // very same components and data as the Follow-up columns of the Package list, so whatever is
 // added, ticked or edited in one shows in the other.
-function TenderFollowUpCard({td,tasks,saveTasks,updTd}){
-  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[],rfi:[],rfiDone:[]};
+function TenderFollowUpCard({td,tasks,saveTasks,updTd,contractors}){
+  var a=ppActionsIndex(tasks)[td.id]||{next:[],block:[],rfi:[],rfiDone:[],client:[]};
+  var waits=ppClientWaits(td,contractors,a.rfi);
   var ro=isReadOnly();
   var h={fontWeight:700,fontSize:13,marginBottom:6};
   var col={flex:"1 1 260px",minWidth:0,padding:"0 12px",borderLeft:"1px solid #eceae4"};
@@ -99,7 +101,11 @@ function TenderFollowUpCard({td,tasks,saveTasks,updTd}){
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:"12px 0",margin:"0 -12px"}}>
       <div style={Object.assign({},col,{borderLeft:"none"})}>
-        <div style={Object.assign({},h,{color:"var(--brand-ink,#173b63)"})}>▸ Next steps ({a.next.length})</div>
+        <div style={Object.assign({},h,{color:"#0f5299"})}>⏳ At client ({waits.length+a.client.length})</div>
+        <PpClientCell td={td} waits={waits} list={a.client} tasks={tasks} saveTasks={saveTasks} wide/>
+      </div>
+      <div style={col}>
+        <div style={Object.assign({},h,{color:"var(--brand-ink,#173b63)"})}>▸ With us ({a.next.length})</div>
         <PpActionsCell td={td} list={a.next} kind="next" tasks={tasks} saveTasks={saveTasks} wide/>
       </div>
       <div style={col}>
@@ -584,7 +590,7 @@ function isPurchaseDoc(d){return !!d&&(d.kind==="pacc"||d.kind==="paconex");}
 // The short name of a document in actions and the Stage column.
 function docShortName(d){
   if(d.kind==="mar"||d.kind==="mss"||isPurchaseDoc(d))return d.label+" "+d.sub;
-  if(d.kind==="sd")return d.id==="sd:_main"?"SD":"SD "+d.label;
+  if(d.kind==="sd")return d.id==="sd:_main"?"SD":/^sd\b/i.test(d.label)?d.label:"SD "+d.label;
   return d.label;
 }
 // When the client's answer is due for a submitted revision, and how late it is.
@@ -718,6 +724,18 @@ function newSDTransmission(o){
   return Object.assign({id:uuid(),ref:"",description:"",target:"",done:"",approvalDone:"",
     status:"",numbers:[]},o||{});
 }
+// Several shop drawings per Package: one transmission each (td.sdTransmissions). Adds one →
+// patch for updTd. The first one added to a Package whose shop drawings were followed as a
+// whole (sd:_main, no transmission) takes that history over as "SD 1", so nothing is hidden.
+function sdAddPatch(td,o){
+  var list=(td.sdTransmissions||[]).slice();
+  if(!list.length){
+    var main=cyclesOfSdMain(td)||[];
+    if(main.length)list.push(sdWithCycles(newSDTransmission({description:"whole package (before split)"}),main));
+  }
+  list.push(newSDTransmission(o||{}));
+  return Object.assign({hasSD:true,sdTransmissions:list},_sdAggregate(list));
+}
 function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,focus}){
   var list=td.sdTransmissions||[];
   const [openIds,setOpenIds]=useState({});
@@ -771,9 +789,9 @@ function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,foc
     <div className="sheet-h" style={{display:"flex",alignItems:"baseline",gap:9,margin:"22px 0 9px",paddingBottom:6,borderBottom:"1.5px solid var(--rule,#ddd9cf)",flexWrap:"wrap"}}>
       <h3 style={{fontFamily:"var(--font-display)",fontWeight:700,fontSize:"var(--fs-title,18px)",letterSpacing:"-.005em"}}>Shop drawings</h3>
       <span className="hint" style={{fontSize:"var(--fs-small,12px)",color:"var(--ink-3,#6f6b62)"}}>
-        one line per transmission · several drawing numbers inside each{list.length>0?" · "+list.length+" transmission"+(list.length!==1?"s":""):""}</span>
-      <button className="btn btn-sm" style={{marginLeft:"auto"}}
-        onClick={function(){save([...(list),newSDTransmission()]);}}>＋ Transmission</button>
+        several SD per package: one line each (its own submissions and approval) · several drawing numbers inside each{list.length>0?" · "+list.length+" SD":""}</span>
+      <button className="btn btn-sm" style={{marginLeft:"auto"}} title="Add a shop drawing (a transmission to the client) to this package"
+        onClick={function(){if(blockIfReadOnly())return;updTd(sdAddPatch(td));}}>＋ SD</button>
     </div>
 
     {list.length===0&&!flowDocOf(td,"sd:_main")&&<div style={{fontSize:12,color:"var(--ink-4,#9b968b)",padding:"4px 2px"}}>
@@ -2671,7 +2689,7 @@ function tenderPhase(td){
   var acc=cyclesOfStep(td,"acc");var last=acc[acc.length-1];
   if(last&&(last.code==="A"||last.code==="B"))return"ctr";
   // Internal approval only (below the ACC threshold): the contract starts once a bidder is awarded.
-  if(!acc.length&&tenderApprovalRoute(td).route==="none"&&(ct.requestDone||biddersOf(td).some(function(b){return b.result==="awarded";})))return"ctr";
+  if(!acc.length&&tenderApprovalRoute(td).route==="none"&&(ct.requestDone||td.procType==="order"||biddersOf(td).some(function(b){return b.result==="awarded";})))return"ctr";
   return"pre";
 }
 var TENDER_PHASE_ORDER={pre:0,ctr:1,sig:2,can:3};
@@ -2711,6 +2729,7 @@ function tenderNow(td,now){
     if(pOpen.length&&!td.tenderIssued)return docLine(pOpen[0]);
     if(td.tenderIssued&&!td.bidsReceived)return {text:"Tender out · bidders pricing",who:"sub",days:since(td.tenderIssued)};
     if(td.bidsReceived)return {text:"Bid evaluation · "+(tenderApprovalRoute(td).route==="none"?"internal approval":tenderRouteLabel(td)+" to submit"),who:"us",days:since(td.bidsReceived)};
+    if(td.procType==="order")return {text:tenderRouteLabel(td)+" to submit (order)",who:"us",days:null};   // direct order: no tender
     return {text:"Tender preparation",who:"us",days:null};
   }
   if(ph==="ctr"){
@@ -3581,9 +3600,9 @@ var AD_STATUS_OPTS=[["","— status —"],["not submitted","Not submitted"],["pe
 function ctNoClient(o,dk){return !!(o&&o[dk+"NoClient"]);}
 // One word per addendum: approved when the client approved it on either channel.
 function addendumState(ad){
-  var a=(ad&&ad.accStatus)||"",b=(ad&&ad.aconexStatus)||"";
-  if(a==="approved"||b==="approved")return"approved";
-  if(a==="rejected"||b==="rejected")return"rejected";
+  var a=(ad&&ad.accStatus)||"",b=(ad&&ad.aconexStatus)||"",c=(ad&&ad.internalStatus)||"";   // internal: Package list, Addendums column
+  if(a==="approved"||b==="approved"||c==="approved")return"approved";
+  if(a==="rejected"||b==="rejected"||c==="rejected")return"rejected";
   if(a==="pending approval"||b==="pending approval")return"pending";
   return"draft";
 }
@@ -3881,9 +3900,11 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     if(nsDone.current||isReadOnly()||!saveTasks||!(tenders||[]).length||!(tasks||[]).length)return;
     var m=ppMigrateNextSteps(tenders,tasks);
     nsDone.current=true;
-    if(!m)return;
-    saveTasks(m.tasks);
-    saveTenders(m.tenders);
+    // automatic "Procurement late" actions: an alert (Warning), not a blocking point
+    var unb=ppProcLateUnblock(m?m.tasks:tasks);
+    if(!m&&!unb)return;
+    saveTasks(unb||m.tasks);
+    if(m)saveTenders(m.tenders);
   },[tenders,tasks]);
   var _nsIdx=ppActionsIndex(tasks);
 
@@ -4618,7 +4639,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
         {tdTab==="flow"&&<TenderFlowPanel td={td} updTd={updTd} afterSave={flowAfterSave} onJump={jumpToDoc}/>}
 
         {tdTab==="actions"&&<React.Fragment>
-        <TenderFollowUpCard td={td} tasks={tasks} saveTasks={saveTasks} updTd={updTd}/>
+        <TenderFollowUpCard td={td} tasks={tasks} saveTasks={saveTasks} updTd={updTd} contractors={contractors}/>
 
         <div className="card" style={{marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
@@ -4680,7 +4701,7 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
     onOpenTender={function(t){setShowGaps(false);setSelTender(t);}} onClose={function(){setShowGaps(false);}}/>;
   if(!classic)return <div>
     {gapsModal}{quickModal}
-    <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveTasks} onNavZone={onNavZone}
+    <ProcPlanView tenders={tenders} saveTenders={saveTenders} packages={packages} people={people} tasks={tasks} saveTasks={saveTasks} contractors={contractors} saveContractors={saveContractors} onNavZone={onNavZone}
       onOpenTender={function(t){openSheetFrom(t,"list");}} onQuickUpdate={setQuickId}
       actions={<React.Fragment>
         <button className="btn" onClick={function(){setClassic(true);}} title="The former Package table (Submission steps, Stage…), kept for a few weeks">Classic list</button>

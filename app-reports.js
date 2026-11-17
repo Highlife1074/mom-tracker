@@ -13,7 +13,8 @@ function esc(v){
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
-const REPORT_CSS=`
+const REPORT_CSS=`*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'IBM Plex Sans',Segoe UI,system-ui,sans-serif;color:#14171c;background:#fff;font-size:12px;line-height:1.45;padding:26px 30px;max-width:210mm;margin:0 auto}
 h1{font-size:21px;margin-bottom:2px}
