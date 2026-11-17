@@ -48,10 +48,10 @@ const PP_MS_LABEL={start:"Start tender docs"};
 // red read like a status; "Get the approval" + its latest date reads as the action that is late.
 const PP_MS_TODO={start:"Start the tender documents",issue:"Issue the tender",bids:"Receive the bids",recommend:"Send the recommendation",
   approved:"Get the approval",contract:"Sign the contract / PO",submittals:"Get the submittals approved",sdok:"Get the shop drawings approved",ready:"Have it ready to ship",delivered:"Deliver to site"};
-function ppNextAct(p){return p&&p.next&&p.need&&p.status!=="past"&&p.status!=="cancelled"?(PP_MS_TODO[p.next]||PP_MS_LABEL[p.next]):"";}
+function ppNextAct(p){return p&&p.next&&p.need&&p.status!=="past"&&p.status!=="cancelled"?((p.nextDoc&&p.nextDoc.act)||PP_MS_TODO[p.next]||PP_MS_LABEL[p.next]):"";}
 function ppNextBy(p){
   if(!ppNextAct(p))return "";
-  var d=p.latest[p.next==="ready"&&p.fcDelivery?"delivered":p.next];
+  var d=p.nextDoc&&p.nextDoc.by?p.nextDoc.by:p.latest[p.next==="ready"&&p.fcDelivery?"delivered":p.next];
   return (isValidDate(d)?"by "+fmtDate(d):"")+(p.daysLeft!==null&&p.daysLeft!==undefined?(isValidDate(d)?" · ":"")+ppDaysText(p.daysLeft):"");
 }
 PP_STEPS.forEach(function(s){PP_MS_LABEL[s.ms]=s.msLabel;});
@@ -246,11 +246,26 @@ function ppPlan(td,now){
     if(act[m]||act.sdok&&PP_MS_ORDER.indexOf(m)<PP_MS_ORDER.indexOf("submittals"))later=true;
     done[m]=later;
   }
+  // No shop drawing (or no MAR / MSS) on the package: that milestone has nothing to wait for,
+  // it is reached with the contract — also when the contract is only reached through a later
+  // milestone (MAR approved, delivered…) without a signing date typed.
+  var pdocs=(function(){try{return tenderDocs(td);}catch(e){return[];}})();
+  function docsOf(m){return pdocs.filter(function(d){return m==="sdok"?d.kind==="sd":d.kind==="mar"||d.kind==="mss";});}
+  ["submittals","sdok"].forEach(function(m){if(!docsOf(m).length&&done.contract)done[m]=true;});
   // Procurement closed by hand (self perform, …): every milestone counts as reached.
   var closed=procClosedOf(td);
   if(closed)PP_MS_ORDER.forEach(function(m){done[m]=true;});
   var proc=closed?{}:(function(){try{return calcProcurement(td);}catch(e){return{};}})();
   var next=PP_MS_ORDER.find(function(m){return m!=="need"&&!done[m];})||"";
+  // MAR / MSS or SD next while some documents are not submitted (or returned): the thing to do
+  // is to submit them, by the submission deadline — not "get them approved".
+  var nextDoc=null;
+  if(next==="sdok"||next==="submittals"){
+    var nd0=0,ret0=0,kd=next==="sdok"?"sd":"mar";
+    docsOf(next).forEach(function(d){var st=docSummary(d,now).state;if(st==="none")nd0++;else if(st==="returned")ret0++;});
+    var what=next==="sdok"?"the shop drawings":"the MAR / MSS";
+    if(nd0||ret0)nextDoc={act:(nd0?"Submit ":"Resubmit ")+what,by:ppSubmitBy(kd,latest[next])};
+  }
   // Once the order is placed, fabrication and delivery are judged on the delivery forecast.
   var fcDelivery=isValidDate(proc.deliveryDate)?proc.deliveryDate:"";
   var daysLeft=null,status="none";
@@ -265,7 +280,7 @@ function ppPlan(td,now){
   else if(past)status="past";
   else if(need&&next){
     var ref=(next==="ready"||next==="delivered")&&fcDelivery?fcDelivery:now;
-    var lim=next==="ready"&&fcDelivery?latest.delivered:latest[next];
+    var lim=next==="ready"&&fcDelivery?latest.delivered:nextDoc&&isValidDate(nextDoc.by)?nextDoc.by:latest[next];
     daysLeft=Math.round((parseISODate(lim)-parseISODate(ref))/86400000);
     status=daysLeft<0?"late":daysLeft<=14?"soon":"ok";
   }else if(need)status="done";
@@ -274,7 +289,7 @@ function ppPlan(td,now){
   // end of the need week. Landing after the latest delivery date but before that only eats
   // the float (deliveryTight).
   var dst=!past&&!deliveredOn&&fcDelivery&&need?procDeliveryState(fcDelivery,need):null;
-  return {closed:closed,needPassed:needPassed&&!past,type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
+  return {closed:closed,nextDoc:nextDoc,needPassed:needPassed&&!past,type:ppType(td),need:need,needNext:!!nd.next,needTask:nd.task||null,leads:leads,total:total,latest:latest,actual:act,done:done,next:next,daysLeft:daysLeft,status:status,
     fcDelivery:fcDelivery,deliveredOn:deliveredOn,
     deliveryLate:!!(dst&&dst.late),
     deliveryTight:!!(dst&&!dst.late&&latest.delivered&&fcDelivery>latest.delivered)};
