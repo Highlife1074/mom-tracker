@@ -1670,9 +1670,9 @@ function ppClientWaits(td,contractors,rfis,now){
   now=now||today();
   var out=[];
   function days(a,b){return Math.round((parseISODate(b)-parseISODate(a))/86400000);}
-  function push(txt,since,due,tip){
+  function push(txt,since,due,tip,task){
     var late=!!(isValidDate(due)&&due<now);
-    out.push({txt:txt,since:since,due:due,late:late,tip:tip||"",
+    out.push({txt:txt,since:since,due:due,late:late,tip:tip||"",task:task||null,
       sub:(isValidDate(since)?"since "+ppDay(since)+" · "+days(since,now)+" d":"")+(isValidDate(due)?(since?" · ":"")+(late?days(due,now)+" d overdue":"answer due "+ppDay(due)):"")});
   }
   try{
@@ -1686,7 +1686,7 @@ function ppClientWaits(td,contractors,rfis,now){
   (rfis||[]).forEach(function(t){
     var r=ppRfiInfo(t,now);if(!r.sent)return;
     var tx=String(t.text||"");
-    push((new RegExp("^"+r.kind+"\\b","i").test(tx)?"":r.kind+" ")+tx,r.sent,r.due);
+    push((new RegExp("^"+r.kind+"\\b","i").test(tx)?"":r.kind+" ")+tx,r.sent,r.due,"",t);
   });
   try{
     ppAddenda(td,contractors||[],now).forEach(function(x){x.ads.forEach(function(a){
@@ -1708,11 +1708,15 @@ function ppClientWaitsHtml(waits){
 // answer is due, red when overdue) then the actions marked at client (tick / edit / + add).
 function PpClientCell({td,waits,list,tasks,saveTasks,wide}){
   const [all,setAll]=useState(false);
+  const [rfiEdit,setRfiEdit]=useState(null);
+  var ro=isReadOnly()||!saveTasks;
   var shown=all||wide?waits:waits.slice(0,4);
   return <div style={{minWidth:wide?190:150,maxWidth:wide?"none":220,fontSize:wide?12:11,lineHeight:1.35,overflowWrap:"break-word"}}>
     {shown.map(function(w,i){
-      return <div key={i} title={(w.tip?w.tip+"\n":"")+"Automatic: waiting for the client"+(w.due?"\nAnswer due "+fmtDate(w.due):"")}
-        style={{marginBottom:3,padding:"1px 5px",borderLeft:"2px solid "+(w.late?"#b3302a":"#7f95b3"),background:w.late?"#fdf0ef":"#f4f7fb",borderRadius:"0 4px 4px 0"}}>
+      var click=!!w.task&&!ro;
+      return <div key={i} onClick={click?function(){setRfiEdit(ppRfiEditInit(w.task));}:undefined}
+        title={(w.tip?w.tip+"\n":"")+"Automatic: waiting for the client"+(w.due?"\nAnswer due "+fmtDate(w.due):"")+(click?"\nClick to edit the RFI":"")}
+        style={{cursor:click?"pointer":"default",marginBottom:3,padding:"1px 5px",borderLeft:"2px solid "+(w.late?"#b3302a":"#7f95b3"),background:w.late?"#fdf0ef":"#f4f7fb",borderRadius:"0 4px 4px 0"}}>
         <div style={{fontWeight:600,color:"var(--ink,#16181d)"}}>{w.txt}</div>
         {w.sub&&<div style={{fontSize:10,color:w.late?"#b3302a":"#5f7ea6",fontWeight:w.late?700:400}}>{w.sub}</div>}
       </div>;
@@ -1720,6 +1724,7 @@ function PpClientCell({td,waits,list,tasks,saveTasks,wide}){
     {!wide&&waits.length>4&&<button onClick={function(){setAll(!all);}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:10.5,color:"#0f5299",fontFamily:"inherit",display:"block"}}>
       {all?"show less":"+ "+(waits.length-4)+" more"}</button>}
     <PpActionsCell td={td} list={list} kind="client" tasks={tasks} saveTasks={saveTasks} wide={wide}/>
+    {rfiEdit&&<PpRfiEditor td={td} init={rfiEdit} tasks={tasks} saveTasks={saveTasks} onClose={function(){setRfiEdit(null);}}/>}
   </div>;
 }
 function PpActionsCell({td,list,kind,tasks,saveTasks,noNextStep,wide,updTd}){
@@ -1821,34 +1826,13 @@ function PpRfiCell({td,list,done,tasks,saveTasks,wide}){
   var now=today();
   list=list||[];done=done||[];
   var shown=all||wide?list:list.slice(0,3);
-  function autoDue(sent){return isValidDate(sent)?addDur(sent,"clientResponse"):"";}
   function openEdit(t){
     if(ro)return;
-    if(!t){setEdit({id:null,text:"",kind:"RFI",sent:now,due:autoDue(now),dueTyped:false,answered:""});return;}
-    var r=ppRfiInfo(t,now);
-    setEdit({id:t.id,text:t.text||"",kind:r.kind,sent:r.sent,due:r.due,dueTyped:isValidDate(t.rfiDue),answered:r.answered||(r.done?now:"")});
+    setEdit(ppRfiEditInit(t,now));
   }
   function answer(t,val){
     if(blockIfReadOnly())return;
     saveTasks((tasks||[]).map(function(x){return x.id!==t.id?x:stampModified(Object.assign({},x,val?{status:"done",completedAt:now}:{status:"pending",completedAt:""}));}));
-  }
-  function save(){
-    if(blockIfReadOnly())return;
-    var e=edit,txt=String(e.text||"").trim();if(!txt)return;
-    var due=e.dueTyped?e.due:"";
-    var patch={text:txt,rfiSubmission:isValidDate(e.sent)?e.sent:"",rfiDue:isValidDate(due)?due:"",status:isValidDate(e.answered)?"done":"pending",completedAt:isValidDate(e.answered)?e.answered:""};
-    if(e.id)saveTasks((tasks||[]).map(function(x){
-      if(x.id!==e.id)return x;
-      var tg=(x.tags||[]).filter(function(g){return g!=="RFI"&&g!=="FCR";}).concat([e.kind]);
-      return stampModified(Object.assign({},x,patch,{tags:tg}));
-    }));
-    else saveTasks([newTask(Object.assign({tenderRef:td.id,package:td.package||"",tags:[e.kind],importance:2,urgence:2,
-      owner:td.ownerTender||"",note:"From the Package list",due:isValidDate(e.due)?e.due:""},patch))].concat(tasks||[]));
-    setEdit(null);
-  }
-  function del(){
-    if(!edit||!edit.id||blockIfReadOnly()||!mayDelete()||!safeConfirm("Delete this RFI?"))return;
-    saveTasks((tasks||[]).filter(function(x){return x.id!==edit.id;}));setEdit(null);
   }
   function row(t){
     var r=ppRfiInfo(t,now);
@@ -1876,11 +1860,45 @@ function PpRfiCell({td,list,done,tasks,saveTasks,wide}){
     </div>}
     {!ro&&<button onClick={function(){openEdit(null);}} title="Add an RFI to this package (an action tagged RFI, also in Actions and With client)"
       style={{background:"none",border:"none",padding:0,marginTop:2,cursor:"pointer",fontSize:10.5,color:"#9b968b",fontFamily:"inherit",display:"block"}}>+ RFI</button>}
-    {edit&&<div className="overlay" onClick={function(e){if(e.target===e.currentTarget)setEdit(null);}}>
+    {edit&&<PpRfiEditor td={td} init={edit} tasks={tasks} saveTasks={saveTasks} onClose={function(){setEdit(null);}}/>}
+  </div>;
+}
+// One RFI / FCR in a small window (subject, sent, answer due, answered on): used by the RFI
+// column and by the RFI lines of the At client column. init = ppRfiEditInit(task or null).
+function ppRfiAutoDue(sent){return isValidDate(sent)?addDur(sent,"clientResponse"):"";}
+function ppRfiEditInit(t,now){
+  now=now||today();
+  if(!t)return {id:null,text:"",kind:"RFI",sent:now,due:ppRfiAutoDue(now),dueTyped:false,answered:""};
+  var r=ppRfiInfo(t,now);
+  return {id:t.id,text:t.text||"",kind:r.kind,sent:r.sent,due:r.due,dueTyped:isValidDate(t.rfiDue),answered:r.answered||(r.done?now:"")};
+}
+function PpRfiEditor({td,init,tasks,saveTasks,onClose}){
+  const [edit,setEdit]=useState(init);
+  var now=today();
+  var autoDue=ppRfiAutoDue;
+  function save(){
+    if(blockIfReadOnly())return;
+    var e=edit,txt=String(e.text||"").trim();if(!txt)return;
+    var due=e.dueTyped?e.due:"";
+    var patch={text:txt,rfiSubmission:isValidDate(e.sent)?e.sent:"",rfiDue:isValidDate(due)?due:"",status:isValidDate(e.answered)?"done":"pending",completedAt:isValidDate(e.answered)?e.answered:""};
+    if(e.id)saveTasks((tasks||[]).map(function(x){
+      if(x.id!==e.id)return x;
+      var tg=(x.tags||[]).filter(function(g){return g!=="RFI"&&g!=="FCR";}).concat([e.kind]);
+      return stampModified(Object.assign({},x,patch,{tags:tg}));
+    }));
+    else saveTasks([newTask(Object.assign({tenderRef:td.id,package:td.package||"",tags:[e.kind],importance:2,urgence:2,
+      owner:td.ownerTender||"",note:"From the Package list",due:isValidDate(e.due)?e.due:""},patch))].concat(tasks||[]));
+    onClose();
+  }
+  function del(){
+    if(!edit||!edit.id||blockIfReadOnly()||!mayDelete()||!safeConfirm("Delete this RFI?"))return;
+    saveTasks((tasks||[]).filter(function(x){return x.id!==edit.id;}));onClose();
+  }
+  return <div className="overlay" onClick={function(e){if(e.target===e.currentTarget)onClose();}}>
       <div className="modal" style={{maxWidth:520}}>
         <div className="modal-hdr">
           <div className="modal-title">{edit.id?edit.kind:"New "+edit.kind} · {td.title||"(untitled)"}</div>
-          <button onClick={function(){setEdit(null);}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
+          <button onClick={function(){onClose();}} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#bbb"}}>×</button>
         </div>
         <div className="modal-body" style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"flex",gap:8}}>
@@ -1901,12 +1919,11 @@ function PpRfiCell({td,list,done,tasks,saveTasks,wide}){
         </div>
         <div className="modal-footer">
           {edit.id&&mayDelete()&&<button className="btn" onClick={del} style={{marginRight:"auto",color:"#b3302a"}}>Delete</button>}
-          <button className="btn" onClick={function(){setEdit(null);}}>Cancel</button>
+          <button className="btn" onClick={function(){onClose();}}>Cancel</button>
           <button className="btn btn-gold" onClick={save} disabled={!String(edit.text||"").trim()}>Save</button>
         </div>
       </div>
-    </div>}
-  </div>;
+    </div>;
 }
 // The notes of a package as lines of text ("Title — content"), for the print and the Excel.
 function ppNotesText(td){
