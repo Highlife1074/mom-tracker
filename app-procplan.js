@@ -264,7 +264,7 @@ function ppPlan(td,now){
     var nd0=0,ret0=0,kd=next==="sdok"?"sd":"mar";
     docsOf(next).forEach(function(d){var st=docSummary(d,now).state;if(st==="none")nd0++;else if(st==="returned")ret0++;});
     var what=next==="sdok"?"the shop drawings":"the MAR / MSS";
-    if(nd0||ret0)nextDoc={act:(nd0?"Submit ":"Resubmit ")+what,by:ppSubmitBy(kd,latest[next])};
+    if(nd0||ret0)nextDoc={act:(nd0?"Submit ":"Resubmit ")+what,by:ppDocsSubmitBy(td,docsOf(next),kd,latest[next],now)};
   }
   // Once the order is placed, fabrication and delivery are judged on the delivery forecast.
   var fcDelivery=isValidDate(proc.deliveryDate)?proc.deliveryDate:"";
@@ -1028,7 +1028,7 @@ function ppSubCell(td,p,k,now){
   var refs=ppDocRefs(td,docs),refsFull=ppDocRefs(td,docs,true);
   if(ok===n){var dc=ppDoneCell("✓ Approved"+(last?" "+ppDay(last):""),last,lat,n>1?"all "+n+" docs":"",
     tip+(lat?"\nApproval deadline "+fmtDate(lat):""));dc.refs=refs;dc.refsFull=refsFull;return dc;}
-  var act,due,subBy=qd?qd.sub:ppSubmitBy(k,lat);
+  var act,due,subBy=qd?qd.sub:ppDocsSubmitBy(td,docs,k,lat,now);
   if(nn){act="To submit"+(n>1?" ("+nn+")":"");due=subBy;}
   else if(ret){act="To resubmit"+(n>1?" ("+ret+")":"");due=subBy;}
   else{act="To be approved"+(n>1?" ("+cl+")":"");due=lat;}
@@ -1124,6 +1124,32 @@ function _ppDaysTo(due,now){return Math.round((parseISODate(due)-parseISODate(no
 function ppSubmitBy(kind,lat){
   if(!isValidDate(lat))return "";
   return subDur(lat,docClientKey(kind));
+}
+// Submission target typed in the sheet for one document: SD transmission target (else the
+// package SD target), MAR / MSS target of the material. "" when nothing was typed.
+function ppDocTarget(td,d){
+  if(!td||!d)return "";
+  if(d.kind==="sd"){
+    var t=d.id==="sd:_main"?null:(td.sdTransmissions||[]).find(function(x){return "sd:"+x.id===d.id;});
+    var v=(t&&t.target)||td.sdTarget||"";
+    return isValidDate(v)?v:"";
+  }
+  if(d.kind==="mar"||d.kind==="mss"){
+    var ms=td.materials||[];
+    for(var i=0;i<ms.length;i++)if(matDocId(ms[i],i,d.kind)===d.id){var w=ms[i][d.kind+"Target"];return isValidDate(w)?w:"";}
+  }
+  return "";
+}
+// Date by which the documents still to submit / resubmit must go: each one's typed target,
+// else the deadline worked back from the need (ppSubmitBy); the earliest of them.
+function ppDocsSubmitBy(td,docs,kind,lat,now){
+  var calc=ppSubmitBy(kind,lat),out="";
+  (docs||[]).forEach(function(d){
+    var st=docSummary(d,now).state;if(st!=="none"&&st!=="returned")return;
+    var v=ppDocTarget(td,d)||calc;
+    if(isValidDate(v)&&(!out||v<out))out=v;
+  });
+  return out||calc;
 }
 // WMS / ITP: submitted wms/itpBeforeStart days before the start on site (the package sheet's
 // rule), answered within the client answer time.
