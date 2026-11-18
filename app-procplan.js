@@ -3148,7 +3148,14 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
           :vis.map(line)}</tbody>
       </table>
       </div>}
-    {vis.length===0&&<div style={{color:"#9b968b",fontSize:12,padding:"14px 0"}}>{rows.length?"No package matches these filters.":"No package here. Paste the project list from Excel, or create a package."}</div>}
+    {vis.length===0&&(rows.length?(function(){
+      // Filters are remembered in this browser: say which ones hide every package, and clear them in one click.
+      var act=[q&&"search “"+q+"”",typeF.length&&"type",deptF.length&&"department",ownerF.length&&"owner",awdF.length&&"subcontractor",
+        quickF&&"quick filter",kpiF&&"tile",horizon!=="all"&&"next deadline"].filter(Boolean);
+      return <div style={{margin:"14px 0",padding:"14px 16px",border:"1px solid #ecc3c7",background:"#fdf3f4",borderRadius:8,fontSize:13,color:"var(--ink)"}}>
+        <b>No package matches these filters</b> — {rows.length} package{rows.length!==1?"s":""} hidden{act.length?" by: "+act.join(", "):""}.
+        <button className="btn btn-pri btn-sm" style={{marginLeft:10}} onClick={function(){setQ("");setTypeF([]);setDeptF([]);setOwnerF([]);setAwdF([]);setQuickF("");setKpiF("");setHorizon("all");}}>Clear all filters</button>
+      </div>;})():<div style={{color:"#9b968b",fontSize:12,padding:"14px 0"}}>No package here. Paste the project list from Excel, or create a package.</div>)}
     {mode==="table"&&<div style={{fontSize:10.5,color:"#9b968b",marginTop:8,lineHeight:1.5}}>Each milestone cell: top line = what really happened (from the package sheet), bottom line = the LATEST date to reach it so the package is on site when needed. ✓ green on time, orange later than the latest date. Only the next milestone of each package is coloured: red late, orange ≤ 14 d, green on track. A package whose need date is past is "Started" and never flagged late. Amber row = starts on site within 21 days.
       {model?" Timeline: plan chain (tender · approval · contract · submittals · shop drawings · fabrication · float), faded once reached; ◆ reached (orange: late); ○ next deadline; flag = need on site; truck = delivery forecast and its gap to the need; navy line = today.":""} Lead times: Settings › Durations › Procurement plan templates, adjustable per package (Submissions › 📅 Procurement plan).</div>}
   </div>;
