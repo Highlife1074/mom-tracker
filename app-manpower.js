@@ -23,7 +23,8 @@
 // Three series:
 //   Budget   = Σ budget lines (€, one per budget WBS the money comes from) less what was awarded to a
 //              subcontractor on each line (net = amount − awarded) ÷ hourly rate, spread evenly over the working days (Mon–Sat) from start to end;
-//              byWeek holds the weeks the admin aligned on the real hours ("budget = real" on the past).
+//              byWeek holds the weeks the admin aligned on the real hours ("budget = real" on the past);
+//              the total stays the same: the rest of the budget is spread again over the other weeks.
 //   Planned  = Σ plan lines of a week (workers that week × hours per worker per week).
 //   Real     = the hours entered or imported.
 // A week's hours are spread over its working days (Mon–Sat) to build the months, so a week
@@ -140,16 +141,23 @@ function mpBudgetRate(b){return b&&mpHas(b.rate)&&Number(b.rate)>0?Number(b.rate
 // Budget hours per week (Monday → h): amount ÷ rate spread over the working days between start
 // and end, then the weeks aligned on the real (byWeek) take their own figure. With wbs: the
 // budget lines of that WBS only (the alignment on the real is the whole project's: left out).
+// The total never changes: the weeks aligned on the real take the real hours and what is left of the
+// budget (total − aligned) is spread evenly over the other weeks (never below 0).
 function mpBudgetWeeks(b,wbs){
   var out={};if(!b)return out;
+  var al={};
+  if(!wbs)Object.keys(b.byWeek||{}).forEach(function(w){if(mpHas(b.byWeek[w]))al[w]=Number(b.byWeek[w]);});
   if(isValidDate(b.start)&&isValidDate(b.end)&&b.end>=b.start){
     var H=mpBudgetHours(b,wbs),ws=mpWeeksBetween(b.start,b.end),days={},D=0;
-    ws.forEach(function(w){var n=0;for(var d=0;d<MP_WORK_DAYS;d++){var x=addCalDays(w,d);if(x>=b.start&&x<=b.end)n++;}days[w]=n;D+=n;});
-    ws.forEach(function(w){out[w]=D?H*days[w]/D:0;});
+    var A=Object.keys(al).reduce(function(s,w){return s+al[w];},0),left=Math.max(0,H-A);
+    ws.forEach(function(w){var n=0;if(!(w in al))for(var d=0;d<MP_WORK_DAYS;d++){var x=addCalDays(w,d);if(x>=b.start&&x<=b.end)n++;}days[w]=n;D+=n;});
+    ws.forEach(function(w){out[w]=D?left*days[w]/D:0;});
   }
-  if(!wbs)Object.keys(b.byWeek||{}).forEach(function(w){if(mpHas(b.byWeek[w]))out[w]=Number(b.byWeek[w]);});
+  Object.keys(al).forEach(function(w){out[w]=al[w];});
   return out;
 }
+
+function mpAlignedSum(b){return Object.keys((b&&b.byWeek)||{}).reduce(function(s,w){return s+(mpHas(b.byWeek[w])?Number(b.byWeek[w]):0);},0);}
 
 // Everything the views show, from the plan and the weekly entries.
 // opt.bgt = budget hours per week (mpBudgetWeeks) · opt.cutoff = the cut-off of a filtered view.
@@ -497,7 +505,7 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,onAlignPlan,bRec,me
     var before=past.reduce(function(s,r){return s+r.bgt;},0),after=past.reduce(function(s,r){return s+r.real;},0);
     if(!safeConfirm("Adjust the budget to the real hours on every week up to W"+mpIsoWeek(co)+" ("+fmtDate(co)+")?\n\n"+
       "Budget of these weeks: "+invFmt(before,0)+" h → "+invFmt(after,0)+" h (the real spent).\n"+
-      "The weeks after the cut-off keep their budget, so the total budget becomes "+invFmt(M0.tot.bgt-before+after,0)+" h.\n\n"+
+      "The total budget stays "+invFmt(mpBudgetHours(bRec),0)+" h: what is left ("+invFmt(Math.max(0,mpBudgetHours(bRec)-after),0)+" h) is spread again over the weeks after the cut-off.\n\n"+
       "“Reset adjustments” in the budget card brings the even spread back."))return;
     var bw=Object.assign({},bRec.byWeek||{});
     past.forEach(function(r){bw[r.week]=Math.round(r.real*100)/100;});
@@ -541,13 +549,13 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,onAlignPlan,bRec,me
           {mpBudgetAmount(bRec,"","awarded")>0&&<span>{invFmt(mpBudgetAmount(bRec,"","gross"),0)} € − awarded {invFmt(mpBudgetAmount(bRec,"","awarded"),0)} € = </span>}
           <b>{invFmt(mpBudgetAmount(bRec),0)} €</b> ÷ <b>{invFmt(rate,2)} €/h</b> = <b style={{color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)} h</b>
           {" "}spread from {fmtDate(bRec.start)} to {fmtDate(bRec.end)}
-          {nAligned>0&&<span style={{color:"#b35c00"}}> · aligned on the real up to W{mpIsoWeek(bRec.alignedTo)} ({nAligned} week{nAligned!==1?"s":""}) → total {invFmt(M0.tot.bgt,0)} h{rate?" = "+invFmt(M0.tot.bgt*rate,0)+" €":""}</span>}
+          {nAligned>0&&<span style={{color:"#b35c00"}}> · aligned on the real up to W{mpIsoWeek(bRec.alignedTo)} ({nAligned} week{nAligned!==1?"s":""}): {invFmt(mpAlignedSum(bRec),0)} h spent, {invFmt(Math.max(0,mpBudgetHours(bRec)-mpAlignedSum(bRec)),0)} h left spread over the weeks after</span>}
         </span>:<span style={{fontSize:12,color:"#888"}}>No budget yet: give the amount in €, the hourly rate and the duration — the hours are spread evenly over the working days.</span>}
         <span style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}}>
           {isAdmin&&<button className="btn btn-sm" onClick={function(){var m=_flowMonday(today());var init=Object.assign({rate:"",start:M0.tot.start||m,end:M0.tot.end?addCalDays(M0.tot.end,5):addCalDays(m,365)},bRec||{});
             init.lines=mpBudgetLines(bRec).map(function(l){return Object.assign({},l);});if(!init.lines.length)init.lines=[{id:uuid(),wbs:"",amount:"",note:""}];
             setEditB(init);}}>{bRec?"✎ Edit budget":"＋ Set the budget"}</button>}
-          {isAdmin&&bRec&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={alignOnReal} title="The real hours become the budget of every week up to the cut-off">⇆ Budget = real on the past</button>}
+          {isAdmin&&bRec&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={alignOnReal} title="The real hours become the budget of every week up to the cut-off; the rest of the budget is spread again over the weeks after (the total does not change)">⇆ Budget = real on the past</button>}
           {isAdmin&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={onAlignPlan} title="The real hours become the planned hours of every week up to the cut-off, WBS by WBS">⇆ Planned = real on the past</button>}
           {isAdmin&&nAligned>0&&<button className="btn btn-sm" onClick={resetAlign} title="Spread the budget evenly again">↺ Reset adjustments</button>}
         </span>
