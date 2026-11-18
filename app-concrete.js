@@ -60,6 +60,40 @@ function conSortTypes(types){
 function conSortWbs(list){
   return(list||[]).slice().sort(function(a,b){return String(a.code||a.name).localeCompare(String(b.code||b.name),undefined,{numeric:true});});
 }
+// ---- categories (w.cat): ONE category per WBS at most, so a WBS can never be counted twice.
+// A sub-total = the sum of the WBS of its category; the grand total stays the sum of the unique
+// WBS shown (never the sum of the sub-totals). conGroupByCat also drops a WBS met twice.
+var CON_NO_CAT="(no category)";
+function conCatOf(w){return String(w&&w.cat||"").trim();}
+function conCatNames(wbs){var s={};(wbs||[]).forEach(function(w){var c=conCatOf(w);if(c)s[c]=1;});return Object.keys(s).sort(function(a,b){return a.localeCompare(b);});}
+function conGroupByCat(items,wbsOf,catOf){
+  var m={},order=[],seen={};
+  (items||[]).forEach(function(it){
+    var w=wbsOf(it),id=w&&w.id;
+    if(id){if(seen[id])return;seen[id]=1;}
+    var c=catOf?catOf(w):conCatOf(w);
+    if(!m[c]){m[c]=[];order.push(c);}
+    m[c].push(it);
+  });
+  order.sort(function(a,b){if(!a)return 1;if(!b)return -1;return a.localeCompare(b);});
+  return order.map(function(c){return{cat:c,label:c||CON_NO_CAT,items:m[c]};});
+}
+function conByCatLoad(){try{return localStorage.getItem("pp_con_bycat")==="1";}catch(e){return false;}}
+function conByCatSave(v){try{localStorage.setItem("pp_con_bycat",v?"1":"0");}catch(e){}}
+// "Group by category" switch + the folded categories, shared by the WBS tables.
+function useConByCat(){
+  const [on,setOn]=useState(conByCatLoad);
+  const [fold,setFold]=useState({});
+  return{on:on,set:function(v){setOn(v);conByCatSave(v);},fold:fold,
+    toggle:function(c){setFold(function(o){var n=Object.assign({},o);if(n[c])delete n[c];else n[c]=1;return n;});}};
+}
+function ConCatToggle({g,n}){
+  return <button className={"fchip"+(g.on?" on":"")} onClick={function(){g.set(!g.on);}}
+    title={n?"Group the WBS by category, with a sub-total per category (each WBS counts once; the total is unchanged). Categories: WBS sheet or Overview › Theoretical per WBS.":"No category yet: give the WBS a category in their sheet or in Overview › Theoretical per WBS (tick the WBS, then 🏷 Category)"}>▤ By category{n?" ("+n+")":""}</button>;
+}
+function ConCatLabel({folded,label,n}){
+  return <span title={folded?"Click to show the WBS of this category":"Click to fold this category (its sub-total stays)"}>{folded?"▸ ":"▾ "}{label} <span style={{fontWeight:400,fontSize:11,color:"#667"}}>· sub-total of {n} WBS</span></span>;
+}
 function conWbsLabel(w){return w?(w.code?w.code+" — ":"")+(w.name||""):"(deleted WBS)";}
 function conSum(map,typeIds){return typeIds.reduce(function(s,t){return s+_invNum((map||{})[t]);},0);}
 function conPourQty(p,typeIds){
@@ -318,7 +352,7 @@ function conTypeByName(types,name){
 function conApplySplit(parent,rows,wbsAll,poursAll,dropParent){
   var children=rows.map(function(r){
     return newConWbs({code:r.code,name:r.name,zone:r.zone,start:r.start,finish:r.finish,done:!!r.done,
-      theo:Object.assign({},r.theo),splitFrom:parent.code||parent.name});   // schedule links are set on each new line afterwards
+      theo:Object.assign({},r.theo),splitFrom:parent.code||parent.name,cat:conCatOf(parent)||undefined});   // schedule links are set on each new line afterwards
   });
   var theoLeft=Object.assign({},parent.theo||{});
   rows.forEach(function(r){Object.keys(r.theo||{}).forEach(function(t){theoLeft[t]=_invNum(theoLeft[t])-_invNum(r.theo[t]);});});
@@ -587,6 +621,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
   const [q,setQ]=useState("");
   const [sel,setSel]=useState({});
   const [merging,setMerging]=useState(false);
+  var cg=useConByCat();
   // Which quantities the type columns edit: the budget (theo) or the drawings (dwg).
   const [qset,setQset]=useState(function(){try{return localStorage.getItem("pp_con_qset")==="dwg"?"dwg":"theo";}catch(e){return "theo";}});
   function pickSet(v){setQset(v);try{localStorage.setItem("pp_con_qset",v);}catch(e){}}
@@ -613,6 +648,23 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
     }));
   }
   var nNotes=list.filter(function(w){return String(w.theoNote||"").trim();}).length;
+  // Category of one WBS (inline) or of the ticked WBS (🏷 Category). One category per WBS.
+  function setCat(ids,v){
+    if(blockIfReadOnly())return;
+    var c=String(v||"").trim(),ix={};ids.forEach(function(id){ix[id]=1;});
+    saveWbs(rawWbs.map(function(w){
+      if(!ix[w.id]||conCatOf(w)===c)return w;
+      var o=Object.assign({},w,{updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""});
+      if(c)o.cat=c;else delete o.cat;
+      return o;
+    }));
+  }
+  var catNames=conCatNames(rawWbs);
+  function askCat(){
+    ppPrompt({title:"🏷 Category of "+selIds.length+" WBS",value:selIds.length===1?conCatOf(rawWbs.find(function(w){return w.id===selIds[0];})):"",
+      message:"One category per WBS (it replaces the previous one, so a WBS is never counted twice). Empty = no category."+(catNames.length?"\n\nExisting: "+catNames.join(" · "):""),
+      placeholder:"e.g. Foundations, Podium slabs, Cores…",okLabel:"Set the category"}).then(function(v){if(v===null)return;setCat(selIds,v);setSel({});});
+  }
   function applyMerge(keepId,ids,code,name){
     if(blockIfReadOnly())return;
     var res=conApplyMerge(keepId,ids,code,name,rawWbs,pours,cutoffs,types.map(function(t){return t.id;}));
@@ -697,6 +749,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
       {edit&&open&&<button className="btn btn-sm" style={{marginLeft:"auto"}} disabled={selIds.length<2}
         title={selIds.length<2?"Tick two WBS or more in the table to merge them":"Merge the ticked WBS into one: budget added up, pours moved"}
         onClick={function(){setMerging(true);}}>⇄ Merge {selIds.length>=2?selIds.length+" ":""}WBS</button>}
+      {edit&&open&&selIds.length>0&&<button className="btn btn-sm" onClick={askCat} title="Put the ticked WBS in one category (one category per WBS)">🏷 Category ({selIds.length})</button>}
       {edit&&open&&selIds.length>0&&<button className="btn btn-sm" onClick={function(){setSel({});}}>Clear selection ({selIds.length})</button>}
       {edit&&isAdmin&&open&&nSwap>0&&<button className="btn btn-sm" onClick={swapSets} title="Admin: on every WBS, the budget becomes the drawings quantities and the drawings become the budget. Click again to swap back.">⇄ Swap budget ⇄ drawings</button>}
       {edit&&imported.length>0&&<button className="btn btn-sm" style={{marginLeft:open?undefined:"auto",color:"#b3302a"}} onClick={clearImported}
@@ -708,14 +761,30 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
         <span style={{fontSize:12,color:"#555"}}>Quantities per type:</span>
         <button className={"fchip"+(qset==="theo"?" on":"")} onClick={function(){pickSet("theo");}} title="The type columns show and edit the budget">Budget</button>
         <button className={"fchip"+(qset==="dwg"?" on":"")} onClick={function(){pickSet("dwg");}} title="The type columns show and edit the quantities measured on the drawings">Drawings (plans)</button>
+        <ConCatToggle g={cg} n={catNames.length}/>
+        {catNames.length>0&&<datalist id="con-cat-list">{catNames.map(function(c){return <option key={c} value={c}/>;})}</datalist>}
       </div>
       <div style={{overflow:"auto",maxHeight:"65vh",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}><table className="tbl con-sticky" style={{overflow:"visible",border:"none"}}>
         <thead><tr>{edit&&<th style={{width:24}}/>}<th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R} title={(qset==="dwg"?"Drawings":"Budget")+" m³ — "+t.name}>{t.name}<div style={{fontSize:9,fontWeight:400,color:qset==="dwg"?"var(--blue)":"#888"}}>{qset==="dwg"?"drawings":"budget"}</div></th>;})}
-          <th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Budget − drawings: < 0 (red) the drawings need more than the budget">Budget − drawings</th><th style={R}>Poured</th><th title="Comment on the budget, e.g. a gap between the drawings and the budget">Comment</th></tr></thead>
-        <tbody>{rows.map(function(w){
+          <th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Budget − drawings: < 0 (red) the drawings need more than the budget">Budget − drawings</th><th style={R}>Poured</th><th title="Comment on the budget, e.g. a gap between the drawings and the budget">Comment</th><th title="One category per WBS, to group the WBS with sub-totals (▤ By category)">Category</th></tr></thead>
+        <tbody>{(function(){
+        // Sub-total of a category: sum of its WBS (each once), never the hand-typed project totals.
+        function subRow(g,fo){
+          var b=0,d=0,re=0,by={};
+          g.items.forEach(function(w){b+=conSum(w.theo,colIds);d+=conSum(w.dwg,colIds);re+=conSum(realIx[w.id],colIds);
+            colIds.forEach(function(t){by[t]=(by[t]||0)+_invNum((w[qset]||{})[t]);});});
+          var gp=d>CON_EPS?b-d:null;
+          return <tr key={"cat:"+g.cat} className="con-cat" onClick={function(){cg.toggle(g.cat);}}>
+            {edit&&<td/>}<td><ConCatLabel folded={fo} label={g.label} n={g.items.length}/></td>
+            {cols.map(function(t){return <td key={t.id} style={R}>{by[t.id]?conFmt(by[t.id]):"—"}</td>;})}
+            <td style={R}>{conFmt(b)}</td><td style={R}>{d>CON_EPS?conFmt(d):"—"}</td>
+            <td style={Object.assign({color:gp!==null?conLossCol(gp):undefined},R)}>{gp!==null?(gp>0?"+":"")+conFmt(gp):"—"}</td>
+            <td style={R}>{conFmt(re)}</td><td/><td/></tr>;
+        }
+        function rowEl(w){
           var tot=conSum(w.theo,colIds),dw=conSum(w.dwg,colIds),hasDw=dw>CON_EPS,gap=tot-dw;
           return <tr key={w.id} style={sel[w.id]?{background:"var(--brand-soft)"}:undefined}>
-            {edit&&<td><input type="checkbox" checked={!!sel[w.id]} onChange={function(){toggle(w.id);}} title="Tick to merge with other WBS"/></td>}
+            {edit&&<td><input type="checkbox" checked={!!sel[w.id]} onChange={function(){toggle(w.id);}} title="Tick to merge with other WBS or to give them a category"/></td>}
             {edit?<td style={{minWidth:300}}><div style={{display:"flex",gap:4}}>
                 <ConTextCell value={w.code} width={96} bold={true} title="WBS code (unique) — Enter to save, Esc to cancel" onCommit={function(v){rename(w.id,"code",v);}}/>
                 <ConTextCell value={w.name} placeholder="Description" title="Description — Enter to save, Esc to cancel" onCommit={function(v){rename(w.id,"name",v);}}/>
@@ -732,8 +801,15 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
             <td style={{minWidth:240}} title={conTheoNoteTip(w)}>{edit
               ?<ConTextCell value={w.theoNote||""} placeholder="Comment, e.g. drawings rev C = +12 m³ vs budget" title={conTheoNoteTip(w)||"Comment on the budget — Enter to save, Esc to cancel"} onCommit={function(v){setNote(w.id,v);}}/>
               :<span style={{fontSize:12,color:"#555",whiteSpace:"pre-wrap"}}>{w.theoNote||""}</span>}</td>
+            <td style={{minWidth:140}}>{edit
+              ?<ConTextCell value={conCatOf(w)} placeholder="—" list="con-cat-list" title="Category of this WBS (one only) — Enter to save, Esc to cancel, empty = none" onCommit={function(v){setCat([w.id],v);}}/>
+              :<span style={{fontSize:12}}>{conCatOf(w)}</span>}</td>
           </tr>;
-        })}</tbody>
+        }
+        if(!cg.on)return rows.map(rowEl);
+        var out=[];
+        conGroupByCat(rows,function(w){return w;}).forEach(function(g){var fo=!!cg.fold[g.cat];out.push(subRow(g,fo));if(!fo)g.items.forEach(function(w){out.push(rowEl(w));});});
+        return out;})()}</tbody>
         <tfoot><tr>
           {edit&&<td/>}
           <td style={{fontWeight:700}}>Total — {rows.length} WBS{!whole&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>sum of the WBS shown{allShown?"":" (zone)"}</div>}</td>
@@ -751,6 +827,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
           <td style={Object.assign({fontWeight:700,color:gapTot!==null?conLossCol(gapTot):undefined},R)} title="Budget total − Drawings total of this row">{gapTot!==null?<>{(gapTot>0?"+":"")+conFmt(gapTot)}{gapB>CON_EPS&&<div style={{fontSize:10,fontWeight:400}}>{conPct(gapTot/gapB*100)}</div>}</>:"—"}</td>
           <td style={Object.assign({fontWeight:700,color:"#555"},R)}>{conFmt(realTot)}</td>
           <td style={{fontSize:11,color:"#888"}}>{edit&&whole?"Type a type's total by hand when the detail per WBS is missing; clear it to go back to the sum.":""}</td>
+          <td style={{fontSize:11,color:"#888"}}>{cg.on?"each WBS once":""}</td>
         </tr></tfoot></table></div>
     </div>}
     {merging&&<ConMergeModal ids={selIds} wbs={rawWbs} types={types} realIx={realIx} pours={pours} cutoffs={cutoffs}
@@ -894,11 +971,11 @@ function ConExplCell({value,onCommit,ro}){
     onKeyDown={function(e){if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))e.target.blur();if(e.key==="Escape"){cancel.current=true;e.target.blur();}}}
     style={{width:240,minWidth:180,padding:"4px 6px",fontSize:12,fontFamily:"inherit",resize:"vertical"}}/>;
 }
-function ConTextCell({value,onCommit,width,placeholder,title,bold}){
+function ConTextCell({value,onCommit,width,placeholder,title,bold,list}){
   const [txt,setTxt]=useState(value||"");
   const [focus,setFocus]=useState(false);
   const cancel=useRef(false);
-  return <input type="text" value={focus?txt:(value||"")} placeholder={placeholder} title={title}
+  return <input type="text" value={focus?txt:(value||"")} placeholder={placeholder} title={title} list={list}
     onFocus={function(){cancel.current=false;setTxt(value||"");setFocus(true);}}
     onChange={function(e){setTxt(e.target.value);}}
     onBlur={function(){setFocus(false);if(cancel.current)return;var s=txt.trim();if(s!==String(value||"").trim())onCommit(s);}}
@@ -1026,6 +1103,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
   const [splitting,setSplitting]=useState(null);
   const [past,setPast]=useState(false);
   const [paste,setPaste]=useState(false);
+  var cg=useConByCat();
   var allTypeIds=types.map(function(t){return t.id;});
   var typeIds=typeId?[typeId]:allTypeIds;
   var ql=q.trim().toLowerCase();
@@ -1109,6 +1187,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
         <option value="">All statuses</option><option value="todo">Not started</option><option value="progress">In progress</option><option value="done">Complete</option>
       </select>
       {!typeId&&<button className={"fchip"+(detail?" on":"")} onClick={function(){setDetail(!detail);}}>Detail per type</button>}
+      <ConCatToggle g={cg} n={conCatNames(wbs).length}/>
       <div style={{flex:1}}/>
       {edit&&<button className="btn btn-sm" onClick={function(){setPast(true);}} title="The works already done, as one WBS with the total theoretical and real quantities">⏮ Works to date</button>}
       {edit&&<button className="btn btn-sm" onClick={function(){setPaste(true);}}>⤓ Paste from Excel</button>}
@@ -1118,7 +1197,21 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     <div style={{overflowX:"auto"}}><table className="tbl">
       <thead><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Budget − drawings: < 0 (red) the drawings need more than the budget">Budget − drawings</th><th style={R} title="Every pour recorded so far (the loss / gain uses the poured at the cut-off)">Poured to date</th>
         {lc&&<><th style={R} title={"Progress % typed at the cut-off of "+fmtDate(lc.date)}>Progress {fmtDate(lc.date)}</th><th style={R} title="Concrete poured up to the cut-off date: the figure the loss / gain is measured on">Poured at cut-off</th><th style={R} title="Budget × progress %">Earned</th><th style={R} title="Budget × progress − poured up to the cut-off: > 0 gain, < 0 loss">vs budget<div style={{fontSize:9,fontWeight:400}}>gain (+) / loss (−)</div></th><th style={R} title="Drawings × progress − poured up to the cut-off: > 0 gain, < 0 loss">vs drawings<div style={{fontSize:9,fontWeight:400}}>gain (+) / loss (−)</div></th></>}<th/></tr></thead>
-      <tbody>{list.map(function(f){
+      <tbody>{(function(){
+      // A total row (sub-total of a category, or the grand total): figures of the WBS given, each once.
+      function totRow(key,label,fl,cls,onClick){
+        var tot=conTotals(fl),totDwg=0,nDwg=0;
+        fl.forEach(function(f){var d=dwgOf(f.wbs);if(d>CON_EPS){nDwg++;totDwg+=d;}});
+        var cutTot=lc?conCutoffTotals(fl.map(function(f){return cutRows[f.wbs.id];}).filter(Boolean)):null;
+        return <tr key={key} className={cls} onClick={onClick} style={cls?undefined:{fontWeight:700,background:"#f7f6f2"}}><td colSpan={4}>{label}</td>
+        <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{nDwg?conFmt(totDwg):"—"}{nDwg>0&&nDwg<fl.length&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>{nDwg} WBS</div>}</td>
+        {(function(){if(!nDwg)return <td style={R}>—</td>;var g=tot.theo-totDwg,p=tot.theo>CON_EPS?g/tot.theo*100:null;
+          return <td style={Object.assign({color:conLossCol(g)},R)} title="Budget total − Drawings total">{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;})()}
+        <td style={R}>{conFmt(tot.real)}</td>
+        {lc&&<><td style={R}>{cutTot.nPct} WBS</td><td style={R}>{conFmt(cutTot.realAll)}</td><td style={R}>{conFmt(cutTot.earned)}</td><td style={Object.assign({color:conLossCol(cutTot.variance)},R)}>{cutTot.nPct?(cutTot.variance>0?"+":"")+conFmt(cutTot.variance):"—"}</td>
+          <td style={Object.assign({color:cutTot.nDwg?conLossCol(cutTot.varDwg):undefined},R)}>{cutTot.nDwg?(cutTot.varDwg>0?"+":"")+conFmt(cutTot.varDwg):"—"}</td></>}<td/></tr>;
+      }
+      function rowsOf(f){
         var w=f.wbs;
         var rows=[<tr key={w.id} onClick={function(){setEditing(w);}} style={{cursor:"pointer"}}>
           <td title="Open the WBS (code, name, zone, schedule links)"><b>{w.code}</b> {w.name}{w.splitFrom&&<div style={{fontSize:10,color:"#888"}}>split from {w.splitFrom}</div>}{w.theoNote&&<div style={{fontSize:11,color:"var(--gold-ink)",fontStyle:"italic"}} title={conTheoNoteTip(w)}>💬 {w.theoNote}</div>}</td>
@@ -1161,14 +1254,17 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
             {lc&&cutCells(conCutoffRows(lc,[w],pours,[t.id])[0])}<td/></tr>);
         });
         return rows;
-      })}
-      <tr style={{fontWeight:700,background:"#f7f6f2"}}><td colSpan={4}>Total — {list.length} WBS</td>
-        <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{nDwg?conFmt(totDwg):"—"}{nDwg>0&&nDwg<list.length&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>{nDwg} WBS</div>}</td>
-        {(function(){if(!nDwg)return <td style={R}>—</td>;var g=tot.theo-totDwg,p=tot.theo>CON_EPS?g/tot.theo*100:null;
-          return <td style={Object.assign({color:conLossCol(g)},R)} title="Budget total − Drawings total">{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;})()}
-        <td style={R}>{conFmt(tot.real)}</td>
-        {lc&&<><td style={R}>{cutTot.nPct} WBS</td><td style={R}>{conFmt(cutTot.realAll)}</td><td style={R}>{conFmt(cutTot.earned)}</td><td style={Object.assign({color:conLossCol(cutTot.variance)},R)}>{cutTot.nPct?(cutTot.variance>0?"+":"")+conFmt(cutTot.variance):"—"}</td>
-          <td style={Object.assign({color:cutTot.nDwg?conLossCol(cutTot.varDwg):undefined},R)}>{cutTot.nDwg?(cutTot.varDwg>0?"+":"")+conFmt(cutTot.varDwg):"—"}</td></>}<td/></tr>
+      }
+      var out=[];
+      var gs=cg.on?conGroupByCat(list,function(f){return f.wbs;}):null;
+      if(!gs)list.forEach(function(f){out=out.concat(rowsOf(f));});
+      else gs.forEach(function(g){
+        var fo=!!cg.fold[g.cat];
+        out.push(totRow("cat:"+g.cat,<ConCatLabel folded={fo} label={g.label} n={g.items.length}/>,g.items,"con-cat",function(){cg.toggle(g.cat);}));
+        if(!fo)g.items.forEach(function(f){out=out.concat(rowsOf(f));});
+      });
+      out.push(totRow("total",<>Total — {list.length} WBS{gs&&<span style={{fontSize:10,fontWeight:400}}> · each WBS once, not the sum of the sub-totals</span>}</>,list));
+      return out;})()}
       </tbody></table></div>}
     <div style={{fontSize:11,color:"#888",marginTop:8}}>Poured = the pours, a volume, not a progress. {lc?"The loss / gain comes from the cut-off of "+fmtDate(lc.date)+": vs budget = budget × the progress % typed there − poured, vs drawings = drawings × the same % − poured (gain +, loss −); a WBS without a % (or without drawings) shows —.":"The loss / gain of concrete appears once a cut-off has progress % typed by hand."} {edit?"Planned dates, budget and drawings m³ are edited in the table (a formula such as =12,5*3 works) (✕ clears them; with several types use “Detail per type”). Click the WBS name for the other fields.":"Click a WBS to see its details."}</div>
     {editing&&<ConWbsEditor w={editing} types={types} wbs={wbs} pours={pours} realIx={realIx} zones={zones} edit={edit} schedIx={schedIx} schedules={schedules}
@@ -1251,12 +1347,15 @@ function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onS
   return <InvModal title={"🧱 "+(wbs.some(function(x){return x.id===w.id;})?"WBS "+conWbsLabel(w):"New WBS")} width={760} onClose={onClose} footer={<>
       {onDelete&&<button className="btn" style={{color:"#b3302a",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
-      {!ro&&<button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onSave(conCleanDwg(Object.assign({},d,{code:String(d.code).trim(),theo:conCleanTheo(d.theo),updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""})));}}>Save</button>}
+      {!ro&&<button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onSave(conCleanDwg(Object.assign({},d,{code:String(d.code).trim(),cat:String(d.cat||"").trim()||undefined,theo:conCleanTheo(d.theo),updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""})));}}>Save</button>}
     </>}>
     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
       <div className="fg" style={{flex:"0 0 140px"}}><label>Code</label><input type="text" disabled={ro} value={d.code} onChange={function(e){set({code:e.target.value});}}/></div>
       <div className="fg" style={{flex:"1 1 260px"}}><label>Description</label><input type="text" disabled={ro} value={d.name} onChange={function(e){set({name:e.target.value});}}/></div>
       <div className="fg" style={{flex:"0 0 140px"}}><label>Zone</label><ConZoneSelect zones={zones} value={d.zone} disabled={ro} onChange={function(v){set({zone:v});}}/></div>
+      <div className="fg" style={{flex:"0 0 170px"}}><label title="One category per WBS: groups the WBS with sub-totals (▤ By category)">Category</label>
+        <input type="text" disabled={ro} list="con-cat-sheet" value={d.cat||""} placeholder="—" onChange={function(e){set({cat:e.target.value});}}/>
+        <datalist id="con-cat-sheet">{conCatNames(wbs).map(function(c){return <option key={c} value={c}/>;})}</datalist></div>
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
       {sd?<div className="fg"><label>Planned (from the schedule)</label><div style={{padding:"7px 0",fontSize:13,fontWeight:600}}>{fmtDate(sd.start)} → {fmtDate(sd.finish)}</div></div>:<>
@@ -1739,7 +1838,7 @@ function conMakeSnap(c,wbs,pours,types){
   Object.keys(ra).forEach(function(k){var m={};Object.keys(ra[k]).forEach(function(t){var v=Math.round(ra[k][t]*1e6)/1e6;if(v)m[t]=v;});if(Object.keys(m).length)real[k]=m;});
   var tt={};(types||[]).forEach(function(t){var b=conManualTotal(t,"theo"),d=conManualTotal(t,"dwg");if(b!==null||d!==null)tt[t.id]={theo:b,dwg:d};});
   return{at:new Date().toISOString(),by:window._currentUser?window._currentUser.name:"",
-    wbs:(wbs||[]).map(function(w){var o={id:w.id,code:w.code||"",name:w.name||"",zone:w.zone||"",theo:Object.assign({},w.theo||{}),done:!!w.done};if(w.dwg)o.dwg=Object.assign({},w.dwg);return o;}),
+    wbs:(wbs||[]).map(function(w){var o={id:w.id,code:w.code||"",name:w.name||"",zone:w.zone||"",theo:Object.assign({},w.theo||{}),done:!!w.done};if(conCatOf(w))o.cat=conCatOf(w);if(w.dwg)o.dwg=Object.assign({},w.dwg);return o;}),
     real:real,lines:JSON.parse(JSON.stringify(c.lines||[])),typeTotals:tt};
 }
 // The snapshot view of a closed cut-off for the WBS list a caller passes (null = live figures).
@@ -2058,6 +2157,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
   const [zone,setZone]=useState("");
   const [q,setQ]=useState("");
   const [creating,setCreating]=useState(false);
+  var cg=useConByCat();
   var cur=cutoffs.find(function(c){return c.id===curId;})||sorted[0]||null;
   var isAdmin=isAppAdmin(window._currentUser&&window._currentUser.name);
   if(!types.length||!wbs.length)return <div className="empty"><div className="empty-ico">💰</div><div className="empty-txt">Create the types and the WBS first.</div></div>;
@@ -2078,6 +2178,11 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
     return !ql||[w.code,w.name].join(" ").toLowerCase().indexOf(ql)>=0;
   }),pours,typeIds);
   var tot=conCutoffTotals(rows);
+  // Categories from the live WBS (a closed cut-off's snapshot may predate them), else the snapshot's.
+  var catById={};wbs.forEach(function(w){catById[w.id]=conCatOf(w);});
+  function catOfRow(w){return catById[w.id]!==undefined?catById[w.id]:conCatOf(w);}
+  var nCats=conCatNames(wbs).length;
+  var catGroups=cg.on?conGroupByCat(rows,function(r){return r.wbs;},catOfRow):null;
   var gpWbs=wbs.filter(function(w){if(zone&&w.zone!==zone)return false;return !ql||[w.code,w.name].join(" ").toLowerCase().indexOf(ql)>=0;});
   var gp=conGroupProgress(cur,types,gpWbs,(zone||ql)?pours.filter(function(p){return gpWbs.some(function(w){return w.id===p.wbsId;});}):pours,!zone&&!ql);
   var prev=conPrevCutoff(cutoffs,cur);
@@ -2190,6 +2295,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       <ConTypeFilter types={types} value={typeId} onChange={setTypeId}/>
       <ConZoneSelect zones={[...new Set((zones||[]).concat(wbsZones))]} value={zone} onChange={setZone} all/>
       <input type="text" placeholder="Search WBS…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:150}}/>
+      <ConCatToggle g={cg} n={nCats}/>
       <div style={{flex:1}}/>
       <span style={{display:"inline-flex",alignItems:"center",gap:4}} title="Basis of the RTS theo.: the budget (budget − earned) or the drawings (drawings − drawings × progress %). Kept with the cut-off, for everyone.">
         <span style={{fontSize:11,color:"#888",fontWeight:600}}>RTS on</span>
@@ -2201,7 +2307,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       {!ro&&basis==="both"&&<><button className="btn btn-sm" style={{background:CON_BG_BUD}} onClick={function(){fillRts("budget");}} title="RTS real of every WBS with a % = RTS theo. on the budget">⇩ Fill RTS real from budget</button>
         <button className="btn btn-sm" style={{background:CON_BG_DWG}} onClick={function(){fillRts("dwg");}} title="RTS real of every WBS with a % = RTS theo. on the drawings">⇩ Fill RTS real from drawings</button></>}
       <button className="btn btn-sm" onClick={function(){conCutoffXlsx(cur,types,wbs,pours,gp);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){conCutoffReport(cur,prev,rows,tot,prevTot,label,gp);}}>Report</button>
+      <button className="btn btn-sm" onClick={function(){conCutoffReport(cur,prev,rows,tot,prevTot,label,gp,catGroups);}}>Report</button>
       {edit&&!cur.closed&&<button className="btn btn-sm" onClick={close} title="Freeze the progress and the remain to be spent of this cut-off">🔒 Close</button>}
       {cur.closed&&isAdmin&&!window._ppReadOnly&&<button className="btn btn-sm" onClick={reopen}>Reopen</button>}
       {edit&&invCanDelete()&&<button className="btn btn-sm" style={{color:"#b3302a"}} onClick={del}>Delete</button>}
@@ -2224,7 +2330,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           <InvBig bg={tB} label="Budget (theoretical)" value={tot.theoAll} unit={CON_UNIT} sub={rows.length+" WBS · "+label}/>
           <InvBig bg={tB} label="Budget unlocked (earned)" value={tot.earned} unit={CON_UNIT} sub={(tot.pct===null?"":tot.pct.toFixed(1)+"% of the budget")+(prevTot?" · +"+conFmt(tot.earned-prevTot.earned)+" since "+fmtDate(prev.date):"")}/>
           <InvBig bg={tB} label={"Concrete "+(tot.nPct?conLossWord(tot.variance):"loss / gain")+" vs budget"} value={tot.nPct?Math.abs(tot.variance):null} unit={CON_UNIT} colour={tot.nPct?conLossCol(tot.variance):null}
-            sub={tot.nPct?"poured "+conFmt(tot.real)+" − earned "+conFmt(tot.earned)+" ("+conPct(tot.varPct)+") · "+tot.nPct+" WBS with %":"type the progress % of the WBS"}/>
+            sub={tot.nPct?"earned "+conFmt(tot.earned)+" − poured "+conFmt(tot.real)+" ("+conPct(tot.varPct)+") · "+tot.nPct+" WBS with %":"type the progress % of the WBS"}/>
           <InvBig bg={tB} label="RTS theo. on the budget" value={tot.nPct?tot.rtsTheoB:null} unit={CON_UNIT} sub="budget − earned"/>
           <InvBig bg={tB} label="Budget − EOS" value={tot.nEac?tot.eacVar:null} unit={CON_UNIT} colour={conLossCol(tot.eacVar)} sub={tot.nEac?conPct(tot.eacPct)+(prevTot&&prevTot.nEac?" · was "+(prevTot.eacVar>0?"+":"")+conFmt(prevTot.eacVar):""):"needs the RTS real"}/>
         </>)}
@@ -2232,7 +2338,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           <InvBig bg={tD} label="Drawings" value={tot.dwgAll>CON_EPS?tot.dwgAll:null} unit={CON_UNIT} sub={tot.dwgAll>CON_EPS?"quantities measured on the drawings":"type them in Overview › Theoretical per WBS › Drawings"}/>
           <InvBig bg={tD} label="Drawings unlocked" value={tot.nDwg?tot.earnedDwg:null} unit={CON_UNIT} sub={tot.nDwg?tot.nDwg+" WBS with % and drawings":""}/>
           <InvBig bg={tD} label={"Concrete "+(tot.nDwg?conLossWord(tot.varDwg):"loss / gain")+" vs drawings"} value={tot.nDwg?Math.abs(tot.varDwg):null} unit={CON_UNIT} colour={tot.nDwg?conLossCol(tot.varDwg):null}
-            sub={tot.nDwg?"poured "+conFmt(tot.realDwg)+" − drawings × % "+conFmt(tot.earnedDwg)+" ("+conPct(tot.varDwgPct)+")":""}/>
+            sub={tot.nDwg?"drawings × % "+conFmt(tot.earnedDwg)+" − poured "+conFmt(tot.realDwg)+" ("+conPct(tot.varDwgPct)+")":""}/>
           <InvBig bg={tD} label="RTS theo. on the drawings" value={tot.nPct?tot.rtsTheoD:null} unit={CON_UNIT} sub="drawings − drawings × % (budget − earned on a WBS without drawings)"/>
           <InvBig bg={tD} label="Drawings − EOS" value={tot.eacVarDwg} unit={CON_UNIT} colour={conLossCol(tot.eacVarDwg)} sub={tot.eacVarDwg!==null?conPct(tot.eacDwgPct)+" · WBS with drawings and RTS real":"needs drawings and the RTS real"}/>
         </>)}
@@ -2253,6 +2359,17 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       var dash=<span style={{color:"#bbb"}}>—</span>;
       var sg=function(v){return (v>0?"+":"")+conFmt(v);};
       var nB=7,nD=6;
+      // Sub-total cells (also the grand total): t = conCutoffTotals of the WBS concerned.
+      function totCells(tot){return <>
+          <td style={R}>{tot.pct===null?"—":tot.pct.toFixed(1)+"%"}</td><td/><td style={R}>{conFmt(tot.realAll)}</td>
+          {showB&&<><td className="cb" style={B}>{conFmt(tot.theoAll)}</td><td className="cb" style={B}>{conFmt(tot.earned)}</td><td className="cb" style={B}>{tot.theoAll>CON_EPS?(tot.realAll/tot.theoAll*100).toFixed(0)+"%":"—"}</td>
+            <td className="cb" style={bS({color:conLossCol(tot.variance)})}>{tot.nPct?sg(tot.variance):"—"}</td><td className="cb" style={bS({color:conLossCol(tot.variance)})}>{tot.nPct?conPct(tot.varPct):""}</td>
+            <td className="cb" style={B}>{conFmt(tot.rtsTheoB)}</td><td className="cb" style={bS({color:conLossCol(tot.eacVar)})}>{tot.eacVar!==null?<>{sg(tot.eacVar)} <span style={{fontWeight:400,fontSize:11}}>{conPct(tot.eacPct)}</span></>:"—"}</td></>}
+          {showD&&<><td className="cd" style={D}>{tot.dwgAll>CON_EPS?conFmt(tot.dwgAll):"—"}</td><td className="cd" style={D}>{tot.nDwg?conFmt(tot.earnedDwg):"—"}</td>
+            <td className="cd" style={dS({color:conLossCol(tot.varDwg)})}>{tot.nDwg?sg(tot.varDwg):"—"}</td><td className="cd" style={dS({color:conLossCol(tot.varDwg)})}>{tot.nDwg?conPct(tot.varDwgPct):""}</td>
+            <td className="cd" style={D}>{conFmt(tot.rtsTheoD)}</td><td className="cd" style={dS({color:conLossCol(tot.eacVarDwg)})}>{tot.eacVarDwg!==null?<>{sg(tot.eacVarDwg)} <span style={{fontWeight:400,fontSize:11}}>{conPct(tot.eacDwgPct)}</span></>:"—"}</td></>}
+          <td style={R}>{conFmt(tot.rtsReal)}</td><td style={R}>{tot.eac===null?"—":conFmt(tot.eac)}</td><td/>
+      </>;}
       return <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}><table className="tbl con-cut" style={{overflow:"visible",border:"none"}}>
       <thead>
         <tr>
@@ -2273,7 +2390,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
         <th style={R} title="Remain to be spent, real: typed by hand. ⇩ Fill RTS real copies the RTS theo. into every cell.">RTS real</th>
         <th style={R} title="Poured + RTS real">EOS</th>
         <th style={{minWidth:200}} title="Why this WBS shows a loss, a gain, an overrun… Shared with everyone, printed and exported. Can be written after the cut-off is closed.">EXPLANATION</th></tr></thead>
-      <tbody>{rows.map(function(r){
+      <tbody>{(function(){function rowEl(r){
         var w=r.wbs;
         var mismatch=r.hasPct&&r.realPct!==null&&Math.abs(r.realPct-r.pct)>25;
         return <tr key={w.id}>
@@ -2308,16 +2425,16 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           <td style={{verticalAlign:"top"}}><ConExplCell key={cur.id+w.id+"x"} value={(conCutoffLine(cur,w.id)||{}).note||""} ro={!edit}
             onCommit={function(v){if(blockIfReadOnly())return;setLine(w.id,{note:v||undefined});}}/></td>
         </tr>;
-      })}
-      </tbody><tfoot><tr style={{fontWeight:700}}><td>Total — {rows.length} WBS ({tot.nPct} with %{tot.nDwg?", "+tot.nDwg+" with drawings":""})</td>
-        <td style={R}>{tot.pct===null?"—":tot.pct.toFixed(1)+"%"}</td><td/><td style={R}>{conFmt(tot.realAll)}</td>
-        {showB&&<><td className="cb" style={B}>{conFmt(tot.theoAll)}</td><td className="cb" style={B}>{conFmt(tot.earned)}</td><td className="cb" style={B}>{tot.theoAll>CON_EPS?(tot.realAll/tot.theoAll*100).toFixed(0)+"%":"—"}</td>
-          <td className="cb" style={bS({color:conLossCol(tot.variance)})}>{tot.nPct?sg(tot.variance):"—"}</td><td className="cb" style={bS({color:conLossCol(tot.variance)})}>{tot.nPct?conPct(tot.varPct):""}</td>
-          <td className="cb" style={B}>{conFmt(tot.rtsTheoB)}</td><td className="cb" style={bS({color:conLossCol(tot.eacVar)})}>{tot.eacVar!==null?<>{sg(tot.eacVar)} <span style={{fontWeight:400,fontSize:11}}>{conPct(tot.eacPct)}</span></>:"—"}</td></>}
-        {showD&&<><td className="cd" style={D}>{tot.dwgAll>CON_EPS?conFmt(tot.dwgAll):"—"}</td><td className="cd" style={D}>{tot.nDwg?conFmt(tot.earnedDwg):"—"}</td>
-          <td className="cd" style={dS({color:conLossCol(tot.varDwg)})}>{tot.nDwg?sg(tot.varDwg):"—"}</td><td className="cd" style={dS({color:conLossCol(tot.varDwg)})}>{tot.nDwg?conPct(tot.varDwgPct):""}</td>
-          <td className="cd" style={D}>{conFmt(tot.rtsTheoD)}</td><td className="cd" style={dS({color:conLossCol(tot.eacVarDwg)})}>{tot.eacVarDwg!==null?<>{sg(tot.eacVarDwg)} <span style={{fontWeight:400,fontSize:11}}>{conPct(tot.eacDwgPct)}</span></>:"—"}</td></>}
-        <td style={R}>{conFmt(tot.rtsReal)}</td><td style={R}>{tot.eac===null?"—":conFmt(tot.eac)}</td><td/></tr>
+      }
+      var body=!catGroups?rows.map(rowEl):[];
+      if(catGroups)catGroups.forEach(function(g){
+        var t=conCutoffTotals(g.items),f=!!cg.fold[g.cat];
+        body.push(<tr key={"cat:"+g.cat} className="con-cat" onClick={function(){cg.toggle(g.cat);}}><td><ConCatLabel folded={f} label={g.label} n={g.items.length}/></td>{totCells(t)}</tr>);
+        if(!f)g.items.forEach(function(r){body.push(rowEl(r));});
+      });
+      return body;})()}
+      </tbody><tfoot><tr style={{fontWeight:700}}><td>Total — {rows.length} WBS ({tot.nPct} with %{tot.nDwg?", "+tot.nDwg+" with drawings":""}){catGroups&&<div style={{fontSize:10,fontWeight:400}}>each WBS once · {catGroups.length} categor{catGroups.length>1?"ies":"y"}</div>}</td>
+        {totCells(tot)}</tr>
       </tfoot></table></div>;
     })()}
     <div style={{fontSize:11,color:"#888",marginTop:8}}>
@@ -2352,14 +2469,23 @@ function ConCutoffNew({cutoffs,wbs,onCreate,onClose}){
     {err&&<div style={{fontSize:12,color:"#b3302a",marginTop:8}}>{err}</div>}
   </InvModal>;
 }
-function conCutoffReport(c,prev,rows,tot,prevTot,label,gp){
+function conCutoffReport(c,prev,rows,tot,prevTot,label,gp,cats){
   var E=esc;
   var td=function(v,b,col){return'<td style="text-align:right;'+(b?"font-weight:700;":"")+(col?"color:"+col+";":"")+'">'+v+"</td>";};
   var sg=function(v){return(v>0?"+":"")+conFmt(v);};
   // Same grouping as the screen: common, vs budget (blue), vs drawings (salmon), RTS real + EOS.
   var bs=conRtsBasis(c),shB=bs!=="dwg",shD=bs!=="budget";
   var tdc=function(bg,v,b,col){return'<td style="text-align:right;background:'+bg+';'+(b?"font-weight:700;":"")+(col?"color:"+col+";":"")+'">'+v+"</td>";};
-  var body=rows.map(function(r,i){
+  // cats (▤ By category on screen): one sub-total row per category, then its WBS (each WBS once).
+  var sub=function(g){
+    var t=conCutoffTotals(g.items),C="#e3e9f2",cb_="#c9d8ef",cd_="#f1c9b8";
+    var tc=function(bg,v,col){return tdc(bg,v,true,col);};
+    return"<tr style=\"font-weight:700\"><td style=\"background:"+C+";border-top:2px solid #9fb0c8\">"+E(g.label)+" <span style=\"font-weight:400;font-size:9px\">· "+g.items.length+" WBS</span></td>"+tc(C,t.pct===null?"—":t.pct.toFixed(1)+"%")+tc(C,conFmt(t.realAll))
+      +(shB?tc(cb_,conFmt(t.theoAll))+tc(cb_,conFmt(t.earned))+tc(cb_,t.nPct?sg(t.variance):"—",t.nPct?conLossCol(t.variance):null)+tc(cb_,t.nPct?conPct(t.varPct):"")+tc(cb_,conFmt(t.rtsTheoB))+tc(cb_,t.eacVar!==null?sg(t.eacVar):"—",conLossCol(t.eacVar)):"")
+      +(shD?tc(cd_,t.dwgAll>CON_EPS?conFmt(t.dwgAll):"—")+tc(cd_,t.nDwg?conFmt(t.earnedDwg):"—")+tc(cd_,t.nDwg?sg(t.varDwg):"—",t.nDwg?conLossCol(t.varDwg):null)+tc(cd_,t.nDwg?conPct(t.varDwgPct):"")+tc(cd_,conFmt(t.rtsTheoD))+tc(cd_,t.eacVarDwg!==null?sg(t.eacVarDwg):"—",conLossCol(t.eacVarDwg)):"")
+      +tc(C,conFmt(t.rtsReal))+tc(C,t.eac===null?"—":conFmt(t.eac))+'<td style="background:'+C+'"></td></tr>';
+  };
+  var rowHtml=function(r,i){
     // zebra rows: one tone darker every other line, in each block, to read a line across
     var ev=i%2===1,cN=ev?"#f3f1ec":"#fff";
     var tB=function(v,b,col){return tdc(ev?"#dae6f7":"#ecf2fc",v,b,col);},tD=function(v,b,col){return tdc(ev?"#f8dccf":"#fdeee7",v,b,col);};
@@ -2369,7 +2495,8 @@ function conCutoffReport(c,prev,rows,tot,prevTot,label,gp){
       +(shB?tB(conFmt(r.theo))+tB(h?conFmt(r.earned):"—")+tB(h?sg(r.variance):"—",true,h?conLossCol(r.variance):null)+tB(h?conPct(r.varPct):"")+tB(h?conFmt(r.rtsTheoB):"—")+tB(r.eacVar!==null?sg(r.eacVar):"—",true,conLossCol(r.eacVar)):"")
       +(shD?tD(r.hasDwg?conFmt(r.dwg):"—")+tD(h&&r.hasDwg?conFmt(r.earnedDwg):"—")+tD(vd?sg(r.varDwg):"—",true,vd?conLossCol(r.varDwg):null)+tD(vd?conPct(r.varDwgPct):"")+tD(h?conFmt(r.rtsTheoD):"—")+tD(r.eacVarDwg!==null?sg(r.eacVarDwg):"—",true,conLossCol(r.eacVarDwg)):"")
       +td(r.rtsMissing?"not typed":r.adjusted?conFmt(r.rtsReal):"—")+td(conFmt(r.eac),true)+'<td style="background:'+cN+';font-size:9px;white-space:pre-wrap;max-width:200px">'+E((conCutoffLine(c,r.wbs.id)||{}).note||"")+"</td></tr>";
-  }).join("");
+  };
+  var body=cats?cats.map(function(g){return sub(g)+g.items.map(rowHtml).join("");}).join(""):rows.map(rowHtml).join("");
   var thB=function(x){return'<th style="background:#d6e3f6">'+x+"</th>";},thD=function(x){return'<th style="background:#f9d6c8">'+x+"</th>";};
   var head="<tr><th colspan=\"3\"></th>"+(shB?'<th colspan="6" style="background:#d6e3f6">Analysis vs budget</th>':"")+(shD?'<th colspan="6" style="background:#f9d6c8">Analysis vs drawings</th>':"")+'<th colspan="2">Remain &amp; forecast</th><th></th></tr>'
     +"<tr><th>WBS</th><th>Progress</th><th>Poured</th>"+(shB?["Budget","Earned","vs budget","%","RTS theo.","Budget − EOS"].map(thB).join(""):"")+(shD?["Drawings","Drawings × %","vs drawings","%","RTS theo.","Drawings − EOS"].map(thD).join(""):"")+"<th>RTS real</th><th>EOS</th><th>Explanation</th></tr>";
@@ -2399,15 +2526,26 @@ function conCutoffXlsx(c,types,wbs,pours,gp){
   var rows=conCutoffRows(c,wbs,pours,allIds);
   var h=function(r,v){return r.hasPct?r2(v):"";};
   var n2=function(v){return v===null||v===undefined?"":r2(v);};
-  var sum=rows.map(function(r){return{"Code":r.wbs.code,"Description":r.wbs.name,"Zone":r.wbs.zone,"Budget":r2(r.theo),"Drawings":r.hasDwg?r2(r.dwg):"","Budget − drawings":r.hasDwg?r2(r.theo-r.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,r.earned),"Poured":r2(r.real),
+  var catById={};(wbs||[]).forEach(function(w){catById[w.id]=conCatOf(w);});
+  var catOf=function(w){return catById[w.id]!==undefined?catById[w.id]:conCatOf(w);};
+  var sum=rows.map(function(r){return{"Code":r.wbs.code,"Description":r.wbs.name,"Zone":r.wbs.zone,"Category":catOf(r.wbs),"Budget":r2(r.theo),"Drawings":r.hasDwg?r2(r.dwg):"","Budget − drawings":r.hasDwg?r2(r.theo-r.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,r.earned),"Poured":r2(r.real),
     "Gain(+)/loss(-) vs budget":h(r,r.variance),"% vs budget":r.varPct===null?"":r2(r.varPct),"Drawings × %":r.varDwg!==null?r2(r.earnedDwg):"","Gain(+)/loss(-) vs drawings":n2(r.varDwg),"% vs drawings":n2(r.varDwgPct),
     "RTS theo. (budget)":h(r,r.rtsTheoB),"RTS theo. (drawings)":h(r,r.rtsTheoD),"RTS real":r.adjusted?r2(r.rtsReal):"","EOS":r2(r.eac),"Budget − EOS":r2(r.eacVar),"Drawings − EOS":n2(r.eacVarDwg),"Explanation":(conCutoffLine(c,r.wbs.id)||{}).note||"","Budget comment":r.wbs.theoNote||""};});
   var det=[];
   rows.forEach(function(r){st.forEach(function(t){var b=r.byType[t.id];if(!b||(b.theo<=CON_EPS&&b.real<=CON_EPS&&b.dwg<=CON_EPS))return;
-    det.push({"Code":r.wbs.code,"Type":t.name,"Budget":r2(b.theo),"Drawings":b.dwg>CON_EPS?r2(b.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,b.earned),"Poured":r2(b.real),"Gain(+)/loss(-) vs budget":h(r,b.earned-b.real),"Gain(+)/loss(-) vs drawings":r.hasPct&&b.dwg>CON_EPS?r2(b.earnedDwg-b.real):"","RTS theo. (budget)":h(r,b.rtsTheoB),"RTS theo. (drawings)":h(r,b.rtsTheoD),"RTS real":b.adjusted?r2(b.rtsReal):"","EOS":r2(b.real+(b.rtsReal||0)),"Budget − EOS":r2(b.theo-b.real-(b.rtsReal||0))});});});
+    det.push({"Code":r.wbs.code,"Category":catOf(r.wbs),"Type":t.name,"Budget":r2(b.theo),"Drawings":b.dwg>CON_EPS?r2(b.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,b.earned),"Poured":r2(b.real),"Gain(+)/loss(-) vs budget":h(r,b.earned-b.real),"Gain(+)/loss(-) vs drawings":r.hasPct&&b.dwg>CON_EPS?r2(b.earnedDwg-b.real):"","RTS theo. (budget)":h(r,b.rtsTheoB),"RTS theo. (drawings)":h(r,b.rtsTheoD),"RTS real":b.adjusted?r2(b.rtsReal):"","EOS":r2(b.real+(b.rtsReal||0)),"Budget − EOS":r2(b.theo-b.real-(b.rtsReal||0))});});});
   var wb=window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(sum),"Per WBS");
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(det),"Per WBS and type");
+  // Per category: sub-totals (each WBS in one category only); the Total line = all the WBS once.
+  if(rows.some(function(r){return catOf(r.wbs);})){
+    var catRow=function(label,n,t){return{"Category":label,"WBS":n,"With %":t.nPct,"Progress %":t.pct===null?"":r2(t.pct),"Budget":r2(t.theoAll),"Budget unlocked":r2(t.earned),"Poured":r2(t.realAll),
+      "Gain(+)/loss(-) vs budget":t.nPct?r2(t.variance):"","Drawings":t.dwgAll>CON_EPS?r2(t.dwgAll):"","Drawings × %":t.nDwg?r2(t.earnedDwg):"","Gain(+)/loss(-) vs drawings":t.nDwg?r2(t.varDwg):"",
+      "RTS theo. (budget)":r2(t.rtsTheoB||0),"RTS theo. (drawings)":r2(t.rtsTheoD||0),"RTS real":r2(t.rtsReal),"EOS":t.eac===null?"":r2(t.eac),"Budget − EOS":n2(t.eacVar),"Drawings − EOS":n2(t.eacVarDwg)};};
+    var cs=conGroupByCat(rows,function(r){return r.wbs;},catOf).map(function(g){return catRow(g.label,g.items.length,conCutoffTotals(g.items));});
+    cs.push(catRow("Total (each WBS once)",rows.length,conCutoffTotals(rows)));
+    window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(cs),"Per category");
+  }
   if(gp&&gp.groups.length){var n2=function(v){return v===null||v===undefined?"":r2(v);};
     window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(gp.groups.concat(gp.groups.length>1?[gp.total]:[]).map(function(g){return{"Group":g.label,"Types":(g.names||[]).join(", "),"Measured on":g.basis||"","Measured qty":n2(g.basisQty),"Done":n2(g.basisEarned),"Progress %":g.pct===null?"":r2(g.pct*100),"Items at 0%":g.nNoPct||"","Budget":r2(g.budget),"Budget typed by hand":g.budMan?"Y":"","Budget unlocked":n2(g.budgetEarned),"Poured":r2(g.poured),"Gain(+)/loss(-) vs budget":n2(g.variance),"% vs budget":n2(g.varPct),"Drawings":r2(g.dwg),"Gain(+)/loss(-) vs drawings":n2(g.varDwg),"RTS":n2(g.rts),"EOS":n2(g.eac),"Budget − EOS":n2(g.eacVar)};})),"Per group");}
   window.XLSX.writeFile(wb,"Concrete cut-off "+c.date+".xlsx");

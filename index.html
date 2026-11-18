@@ -282,6 +282,10 @@ table td,table th{font-variant-numeric:tabular-nums}
 .con-cut tfoot td{position:sticky;bottom:0;z-index:3;background:#ebe8df;border-top:2px solid #b9b2a2;font-weight:700}
 .con-cut tfoot td.cb{background:#cfdcf2}
 .con-cut tfoot td.cd{background:#f5cfbf}
+/* concrete: one sub-total row per WBS category (header of its group, click = fold / unfold) */
+tr.con-cat td,.con-cut tbody tr.con-cat td{background:#e3e9f2 !important;font-weight:700;border-top:2px solid #9fb0c8;cursor:pointer}
+.con-cut tbody tr.con-cat td.cb{background:#c9d8ef !important}
+.con-cut tbody tr.con-cat td.cd{background:#f1c9b8 !important}
 
 .tbl-tenders th+th,.tbl-tenders td+td{border-left:1px solid var(--rule-2)}
 .tbl-tenders .tcol-sep{border-left:2px solid #d9d2c3 !important}
