@@ -53,6 +53,11 @@ Propriétaire et administrateur de l'app : **HORN, Philippe** (`APP_ADMIN` dans 
   planning) : onglets de la section, outils (Weekly actions, Certification PDF, Improvement idea — plus de boutons flottants),
   utilisateur (pastille d'initiales + point de synchro) et synchro. Le numéro de build reste sous le logo du rail.
   Panneau Quick Add ouvert / fermé mémorisé (localStorage `pp_sidebar_open`).
+- **Retour arrière** : chaque changement de vue (`setView` dans `App`) est une étape de l'historique du navigateur
+  (`history.pushState({ppView})`, `popstate` → `setView(v, true)`) : le bouton Précédent du navigateur / de la souris revient
+  à la vue d'avant. En quittant la liste (ou une fiche) des Packages pour une autre vue (ex. Materials pour voir les MAR),
+  bandeau collant « ↩ Back to the Package list » dans la vue suivante (`noteBackNav` / `backNav` / `goBackNav`, défilement
+  restauré), retiré au changement de vue suivant ; même bandeau qu'après `openScheduleStart`.
 - **Ctrl+K / Cmd+K** (`NavPalette`, `navSearch`) : aller à n'importe quelle vue autorisée ou outil, recherche sans accents.
 - Ajouter une vue : l'entrée dans `NAV_VIEWS`, son id dans une section de `NAV_SECTIONS`, le rendu `view==="…"` dans `App`.
 
