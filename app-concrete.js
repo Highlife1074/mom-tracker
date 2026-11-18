@@ -69,7 +69,7 @@ function conCatNames(wbs){var s={};(wbs||[]).forEach(function(w){var c=conCatOf(
 function conGroupByCat(items,wbsOf,catOf){
   var m={},order=[],seen={};
   (items||[]).forEach(function(it){
-    var w=wbsOf(it),id=w&&w.id;
+    var w=wbsOf(it),id=(it&&it.key)||(w&&w.id);
     if(id){if(seen[id])return;seen[id]=1;}
     var c=catOf?catOf(w):conCatOf(w);
     if(!m[c]){m[c]=[];order.push(c);}
@@ -445,7 +445,7 @@ function ConTypeQtyInputs({types,map,onChange,ro,realMap}){
 // ---------------------------------------------------------------- main view
 function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveCutoffs,schedules,zones,canEdit,currentUser}){
   types=types||[];wbs=wbs||[];pours=pours||[];cutoffs=cutoffs||[];
-  conNoteLive(wbs);
+  conNoteLive(wbs);conNoteLean(types);
   var schedIx=conSchedIndex(schedules);
   var wbsEff=conEffectiveWbs(wbs,schedIx);
   const [tab,setTab]=useState(wbs.length?"overview":types.length?"wbs":"types");
@@ -604,7 +604,7 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
       <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
         <thead><tr><th>WBS</th><th style={R}>Budget</th><th style={R}>Progress</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Gain (+) / loss (−)</th><th style={R}>%</th></tr></thead>
         <tbody>{worst.map(function(r){
-          return <tr key={r.wbs.id}><td><b>{r.wbs.code}</b> {r.wbs.name}</td><td style={R}>{conFmt(r.theo)}</td><td style={R}>{r.pct.toFixed(0)}%</td><td style={R}>{conFmt(r.earned)}</td><td style={R}>{conFmt(r.real)}</td>
+          return <tr key={r.key}><td><b>{r.wbs.code}</b> {r.wbs.name}{(r.split||r.part==="lean")&&<span style={{fontSize:10.5,color:"#7a5a12"}}> · {conPartLabel(r)}</span>}</td><td style={R}>{conFmt(r.theo)}</td><td style={R}>{r.pct.toFixed(0)}%</td><td style={R}>{conFmt(r.earned)}</td><td style={R}>{conFmt(r.real)}</td>
             <td style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}</td><td style={Object.assign({color:conLossCol(r.variance)},R)}>{conPct(r.varPct)}</td></tr>;
         })}</tbody></table></div>
     </>}
@@ -848,15 +848,21 @@ function conMergeCutoffs(cutoffs,keepId,ids,wbsById,typeIds){
     var mine=(c.lines||[]).filter(function(l){return inSet[l.id];});
     if(!mine.length)return c;
     var byId={};mine.forEach(function(l){byId[l.id]=l;});
-    var num=0,den=0,all=true,anyPct=false;
-    ids.forEach(function(id){
-      var th=conSum((wbsById[id]||{}).theo,typeIds),l=byId[id];
-      if(l&&_invHas(l.pct)){anyPct=true;num+=th*conClampPct(l.pct);den+=th;}
-      else if(th>CON_EPS)all=false;
-    });
     var ln={id:keepId};
-    if(anyPct&&all)ln.pct=den>CON_EPS?Math.round(num/den*100)/100:conClampPct(mine.filter(function(l){return _invHas(l.pct);})[0].pct);
-    else if(anyPct)lost++;
+    // Each part (higher grades / lean concrete) merged on its own budget, with its own %.
+    var leanIx=conLeanIds(c),idsL=typeIds.filter(function(t){return leanIx[t];}),idsM=typeIds.filter(function(t){return !leanIx[t];});
+    [["main",idsM,"pct"],["lean",idsL,"pctLean"]].forEach(function(P){
+      var num=0,den=0,all=true,anyPct=false,first=null;
+      ids.forEach(function(id){
+        var w=wbsById[id]||{},th=conSum(w.theo,P[1]),l=byId[id];
+        var raw=l?conPartPct(c,l,P[0],conSum(w.theo,idsM)+conSum(w.dwg,idsM)<=CON_EPS):null;
+        if(raw!==null){anyPct=true;if(first===null)first=raw;num+=th*conClampPct(raw);den+=th;}
+        else if(th>CON_EPS)all=false;
+      });
+      if(anyPct&&all)ln[P[2]]=den>CON_EPS?Math.round(num/den*100)/100:conClampPct(first);
+      else if(anyPct)lost++;
+    });
+    ln.split=true;
     // RTS real: the sum of what was TYPED on the parts (an untyped part counts 0, as in the EOS),
     // kept even when the % cannot be merged — so the EOS of the merged WBS = Σ EOS of the parts.
     var rts={},adj=false;
@@ -868,6 +874,8 @@ function conMergeCutoffs(cutoffs,keepId,ids,wbsById,typeIds){
     if(adj)ln.rts=rts;
     var notes=mine.map(function(l){return String(l.note||"").trim();}).filter(Boolean);
     if(notes.length)ln.note=notes.join(" · ");
+    var notesL=mine.map(function(l){return String(l.noteLean||"").trim();}).filter(Boolean);
+    if(notesL.length)ln.noteLean=notesL.join(" · ");
     ln.updatedAt=new Date().toISOString();ln.updatedBy=window._currentUser?window._currentUser.name:"";
     var lines=(c.lines||[]).filter(function(l){return !inSet[l.id];}).concat([ln]);
     return Object.assign({},c,{lines:lines});
@@ -1121,12 +1129,16 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
   // The latest cut-off: progress typed by hand there, and the loss / gain it measures.
   var lc=conLatestCutoff(cutoffs);
   var cutRows={};
-  if(lc)conCutoffRows(lc,list.map(function(f){return f.wbs;}),pours,typeIds).forEach(function(r){cutRows[r.wbs.id]=r;});
-  var cutTot=lc?conCutoffTotals(Object.keys(cutRows).map(function(k){return cutRows[k];})):null;
+  // cells: one line per WBS (its parts added up); totals: on the PART lines (a part without % is not measured)
+  var cutParts={};
+  if(lc){var pr=conCutoffRows(lc,list.map(function(f){return f.wbs;}),pours,typeIds);
+    pr.forEach(function(r){(cutParts[r.wbs.id]=cutParts[r.wbs.id]||[]).push(r);});
+    conMergeParts(pr).forEach(function(r){cutRows[r.wbs.id]=r;});}
+  var cutTot=lc?conCutoffTotals([].concat.apply([],Object.keys(cutParts).map(function(k){return cutParts[k];}))):null;
   function cutCells(r){
     if(!lc)return null;
     if(!r||!r.hasPct)return [<td key="p" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="pc" style={R}>{r?conFmt(r.real):"—"}</td>,<td key="e" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="v" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="d" style={Object.assign({color:"#bbb"},R)}>—</td>];
-    return [<td key="p" style={R}>{r.pct.toFixed(0)}%</td>,<td key="pc" style={R}>{conFmt(r.real)}</td>,<td key="e" style={R}>{conFmt(r.earned)}</td>,
+    return [<td key="p" style={R} title={r.pctTxt?"Lean concrete and higher grades have their own %: "+r.pctTxt:undefined}>{r.pct.toFixed(0)}%{r.pctTxt&&<div style={{fontSize:9.5,color:"#888",whiteSpace:"nowrap"}}>{r.pctTxt}</div>}</td>,<td key="pc" style={R}>{conFmt(r.real)}</td>,<td key="e" style={R}>{conFmt(r.earned)}</td>,
       <td key="v" style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}{r.varPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varPct)}</div>}</td>,
       <td key="d" style={Object.assign({fontWeight:700,color:r.varDwg===null?"#bbb":conLossCol(r.varDwg)},R)} title="Drawings × progress % − poured">{r.varDwg===null?"—":<>{(r.varDwg>0?"+":"")+conFmt(r.varDwg)}{r.varDwgPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varDwgPct)}</div>}</>}</td>];
   }
@@ -1202,7 +1214,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
       function totRow(key,label,fl,cls,onClick){
         var tot=conTotals(fl),totDwg=0,nDwg=0;
         fl.forEach(function(f){var d=dwgOf(f.wbs);if(d>CON_EPS){nDwg++;totDwg+=d;}});
-        var cutTot=lc?conCutoffTotals(fl.map(function(f){return cutRows[f.wbs.id];}).filter(Boolean)):null;
+        var cutTot=lc?conCutoffTotals([].concat.apply([],fl.map(function(f){return cutParts[f.wbs.id]||[];}))):null;
         return <tr key={key} className={cls} onClick={onClick} style={cls?undefined:{fontWeight:700,background:"#f7f6f2"}}><td colSpan={4}>{label}</td>
         <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{nDwg?conFmt(totDwg):"—"}{nDwg>0&&nDwg<fl.length&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>{nDwg} WBS</div>}</td>
         {(function(){if(!nDwg)return <td style={R}>—</td>;var g=tot.theo-totDwg,p=tot.theo>CON_EPS?g/tot.theo*100:null;
@@ -1731,13 +1743,13 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal){
       if(!tt.nPct||(tt.theo<=CON_EPS&&tt.real<=CON_EPS))return"";
       return"<tr><td><b>"+E(t.name)+"</b></td>"+td(conFmt(tt.theo))+td(conFmt(tt.earned))+td(conFmt(tt.real))+td(sg(tt.variance),true,conLossCol(tt.variance))+td(conPct(tt.varPct))+td(conFmt(tt.rtsReal))+td(conFmt(tt.eac))+td(sg(tt.eacVar),true,conLossCol(tt.eacVar))+"</tr>";
     }).join("");
-    conCutoffRows(last.cutoff,list,pours,typeIds).forEach(function(r){cut[r.wbs.id]=r;});
+    conMergeParts(conCutoffRows(last.cutoff,list,pours,typeIds)).forEach(function(r){cut[r.wbs.id]=r;});
   }
   var wRows=figs.map(function(f){
     var st={done:"complete",progress:"in progress",todo:"not started"}[f.status],r=cut[f.wbs.id];
     return"<tr><td><b>"+E(f.wbs.code)+"</b> "+E(f.wbs.name)+(f.wbs.theoNote?"<div style=\"font-size:10px;color:#6b5a1e;font-style:italic\">💬 "+E(f.wbs.theoNote)+"</div>":"")+"</td><td>"+E(f.wbs.zone||"")+"</td><td>"+E(f.wbs.start||f.wbs.finish?fmtDate(f.wbs.start)+" → "+fmtDate(f.wbs.finish):"")+"</td><td>"+st+"</td>"
       +td(conFmt(f.theo))+td(conFmt(f.real))
-      +(last?(r&&r.hasPct?td(r.pct.toFixed(0)+"%")+td(conFmt(r.earned))+td(sg(r.variance),true,conLossCol(r.variance)):td("—")+td("—")+td("—")):"")+"</tr>";
+      +(last?(r&&r.hasPct?td(r.pct.toFixed(0)+"%"+(r.pctTxt?"<div style=\"font-size:8px;color:#888\">"+E(r.pctTxt)+"</div>":""))+td(conFmt(r.earned))+td(sg(r.variance),true,conLossCol(r.variance)):td("—")+td("—")+td("—")):"")+"</tr>";
   }).join("");
   var wIds={};list.forEach(function(w){wIds[w.id]=true;});
   var bs=conBySupplier(pours,wIds,typeIds);
@@ -1766,7 +1778,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
   var st=conSortTypes(types),allIds=types.map(function(t){return t.id;});
   var r2=function(v){return Math.round(v*100)/100;};
   var lc=conLatestCutoff(cutoffs),cut={};
-  if(lc)conCutoffRows(lc,list,pours,allIds).forEach(function(r){cut[r.wbs.id]=r;});
+  if(lc)conMergeParts(conCutoffRows(lc,list,pours,allIds)).forEach(function(r){cut[r.wbs.id]=r;});
   var rows=conSortWbs(list).map(function(w){
     var f=conWbsFigures(w,realIx,allIds);
     var o={"Code":w.code,"Description":w.name,"Zone":w.zone,"Start":w.start,"Finish":w.finish,"Complete":w.done?"Y":"","Split from":w.splitFrom||""};
@@ -1777,7 +1789,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
     o["Total theor."]=r2(f.theo);o["Total poured"]=r2(f.real);
     o["Budget comment"]=w.theoNote||"";
     if(lc){var r=cut[w.id];var k=" @"+lc.date;
-      o["Progress %"+k]=r&&r.hasPct?r.pct:"";o["Earned"+k]=r&&r.hasPct?r2(r.earned):"";o["Gain(+)/loss(-)"+k]=r&&r.hasPct?r2(r.variance):"";}
+      o["Progress %"+k]=r&&r.hasPct?r2(r.pct):"";o["Progress per part"+k]=r&&r.pctTxt||"";o["Earned"+k]=r&&r.hasPct?r2(r.earned):"";o["Gain(+)/loss(-)"+k]=r&&r.hasPct?r2(r.variance):"";}
     return o;
   });
   var inList={};list.forEach(function(w){inList[w.id]=w;});
@@ -1832,6 +1844,53 @@ var CON_BG_BUD="#e8f0fb",CON_BG_DWG="#fde9e1";
 // WBS afterwards changes nothing in a closed cut-off. Reopening drops the snapshot.
 // A cut-off closed before snapshots existed stays live until it is reopened and closed again.
 var _conLive={ids:{},n:0};
+// Lean concrete (C16/20 and below, conIsLean): at a cut-off every WBS is measured in TWO parts —
+// its lean concrete and its higher grades — each with its OWN progress % typed by hand
+// (line.pct = higher grades, line.pctLean = lean concrete, line.noteLean its explanation;
+// the RTS real is per type, so it already belongs to one part). _conLean is noted by ConcreteView.
+var _conLean={ids:{}};
+var CON_PARTS={lean:"Lean concrete",main:"Higher grades"};
+function conNoteLean(types){var ids={};(types||[]).forEach(function(t){if(conIsLean(t))ids[t.id]=1;});_conLean={ids:ids};}
+// The lean types of a cut-off: those frozen with a closed cut-off, else today's.
+function conLeanIds(c){var sn=c&&c.closed&&c.snap;if(sn&&sn.lean){var o={};sn.lean.forEach(function(id){o[id]=1;});return o;}return _conLean.ids;}
+// Progress % (raw, or null) of one part. A line typed before the two parts existed (no line.split)
+// keeps its single % for the lean too on a CLOSED cut-off (its figures do not move); a WBS with
+// lean concrete only keeps line.pct when no lean % is typed (it could only mean its lean).
+function conPartPct(c,ln,part,leanOnly){
+  ln=ln||{};
+  if(part!=="lean")return _invHas(ln.pct)?ln.pct:null;
+  if(_invHas(ln.pctLean))return ln.pctLean;
+  if(leanOnly||(!ln.split&&c&&c.closed))return _invHas(ln.pct)?ln.pct:null;
+  return null;
+}
+function conNWbs(rows){var o={};(rows||[]).forEach(function(r){o[r.wbs.id]=1;});return Object.keys(o).length;}
+function conPartNote(ln,part){ln=ln||{};return(part==="lean"?ln.noteLean:ln.note)||"";}
+function conPartLabel(r){return r&&r.part==="lean"?CON_PARTS.lean:CON_PARTS.main;}
+// One line per WBS from its part lines (WBS & variances, overview, report): figures added up,
+// % = budget unlocked ÷ budget of the parts with a %; pctTxt gives each part's %.
+function conMergeParts(rows){
+  var by={},order=[];
+  (rows||[]).forEach(function(r){var id=r.wbs.id;if(!by[id]){by[id]=[];order.push(id);}by[id].push(r);});
+  return order.map(function(id){
+    var ps=by[id];if(ps.length===1)return ps[0];
+    var m={wbs:ps[0].wbs,line:ps[0].line,key:id,part:"all",parts:ps,byType:{},hasPct:false,theo:0,earned:0,real:0,rtsTheo:0,rtsTheoB:0,rtsTheoD:0,rtsReal:0,dwg:0,earnedDwg:0,eac:0,adjusted:false};
+    var thP=0,eaP=0,vr=null,vd=null,edP=0,anyD=false;
+    ps.forEach(function(r){
+      ["theo","earned","real","rtsTheo","rtsTheoB","rtsTheoD","rtsReal","dwg","earnedDwg","eac"].forEach(function(k){m[k]+=r[k]||0;});
+      Object.assign(m.byType,r.byType);if(r.adjusted)m.adjusted=true;if(r.rtsMissing)m.rtsMissing=true;
+      if(r.hasPct){m.hasPct=true;thP+=r.theo;eaP+=r.earned;vr=(vr||0)+r.variance;}
+      if(r.varDwg!==null&&r.varDwg!==undefined){vd=(vd||0)+r.varDwg;edP+=r.earnedDwg;anyD=true;}
+    });
+    m.pct=thP>CON_EPS?eaP/thP*100:(m.hasPct?ps.filter(function(r){return r.hasPct;})[0].pct:0);
+    m.pctTxt=ps.map(function(r){return (r.part==="lean"?"lean ":"grades ")+(r.hasPct?r.pct.toFixed(0)+"%":"—");}).join(" · ");
+    m.variance=vr;m.varPct=vr!==null&&eaP>CON_EPS?vr/eaP*100:null;
+    m.varDwg=anyD?vd:null;m.varDwgPct=anyD&&edP>CON_EPS?vd/edP*100:null;
+    m.hasDwg=m.dwg>CON_EPS;m.hasEac=true;m.eacVar=m.theo-m.eac;m.eacPct=m.theo>CON_EPS?m.eacVar/m.theo*100:null;
+    m.eacVarDwg=m.hasDwg?m.dwg-m.eac:null;m.eacDwgPct=m.hasDwg?m.eacVarDwg/m.dwg*100:null;
+    m.realPct=m.theo>CON_EPS?m.real/m.theo*100:null;
+    return m;
+  });
+}
 function conNoteLive(wbs){var ids={};(wbs||[]).forEach(function(w){ids[w.id]=1;});_conLive={ids:ids,n:(wbs||[]).length};}
 function conMakeSnap(c,wbs,pours,types){
   var real={},ra=conRealAt(pours,c.date);
@@ -1839,7 +1898,7 @@ function conMakeSnap(c,wbs,pours,types){
   var tt={};(types||[]).forEach(function(t){var b=conManualTotal(t,"theo"),d=conManualTotal(t,"dwg");if(b!==null||d!==null)tt[t.id]={theo:b,dwg:d};});
   return{at:new Date().toISOString(),by:window._currentUser?window._currentUser.name:"",
     wbs:(wbs||[]).map(function(w){var o={id:w.id,code:w.code||"",name:w.name||"",zone:w.zone||"",theo:Object.assign({},w.theo||{}),done:!!w.done};if(conCatOf(w))o.cat=conCatOf(w);if(w.dwg)o.dwg=Object.assign({},w.dwg);return o;}),
-    real:real,lines:JSON.parse(JSON.stringify(c.lines||[])),typeTotals:tt};
+    real:real,lines:JSON.parse(JSON.stringify(c.lines||[])),typeTotals:tt,lean:(types||[]).filter(conIsLean).map(function(t){return t.id;})};
 }
 // The snapshot view of a closed cut-off for the WBS list a caller passes (null = live figures).
 // The caller's WBS are matched by id; a WBS of the snapshot that no longer exists at all
@@ -1878,9 +1937,28 @@ function conCutoffRows(c,wbs,pours,typeIds,opt){
   var sv=opt&&opt.live?null:conSnapView(c,wbs);
   if(sv){wbs=sv.wbs;c=sv.c;}
   var realAt=sv?sv.real:conRealAt(pours,c.date),onDwgBasis=conRtsBasis(c)==="dwg";
-  return conSortWbs(wbs).map(function(w){
+  var leanIx=conLeanIds(c),allTypes=typeIds;
+  var idsL=allTypes.filter(function(t){return leanIx[t];}),idsM=allTypes.filter(function(t){return !leanIx[t];});
+  var out=[];
+  conSortWbs(wbs).forEach(function(w){
     var ln=conCutoffLine(c,w.id)||{};
-    var has=_invHas(ln.pct),pct=has?conClampPct(ln.pct):0;
+    // Two parts: higher grades (main) and lean concrete, each shown when it has something.
+    var any=function(ids){return conSum(w.theo,ids)+conSum(w.dwg,ids)+conSum(realAt[w.id],ids)>CON_EPS;};
+    var hasM=any(idsM),hasL=any(idsL),parts=[];
+    if(hasM)parts.push("main");
+    if(hasL)parts.push("lean");
+    if(!parts.length)parts.push(idsM.length||!idsL.length?"main":"lean");
+    parts.forEach(function(part){
+      var raw=conPartPct(c,ln,part,!hasM);
+      var r=one(w,ln,part==="lean"?idsL:idsM,raw);
+      r.part=part;r.key=part==="lean"?w.id+"|lean":w.id;r.split=parts.length>1;r.ids=part==="lean"?idsL:idsM;r.pctRaw=raw;
+      r.pctInherited=part==="lean"&&raw!==null&&!_invHas(ln.pctLean);
+      out.push(r);
+    });
+  });
+  return out.filter(function(r){return r.theo>CON_EPS||r.real>CON_EPS||r.hasPct||r.hasDwg;});
+  function one(w,ln,typeIds,raw){
+    var has=raw!==null,pct=has?conClampPct(raw):0;
     var wDwg=conSum(w.dwg,typeIds);
     var r={wbs:w,line:ln,hasPct:has,pct:pct,theo:0,earned:0,real:0,rtsTheo:0,rtsTheoB:0,rtsTheoD:0,rtsReal:0,adjusted:false,byType:{},dwg:0,earnedDwg:0};
     typeIds.forEach(function(t){
@@ -1924,7 +2002,7 @@ function conCutoffRows(c,wbs,pours,typeIds,opt){
     r.eacVarDwg=r.hasDwg?r.dwg-r.eac:null;
     r.eacDwgPct=r.hasDwg?r.eacVarDwg/r.dwg*100:null;
     return r;
-  }).filter(function(r){return r.theo>CON_EPS||r.real>CON_EPS||r.hasPct||r.hasDwg;});
+  }
 }
 // Totals. theoAll / realAll, the RTS real and the EOS cover every WBS; the measured figures
 // (earned, real, loss / gain, RTS theo.) cover only the WBS with a progress %.
@@ -1983,8 +2061,12 @@ function conGroupProgress(c,types,wbs,pours,whole){
     // Every WBS weighs in the progress, so the % always means something: measured on its
     // drawings quantities when it has some, else on its budget lines. A WBS without a % = 0 %.
     var meas=0,earnM=0,nNoPct=0,nD=0,nB=0;
+    var leanIx=conLeanIds(c),part=ids.length&&ids.every(function(id){return leanIx[id];})?"lean":"main";
+    var otherIds=(types||[]).map(function(t){return t.id;}).filter(function(id){return !leanIx[id];});
     wbs.forEach(function(w){
-      var ln=conCutoffLine(c,w.id)||{},has=_invHas(ln.pct),p=has?conClampPct(ln.pct)/100:0;
+      var ln=conCutoffLine(c,w.id)||{};
+      var leanOnly=conSum(w.theo,otherIds)+conSum(w.dwg,otherIds)+conSum(realAt[w.id],otherIds)<=CON_EPS;
+      var raw=conPartPct(c,ln,part,leanOnly),has=raw!==null,p=has?conClampPct(raw)/100:0;
       var d=conSum(w.dwg,ids),th=conSum(w.theo,ids),q=d>CON_EPS?d:th;
       if(q<=CON_EPS)return;
       if(d>CON_EPS)nD++;else nB++;
@@ -2201,13 +2283,21 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
   function commitPct(r,v){
     var w=r.wbs;
     if(v!==null&&(v<0||v>100)){safeAlert("Progress is a percentage between 0 and 100.");return;}
-    var patch={pct:v===null?undefined:v,pctFrom:undefined};
-    // At 100% nothing remains to be spent: an adjustment of the remain would be stale.
-    if(v===100&&r.line.rts)patch.rts=undefined;
+    // Each part has its own %: higher grades = pct, lean concrete = pctLean. split marks a line
+    // typed with the two parts (no more single % read for both).
+    var patch={pctFrom:undefined,split:true};
+    if(r.part==="lean")patch.pctLean=v===null?undefined:v;else patch.pct=v===null?undefined:v;
+    // A line typed before the two parts: the lean keeps the single % it was read with until typed.
+    if(!r.line.split&&r.part!=="lean"&&!_invHas(r.line.pctLean)&&r.split){var lr=rows.find(function(x){return x.wbs.id===w.id&&x.part==="lean";});if(lr&&lr.pctRaw!==null)patch.pctLean=lr.pctRaw;}
+    // At 100% nothing remains to be spent: an adjustment of the remain of THIS part would be stale.
+    if(v===100&&r.line.rts){var rt=Object.assign({},r.line.rts);(r.ids||[]).forEach(function(t){delete rt[t];});patch.rts=Object.keys(rt).length?rt:undefined;}
     setLine(w.id,patch);
   }
   function commitRts(r,v){
     var rts=Object.assign({},r.line.rts||{});
+    // only this part's types (lean concrete or higher grades)
+    var typeIds=(r.ids||allIds).filter(function(t){return r.byType[t];});
+    if(!typeIds.length)return;
     if(v===null){typeIds.forEach(function(t){delete rts[t];});}
     else if(v<0){safeAlert("The remain to be spent cannot be negative.");return;}
     else if(typeIds.length===1)rts[typeIds[0]]=v;
@@ -2237,8 +2327,10 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       (nTyped?"\n\n"+nTyped+" WBS already have an RTS real typed: they are overwritten too.":"")+"\n\nYou can then change any cell."))return;
     var lines=(cur.lines||[]).slice(),stamp={updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""};
     all.forEach(function(r){
-      var rts={};allIds.forEach(function(t){var b=r.byType[t];var v=b?(from==="dwg"?b.rtsTheoD:b.rtsTheoB):0;if(b&&(b.theo>CON_EPS||b.dwg>CON_EPS||v>CON_EPS))rts[t]=Math.round(Math.max(0,v)*1000)/1000;});
       var i=lines.findIndex(function(l){return l.id===r.wbs.id;});
+      // the other part of the WBS keeps its own RTS real: only this part's types are replaced
+      var rts=Object.assign({},i>=0&&lines[i].rts||{});Object.keys(r.byType).forEach(function(t){delete rts[t];});
+      Object.keys(r.byType).forEach(function(t){var b=r.byType[t];var v=from==="dwg"?b.rtsTheoD:b.rtsTheoB;if(b.theo>CON_EPS||b.dwg>CON_EPS||v>CON_EPS)rts[t]=Math.round(Math.max(0,v)*1000)/1000;});
       var ln=Object.assign({id:r.wbs.id},i>=0?lines[i]:{},{rts:Object.keys(rts).length?rts:undefined},stamp);
       if(i>=0)lines[i]=ln;else lines.push(ln);
     });
@@ -2393,11 +2485,12 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       <tbody>{(function(){function rowEl(r){
         var w=r.wbs;
         var mismatch=r.hasPct&&r.realPct!==null&&Math.abs(r.realPct-r.pct)>25;
-        return <tr key={w.id}>
-          <td><b>{w.code}</b> {w.name}{w.done&&<span style={{fontSize:10,color:"#1e6b3a"}}> · complete</span>}
+        var partTag=(r.split||r.part==="lean")&&<div style={{fontSize:10.5,fontWeight:700,color:r.part==="lean"?"#7a5a12":"var(--brand-ink,#173b63)"}}>{r.part==="lean"?"▸ "+CON_PARTS.lean:"▸ "+CON_PARTS.main}</div>;
+        return <tr key={r.key}>
+          <td style={r.split&&r.part==="lean"?{borderTop:"none"}:undefined}>{r.split&&r.part==="lean"?<span style={{color:"#999"}}>{w.code}</span>:<><b>{w.code}</b> {w.name}</>}{partTag}{w.done&&<span style={{fontSize:10,color:"#1e6b3a"}}> · complete</span>}
             {w.done&&r.hasPct&&r.pct<100&&<div style={{fontSize:10,color:"#ef6c00"}}>marked complete but below 100%</div>}</td>
           <td style={Object.assign({whiteSpace:"nowrap"},R)}>{ro?(r.hasPct?r.pct.toFixed(0)+"%":<span style={{color:"#ef6c00"}}>—</span>)
-            :<ConNumCell key={cur.id+w.id+"p"} value={r.line.pct} width={58} placeholder="—" onCommit={function(v){commitPct(r,v);}}/>}</td>
+            :<ConNumCell key={cur.id+r.key+"p"} value={r.pctRaw} width={58} placeholder="—" highlight={r.pctInherited} title={r.pctInherited?"Read from the single % typed before the two parts: type the lean concrete's own %":conPartLabel(r)+" — progress % typed by hand"} onCommit={function(v){commitPct(r,v);}}/>}</td>
           <td style={Object.assign({fontSize:12},R)}>{schedPct[w.id]===undefined?<span style={{color:"#ccc"}}>{(w.schedLinks||[]).length?"—":""}</span>
             :<span style={{color:r.hasPct&&Math.abs(r.pct-schedPct[w.id])>10?"#ef6c00":"#888"}} title="Schedule progress, for reference only">{schedPct[w.id]}%</span>}</td>
           <td style={R}>{conFmt(r.real)}</td>
@@ -2419,21 +2512,21 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
             <td className="cd" style={dS({fontWeight:700,color:conLossCol(r.eacVarDwg)})}>{r.eacVarDwg!==null?<>{sg(r.eacVarDwg)}<div style={{fontSize:10,fontWeight:400}}>{conPct(r.eacDwgPct)}</div></>:dash}</td>
           </>}
           <td style={Object.assign({background:r.hasPct&&r.rtsMissing?"#fdf1e0":undefined},R)}>{ro?<span>{r.rtsMissing?<span style={{color:"#b35c00"}}>not typed</span>:r.adjusted?conFmt(r.rtsReal):dash}</span>
-            :<ConNumCell key={cur.id+w.id+"r"+typeIds.join()} value={r.adjusted?r.rtsReal:null} width={80} placeholder={r.rtsMissing?"to type":"—"}
+            :<ConNumCell key={cur.id+r.key+"r"+typeIds.join()} value={r.adjusted?r.rtsReal:null} width={80} placeholder={r.rtsMissing?"to type":"—"}
               title={"Remain to be spent, real: typed by hand (RTS theo.: budget "+conFmt(r.rtsTheoB)+" · drawings "+conFmt(r.rtsTheoD)+"). ⇩ Fill RTS real copies the RTS theo. into every cell."+(r.rtsMissing?" Not typed yet: counted as 0 in the EOS.":" Empty = nothing left to pour.")} onCommit={function(v){commitRts(r,v);}}/>}</td>
           <td style={Object.assign({fontWeight:600},R)}>{conFmt(r.eac)}</td>
-          <td style={{verticalAlign:"top"}}><ConExplCell key={cur.id+w.id+"x"} value={(conCutoffLine(cur,w.id)||{}).note||""} ro={!edit}
-            onCommit={function(v){if(blockIfReadOnly())return;setLine(w.id,{note:v||undefined});}}/></td>
+          <td style={{verticalAlign:"top"}}><ConExplCell key={cur.id+r.key+"x"} value={conPartNote(conCutoffLine(cur,w.id),r.part)} ro={!edit}
+            onCommit={function(v){if(blockIfReadOnly())return;var pt={};pt[r.part==="lean"?"noteLean":"note"]=v||undefined;setLine(w.id,pt);}}/></td>
         </tr>;
       }
       var body=!catGroups?rows.map(rowEl):[];
       if(catGroups)catGroups.forEach(function(g){
         var t=conCutoffTotals(g.items),f=!!cg.fold[g.cat];
-        body.push(<tr key={"cat:"+g.cat} className="con-cat" onClick={function(){cg.toggle(g.cat);}}><td><ConCatLabel folded={f} label={g.label} n={g.items.length}/></td>{totCells(t)}</tr>);
+        body.push(<tr key={"cat:"+g.cat} className="con-cat" onClick={function(){cg.toggle(g.cat);}}><td><ConCatLabel folded={f} label={g.label} n={conNWbs(g.items)}/></td>{totCells(t)}</tr>);
         if(!f)g.items.forEach(function(r){body.push(rowEl(r));});
       });
       return body;})()}
-      </tbody><tfoot><tr style={{fontWeight:700}}><td>Total — {rows.length} WBS ({tot.nPct} with %{tot.nDwg?", "+tot.nDwg+" with drawings":""}){catGroups&&<div style={{fontSize:10,fontWeight:400}}>each WBS once · {catGroups.length} categor{catGroups.length>1?"ies":"y"}</div>}</td>
+      </tbody><tfoot><tr style={{fontWeight:700}}><td>Total — {conNWbs(rows)} WBS · {rows.length} lines ({tot.nPct} with %{tot.nDwg?", "+tot.nDwg+" with drawings":""}){catGroups&&<div style={{fontSize:10,fontWeight:400}}>each WBS once · {catGroups.length} categor{catGroups.length>1?"ies":"y"}</div>}</td>
         {totCells(tot)}</tr>
       </tfoot></table></div>;
     })()}
@@ -2480,7 +2573,7 @@ function conCutoffReport(c,prev,rows,tot,prevTot,label,gp,cats){
   var sub=function(g){
     var t=conCutoffTotals(g.items),C="#e3e9f2",cb_="#c9d8ef",cd_="#f1c9b8";
     var tc=function(bg,v,col){return tdc(bg,v,true,col);};
-    return"<tr style=\"font-weight:700\"><td style=\"background:"+C+";border-top:2px solid #9fb0c8\">"+E(g.label)+" <span style=\"font-weight:400;font-size:9px\">· "+g.items.length+" WBS</span></td>"+tc(C,t.pct===null?"—":t.pct.toFixed(1)+"%")+tc(C,conFmt(t.realAll))
+    return"<tr style=\"font-weight:700\"><td style=\"background:"+C+";border-top:2px solid #9fb0c8\">"+E(g.label)+" <span style=\"font-weight:400;font-size:9px\">· "+conNWbs(g.items)+" WBS</span></td>"+tc(C,t.pct===null?"—":t.pct.toFixed(1)+"%")+tc(C,conFmt(t.realAll))
       +(shB?tc(cb_,conFmt(t.theoAll))+tc(cb_,conFmt(t.earned))+tc(cb_,t.nPct?sg(t.variance):"—",t.nPct?conLossCol(t.variance):null)+tc(cb_,t.nPct?conPct(t.varPct):"")+tc(cb_,conFmt(t.rtsTheoB))+tc(cb_,t.eacVar!==null?sg(t.eacVar):"—",conLossCol(t.eacVar)):"")
       +(shD?tc(cd_,t.dwgAll>CON_EPS?conFmt(t.dwgAll):"—")+tc(cd_,t.nDwg?conFmt(t.earnedDwg):"—")+tc(cd_,t.nDwg?sg(t.varDwg):"—",t.nDwg?conLossCol(t.varDwg):null)+tc(cd_,t.nDwg?conPct(t.varDwgPct):"")+tc(cd_,conFmt(t.rtsTheoD))+tc(cd_,t.eacVarDwg!==null?sg(t.eacVarDwg):"—",conLossCol(t.eacVarDwg)):"")
       +tc(C,conFmt(t.rtsReal))+tc(C,t.eac===null?"—":conFmt(t.eac))+'<td style="background:'+C+'"></td></tr>';
@@ -2491,10 +2584,10 @@ function conCutoffReport(c,prev,rows,tot,prevTot,label,gp,cats){
     var tB=function(v,b,col){return tdc(ev?"#dae6f7":"#ecf2fc",v,b,col);},tD=function(v,b,col){return tdc(ev?"#f8dccf":"#fdeee7",v,b,col);};
     var td=function(v,b,col){return tdc(cN,v,b,col);};
     var h=r.hasPct,vd=r.varDwg!==null;
-    return"<tr><td style=\"background:"+cN+"\"><b>"+E(r.wbs.code)+"</b> "+E(r.wbs.name)+"</td>"+td(h?r.pct.toFixed(0)+"%":"—")+td(conFmt(r.real))
+    return"<tr><td style=\"background:"+cN+"\"><b>"+E(r.wbs.code)+"</b> "+E(r.wbs.name)+(r.split||r.part==="lean"?"<div style=\"font-size:9px;font-weight:700;color:"+(r.part==="lean"?"#7a5a12":"#173b63")+"\">▸ "+E(conPartLabel(r))+"</div>":"")+"</td>"+td(h?r.pct.toFixed(0)+"%":"—")+td(conFmt(r.real))
       +(shB?tB(conFmt(r.theo))+tB(h?conFmt(r.earned):"—")+tB(h?sg(r.variance):"—",true,h?conLossCol(r.variance):null)+tB(h?conPct(r.varPct):"")+tB(h?conFmt(r.rtsTheoB):"—")+tB(r.eacVar!==null?sg(r.eacVar):"—",true,conLossCol(r.eacVar)):"")
       +(shD?tD(r.hasDwg?conFmt(r.dwg):"—")+tD(h&&r.hasDwg?conFmt(r.earnedDwg):"—")+tD(vd?sg(r.varDwg):"—",true,vd?conLossCol(r.varDwg):null)+tD(vd?conPct(r.varDwgPct):"")+tD(h?conFmt(r.rtsTheoD):"—")+tD(r.eacVarDwg!==null?sg(r.eacVarDwg):"—",true,conLossCol(r.eacVarDwg)):"")
-      +td(r.rtsMissing?"not typed":r.adjusted?conFmt(r.rtsReal):"—")+td(conFmt(r.eac),true)+'<td style="background:'+cN+';font-size:9px;white-space:pre-wrap;max-width:200px">'+E((conCutoffLine(c,r.wbs.id)||{}).note||"")+"</td></tr>";
+      +td(r.rtsMissing?"not typed":r.adjusted?conFmt(r.rtsReal):"—")+td(conFmt(r.eac),true)+'<td style="background:'+cN+';font-size:9px;white-space:pre-wrap;max-width:200px">'+E(conPartNote(conCutoffLine(c,r.wbs.id),r.part))+"</td></tr>";
   };
   var body=cats?cats.map(function(g){return sub(g)+g.items.map(rowHtml).join("");}).join(""):rows.map(rowHtml).join("");
   var thB=function(x){return'<th style="background:#d6e3f6">'+x+"</th>";},thD=function(x){return'<th style="background:#f9d6c8">'+x+"</th>";};
@@ -2528,9 +2621,9 @@ function conCutoffXlsx(c,types,wbs,pours,gp){
   var n2=function(v){return v===null||v===undefined?"":r2(v);};
   var catById={};(wbs||[]).forEach(function(w){catById[w.id]=conCatOf(w);});
   var catOf=function(w){return catById[w.id]!==undefined?catById[w.id]:conCatOf(w);};
-  var sum=rows.map(function(r){return{"Code":r.wbs.code,"Description":r.wbs.name,"Zone":r.wbs.zone,"Category":catOf(r.wbs),"Budget":r2(r.theo),"Drawings":r.hasDwg?r2(r.dwg):"","Budget − drawings":r.hasDwg?r2(r.theo-r.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,r.earned),"Poured":r2(r.real),
+  var sum=rows.map(function(r){return{"Code":r.wbs.code,"Description":r.wbs.name,"Part":conPartLabel(r),"Zone":r.wbs.zone,"Category":catOf(r.wbs),"Budget":r2(r.theo),"Drawings":r.hasDwg?r2(r.dwg):"","Budget − drawings":r.hasDwg?r2(r.theo-r.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,r.earned),"Poured":r2(r.real),
     "Gain(+)/loss(-) vs budget":h(r,r.variance),"% vs budget":r.varPct===null?"":r2(r.varPct),"Drawings × %":r.varDwg!==null?r2(r.earnedDwg):"","Gain(+)/loss(-) vs drawings":n2(r.varDwg),"% vs drawings":n2(r.varDwgPct),
-    "RTS theo. (budget)":h(r,r.rtsTheoB),"RTS theo. (drawings)":h(r,r.rtsTheoD),"RTS real":r.adjusted?r2(r.rtsReal):"","EOS":r2(r.eac),"Budget − EOS":r2(r.eacVar),"Drawings − EOS":n2(r.eacVarDwg),"Explanation":(conCutoffLine(c,r.wbs.id)||{}).note||"","Budget comment":r.wbs.theoNote||""};});
+    "RTS theo. (budget)":h(r,r.rtsTheoB),"RTS theo. (drawings)":h(r,r.rtsTheoD),"RTS real":r.adjusted?r2(r.rtsReal):"","EOS":r2(r.eac),"Budget − EOS":r2(r.eacVar),"Drawings − EOS":n2(r.eacVarDwg),"Explanation":conPartNote(conCutoffLine(c,r.wbs.id),r.part),"Budget comment":r.wbs.theoNote||""};});
   var det=[];
   rows.forEach(function(r){st.forEach(function(t){var b=r.byType[t.id];if(!b||(b.theo<=CON_EPS&&b.real<=CON_EPS&&b.dwg<=CON_EPS))return;
     det.push({"Code":r.wbs.code,"Category":catOf(r.wbs),"Type":t.name,"Budget":r2(b.theo),"Drawings":b.dwg>CON_EPS?r2(b.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,b.earned),"Poured":r2(b.real),"Gain(+)/loss(-) vs budget":h(r,b.earned-b.real),"Gain(+)/loss(-) vs drawings":r.hasPct&&b.dwg>CON_EPS?r2(b.earnedDwg-b.real):"","RTS theo. (budget)":h(r,b.rtsTheoB),"RTS theo. (drawings)":h(r,b.rtsTheoD),"RTS real":b.adjusted?r2(b.rtsReal):"","EOS":r2(b.real+(b.rtsReal||0)),"Budget − EOS":r2(b.theo-b.real-(b.rtsReal||0))});});});
@@ -2542,8 +2635,8 @@ function conCutoffXlsx(c,types,wbs,pours,gp){
     var catRow=function(label,n,t){return{"Category":label,"WBS":n,"With %":t.nPct,"Progress %":t.pct===null?"":r2(t.pct),"Budget":r2(t.theoAll),"Budget unlocked":r2(t.earned),"Poured":r2(t.realAll),
       "Gain(+)/loss(-) vs budget":t.nPct?r2(t.variance):"","Drawings":t.dwgAll>CON_EPS?r2(t.dwgAll):"","Drawings × %":t.nDwg?r2(t.earnedDwg):"","Gain(+)/loss(-) vs drawings":t.nDwg?r2(t.varDwg):"",
       "RTS theo. (budget)":r2(t.rtsTheoB||0),"RTS theo. (drawings)":r2(t.rtsTheoD||0),"RTS real":r2(t.rtsReal),"EOS":t.eac===null?"":r2(t.eac),"Budget − EOS":n2(t.eacVar),"Drawings − EOS":n2(t.eacVarDwg)};};
-    var cs=conGroupByCat(rows,function(r){return r.wbs;},catOf).map(function(g){return catRow(g.label,g.items.length,conCutoffTotals(g.items));});
-    cs.push(catRow("Total (each WBS once)",rows.length,conCutoffTotals(rows)));
+    var cs=conGroupByCat(rows,function(r){return r.wbs;},catOf).map(function(g){return catRow(g.label,conNWbs(g.items),conCutoffTotals(g.items));});
+    cs.push(catRow("Total (each WBS once)",conNWbs(rows),conCutoffTotals(rows)));
     window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(cs),"Per category");
   }
   if(gp&&gp.groups.length){var n2=function(v){return v===null||v===undefined?"":r2(v);};
@@ -2561,7 +2654,7 @@ function conSplitCutoffs(cutoffs,parentId,childIds,parentGone,wbsAfter){
   var byId={};(wbsAfter||[]).forEach(function(w){byId[w.id]=w;});
   return(cutoffs||[]).map(function(c){
     var pl=conCutoffLine(c,parentId);
-    if(!pl||!(_invHas(pl.pct)||pl.rts))return c;
+    if(!pl||!(_invHas(pl.pct)||_invHas(pl.pctLean)||pl.rts))return c;
     var holders=(parentGone?[]:[parentId]).concat(childIds);
     var rtsOf={};holders.forEach(function(id){rtsOf[id]={};});
     Object.keys(pl.rts||{}).forEach(function(t){
@@ -2576,6 +2669,8 @@ function conSplitCutoffs(cutoffs,parentId,childIds,parentGone,wbsAfter){
     holders.forEach(function(id){
       var base=id===parentId?Object.assign({},pl):{id:id};
       if(id!==parentId&&_invHas(pl.pct))base.pct=pl.pct;
+      if(id!==parentId&&_invHas(pl.pctLean))base.pctLean=pl.pctLean;
+      if(id!==parentId&&pl.split)base.split=true;
       if(pl.rts)base.rts=Object.keys(rtsOf[id]).length?rtsOf[id]:undefined;
       lines.push(base);
     });
