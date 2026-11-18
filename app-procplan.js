@@ -2794,7 +2794,7 @@ function PpMultiDrop({allLabel,name,options,value,onChange,title}){
     return function(){document.removeEventListener("mousedown",down);document.removeEventListener("keydown",key);};
   },[open]);
   var sel=value||[];
-  var lab=function(k){var o=options.find(function(x){return x.k===k;});return o?o.label:k;};
+  var lab=function(k){var o=options.find(function(x){return x.k===k;});return o?(o.name||o.label):k;};
   var txt=!sel.length?allLabel:sel.length===1?name+": "+lab(sel[0]):name+" ("+sel.length+")";
   var f=fq.trim().toLowerCase();
   var shown=options.filter(function(o){return !f||String(o.label).toLowerCase().indexOf(f)>=0;});
@@ -2854,16 +2854,35 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
   var ro=isReadOnly();
   var now=today();
   var rows=(tenders||[]).filter(function(t){return !t.cancelled;}).map(function(t){return {td:t,p:ppPlan(t,now)};});
-  var depts=[...new Set(rows.map(function(r){return r.td.package||"";}).filter(Boolean))].sort();
-  var owners=[...new Set(rows.map(function(r){return String(r.td.ownerTender||"").trim();}).filter(Boolean))].sort(function(a,b){return a.localeCompare(b);});
-  var awds=[...new Set([].concat.apply([],rows.map(function(r){return ppAwardedNames(r.td);})).filter(Boolean))].sort(function(a,b){return a.localeCompare(b);});
+  // Facet filters (Type / Department / Owner / Subcontractor): each list only offers what the
+  // OTHER three leave, with the number of packages; ticked values always stay listed.
+  function facetOk(r,skip){
+    if(skip!=="type"&&typeF.length&&typeF.indexOf(ppType(r.td))<0)return false;
+    if(skip!=="dept"&&deptF.length&&deptF.indexOf(r.td.package||"")<0)return false;
+    if(skip!=="owner"&&ownerF.length){var ow=String(r.td.ownerTender||"").trim();if(ownerF.indexOf(ow||"—")<0)return false;}
+    if(skip!=="awd"&&awdF.length){var an=ppAwardedNames(r.td);if(!(an.length?an.some(function(n){return awdF.indexOf(n)>=0;}):awdF.indexOf("—")>=0))return false;}
+    return true;
+  }
+  function facetOpts(skip,keysOf,sel,labelOf,specials){
+    var cnt={};
+    rows.forEach(function(r){if(!facetOk(r,skip))return;keysOf(r).forEach(function(k){cnt[k]=(cnt[k]||0)+1;});});
+    var ks=Object.keys(cnt).filter(function(k){return !specials[k];});
+    sel.forEach(function(k){if(!specials[k]&&ks.indexOf(k)<0)ks.push(k);});
+    ks.sort(function(a,b){return String(labelOf(a)).localeCompare(String(labelOf(b)));});
+    var out=ks.map(function(k){return {k:k,name:labelOf(k),label:labelOf(k)+" ("+(cnt[k]||0)+")"};});
+    Object.keys(specials).forEach(function(k){if(cnt[k]||sel.indexOf(k)>=0)out.push({k:k,name:specials[k],label:specials[k]+" ("+(cnt[k]||0)+")",special:true});});
+    return out;
+  }
+  var idL=function(k){return k;};
+  var typeOpts=facetOpts("type",function(r){return [ppType(r.td)];},typeF,ppTypeLabel,{});
+  typeOpts.sort(function(a,b){var ia=PP_TYPES.findIndex(function(t){return t.k===a.k;}),ib=PP_TYPES.findIndex(function(t){return t.k===b.k;});return ia-ib;});
+  var deptOpts=facetOpts("dept",function(r){return r.td.package?[r.td.package]:[];},deptF,idL,{});
+  var ownerOpts=facetOpts("owner",function(r){return [String(r.td.ownerTender||"").trim()||"—"];},ownerF,idL,{"—":"No owner"});
+  var awdOpts=facetOpts("awd",function(r){var an=ppAwardedNames(r.td).filter(Boolean);return an.length?an:["—"];},awdF,idL,{"—":"Not awarded"});
   // type / department / search / quick filter first: the tiles count what those filters leave
   var base=rows.filter(function(r){
-    if(typeF.length&&typeF.indexOf(ppType(r.td))<0)return false;
-    if(deptF.length&&deptF.indexOf(r.td.package||"")<0)return false;
+    if(!facetOk(r,""))return false;
     if(quickF&&!tenderQuick(r.td,quickF))return false;
-    if(ownerF.length){var ow=String(r.td.ownerTender||"").trim();if(ownerF.indexOf(ow||"—")<0)return false;}
-    if(awdF.length){var an=ppAwardedNames(r.td);if(!(an.length?an.some(function(n){return awdF.indexOf(n)>=0;}):awdF.indexOf("—")>=0))return false;}
     if(q){
       var s=q.toLowerCase();
       if(String(r.td.title||"").toLowerCase().indexOf(s)<0&&String(r.td.package||"").toLowerCase().indexOf(s)<0&&String(r.td.ownerTender||"").toLowerCase().indexOf(s)<0
@@ -3072,13 +3091,13 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
     </div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
       <PpMultiDrop allLabel="All types" name="Type" value={typeF} onChange={setTypeF} title="Type of contract"
-        options={PP_TYPES.map(function(t){return {k:t.k,label:t.label};})}/>
+        options={typeOpts}/>
       <PpMultiDrop allLabel="All departments" name="Department" value={deptF} onChange={setDeptF} title="Department"
-        options={depts.map(function(d){return {k:d,label:d};})}/>
+        options={deptOpts}/>
       <PpMultiDrop allLabel="All owners" name="Owner" value={ownerF} onChange={setOwnerF} title="Owner of the package"
-        options={owners.map(function(o){return {k:o,label:o};}).concat([{k:"—",label:"No owner",special:true}])}/>
+        options={ownerOpts}/>
       <PpMultiDrop allLabel="All subcontractors" name="Subcontractor" value={awdF} onChange={setAwdF} title="Subcontractor / supplier the package is awarded to"
-        options={awds.map(function(o){return {k:o,label:o};}).concat([{k:"—",label:"Not awarded",special:true}])}/>
+        options={awdOpts}/>
       <button className={chip(grouped)} onClick={function(){setGrouped(!grouped);}} title="Group the packages by department">By department</button>
       {mode==="table"&&dl&&<label className="phone-hide" title="A strip under each package: the plan chain (latest dates), the milestones reached, the need on site, the delivery forecast and today"
         style={{display:"inline-flex",alignItems:"center",gap:6,margin:"0 0 0 6px",cursor:"pointer",fontSize:12,fontWeight:600,textTransform:"none",letterSpacing:0,fontFamily:"inherit",color:"var(--ink)"}}>
