@@ -641,12 +641,8 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
     }));
   }
   var realTot=rows.reduce(function(a,w){return a+conSum(realIx[w.id],colIds);},0);
-  // Drawings − budget in total: on the WBS that have drawings quantities (like each line), unless a
-  // total was typed by hand, then project total against project total.
-  var gapManual=whole&&(totB.manualOn||totD.manualOn);
-  var gapD=0,gapB=0;
-  rows.forEach(function(w){var d=conSum(w.dwg,colIds);if(d>CON_EPS){gapD+=d;gapB+=conSum(w.theo,colIds);}});
-  if(gapManual){gapD=projOf(totD);gapB=projOf(totB);}
+  // Drawings − budget in total = the Drawings total − the Budget total shown in the same row.
+  var gapD=projOf(totD),gapB=projOf(totB);
   var gapTot=gapD>CON_EPS?gapD-gapB:null;
   var imported=rawWbs.filter(function(w){return /Created by the import/i.test(w.note||"")&&conSum(w.theo,types.map(function(t){return t.id;}))>CON_EPS;});
   function setTheo(id,tid,v,f){
@@ -747,7 +743,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
             </td>;})}
           <td style={Object.assign({fontWeight:700},R)}>{conFmt(projOf(totB))}{whole&&totB.manualOn&&<div style={{fontSize:10,fontWeight:400,color:"var(--gold-ink)"}}>WBS {conFmt(totB.detail)}</div>}</td>
           <td style={Object.assign({fontWeight:700},R)}>{projOf(totD)>CON_EPS?conFmt(projOf(totD)):"—"}{whole&&totD.manualOn&&<div style={{fontSize:10,fontWeight:400,color:"var(--gold-ink)"}}>WBS {conFmt(totD.detail)}</div>}</td>
-          <td style={Object.assign({fontWeight:700,color:gapTot!==null&&gapB>CON_EPS?conVarCol(gapTot/gapB*100):undefined},R)} title={gapManual?"Project totals (typed by hand) compared":"On the WBS with drawings quantities only"}>{gapTot!==null?<>{(gapTot>0?"+":"")+conFmt(gapTot)}{gapB>CON_EPS&&<div style={{fontSize:10,fontWeight:400}}>{conPct(gapTot/gapB*100)}</div>}{!gapManual&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>on WBS with drawings</div>}</>:"—"}</td>
+          <td style={Object.assign({fontWeight:700,color:gapTot!==null&&gapB>CON_EPS?conVarCol(gapTot/gapB*100):undefined},R)} title="Drawings total − Budget total of this row">{gapTot!==null?<>{(gapTot>0?"+":"")+conFmt(gapTot)}{gapB>CON_EPS&&<div style={{fontSize:10,fontWeight:400}}>{conPct(gapTot/gapB*100)}</div>}</>:"—"}</td>
           <td style={Object.assign({fontWeight:700,color:"#555"},R)}>{conFmt(realTot)}</td>
           <td style={{fontSize:11,color:"#888"}}>{edit&&whole?"Type a type's total by hand when the detail per WBS is missing; clear it to go back to the sum.":""}</td>
         </tr></tfoot></table></div>
@@ -1019,6 +1015,10 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     return !status||f.status===status;
   });
   var tot=conTotals(list);
+  // Drawings (plans) next to the budget; drawings − budget on the WBS that have drawings.
+  function dwgOf(w,ids){return conSum(w.dwg,ids||typeIds);}
+  var totDwg=0,totDwgB=0,nDwg=0;
+  list.forEach(function(f){var d=dwgOf(f.wbs);if(d>CON_EPS){nDwg++;totDwg+=d;totDwgB+=f.theo;}});
   // The latest cut-off: progress typed by hand there, and the loss / gain it measures.
   var lc=conLatestCutoff(cutoffs);
   var cutRows={};
@@ -1026,9 +1026,10 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
   var cutTot=lc?conCutoffTotals(Object.keys(cutRows).map(function(k){return cutRows[k];})):null;
   function cutCells(r){
     if(!lc)return null;
-    if(!r||!r.hasPct)return [<td key="p" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="e" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="v" style={Object.assign({color:"#bbb"},R)}>—</td>];
+    if(!r||!r.hasPct)return [<td key="p" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="e" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="v" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="d" style={Object.assign({color:"#bbb"},R)}>—</td>];
     return [<td key="p" style={R}>{r.pct.toFixed(0)}%</td>,<td key="e" style={R}>{conFmt(r.earned)}</td>,
-      <td key="v" style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}{r.varPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varPct)}</div>}</td>];
+      <td key="v" style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}{r.varPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varPct)}</div>}</td>,
+      <td key="d" style={Object.assign({fontWeight:700,color:r.varDwg===null?"#bbb":conLossCol(r.varDwg)},R)} title="Poured − drawings × progress %">{r.varDwg===null?"—":<>{(r.varDwg>0?"+":"")+conFmt(r.varDwg)}{r.varDwgPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varDwgPct)}</div>}</>}</td>];
   }
   var sortedTypes=conSortTypes(types);
   // Inline edits: planned dates and theoretical m³ change in the table itself, no dialog.
@@ -1041,16 +1042,35 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     if(n.start&&n.finish&&n.start>n.finish){safeAlert("The start is after the finish.");return;}
     updW(w.id,{[k]:v||""});
   }
-  function setTheo(w,tid,v,f){
-    var t=Object.assign({},w.theo||{});
+  // set: "theo" (budget) or "dwg" (drawings)
+  function setQty(w,set,tid,v,f){
+    var t=Object.assign({},w[set]||{});
     if(v===null||!(v>0))delete t[tid];else t[tid]=v;
-    var o=conSetFormula({theoF:w.theoF},"theo",tid,v===null||!(v>0)?null:f);
-    updW(w.id,{theo:t,theoF:o.theoF});
+    var fo={};fo[set+"F"]=w[set+"F"];
+    var o=conSetFormula(fo,set,tid,v===null||!(v>0)?null:f);
+    var patch={};patch[set]=Object.keys(t).length||set==="theo"?t:undefined;patch[set+"F"]=o[set+"F"];
+    updW(w.id,patch);
+  }
+  function setTheo(w,tid,v,f){setQty(w,"theo",tid,v,f);}
+  // One quantity cell (budget or drawings) of the main row or of a type row.
+  function qtyCell(w,set,tid,showType){
+    var v=_invNum((w[set]||{})[tid]);
+    var nm=(types.find(function(t){return t.id===tid;})||{}).name||"";
+    return <span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
+      <ConNumCell value={v||null} formula={(w[set+"F"]||{})[tid]} width={80} placeholder={set==="dwg"?"—":"m³"} title={(set==="dwg"?"Drawings":"Budget")+" m³ — "+nm+" · empty = none"} onCommit={function(nv,f){setQty(w,set,tid,nv,f);}}/>
+      {showType&&<span style={{fontSize:10,color:"#888"}}>{nm}</span>}
+      {v>0&&<button type="button" title={"Delete this "+(set==="dwg"?"drawings":"budget")+" quantity"} onClick={function(){setQty(w,set,tid,null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
+    </span>;
+  }
+  function gapCell(b,d){
+    if(!(d>CON_EPS))return <td style={Object.assign({color:"#bbb"},R)}>—</td>;
+    var g=d-b,p=b>CON_EPS?g/b*100:null;
+    return <td style={Object.assign({fontWeight:700,color:conVarCol(p)},R)}>{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;
   }
   // The type whose theoretical the main row edits: the filtered type, or the WBS's only type.
   function rowType(w){
     if(typeId)return typeId;
-    var ks=Object.keys(w.theo||{}).filter(function(k){return _invNum(w.theo[k])>0;});
+    var ks=Object.keys(Object.assign({},w.theo||{},w.dwg||{})).filter(function(k){return _invNum((w.theo||{})[k])>0||_invNum((w.dwg||{})[k])>0;});
     if(ks.length===1)return ks[0];
     if(!ks.length&&types.length===1)return types[0].id;
     return "";
@@ -1075,8 +1095,8 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     </div>
     {!list.length?<div className="empty"><div className="empty-ico">🧱</div><div className="empty-txt">{wbs.length?"No WBS matches.":"No WBS yet. “Works to date” enters the past as one WBS; it can be split into detailed WBS later."}</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
-      <thead><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th style={R}>Theoretical</th><th style={R}>Poured</th>
-        {lc&&<><th style={R} title={"Progress % typed at the cut-off of "+fmtDate(lc.date)}>Progress {fmtDate(lc.date)}</th><th style={R} title="Budget × progress %">Earned</th><th style={R} title="Poured up to the cut-off − earned: > 0 loss, < 0 gain">Loss (+) / gain (−)</th></>}<th/></tr></thead>
+      <thead><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Drawings − budget: > 0 the drawings need more than the budget">Drawings − budget</th><th style={R}>Poured</th>
+        {lc&&<><th style={R} title={"Progress % typed at the cut-off of "+fmtDate(lc.date)}>Progress {fmtDate(lc.date)}</th><th style={R} title="Budget × progress %">Earned</th><th style={R} title="Poured up to the cut-off − budget × progress: > 0 loss, < 0 gain">vs budget<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th><th style={R} title="Poured up to the cut-off − drawings × progress: > 0 loss, < 0 gain">vs drawings<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th></>}<th/></tr></thead>
       <tbody>{list.map(function(f){
         var w=f.wbs;
         var rows=[<tr key={w.id} onClick={function(){setEditing(w);}} style={{cursor:"pointer"}}>
@@ -1097,32 +1117,39 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
           <td style={R} onClick={edit?function(e){e.stopPropagation();}:undefined}>{(function(){
             var rt=edit?rowType(w):"";
             if(!rt)return <span title={edit?"Several types: edit them with “Detail per type”":""}>{conFmt(f.theo)}</span>;
-            return <span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
-              <ConNumCell value={_invNum((w.theo||{})[rt])||null} formula={(w.theoF||{})[rt]} width={80} placeholder="m³" title={"Theoretical m³ — "+((types.find(function(t){return t.id===rt;})||{}).name||"")+" · empty = none"} onCommit={function(v,f){setTheo(w,rt,v,f);}}/>
-              {!typeId&&<span style={{fontSize:10,color:"#888"}}>{(types.find(function(t){return t.id===rt;})||{}).name}</span>}
-              {_invNum((w.theo||{})[rt])>0&&<button type="button" title="Delete this theoretical quantity" onClick={function(){setTheo(w,rt,null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
-            </span>;})()}</td><td style={R}>{conFmt(f.real)}</td>
+            return qtyCell(w,"theo",rt,!typeId);})()}</td>
+          <td style={R} onClick={edit?function(e){e.stopPropagation();}:undefined}>{(function(){
+            var rt=edit?rowType(w):"",d=dwgOf(w);
+            if(!rt)return d>CON_EPS?<span title={edit?"Several types: edit them with “Detail per type”":""}>{conFmt(d)}</span>:<span style={{color:"#ccc"}}>—</span>;
+            return qtyCell(w,"dwg",rt,false);})()}</td>
+          {gapCell(f.theo,dwgOf(w))}
+          <td style={R}>{conFmt(f.real)}</td>
           {cutCells(cutRows[w.id])}
           <td onClick={function(e){e.stopPropagation();}}>{edit&&(conSum(w.theo,allTypeIds)>CON_EPS||conSum(realIx[w.id],allTypeIds)>CON_EPS)&&<button className="btn btn-sm" title="Split into detailed WBS" onClick={function(){setSplitting(w);}}>✂ Split</button>}</td>
         </tr>];
         if(detail&&!typeId)sortedTypes.forEach(function(t){
           var tf=conWbsFigures(w,realIx,[t.id]);
-          if(!edit&&tf.theo<=CON_EPS&&tf.real<=CON_EPS)return;
+          var tdw=dwgOf(w,[t.id]);
+          if(!edit&&tf.theo<=CON_EPS&&tf.real<=CON_EPS&&tdw<=CON_EPS)return;
           rows.push(<tr key={w.id+t.id} style={{fontSize:12,color:"#555",background:"#fbfaf7"}}>
             <td style={{paddingLeft:24}}>{t.name}</td><td/><td/><td/>
-            <td style={R}>{edit?<span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
-              <ConNumCell value={_invNum((w.theo||{})[t.id])||null} formula={(w.theoF||{})[t.id]} width={80} placeholder="—" title={"Theoretical m³ — "+t.name+" · empty = none"} onCommit={function(v,f){setTheo(w,t.id,v,f);}}/>
-              {_invNum((w.theo||{})[t.id])>0&&<button type="button" title="Delete this theoretical quantity" onClick={function(){setTheo(w,t.id,null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
-            </span>:conFmt(tf.theo)}</td><td style={R}>{conFmt(tf.real)}</td>
+            <td style={R}>{edit?qtyCell(w,"theo",t.id,false):conFmt(tf.theo)}</td>
+            <td style={R}>{edit?qtyCell(w,"dwg",t.id,false):(tdw>CON_EPS?conFmt(tdw):"—")}</td>
+            {gapCell(tf.theo,tdw)}
+            <td style={R}>{conFmt(tf.real)}</td>
             {lc&&cutCells(conCutoffRows(lc,[w],pours,[t.id])[0])}<td/></tr>);
         });
         return rows;
       })}
       <tr style={{fontWeight:700,background:"#f7f6f2"}}><td colSpan={4}>Total — {list.length} WBS</td>
-        <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{conFmt(tot.real)}</td>
-        {lc&&<><td style={R}>{cutTot.nPct} WBS</td><td style={R}>{conFmt(cutTot.earned)}</td><td style={Object.assign({color:conLossCol(cutTot.variance)},R)}>{cutTot.nPct?(cutTot.variance>0?"+":"")+conFmt(cutTot.variance):"—"}</td></>}<td/></tr>
+        <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{nDwg?conFmt(totDwg):"—"}{nDwg>0&&nDwg<list.length&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>{nDwg} WBS</div>}</td>
+        {(function(){if(!nDwg)return <td style={R}>—</td>;var g=totDwg-tot.theo,p=tot.theo>CON_EPS?g/tot.theo*100:null;
+          return <td style={Object.assign({color:conVarCol(p)},R)} title="Drawings total − Budget total">{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;})()}
+        <td style={R}>{conFmt(tot.real)}</td>
+        {lc&&<><td style={R}>{cutTot.nPct} WBS</td><td style={R}>{conFmt(cutTot.earned)}</td><td style={Object.assign({color:conLossCol(cutTot.variance)},R)}>{cutTot.nPct?(cutTot.variance>0?"+":"")+conFmt(cutTot.variance):"—"}</td>
+          <td style={Object.assign({color:cutTot.nDwg?conLossCol(cutTot.varDwg):undefined},R)}>{cutTot.nDwg?(cutTot.varDwg>0?"+":"")+conFmt(cutTot.varDwg):"—"}</td></>}<td/></tr>
       </tbody></table></div>}
-    <div style={{fontSize:11,color:"#888",marginTop:8}}>Poured = the pours, a volume, not a progress. {lc?"The loss / gain comes from the cut-off of "+fmtDate(lc.date)+": earned = theoretical × the progress % typed there; a WBS without a % shows —.":"The loss / gain of concrete appears once a cut-off has progress % typed by hand."} {edit?"Planned dates and theoretical m³ are edited in the table (✕ clears them; with several types use “Detail per type”). Click the WBS name for the other fields.":"Click a WBS to see its details."}</div>
+    <div style={{fontSize:11,color:"#888",marginTop:8}}>Poured = the pours, a volume, not a progress. {lc?"The loss / gain comes from the cut-off of "+fmtDate(lc.date)+": vs budget = poured − budget × the progress % typed there, vs drawings = poured − drawings × the same %; a WBS without a % (or without drawings) shows —.":"The loss / gain of concrete appears once a cut-off has progress % typed by hand."} {edit?"Planned dates, budget and drawings m³ are edited in the table (a formula such as =12,5*3 works) (✕ clears them; with several types use “Detail per type”). Click the WBS name for the other fields.":"Click a WBS to see its details."}</div>
     {editing&&<ConWbsEditor w={editing} types={types} wbs={wbs} pours={pours} realIx={realIx} zones={zones} edit={edit} schedIx={schedIx} schedules={schedules}
       onSave={function(d){_invUpsert(wbs,saveWbs,d);setEditing(null);}}
       onDelete={wbs.some(function(x){return x.id===editing.id;})&&edit&&invCanDelete()?function(d){
@@ -1178,6 +1205,18 @@ function conSetTotals(types,list,set,typeIds){
   });
   return out;
 }
+// WBS saved from its dialog: empty drawings dropped, and a kept formula dropped when the value
+// was changed there by hand (the formula would no longer give it).
+function conCleanDwg(d){
+  var o=Object.assign({},d),dw=conCleanTheo(d.dwg);
+  if(Object.keys(dw).length)o.dwg=dw;else delete o.dwg;
+  ["theo","dwg"].forEach(function(set){
+    var fm=o[set+"F"];if(!fm)return;
+    var m={};Object.keys(fm).forEach(function(t){if(conEvalFormula(fm[t])===_invNum((o[set]||{})[t]))m[t]=fm[t];});
+    if(Object.keys(m).length)o[set+"F"]=m;else delete o[set+"F"];
+  });
+  return o;
+}
 function conCleanTheo(m){var o={};Object.keys(m||{}).forEach(function(k){var v=_invNum(m[k]);if(v)o[k]=v;});return o;}
 function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onSave,onDelete,onClose}){
   const [d,setD]=useState(Object.assign({},w,{theo:Object.assign({},w.theo||{})}));
@@ -1191,7 +1230,7 @@ function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onS
   return <InvModal title={"🧱 "+(wbs.some(function(x){return x.id===w.id;})?"WBS "+conWbsLabel(w):"New WBS")} width={760} onClose={onClose} footer={<>
       {onDelete&&<button className="btn" style={{color:"#b3302a",marginRight:"auto"}} onClick={function(){onDelete(d);}}>Delete</button>}
       <button className="btn" onClick={onClose}>{ro?"Close":"Cancel"}</button>
-      {!ro&&<button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onSave(Object.assign({},d,{code:String(d.code).trim(),theo:conCleanTheo(d.theo),updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""}));}}>Save</button>}
+      {!ro&&<button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onSave(conCleanDwg(Object.assign({},d,{code:String(d.code).trim(),theo:conCleanTheo(d.theo),updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""})));}}>Save</button>}
     </>}>
     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
       <div className="fg" style={{flex:"0 0 140px"}}><label>Code</label><input type="text" disabled={ro} value={d.code} onChange={function(e){set({code:e.target.value});}}/></div>
@@ -1207,8 +1246,10 @@ function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onS
       </label>
     </div>
     <ConSchedLinks w={d} ix={schedIx||{}} edit={!ro} schedules={schedules} onChange={set}/>
-    <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"4px 0 6px"}}>Theoretical quantities per type</div>
+    <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"4px 0 6px"}}>Budget quantities per type</div>
     <ConTypeQtyInputs types={types} map={d.theo} ro={ro} realMap={realIx[w.id]||{}} onChange={function(m){set({theo:m});}}/>
+    <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",margin:"10px 0 6px"}}>Drawings quantities per type</div>
+    <ConTypeQtyInputs types={types} map={d.dwg||{}} ro={ro} onChange={function(m){set({dwg:m});}}/>
     <div style={{fontSize:12,margin:"10px 0",color:"#555"}}>
       Theoretical <b>{conFmt(f.theo)}</b> · poured <b>{conFmt(f.real)}</b> {CON_UNIT} ({nPours} pour{nPours===1?"":"s"}) — the loss / gain is measured at the cut-offs
     </div>
