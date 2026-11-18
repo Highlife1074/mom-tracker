@@ -36,8 +36,8 @@ var CON_DEFAULT_TYPES=["C15 blinding","C30/37","C40/50","C50/60","C60/75"];
 var CON_WARN_PCT=3;            // a variance above this % of the theoretical is flagged
 var CON_EPS=1e-6;
 var CON_COL_PLAN="#a8862e";    // planned (theoretical) series
-var CON_COL_REAL="#2b6cb0";    // real series (volume poured)
-var CON_COL_EARN="#c2378a";    // real progress (earned volume = budget × progress %, from the cut-offs)
+var CON_COL_REAL="#8a94a3";    // real series (volume poured) — grey: a volume, not a progress (a loss would look like going faster)
+var CON_COL_EARN="#2b6cb0";    // real progress on the theoretical quantities (earned = budget × progress %, from the cut-offs) — blue
 console.log("Concrete module",CON_VERSION);
 
 function _conStamp(){return{createdAt:new Date().toISOString(),createdBy:window._currentUser?window._currentUser.name:""};}
@@ -249,8 +249,10 @@ function conLatestCutoff(cutoffs){
   (cutoffs||[]).forEach(function(c){if(c.date&&isValidDate(c.date)&&(!last||c.date>last.date))last=c;});
   return last;
 }
-function conLossCol(v){return v>CON_EPS?"#b3302a":v<-CON_EPS?"#1e6b3a":undefined;}
-function conLossWord(v){return v>CON_EPS?"loss":v<-CON_EPS?"gain":"no difference";}
+// Every variance is stored and shown as GAIN = + (green), LOSS = − (red): earned − poured,
+// budget − EOS, drawings − EOS, budget − drawings.
+function conLossCol(v){return v>CON_EPS?"#1e6b3a":v<-CON_EPS?"#b3302a":undefined;}
+function conLossWord(v){return v>CON_EPS?"gain":v<-CON_EPS?"loss":"no difference";}
 
 // ---------------------------------------------------------------- pasting from Excel
 function conParseDate(v){
@@ -493,7 +495,7 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
       <InvBig label="Real progress (earned)" value={last?last.earned:null} unit={unit} colour={CON_COL_EARN}
         sub={last?"cut-off "+fmtDate(last.date)+" · "+(last.theoAll>0?(last.earned/last.theoAll*100).toFixed(1)+"% of budget":""):"needs a cut-off with progress % typed"}/>
       <InvBig label={"Concrete "+(last?conLossWord(last.variance):"loss / gain")} value={last?Math.abs(last.variance):null} unit={unit} colour={last?conLossCol(last.variance):null}
-        sub={last?"poured "+conFmt(last.real)+" − earned "+conFmt(last.earned)+(last.varPct!==null?" ("+conPct(last.varPct)+")":"")+" · "+last.nPct+" WBS with progress":"real poured − earned, at a cut-off"}/>
+        sub={last?"earned "+conFmt(last.earned)+" − poured "+conFmt(last.real)+(last.varPct!==null?" ("+conPct(last.varPct)+")":"")+" · "+last.nPct+" WBS with progress":"earned − poured, at a cut-off (gain +, loss −)"}/>
       <InvBig label="EOS" value={last?last.eac:null} unit={unit} colour={last?conLossCol(last.eacVar):null}
         sub={last?"cut-off "+fmtDate(last.date)+" · poured + RTS real"+(last.nRtsMissing?" · ⚠ "+last.nRtsMissing+" WBS with something left and no RTS real":""):"from the cut-off"}/>
     </div>
@@ -516,7 +518,7 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
     {ep.length>0&&<>
       <div className="card-title" style={{fontSize:15}}>Loss / gain of concrete, per cut-off <span style={{fontSize:12,fontWeight:400,color:"#888"}}>— progress typed by hand</span></div>
       <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
-        <thead><tr><th>Cut-off</th><th style={R}>Budget (WBS with %)</th><th style={R}>Progress</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Loss (+) / gain (−)</th><th style={R}>%</th><th style={R}>WBS without %</th></tr></thead>
+        <thead><tr><th>Cut-off</th><th style={R}>Budget (WBS with %)</th><th style={R}>Progress</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Gain (+) / loss (−)</th><th style={R}>%</th><th style={R}>WBS without %</th></tr></thead>
         <tbody>{ep.slice().reverse().map(function(p){
           return <tr key={p.cutoff.id}><td><b>{fmtDate(p.date)}</b>{p.label?" — "+p.label:""}{p.closed?" 🔒":""}</td>
             <td style={R}>{conFmt(p.theo)}</td><td style={R}>{p.theo>0?(p.earned/p.theo*100).toFixed(1)+"%":"—"}</td>
@@ -530,7 +532,7 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
     {byType.length>0&&<>
       <div className="card-title" style={{fontSize:15}}>Per type, at the cut-off of {fmtDate(last.date)}</div>
       <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
-        <thead><tr><th>Type</th><th style={R}>Budget (WBS with %)</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Loss (+) / gain (−)</th><th style={R}>%</th><th style={R}>RTS real</th><th style={R}>EOS</th><th style={R}>EOS − budget</th></tr></thead>
+        <thead><tr><th>Type</th><th style={R}>Budget (WBS with %)</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Gain (+) / loss (−)</th><th style={R}>%</th><th style={R}>RTS real</th><th style={R}>EOS</th><th style={R}>Budget − EOS</th></tr></thead>
         <tbody>{byType.map(function(x){
           var t=x.tot;
           return <tr key={x.type.id}><td><b>{x.type.name}</b></td><td style={R}>{conFmt(t.theo)}</td><td style={R}>{conFmt(t.earned)}</td><td style={R}>{conFmt(t.real)}</td>
@@ -566,7 +568,7 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
     {worst.length>0&&<>
       <div className="card-title" style={{fontSize:15}}>WBS to look at <span style={{fontSize:12,fontWeight:400,color:"#888"}}>— loss or gain above {CON_WARN_PCT}% at the cut-off of {fmtDate(last.date)}</span></div>
       <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
-        <thead><tr><th>WBS</th><th style={R}>Budget</th><th style={R}>Progress</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Loss (+) / gain (−)</th><th style={R}>%</th></tr></thead>
+        <thead><tr><th>WBS</th><th style={R}>Budget</th><th style={R}>Progress</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Gain (+) / loss (−)</th><th style={R}>%</th></tr></thead>
         <tbody>{worst.map(function(r){
           return <tr key={r.wbs.id}><td><b>{r.wbs.code}</b> {r.wbs.name}</td><td style={R}>{conFmt(r.theo)}</td><td style={R}>{r.pct.toFixed(0)}%</td><td style={R}>{conFmt(r.earned)}</td><td style={R}>{conFmt(r.real)}</td>
             <td style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}</td><td style={Object.assign({color:conLossCol(r.variance)},R)}>{conPct(r.varPct)}</td></tr>;
@@ -644,9 +646,9 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
     }));
   }
   var realTot=rows.reduce(function(a,w){return a+conSum(realIx[w.id],colIds);},0);
-  // Drawings − budget in total = the Drawings total − the Budget total shown in the same row.
+  // Budget − drawings in total = the Drawings total − the Budget total shown in the same row.
   var gapD=projOf(totD),gapB=projOf(totB);
-  var gapTot=gapD>CON_EPS?gapD-gapB:null;
+  var gapTot=gapD>CON_EPS?gapB-gapD:null;
   var imported=rawWbs.filter(function(w){return /Created by the import/i.test(w.note||"")&&conSum(w.theo,types.map(function(t){return t.id;}))>CON_EPS;});
   function setTheo(id,tid,v,f){
     if(blockIfReadOnly())return;
@@ -709,9 +711,9 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
       </div>
       <div style={{overflow:"auto",maxHeight:"65vh",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}><table className="tbl con-sticky" style={{overflow:"visible",border:"none"}}>
         <thead><tr>{edit&&<th style={{width:24}}/>}<th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R} title={(qset==="dwg"?"Drawings":"Budget")+" m³ — "+t.name}>{t.name}<div style={{fontSize:9,fontWeight:400,color:qset==="dwg"?"var(--blue)":"#888"}}>{qset==="dwg"?"drawings":"budget"}</div></th>;})}
-          <th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Drawings − budget: > 0 the drawings need more than the budget">Drawings − budget</th><th style={R}>Poured</th><th title="Comment on the budget, e.g. a gap between the drawings and the budget">Comment</th></tr></thead>
+          <th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Budget − drawings: < 0 (red) the drawings need more than the budget">Budget − drawings</th><th style={R}>Poured</th><th title="Comment on the budget, e.g. a gap between the drawings and the budget">Comment</th></tr></thead>
         <tbody>{rows.map(function(w){
-          var tot=conSum(w.theo,colIds),dw=conSum(w.dwg,colIds),hasDw=dw>CON_EPS,gap=dw-tot;
+          var tot=conSum(w.theo,colIds),dw=conSum(w.dwg,colIds),hasDw=dw>CON_EPS,gap=tot-dw;
           return <tr key={w.id} style={sel[w.id]?{background:"var(--brand-soft)"}:undefined}>
             {edit&&<td><input type="checkbox" checked={!!sel[w.id]} onChange={function(){toggle(w.id);}} title="Tick to merge with other WBS"/></td>}
             {edit?<td style={{minWidth:300}}><div style={{display:"flex",gap:4}}>
@@ -746,7 +748,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
             </td>;})}
           <td style={Object.assign({fontWeight:700},R)}>{conFmt(projOf(totB))}{whole&&totB.manualOn&&<div style={{fontSize:10,fontWeight:400,color:"var(--gold-ink)"}}>WBS {conFmt(totB.detail)}</div>}</td>
           <td style={Object.assign({fontWeight:700},R)}>{projOf(totD)>CON_EPS?conFmt(projOf(totD)):"—"}{whole&&totD.manualOn&&<div style={{fontSize:10,fontWeight:400,color:"var(--gold-ink)"}}>WBS {conFmt(totD.detail)}</div>}</td>
-          <td style={Object.assign({fontWeight:700,color:gapTot!==null?conLossCol(gapTot):undefined},R)} title="Drawings total − Budget total of this row">{gapTot!==null?<>{(gapTot>0?"+":"")+conFmt(gapTot)}{gapB>CON_EPS&&<div style={{fontSize:10,fontWeight:400}}>{conPct(gapTot/gapB*100)}</div>}</>:"—"}</td>
+          <td style={Object.assign({fontWeight:700,color:gapTot!==null?conLossCol(gapTot):undefined},R)} title="Budget total − Drawings total of this row">{gapTot!==null?<>{(gapTot>0?"+":"")+conFmt(gapTot)}{gapB>CON_EPS&&<div style={{fontSize:10,fontWeight:400}}>{conPct(gapTot/gapB*100)}</div>}</>:"—"}</td>
           <td style={Object.assign({fontWeight:700,color:"#555"},R)}>{conFmt(realTot)}</td>
           <td style={{fontSize:11,color:"#888"}}>{edit&&whole?"Type a type's total by hand when the detail per WBS is missing; clear it to go back to the sum.":""}</td>
         </tr></tfoot></table></div>
@@ -903,13 +905,15 @@ function ConTextCell({value,onCommit,width,placeholder,title,bold}){
     onKeyDown={function(e){if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){cancel.current=true;e.target.blur();}}}
     style={{width:width||"100%",padding:"4px 6px",fontWeight:bold?700:undefined}}/>;
 }
-// Cumulative curve: planned and poured month by month; real progress (earned) only as points
-// at the cut-offs, where a progress % was typed. No line is drawn between cut-offs. Plain SVG.
+// Cumulative curve: planned (gold) against the real PROGRESS on the theoretical quantities (blue
+// line through the cut-offs: earned = budget × progress % on the WBS with a %, + poured on those
+// without), so a loss never looks like going faster. The poured volume stays as a thin grey dashed
+// line for reference; the bar between progress and poured at each cut-off = the gain (+) / loss (−). Plain SVG.
 function ConCurve({s,theoTotal,earned}){
   const [hi,setHi]=useState(null);
   earned=earned||[];
   var n=s.months.length,W=760,H=260,L=58,Rm=18,T=14,B=30;
-  var max=_conNiceMax(Math.max.apply(null,s.cumPlan.concat(s.cumReal.filter(function(v){return v!==null;}),earned.map(function(p){return Math.max(p.realAll,p.realAll-p.variance);}),[theoTotal||0,1])));
+  var max=_conNiceMax(Math.max.apply(null,s.cumPlan.concat(s.cumReal.filter(function(v){return v!==null;}),earned.map(function(p){return Math.max(p.realAll,p.realAll+p.variance);}),[theoTotal||0,1])));
   var x=function(i){return n===1?L+(W-L-Rm)/2:L+(W-L-Rm)*i/(n-1);};
   var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
   // A date inside the month grid: month index i is plotted at the end of month i.
@@ -931,8 +935,9 @@ function ConCurve({s,theoTotal,earned}){
     <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4}}>
       <b style={{color:"var(--ink)"}}>Cumulative quantity ({CON_UNIT})</b>
       <span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke={CON_COL_PLAN} strokeWidth="2"/></svg> Planned (theoretical)</span>
-      <span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke={CON_COL_REAL} strokeWidth="2"/></svg> Poured</span>
-      {ePts.length>0&&<span><svg width="12" height="10"><circle cx="6" cy="5" r="4" fill={CON_COL_EARN} stroke="#fff" strokeWidth="1.5"/></svg> Real progress at each cut-off — its gap to the poured volume is the loss / gain on the WBS with a %</span>}
+      <span><svg width="22" height="10"><line x1="0" x2="22" y1="5" y2="5" stroke={CON_COL_EARN} strokeWidth="2.5"/><circle cx="11" cy="5" r="3.5" fill={CON_COL_EARN} stroke="#fff" strokeWidth="1.5"/></svg> Progress on the theoretical quantities (budget × % at each cut-off)</span>
+      <span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke={CON_COL_REAL} strokeWidth="1.5" strokeDasharray="4 3"/></svg> Poured (volume, includes the loss)</span>
+      {!ePts.length&&<span style={{color:"#888"}}>Progress appears once a cut-off has progress % typed</span>}
       {lastE&&<span style={{fontWeight:700,color:conLossCol(lastE.p.variance)}}>Concrete {conLossWord(lastE.p.variance)} at {fmtDate(lastE.p.date)}: {lastE.p.variance>0?"+":lastE.p.variance<0?"−":""}{conFmt(Math.abs(lastE.p.variance))} {CON_UNIT}</span>}
     </div>
     <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",display:"block"}} onMouseLeave={function(){setHi(null);}}>
@@ -941,18 +946,19 @@ function ConCurve({s,theoTotal,earned}){
       {theoTotal>0&&<g><line x1={L} x2={W-Rm} y1={y(theoTotal)} y2={y(theoTotal)} stroke="#bbb" strokeDasharray="2 3"/><text x={L+6} y={y(theoTotal)-4} fontSize="10" fill="#888">theoretical total {conFmt(theoTotal)}</text></g>}
       {ni>=0&&ni<n&&<line x1={x(ni)} x2={x(ni)} y1={T} y2={H-B} stroke="#ccc" strokeDasharray="3 3"/>}
       <polyline points={pts(s.cumPlan)} fill="none" stroke={CON_COL_PLAN} strokeWidth="2" strokeLinejoin="round"/>
-      <polyline points={pts(s.cumReal)} fill="none" stroke={CON_COL_REAL} strokeWidth="2" strokeLinejoin="round"/>
+      <polyline points={pts(s.cumReal)} fill="none" stroke={CON_COL_REAL} strokeWidth="1.5" strokeDasharray="4 3" strokeLinejoin="round"/>
+      {ePts.length>0&&<polyline points={[L+","+y(0)].concat(ePts.map(function(e){return e.x+","+y(e.p.realAll+e.p.variance);})).join(" ")} fill="none" stroke={CON_COL_EARN} strokeWidth="2.5" strokeLinejoin="round"/>}
       {n>0&&Math.abs(s.cumPlan[n-1]-theoTotal)>max*0.03&&<text x={x(n-1)-4} y={y(s.cumPlan[n-1])-6} fontSize="10" textAnchor="end" fill="var(--ink)">{conFmt(s.cumPlan[n-1])}</text>}
       {lastReal>=0&&<g><circle cx={x(lastReal)} cy={y(s.cumReal[lastReal])} r="4" fill={CON_COL_REAL} stroke="#fff" strokeWidth="2"/>
         <text x={x(lastReal)+6} y={y(s.cumReal[lastReal])+14} fontSize="10" fill="var(--ink)">{conFmt(s.cumReal[lastReal])}</text></g>}
       {ePts.map(function(e){
-        // Drawn against the poured curve: the point sits at "poured − loss / gain", so the gap
-        // between the point and the poured volume IS the loss / gain measured on the WBS with a %.
-        var v=e.p.variance,yp=y(e.p.realAll),ye=y(e.p.realAll-v),big=Math.abs(ye-yp)>=18;
+        // The progress point sits at "poured + gain" (variance = earned − poured: gain +, loss −),
+        // so the gap between the point and the poured volume IS the gain / loss on the WBS with a %.
+        var v=e.p.variance,yp=y(e.p.realAll),ye=y(e.p.realAll+v),big=Math.abs(ye-yp)>=18;
         return <g key={e.p.date}>
           <circle cx={e.x} cy={yp} r="3" fill={CON_COL_REAL} stroke="#fff" strokeWidth="1.5"/>
           {Math.abs(v)>CON_EPS&&<line x1={e.x} x2={e.x} y1={yp} y2={ye} stroke={conLossCol(v)} strokeWidth="3" opacity=".6"/>}
-          <circle cx={e.x} cy={ye} r="4.5" fill={CON_COL_EARN} stroke="#fff" strokeWidth="2"><title>{"Cut-off "+fmtDate(e.p.date)+": on "+e.p.nPct+" WBS with a % typed, earned "+conFmt(e.p.earned)+", poured "+conFmt(e.p.real)+" → "+conLossWord(v)+" "+conFmt(Math.abs(v))}</title></circle>
+          <circle cx={e.x} cy={ye} r="4.5" fill={CON_COL_EARN} stroke="#fff" strokeWidth="2"><title>{"Cut-off "+fmtDate(e.p.date)+": progress "+conFmt(e.p.realAll+v)+" — on "+e.p.nPct+" WBS with a % typed, earned "+conFmt(e.p.earned)+", poured "+conFmt(e.p.real)+" → "+conLossWord(v)+" "+(v>0?"+":"−")+conFmt(Math.abs(v))}</title></circle>
           {big&&<text x={e.x-8} y={(yp+ye)/2+4} fontSize="10" textAnchor="end" fontWeight="700" fill={conLossCol(v)}>{conLossWord(v)} {v>0?"+":"−"}{conFmt(Math.abs(v))}</text>}
         </g>;
       })}
@@ -968,8 +974,8 @@ function ConCurve({s,theoTotal,earned}){
       <div>Planned: <b>{conFmt(s.cumPlan[hi])}</b> <span style={{color:"#888"}}>(+{conFmt(s.plan[hi])} this month)</span></div>
       <div>Poured: <b>{s.cumReal[hi]===null?"—":conFmt(s.cumReal[hi])}</b>{s.real[hi]!==null&&<span style={{color:"#888"}}> (+{conFmt(s.real[hi])} this month)</span>}</div>
       {hiCuts.map(function(e){return <div key={e.p.date} style={{borderTop:"1px solid #eee",marginTop:4,paddingTop:4}}>
-        Cut-off {fmtDate(e.p.date)}: earned <b>{conFmt(e.p.earned)}</b>, poured <b>{conFmt(e.p.real)}</b>
-        <div>Concrete {conLossWord(e.p.variance)}: <b style={{color:conLossCol(e.p.variance)}}>{conFmt(Math.abs(e.p.variance))}</b> <span style={{color:"#888"}}>({e.p.nPct} WBS with %)</span></div></div>;})}
+        Cut-off {fmtDate(e.p.date)}: progress <b style={{color:CON_COL_EARN}}>{conFmt(e.p.realAll+e.p.variance)}</b> · earned <b>{conFmt(e.p.earned)}</b>, poured <b>{conFmt(e.p.real)}</b>
+        <div>Concrete {conLossWord(e.p.variance)}: <b style={{color:conLossCol(e.p.variance)}}>{(e.p.variance>0?"+":e.p.variance<0?"−":"")+conFmt(Math.abs(e.p.variance))}</b> <span style={{color:"#888"}}>({e.p.nPct} WBS with %)</span></div></div>;})}
     </div>}
   </div>;
 }
@@ -985,7 +991,7 @@ function ConMonthly({s}){
     <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4}}>
       <b style={{color:"var(--ink)"}}>Per month ({CON_UNIT})</b>
       <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_PLAN,verticalAlign:"middle",marginRight:4}}/>Planned</span>
-      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_REAL,verticalAlign:"middle",marginRight:4}}/>Real</span>
+      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_REAL,verticalAlign:"middle",marginRight:4}}/>Poured</span>
     </div>
     <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",display:"block"}} onMouseLeave={function(){setHi(null);}}>
       {[0,.5,1].map(function(g){return <g key={g}><line x1={L} x2={W-Rm} y1={y(max*g)} y2={y(max*g)} stroke="#eee"/><text x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text></g>;})}
@@ -1030,7 +1036,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     return !status||f.status===status;
   });
   var tot=conTotals(list);
-  // Drawings (plans) next to the budget; drawings − budget on the WBS that have drawings.
+  // Drawings (plans) next to the budget; budget − drawings on the WBS that have drawings.
   function dwgOf(w,ids){return conSum(w.dwg,ids||typeIds);}
   var totDwg=0,totDwgB=0,nDwg=0;
   list.forEach(function(f){var d=dwgOf(f.wbs);if(d>CON_EPS){nDwg++;totDwg+=d;totDwgB+=f.theo;}});
@@ -1044,7 +1050,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     if(!r||!r.hasPct)return [<td key="p" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="pc" style={R}>{r?conFmt(r.real):"—"}</td>,<td key="e" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="v" style={Object.assign({color:"#bbb"},R)}>—</td>,<td key="d" style={Object.assign({color:"#bbb"},R)}>—</td>];
     return [<td key="p" style={R}>{r.pct.toFixed(0)}%</td>,<td key="pc" style={R}>{conFmt(r.real)}</td>,<td key="e" style={R}>{conFmt(r.earned)}</td>,
       <td key="v" style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}{r.varPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varPct)}</div>}</td>,
-      <td key="d" style={Object.assign({fontWeight:700,color:r.varDwg===null?"#bbb":conLossCol(r.varDwg)},R)} title="Poured − drawings × progress %">{r.varDwg===null?"—":<>{(r.varDwg>0?"+":"")+conFmt(r.varDwg)}{r.varDwgPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varDwgPct)}</div>}</>}</td>];
+      <td key="d" style={Object.assign({fontWeight:700,color:r.varDwg===null?"#bbb":conLossCol(r.varDwg)},R)} title="Drawings × progress % − poured">{r.varDwg===null?"—":<>{(r.varDwg>0?"+":"")+conFmt(r.varDwg)}{r.varDwgPct!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(r.varDwgPct)}</div>}</>}</td>];
   }
   var sortedTypes=conSortTypes(types);
   // Inline edits: planned dates and theoretical m³ change in the table itself, no dialog.
@@ -1079,7 +1085,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
   }
   function gapCell(b,d){
     if(!(d>CON_EPS))return <td style={Object.assign({color:"#bbb"},R)}>—</td>;
-    var g=d-b,p=b>CON_EPS?g/b*100:null;
+    var g=b-d,p=b>CON_EPS?g/b*100:null;
     return <td style={Object.assign({fontWeight:700,color:conLossCol(g)},R)}>{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;
   }
   // The type whose theoretical the main row edits: the filtered type, or the WBS's only type.
@@ -1110,8 +1116,8 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     </div>
     {!list.length?<div className="empty"><div className="empty-ico">🧱</div><div className="empty-txt">{wbs.length?"No WBS matches.":"No WBS yet. “Works to date” enters the past as one WBS; it can be split into detailed WBS later."}</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
-      <thead><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Drawings − budget: > 0 the drawings need more than the budget">Drawings − budget</th><th style={R} title="Every pour recorded so far (the loss / gain uses the poured at the cut-off)">Poured to date</th>
-        {lc&&<><th style={R} title={"Progress % typed at the cut-off of "+fmtDate(lc.date)}>Progress {fmtDate(lc.date)}</th><th style={R} title="Concrete poured up to the cut-off date: the figure the loss / gain is measured on">Poured at cut-off</th><th style={R} title="Budget × progress %">Earned</th><th style={R} title="Poured up to the cut-off − budget × progress: > 0 loss, < 0 gain">vs budget<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th><th style={R} title="Poured up to the cut-off − drawings × progress: > 0 loss, < 0 gain">vs drawings<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th></>}<th/></tr></thead>
+      <thead><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Budget − drawings: < 0 (red) the drawings need more than the budget">Budget − drawings</th><th style={R} title="Every pour recorded so far (the loss / gain uses the poured at the cut-off)">Poured to date</th>
+        {lc&&<><th style={R} title={"Progress % typed at the cut-off of "+fmtDate(lc.date)}>Progress {fmtDate(lc.date)}</th><th style={R} title="Concrete poured up to the cut-off date: the figure the loss / gain is measured on">Poured at cut-off</th><th style={R} title="Budget × progress %">Earned</th><th style={R} title="Budget × progress − poured up to the cut-off: > 0 gain, < 0 loss">vs budget<div style={{fontSize:9,fontWeight:400}}>gain (+) / loss (−)</div></th><th style={R} title="Drawings × progress − poured up to the cut-off: > 0 gain, < 0 loss">vs drawings<div style={{fontSize:9,fontWeight:400}}>gain (+) / loss (−)</div></th></>}<th/></tr></thead>
       <tbody>{list.map(function(f){
         var w=f.wbs;
         var rows=[<tr key={w.id} onClick={function(){setEditing(w);}} style={{cursor:"pointer"}}>
@@ -1158,13 +1164,13 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
       })}
       <tr style={{fontWeight:700,background:"#f7f6f2"}}><td colSpan={4}>Total — {list.length} WBS</td>
         <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{nDwg?conFmt(totDwg):"—"}{nDwg>0&&nDwg<list.length&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>{nDwg} WBS</div>}</td>
-        {(function(){if(!nDwg)return <td style={R}>—</td>;var g=totDwg-tot.theo,p=tot.theo>CON_EPS?g/tot.theo*100:null;
-          return <td style={Object.assign({color:conLossCol(g)},R)} title="Drawings total − Budget total">{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;})()}
+        {(function(){if(!nDwg)return <td style={R}>—</td>;var g=tot.theo-totDwg,p=tot.theo>CON_EPS?g/tot.theo*100:null;
+          return <td style={Object.assign({color:conLossCol(g)},R)} title="Budget total − Drawings total">{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;})()}
         <td style={R}>{conFmt(tot.real)}</td>
         {lc&&<><td style={R}>{cutTot.nPct} WBS</td><td style={R}>{conFmt(cutTot.realAll)}</td><td style={R}>{conFmt(cutTot.earned)}</td><td style={Object.assign({color:conLossCol(cutTot.variance)},R)}>{cutTot.nPct?(cutTot.variance>0?"+":"")+conFmt(cutTot.variance):"—"}</td>
           <td style={Object.assign({color:cutTot.nDwg?conLossCol(cutTot.varDwg):undefined},R)}>{cutTot.nDwg?(cutTot.varDwg>0?"+":"")+conFmt(cutTot.varDwg):"—"}</td></>}<td/></tr>
       </tbody></table></div>}
-    <div style={{fontSize:11,color:"#888",marginTop:8}}>Poured = the pours, a volume, not a progress. {lc?"The loss / gain comes from the cut-off of "+fmtDate(lc.date)+": vs budget = poured − budget × the progress % typed there, vs drawings = poured − drawings × the same %; a WBS without a % (or without drawings) shows —.":"The loss / gain of concrete appears once a cut-off has progress % typed by hand."} {edit?"Planned dates, budget and drawings m³ are edited in the table (a formula such as =12,5*3 works) (✕ clears them; with several types use “Detail per type”). Click the WBS name for the other fields.":"Click a WBS to see its details."}</div>
+    <div style={{fontSize:11,color:"#888",marginTop:8}}>Poured = the pours, a volume, not a progress. {lc?"The loss / gain comes from the cut-off of "+fmtDate(lc.date)+": vs budget = budget × the progress % typed there − poured, vs drawings = drawings × the same % − poured (gain +, loss −); a WBS without a % (or without drawings) shows —.":"The loss / gain of concrete appears once a cut-off has progress % typed by hand."} {edit?"Planned dates, budget and drawings m³ are edited in the table (a formula such as =12,5*3 works) (✕ clears them; with several types use “Detail per type”). Click the WBS name for the other fields.":"Click a WBS to see its details."}</div>
     {editing&&<ConWbsEditor w={editing} types={types} wbs={wbs} pours={pours} realIx={realIx} zones={zones} edit={edit} schedIx={schedIx} schedules={schedules}
       onSave={function(d){_invUpsert(wbs,saveWbs,d);setEditing(null);}}
       onDelete={wbs.some(function(x){return x.id===editing.id;})&&edit&&invCanDelete()?function(d){
@@ -1643,16 +1649,16 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal){
   var nowK=t0.slice(0,7);
   var mRows=s.months.filter(function(k){return k>=nowK;}).slice(0,12).map(function(k){var i=s.months.indexOf(k);return"<tr><td>"+conFmtMonth(k)+"</td>"+td(conFmt(s.plan[i]))+td(conFmt(s.cumPlan[i]))+"</tr>";}).join("");
   var html="<h1>Concrete — theoretical vs real</h1><div class=\"sub\">Riviera Tower · "+E(label)+" · situation at "+E(fmtDate(t0))+(pastReal?" · planned = real for the past":"")+"</div>"
-    +"<h2>Summary ("+CON_UNIT+")</h2><table><tr><th>Theoretical</th><th>Planned to date</th><th>Poured to date</th>"+(last?"<th>Earned at "+E(fmtDate(last.date))+"</th><th>Loss (+) / gain (−)</th><th>EOS</th>":"")+"</tr><tr>"
+    +"<h2>Summary ("+CON_UNIT+")</h2><table><tr><th>Theoretical</th><th>Planned to date</th><th>Poured to date</th>"+(last?"<th>Earned at "+E(fmtDate(last.date))+"</th><th>Gain (+) / loss (−)</th><th>EOS</th>":"")+"</tr><tr>"
     +td(conFmt(tot.theo))+td(conFmt(plannedToDate))+td(conFmt(tot.real))
     +(last?td(conFmt(last.earned))+td(sg(last.variance)+" ("+conPct(last.varPct)+")",true,conLossCol(last.variance))+td(conFmt(last.eac)):"")+"</tr></table>"
     +(last&&last.nNoPct?"<div style=\"font-size:11px;color:#b45309\">"+last.nNoPct+" WBS without progress % at that cut-off ("+conFmt(last.theoNoPct)+" budget, "+conFmt(last.realNoPct)+" poured) are left out of the loss / gain; they count at budget in the EOS.</div>":"")
-    +(eRows?"<h2>Loss / gain of concrete, per cut-off</h2><table><tr><th>Cut-off</th><th>Budget (WBS with %)</th><th>Progress</th><th>Earned</th><th>Poured</th><th>Loss (+) / gain (−)</th><th>%</th><th>Without %</th></tr>"+eRows+"</table>"
+    +(eRows?"<h2>Loss / gain of concrete, per cut-off</h2><table><tr><th>Cut-off</th><th>Budget (WBS with %)</th><th>Progress</th><th>Earned</th><th>Poured</th><th>Gain (+) / loss (−)</th><th>%</th><th>Without %</th></tr>"+eRows+"</table>"
       :"<h2>Loss / gain of concrete</h2><div>No cut-off with a progress % typed yet: the loss or gain is measured only at a cut-off.</div>")
-    +(byType?"<h2>Per type, at the cut-off of "+E(fmtDate(last.date))+"</h2><table><tr><th>Type</th><th>Budget (WBS with %)</th><th>Earned</th><th>Poured</th><th>Loss (+) / gain (−)</th><th>%</th><th>RTS real</th><th>EOS</th><th>EOS − budget</th></tr>"+byType+"</table>":"")
+    +(byType?"<h2>Per type, at the cut-off of "+E(fmtDate(last.date))+"</h2><table><tr><th>Type</th><th>Budget (WBS with %)</th><th>Earned</th><th>Poured</th><th>Gain (+) / loss (−)</th><th>%</th><th>RTS real</th><th>EOS</th><th>Budget − EOS</th></tr>"+byType+"</table>":"")
     +(sRows?"<h2>Poured per supplier</h2><table><tr><th>Supplier</th>"+sCols.map(function(t){return"<th>"+E(t.name)+"</th>";}).join("")+"<th>Total</th><th>Share</th><th>This month</th></tr>"+sRows+"</table>":"")
     +(mRows?"<h2>Planned quantities, coming months</h2><table><tr><th>Month</th><th>Planned</th><th>Cumulative planned</th></tr>"+mRows+"</table>":"")
-    +"<h2>Per WBS</h2><table><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th>Theoretical</th><th>Poured</th>"+(last?"<th>Progress "+E(fmtDate(last.date))+"</th><th>Earned</th><th>Loss (+) / gain (−)</th>":"")+"</tr>"+wRows+"</table>"
+    +"<h2>Per WBS</h2><table><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th>Theoretical</th><th>Poured</th>"+(last?"<th>Progress "+E(fmtDate(last.date))+"</th><th>Earned</th><th>Gain (+) / loss (−)</th>":"")+"</tr>"+wRows+"</table>"
     +"<div style=\"font-size:10px;color:#8b8578\">No progress is estimated: the loss or gain = poured up to the cut-off − earned (budget × the progress % typed by hand), on the WBS that have a %. Poured = the pours, a volume.</div>";
   openReport("CONCRETE - "+t0,html);
 }
@@ -1672,7 +1678,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
     o["Total theor."]=r2(f.theo);o["Total poured"]=r2(f.real);
     o["Budget comment"]=w.theoNote||"";
     if(lc){var r=cut[w.id];var k=" @"+lc.date;
-      o["Progress %"+k]=r&&r.hasPct?r.pct:"";o["Earned"+k]=r&&r.hasPct?r2(r.earned):"";o["Loss(+)/gain(-)"+k]=r&&r.hasPct?r2(r.variance):"";}
+      o["Progress %"+k]=r&&r.hasPct?r.pct:"";o["Earned"+k]=r&&r.hasPct?r2(r.earned):"";o["Gain(+)/loss(-)"+k]=r&&r.hasPct?r2(r.variance):"";}
     return o;
   });
   var inList={};list.forEach(function(w){inList[w.id]=w;});
@@ -1686,7 +1692,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
   var sr=Object.keys(bs).sort().map(function(n){var o={"Supplier":n};st.forEach(function(t){if(bs[n][t.id])o[t.name]=r2(bs[n][t.id]);});o["Total"]=r2(bs[n]._total);return o;});
   var s=conSeries(list,pours,allIds,null,pastReal);
   var mr=s.months.map(function(k,i){return{"Month":k,"Planned":r2(s.plan[i]),"Poured":s.real[i]===null?"":r2(s.real[i]),"Cum. planned":r2(s.cumPlan[i]),"Cum. poured":s.cumReal[i]===null?"":r2(s.cumReal[i])};});
-  var cr=conEarnedPoints(cutoffs,list,pours,allIds).map(function(p){return{"Cut-off":p.date,"Label":p.label,"Closed":p.closed?"Y":"","Budget (WBS with %)":r2(p.theo),"Earned":r2(p.earned),"Poured":r2(p.real),"Loss(+)/gain(-)":r2(p.variance),"%":p.varPct===null?"":r2(p.varPct),"WBS without %":p.nNoPct};});
+  var cr=conEarnedPoints(cutoffs,list,pours,allIds).map(function(p){return{"Cut-off":p.date,"Label":p.label,"Closed":p.closed?"Y":"","Budget (WBS with %)":r2(p.theo),"Earned":r2(p.earned),"Poured":r2(p.real),"Gain(+)/loss(-)":r2(p.variance),"%":p.varPct===null?"":r2(p.varPct),"WBS without %":p.nNoPct};});
   var wb=window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(rows),"WBS");
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(cr),"Cut-offs");
@@ -1700,7 +1706,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
 // A cut-off is a dated situation. Each WBS gets a physical progress %, which unlocks budget:
 //   earned (budget unlocked)  = theoretical × progress %
 //   real at cut-off           = pours up to the cut-off date (a cumulative pour counts pro rata)
-//   loss / gain               = real − earned          (> 0: concrete lost, < 0: gained)
+//   gain / loss               = earned − real          (> 0: concrete gained, < 0: lost)
 // The progress % is ONLY typed by hand: never carried over, copied from the schedule or deduced
 // from the volumes. A WBS without a % is left out of the loss / gain, RTS and EOS.
 //   remain to be spent, theo. = on the basis chosen for the cut-off (c.rtsBasis, button
@@ -1709,7 +1715,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
 //   remain to be spent, real  = TYPED BY HAND only (line.rts {typeId: m³}); the button
 //                               "Fill RTS real" copies the RTS theo. into every cell, then any cell
 //                               can be changed. Not typed (and something left) = no EOS for that WBS.
-//   estimate at completion    = real at cut-off + RTS real;  EOS variance = EOS − theoretical
+//   estimate at completion    = real at cut-off + RTS real;  EOS variance = theoretical − EOS (> 0 gain)
 // Stored in pp_concrete_cutoffs: [{id, date, label, closed, lines:[{id: wbsId, pct, rts:{typeId: m³}, note}],
 //   reported: totals per type frozen when the cut-off is closed}]. The lines are a list of items
 // with ids, so two people entering progress on different WBS of the same cut-off both keep it.
@@ -1803,20 +1809,20 @@ function conCutoffRows(c,wbs,pours,typeIds,opt){
     // Only on the WBS whose drawings quantities are typed.
     r.hasDwg=r.dwg>CON_EPS;
     var mD=has&&r.hasDwg;
-    r.varDwg=mD?r.real-r.earnedDwg:null;
+    r.varDwg=mD?r.earnedDwg-r.real:null;
     r.varDwgPct=mD&&r.earnedDwg>CON_EPS?r.varDwg/r.earnedDwg*100:null;
     // Without a progress % typed by hand nothing is measured: no earned, no loss / gain, no EOS.
-    r.variance=has?r.real-r.earned:null;
+    r.variance=has?r.earned-r.real:null;
     r.varPct=has&&r.earned>CON_EPS?r.variance/r.earned*100:null;
     // EOS (estimate, shown as "EOS") = poured to date + RTS real typed (empty = nothing left),
     // on EVERY WBS — also those without a progress % — so the total adds up: Σ EOS = Σ poured + Σ RTS real.
     // rtsMissing (a WBS with a % whose RTS real is not typed) is only a warning.
     r.hasEac=true;
     r.eac=r.real+r.rtsReal;
-    r.eacVar=r.eac-r.theo;
+    r.eacVar=r.theo-r.eac;
     r.eacPct=r.theo>CON_EPS?r.eacVar/r.theo*100:null;
     r.realPct=r.theo>CON_EPS?r.real/r.theo*100:null;   // volume ratio, for reference only
-    r.eacVarDwg=r.hasDwg?r.eac-r.dwg:null;
+    r.eacVarDwg=r.hasDwg?r.dwg-r.eac:null;
     r.eacDwgPct=r.hasDwg?r.eacVarDwg/r.dwg*100:null;
     return r;
   }).filter(function(r){return r.theo>CON_EPS||r.real>CON_EPS||r.hasPct||r.hasDwg;});
@@ -1842,16 +1848,16 @@ function conCutoffTotals(rows){
     if(r.rtsOnDwg)t.nRtsDwg=(t.nRtsDwg||0)+1;
   });
   t.pct=t.theoAll>CON_EPS?t.earned/t.theoAll*100:null;
-  t.variance=t.real-t.earned;
+  t.variance=t.earned-t.real;
   t.varPct=t.earned>CON_EPS?t.variance/t.earned*100:null;
   // EOS on every WBS (poured + RTS real); null when there is no WBS at all.
   if(!t.nEac)t.eac=null;
-  t.eacVar=t.nEac?t.eac-t.theoEac:null;
+  t.eacVar=t.nEac?t.theoEac-t.eac:null;
   t.eacPct=t.nEac&&t.theoEac>CON_EPS?t.eacVar/t.theoEac*100:null;
   // Against the drawings: WBS with a progress % AND drawings quantities only.
-  t.varDwg=t.realDwg-t.earnedDwg;
+  t.varDwg=t.earnedDwg-t.realDwg;
   t.varDwgPct=t.earnedDwg>CON_EPS?t.varDwg/t.earnedDwg*100:null;
-  t.eacVarDwg=t.dwgEac>CON_EPS?t.eacDwg-t.dwgEac:null;
+  t.eacVarDwg=t.dwgEac>CON_EPS?t.dwgEac-t.eacDwg:null;
   t.eacDwgPct=t.dwgEac>CON_EPS?t.eacVarDwg/t.dwgEac*100:null;
   return t;
 }
@@ -1897,7 +1903,7 @@ function conGroupProgress(c,types,wbs,pours,whole){
     var r={ids:ids,basis:basis,basisQty:basis==="drawings"?dwgD:theoD,basisEarned:basis==="drawings"?earnD:earnT,pct:pct,nNoPct:nNoPct,
       budget:budget,budMan:budMan,dwg:dwgP,dwgMan:dwgMan,poured:poured};
     r.budgetEarned=pct===null?null:budget*pct;
-    r.variance=pct===null?null:poured-r.budgetEarned;
+    r.variance=pct===null?null:r.budgetEarned-poured;
     r.varPct=pct!==null&&r.budgetEarned>CON_EPS?r.variance/r.budgetEarned*100:null;
     // RTS on the cut-off's basis: drawings (total drawings of the group × what is left, when
     // typed) or budget.
@@ -1906,9 +1912,9 @@ function conGroupProgress(c,types,wbs,pours,whole){
     r.rtsD=pct===null||dwgP<=CON_EPS?null:dwgP*(1-pct);
     r.rts=pct===null?null:r.rtsOnDwg?r.rtsD:r.rtsB;
     r.eac=pct===null?null:poured+r.rts;
-    r.eacVar=pct===null?null:r.eac-budget;
+    r.eacVar=pct===null?null:budget-r.eac;
     r.dwgEarned=pct===null||dwgP<=CON_EPS?null:dwgP*pct;
-    r.varDwg=r.dwgEarned===null?null:poured-r.dwgEarned;
+    r.varDwg=r.dwgEarned===null?null:r.dwgEarned-poured;
     return r;
   }
   var groups=CON_GROUPS.map(function(g){
@@ -1921,12 +1927,12 @@ function conGroupProgress(c,types,wbs,pours,whole){
     if(g.budgetEarned===null)t.ok=false;else t.budgetEarned+=g.budgetEarned;
     if(g.dwgEarned===null)t.okD=t.okD&&g.dwg<=CON_EPS;else t.dwgEarned+=g.dwgEarned;});
   t.pct=t.ok&&t.budget>CON_EPS?t.budgetEarned/t.budget:null;
-  t.variance=t.ok?t.poured-t.budgetEarned:null;
+  t.variance=t.ok?t.budgetEarned-t.poured:null;
   t.varPct=t.ok&&t.budgetEarned>CON_EPS?t.variance/t.budgetEarned*100:null;
   t.rts=t.ok?groups.reduce(function(a,g){return a+(g.rts||0);},0):null;
   t.rtsB=t.ok?t.budget-t.budgetEarned:null;
-  t.rtsD=t.okD&&t.dwg>CON_EPS&&t.dwgEarned!==null?t.dwg-t.dwgEarned:null;t.eac=t.ok?t.poured+t.rts:null;t.eacVar=t.ok?t.eac-t.budget:null;
-  t.varDwg=t.okD&&t.dwgEarned>CON_EPS?t.poured-t.dwgEarned:null;
+  t.rtsD=t.okD&&t.dwg>CON_EPS&&t.dwgEarned!==null?t.dwg-t.dwgEarned:null;t.eac=t.ok?t.poured+t.rts:null;t.eacVar=t.ok?t.budget-t.eac:null;
+  t.varDwg=t.okD&&t.dwgEarned>CON_EPS?t.dwgEarned-t.poured:null;
   return{groups:groups,total:t};
 }
 function ConGroupProgress({gp,whole,basis}){
@@ -1947,14 +1953,14 @@ function ConGroupProgress({gp,whole,basis}){
         <td className="cb" style={B}>{g.budgetEarned===null?"—":conFmt(g.budgetEarned)}</td>
         <td className="cb" style={Object.assign({},B,{fontWeight:700,color:g.variance===null?undefined:conLossCol(g.variance)})}>{sg(g.variance)}<div style={{fontSize:10,fontWeight:400}}>{g.varPct===null?"":conPct(g.varPct)}</div></td>
         <td className="cb" style={B}>{g.rtsB===null||g.rtsB===undefined?"—":conFmt(g.rtsB)}</td>
-        <td className="cb" style={Object.assign({},B,{fontWeight:700,color:eacB===null?undefined:conLossCol(eacB-g.budget)})}>{eacB===null?"—":conFmt(eacB)}<div style={{fontSize:10,fontWeight:400}}>{eacB===null?"":sg(eacB-g.budget)+" vs budget"}</div></td>
+        <td className="cb" style={Object.assign({},B,{fontWeight:700,color:eacB===null?undefined:conLossCol(g.budget-eacB)})}>{eacB===null?"—":conFmt(eacB)}<div style={{fontSize:10,fontWeight:400}}>{eacB===null?"":sg(g.budget-eacB)+" vs budget"}</div></td>
       </>}
       {showD&&<>
         <td className="cd" style={D}>{g.dwg>CON_EPS?conFmt(g.dwg):"—"}{g.dwgMan&&<div style={{fontSize:10,color:"var(--gold-ink)"}}>typed total</div>}</td>
         <td className="cd" style={D}>{g.dwgEarned===null||g.dwgEarned===undefined?"—":conFmt(g.dwgEarned)}</td>
         <td className="cd" style={Object.assign({},D,{fontWeight:700,color:g.varDwg===null||g.varDwg===undefined?undefined:conLossCol(g.varDwg)})}>{sg(g.varDwg)}</td>
         <td className="cd" style={D}>{g.rtsD===null||g.rtsD===undefined?"—":conFmt(g.rtsD)}</td>
-        <td className="cd" style={Object.assign({},D,{fontWeight:700,color:eacD===null?undefined:conLossCol(eacD-g.dwg)})}>{eacD===null?"—":conFmt(eacD)}<div style={{fontSize:10,fontWeight:400}}>{eacD===null?"":sg(eacD-g.dwg)+" vs drawings"}</div></td>
+        <td className="cd" style={Object.assign({},D,{fontWeight:700,color:eacD===null?undefined:conLossCol(g.dwg-eacD)})}>{eacD===null?"—":conFmt(eacD)}<div style={{fontSize:10,fontWeight:400}}>{eacD===null?"":sg(g.dwg-eacD)+" vs drawings"}</div></td>
       </>}
     </tr>;
   }
@@ -1969,8 +1975,8 @@ function ConGroupProgress({gp,whole,basis}){
           {showD&&<th colSpan={5} className="cd" style={{textAlign:"center",color:"#8a3a1c"}}>Analysis vs drawings</th>}</tr>
         <tr><th>Group</th><th style={R} title="What the progress is measured on: each WBS's drawings quantities, or its budget lines when it has no drawings">Measured qty</th><th style={R} title="Measured qty × progress %">Done</th><th style={R}>Progress</th>
         <th style={R} title="Concrete poured up to the cut-off date, these types">Poured</th>
-        {showB&&<><th className="cb" style={B}>Budget</th><th className="cb" style={B} title="Budget × progress">Budget unlocked</th><th className="cb" style={B} title="Poured − budget unlocked: > 0 loss, < 0 gain">vs budget</th><th className="cb" style={B} title="Budget − budget unlocked">RTS</th><th className="cb" style={B} title="Poured + RTS on the budget">EOS</th></>}
-        {showD&&<><th className="cd" style={D}>Drawings</th><th className="cd" style={D} title="Drawings × progress of the group">Drawings unlocked</th><th className="cd" style={D} title="Poured − drawings × progress">vs drawings</th><th className="cd" style={D} title="Drawings × (1 − progress)">RTS</th><th className="cd" style={D} title="Poured + RTS on the drawings">EOS</th></>}</tr></thead>
+        {showB&&<><th className="cb" style={B}>Budget</th><th className="cb" style={B} title="Budget × progress">Budget unlocked</th><th className="cb" style={B} title="Budget unlocked − poured: > 0 gain, < 0 loss">vs budget</th><th className="cb" style={B} title="Budget − budget unlocked">RTS</th><th className="cb" style={B} title="Poured + RTS on the budget">EOS</th></>}
+        {showD&&<><th className="cd" style={D}>Drawings</th><th className="cd" style={D} title="Drawings × progress of the group">Drawings unlocked</th><th className="cd" style={D} title="Drawings × progress − poured">vs drawings</th><th className="cd" style={D} title="Drawings × (1 − progress)">RTS</th><th className="cd" style={D} title="Poured + RTS on the drawings">EOS</th></>}</tr></thead>
       <tbody>{gp.groups.map(function(g){return row(g,false);})}{gp.groups.length>1&&row(gp.total,true)}</tbody>
     </table></div>}
   </div>;
@@ -2220,7 +2226,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           <InvBig bg={tB} label={"Concrete "+(tot.nPct?conLossWord(tot.variance):"loss / gain")+" vs budget"} value={tot.nPct?Math.abs(tot.variance):null} unit={CON_UNIT} colour={tot.nPct?conLossCol(tot.variance):null}
             sub={tot.nPct?"poured "+conFmt(tot.real)+" − earned "+conFmt(tot.earned)+" ("+conPct(tot.varPct)+") · "+tot.nPct+" WBS with %":"type the progress % of the WBS"}/>
           <InvBig bg={tB} label="RTS theo. on the budget" value={tot.nPct?tot.rtsTheoB:null} unit={CON_UNIT} sub="budget − earned"/>
-          <InvBig bg={tB} label="EOS − budget" value={tot.nEac?tot.eacVar:null} unit={CON_UNIT} colour={conLossCol(tot.eacVar)} sub={tot.nEac?conPct(tot.eacPct)+(prevTot&&prevTot.nEac?" · was "+(prevTot.eacVar>0?"+":"")+conFmt(prevTot.eacVar):""):"needs the RTS real"}/>
+          <InvBig bg={tB} label="Budget − EOS" value={tot.nEac?tot.eacVar:null} unit={CON_UNIT} colour={conLossCol(tot.eacVar)} sub={tot.nEac?conPct(tot.eacPct)+(prevTot&&prevTot.nEac?" · was "+(prevTot.eacVar>0?"+":"")+conFmt(prevTot.eacVar):""):"needs the RTS real"}/>
         </>)}
         {showD&&box(CON_BG_DWG,"Analysis vs drawings",<>
           <InvBig bg={tD} label="Drawings" value={tot.dwgAll>CON_EPS?tot.dwgAll:null} unit={CON_UNIT} sub={tot.dwgAll>CON_EPS?"quantities measured on the drawings":"type them in Overview › Theoretical per WBS › Drawings"}/>
@@ -2228,7 +2234,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           <InvBig bg={tD} label={"Concrete "+(tot.nDwg?conLossWord(tot.varDwg):"loss / gain")+" vs drawings"} value={tot.nDwg?Math.abs(tot.varDwg):null} unit={CON_UNIT} colour={tot.nDwg?conLossCol(tot.varDwg):null}
             sub={tot.nDwg?"poured "+conFmt(tot.realDwg)+" − drawings × % "+conFmt(tot.earnedDwg)+" ("+conPct(tot.varDwgPct)+")":""}/>
           <InvBig bg={tD} label="RTS theo. on the drawings" value={tot.nPct?tot.rtsTheoD:null} unit={CON_UNIT} sub="drawings − drawings × % (budget − earned on a WBS without drawings)"/>
-          <InvBig bg={tD} label="EOS − drawings" value={tot.eacVarDwg} unit={CON_UNIT} colour={conLossCol(tot.eacVarDwg)} sub={tot.eacVarDwg!==null?conPct(tot.eacDwgPct)+" · WBS with drawings and RTS real":"needs drawings and the RTS real"}/>
+          <InvBig bg={tD} label="Drawings − EOS" value={tot.eacVarDwg} unit={CON_UNIT} colour={conLossCol(tot.eacVarDwg)} sub={tot.eacVarDwg!==null?conPct(tot.eacDwgPct)+" · WBS with drawings and RTS real":"needs drawings and the RTS real"}/>
         </>)}
       </div>;
     })()}
@@ -2259,11 +2265,11 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
         <tr><th>WBS</th><th style={R} title="Physical progress at the cut-off date">Progress %</th><th style={R} title="Progress of the linked schedule activities at the cut-off date — for reference only, never used in the figures">Sched. % (ref.)</th>
         <th style={R} title="Concrete poured up to the cut-off date">Poured at cut-off</th>
         {showB&&<><th className="cb" style={B}>Budget</th><th className="cb" style={B} title="Budget × progress %">Budget unlocked</th><th className="cb" style={B} title="Poured ÷ budget, a volume ratio for reference — not a progress">Poured / budget</th>
-          <th className="cb" style={B} title="Poured − budget × progress %: > 0 loss, < 0 gain">vs budget<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th><th className="cb" style={B}>%</th>
-          <th className="cb" style={B} title="Budget − earned">RTS theo.</th><th className="cb" style={B} title="EOS − budget">EOS − budget</th></>}
+          <th className="cb" style={B} title="Budget × progress % − poured: > 0 gain, < 0 loss">vs budget<div style={{fontSize:9,fontWeight:400}}>gain (+) / loss (−)</div></th><th className="cb" style={B}>%</th>
+          <th className="cb" style={B} title="Budget − earned">RTS theo.</th><th className="cb" style={B} title="Budget − EOS">Budget − EOS</th></>}
         {showD&&<><th className="cd" style={D} title="Quantities measured on the drawings (Overview › Theoretical per WBS › Drawings)">Drawings</th><th className="cd" style={D} title="Drawings × progress %">Drawings unlocked</th>
-          <th className="cd" style={D} title="Poured − drawings × progress %: > 0 loss, < 0 gain. Only on the WBS with drawings quantities.">vs drawings<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th><th className="cd" style={D}>%</th>
-          <th className="cd" style={D} title="Drawings − drawings × progress % (budget − earned, in grey, where the WBS has no drawings quantities)">RTS theo.</th><th className="cd" style={D} title="EOS − drawings quantities">EOS − drawings</th></>}
+          <th className="cd" style={D} title="Drawings × progress % − poured: > 0 gain, < 0 loss. Only on the WBS with drawings quantities.">vs drawings<div style={{fontSize:9,fontWeight:400}}>gain (+) / loss (−)</div></th><th className="cd" style={D}>%</th>
+          <th className="cd" style={D} title="Drawings − drawings × progress % (budget − earned, in grey, where the WBS has no drawings quantities)">RTS theo.</th><th className="cd" style={D} title="drawings quantities − EOS">Drawings − EOS</th></>}
         <th style={R} title="Remain to be spent, real: typed by hand. ⇩ Fill RTS real copies the RTS theo. into every cell.">RTS real</th>
         <th style={R} title="Poured + RTS real">EOS</th>
         <th style={{minWidth:200}} title="Why this WBS shows a loss, a gain, an overrun… Shared with everyone, printed and exported. Can be written after the cut-off is closed.">EXPLANATION</th></tr></thead>
@@ -2288,7 +2294,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
             <td className="cb" style={bS({fontWeight:700,color:conLossCol(r.eacVar)})}>{r.eacVar!==null?<>{sg(r.eacVar)}<div style={{fontSize:10,fontWeight:400}}>{conPct(r.eacPct)}</div></>:dash}</td>
           </>}
           {showD&&<>
-            <td className="cd" style={dS({color:"#555"})} title={r.hasDwg?"Drawings − budget: "+sg(r.dwg-r.theo):"No drawings quantities typed"}>{r.hasDwg?conFmt(r.dwg):<span style={{color:"#ccc"}}>—</span>}</td>
+            <td className="cd" style={dS({color:"#555"})} title={r.hasDwg?"Budget − drawings: "+sg(r.theo-r.dwg):"No drawings quantities typed"}>{r.hasDwg?conFmt(r.dwg):<span style={{color:"#ccc"}}>—</span>}</td>
             <td className="cd" style={D}>{r.hasPct&&r.hasDwg?conFmt(r.earnedDwg):dash}</td>
             <td className="cd" style={dS({fontWeight:700,color:r.varDwg!==null?conLossCol(r.varDwg):"#bbb"})}>{r.varDwg!==null?sg(r.varDwg):"—"}</td>
             <td className="cd" style={dS({color:r.varDwg!==null?conLossCol(r.varDwg):"#bbb"})}>{r.varDwg!==null?conPct(r.varDwgPct):""}</td>
@@ -2315,7 +2321,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       </tfoot></table></div>;
     })()}
     <div style={{fontSize:11,color:"#888",marginTop:8}}>
-      Only the progress % typed here counts: nothing is filled in automatically, and a WBS without a % is left out of the loss / gain, the RTS and the EOS. Earned = budget × progress %. Poured = concrete poured up to {fmtDate(cur.date)}; loss (+) / gain (−) vs budget = poured − earned. Vs drawings = poured − drawings quantities × the same progress %, on the WBS whose drawings quantities are typed (Overview › Theoretical per WBS › Drawings); EOS − drawings = EOS − drawings quantities. RTS = remain to be spent: theoretical = on the basis chosen above — budget − earned, or drawings − drawings × progress % (budget − earned on a WBS without drawings quantities); real = typed by hand only (⇩ Fill RTS real copies the theoretical one into every cell, then change the ones you want); a WBS without its RTS real has no EOS.
+      Only the progress % typed here counts: nothing is filled in automatically, and a WBS without a % is left out of the loss / gain, the RTS and the EOS. Earned = budget × progress %. Poured = concrete poured up to {fmtDate(cur.date)}; gain (+) / loss (−) vs budget = earned − poured. Vs drawings = drawings quantities × the same progress % − poured, on the WBS whose drawings quantities are typed (Overview › Theoretical per WBS › Drawings); Drawings − EOS = drawings quantities − EOS. RTS = remain to be spent: theoretical = on the basis chosen above — budget − earned, or drawings − drawings × progress % (budget − earned on a WBS without drawings quantities); real = typed by hand only (⇩ Fill RTS real copies the theoretical one into every cell, then change the ones you want); a WBS without its RTS real has no EOS.
       {!typeId&&" With all types shown, a typed RTS real is shared over the WBS's types pro rata; pick a type to adjust it type by type."} EOS = real + RTS real.
     </div>
     <div className="fg" style={{marginTop:10,maxWidth:700}}><label>Cut-off note</label>
@@ -2366,7 +2372,7 @@ function conCutoffReport(c,prev,rows,tot,prevTot,label,gp){
   }).join("");
   var thB=function(x){return'<th style="background:#d6e3f6">'+x+"</th>";},thD=function(x){return'<th style="background:#f9d6c8">'+x+"</th>";};
   var head="<tr><th colspan=\"3\"></th>"+(shB?'<th colspan="6" style="background:#d6e3f6">Analysis vs budget</th>':"")+(shD?'<th colspan="6" style="background:#f9d6c8">Analysis vs drawings</th>':"")+'<th colspan="2">Remain &amp; forecast</th><th></th></tr>'
-    +"<tr><th>WBS</th><th>Progress</th><th>Poured</th>"+(shB?["Budget","Earned","vs budget","%","RTS theo.","EOS − budget"].map(thB).join(""):"")+(shD?["Drawings","Drawings × %","vs drawings","%","RTS theo.","EOS − drawings"].map(thD).join(""):"")+"<th>RTS real</th><th>EOS</th><th>Explanation</th></tr>";
+    +"<tr><th>WBS</th><th>Progress</th><th>Poured</th>"+(shB?["Budget","Earned","vs budget","%","RTS theo.","Budget − EOS"].map(thB).join(""):"")+(shD?["Drawings","Drawings × %","vs drawings","%","RTS theo.","Drawings − EOS"].map(thD).join(""):"")+"<th>RTS real</th><th>EOS</th><th>Explanation</th></tr>";
   var html="<h1>Concrete — cut-off cost control</h1><div class=\"sub\">Riviera Tower · cut-off "+E(fmtDate(c.date))+(c.label?" ("+E(c.label)+")":"")+" · "+E(label)+(c.closed?" · closed":" · open (provisional)")+"</div>"
     +(gp&&gp.groups.length?"<h2>Progress per group ("+CON_UNIT+") — progress of the WBS applied to the total budget and drawings</h2><table><tr><th>Group</th><th>Measured qty</th><th>Progress</th><th>Budget</th><th>Budget unlocked</th><th>Poured</th><th>vs budget</th><th>Drawings</th><th>vs drawings</th><th>RTS</th><th>EOS</th></tr>"
       +gp.groups.concat(gp.groups.length>1?[gp.total]:[]).map(function(g){var tot_=g.key==="total";
@@ -2375,15 +2381,15 @@ function conCutoffReport(c,prev,rows,tot,prevTot,label,gp){
           +td(g.budgetEarned===null?"—":conFmt(g.budgetEarned))+td(conFmt(g.poured))+td(g.variance===null?"—":sg(g.variance)+(g.varPct===null?"":" ("+conPct(g.varPct)+")"),true,g.variance===null?null:conLossCol(g.variance))
           +td(g.dwg>CON_EPS?conFmt(g.dwg)+(g.dwgMan?" *":""):"—")+td(g.varDwg===null||g.varDwg===undefined?"—":sg(g.varDwg),true,g.varDwg===null||g.varDwg===undefined?null:conLossCol(g.varDwg))+td(g.rts===null?"—":conFmt(g.rts))+td(g.eac===null?"—":conFmt(g.eac)+" ("+sg(g.eacVar)+")",false,g.eac===null?null:conLossCol(g.eacVar))+"</tr>";}).join("")
       +"</table><div style=\"font-size:10px;color:#8b8578\">Lean concrete apart from the other concretes. Progress = Σ (quantity × progress % of each WBS) ÷ Σ quantities — quantity = drawings, or budget when a WBS has no drawings; WBS without a % at 0%. Applied to the group's total budget and drawings (* = project total typed by hand).</div>":"")
-    +"<h2>Summary ("+CON_UNIT+") — WBS with a progress % ("+tot.nPct+" of "+tot.n+")</h2><table><tr><th>Budget</th><th>Earned</th><th>Poured</th><th>Loss (+) / gain (−) vs budget</th><th>RTS theo.</th><th>RTS real</th><th>EOS</th><th>EOS − budget</th></tr><tr>"
+    +"<h2>Summary ("+CON_UNIT+") — WBS with a progress % ("+tot.nPct+" of "+tot.n+")</h2><table><tr><th>Budget</th><th>Earned</th><th>Poured</th><th>Gain (+) / loss (−) vs budget</th><th>RTS theo.</th><th>RTS real</th><th>EOS</th><th>Budget − EOS</th></tr><tr>"
     +td(conFmt(tot.theo))+td(conFmt(tot.earned))+td(conFmt(tot.real))+td(sg(tot.variance)+" ("+conPct(tot.varPct)+")",true,conLossCol(tot.variance))+td(conFmt(tot.rtsTheo))+td(conFmt(tot.rtsReal))+td(conFmt(tot.eac))+td(sg(tot.eacVar)+" ("+conPct(tot.eacPct)+")",true,conLossCol(tot.eacVar))+"</tr>"
     +(prevTot?"<tr><td colspan=\"8\" style=\"font-size:11px;color:#555\">Since "+E(fmtDate(prev.date))+": earned +"+conFmt(tot.earned-prevTot.earned)+", poured (all WBS) +"+conFmt(tot.realAll-prevTot.realAll)+"</td></tr>":"")+"</table>"
-    +(tot.nDwg?"<h2>Against the drawings ("+CON_UNIT+") — WBS with a progress % and drawings quantities ("+tot.nDwg+")</h2><table><tr><th>Budget</th><th>Drawings</th><th>Drawings − budget</th><th>Drawings × %</th><th>Poured</th><th>Loss (+) / gain (−) vs drawings</th><th>EOS</th><th>EOS − drawings</th></tr><tr>"
-      +td(conFmt(tot.theoDwg))+td(conFmt(tot.dwg))+td(sg(tot.dwg-tot.theoDwg),false,conLossCol(tot.dwg-tot.theoDwg))+td(conFmt(tot.earnedDwg))+td(conFmt(tot.realDwg))+td(sg(tot.varDwg)+" ("+conPct(tot.varDwgPct)+")",true,conLossCol(tot.varDwg))+td(conFmt(tot.eacDwg))+td(sg(tot.eacVarDwg)+" ("+conPct(tot.eacDwgPct)+")",true,conLossCol(tot.eacVarDwg))+"</tr></table>":"")
+    +(tot.nDwg?"<h2>Against the drawings ("+CON_UNIT+") — WBS with a progress % and drawings quantities ("+tot.nDwg+")</h2><table><tr><th>Budget</th><th>Drawings</th><th>Budget − drawings</th><th>Drawings × %</th><th>Poured</th><th>Gain (+) / loss (−) vs drawings</th><th>EOS</th><th>Drawings − EOS</th></tr><tr>"
+      +td(conFmt(tot.theoDwg))+td(conFmt(tot.dwg))+td(sg(tot.theoDwg-tot.dwg),false,conLossCol(tot.theoDwg-tot.dwg))+td(conFmt(tot.earnedDwg))+td(conFmt(tot.realDwg))+td(sg(tot.varDwg)+" ("+conPct(tot.varDwgPct)+")",true,conLossCol(tot.varDwg))+td(conFmt(tot.eacDwg))+td(sg(tot.eacVarDwg)+" ("+conPct(tot.eacDwgPct)+")",true,conLossCol(tot.eacVarDwg))+"</tr></table>":"")
     +(tot.nNoPct?"<div style=\"font-size:11px;color:#b45309\">"+tot.nNoPct+" WBS without progress % ("+conFmt(tot.theoNoPct)+" budget, "+conFmt(tot.realNoPct)+" poured) are not measured.</div>":"")
     +"<h2>Per WBS</h2><table style=\"border-collapse:collapse\" class=\"con-grid\"><thead>"+head+"</thead><tbody>"+body+"</tbody></table><style>.con-grid th,.con-grid td{border:1px solid #c9c2b2}.con-grid thead{display:table-header-group}</style>"
     +(c.note?"<h2>Note</h2><div>"+E(c.note)+"</div>":"")
-    +"<div style=\"font-size:10px;color:#8b8578\">Progress % typed by hand only. Earned = budget × progress %. Poured = pours up to the cut-off date. Loss (+) / gain (−) vs budget = poured − earned; vs drawings = poured − drawings quantities × progress % (WBS with drawings quantities only). RTS theo. on the "+(conRtsBasis(c)==="dwg"?"drawings (drawings − drawings × progress %; budget − earned without drawings)":"budget (budget − earned)")+"; RTS real typed by hand. EOS = poured + RTS real (only the WBS whose RTS real is typed). EOS = poured + RTS real.</div>";
+    +"<div style=\"font-size:10px;color:#8b8578\">Progress % typed by hand only. Earned = budget × progress %. Poured = pours up to the cut-off date. Gain (+) / loss (−) vs budget = earned − poured; vs drawings = drawings quantities × progress % − poured (WBS with drawings quantities only). RTS theo. on the "+(conRtsBasis(c)==="dwg"?"drawings (drawings − drawings × progress %; budget − earned without drawings)":"budget (budget − earned)")+"; RTS real typed by hand. EOS = poured + RTS real (only the WBS whose RTS real is typed). EOS = poured + RTS real.</div>";
   openReport("CONCRETE CUT-OFF - "+c.date,html);
 }
 function conCutoffXlsx(c,types,wbs,pours,gp){
@@ -2393,17 +2399,17 @@ function conCutoffXlsx(c,types,wbs,pours,gp){
   var rows=conCutoffRows(c,wbs,pours,allIds);
   var h=function(r,v){return r.hasPct?r2(v):"";};
   var n2=function(v){return v===null||v===undefined?"":r2(v);};
-  var sum=rows.map(function(r){return{"Code":r.wbs.code,"Description":r.wbs.name,"Zone":r.wbs.zone,"Budget":r2(r.theo),"Drawings":r.hasDwg?r2(r.dwg):"","Drawings − budget":r.hasDwg?r2(r.dwg-r.theo):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,r.earned),"Poured":r2(r.real),
-    "Loss(+)/gain(-) vs budget":h(r,r.variance),"% vs budget":r.varPct===null?"":r2(r.varPct),"Drawings × %":r.varDwg!==null?r2(r.earnedDwg):"","Loss(+)/gain(-) vs drawings":n2(r.varDwg),"% vs drawings":n2(r.varDwgPct),
-    "RTS theo. (budget)":h(r,r.rtsTheoB),"RTS theo. (drawings)":h(r,r.rtsTheoD),"RTS real":r.adjusted?r2(r.rtsReal):"","EOS":r2(r.eac),"EOS − budget":r2(r.eacVar),"EOS − drawings":n2(r.eacVarDwg),"Explanation":(conCutoffLine(c,r.wbs.id)||{}).note||"","Budget comment":r.wbs.theoNote||""};});
+  var sum=rows.map(function(r){return{"Code":r.wbs.code,"Description":r.wbs.name,"Zone":r.wbs.zone,"Budget":r2(r.theo),"Drawings":r.hasDwg?r2(r.dwg):"","Budget − drawings":r.hasDwg?r2(r.theo-r.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,r.earned),"Poured":r2(r.real),
+    "Gain(+)/loss(-) vs budget":h(r,r.variance),"% vs budget":r.varPct===null?"":r2(r.varPct),"Drawings × %":r.varDwg!==null?r2(r.earnedDwg):"","Gain(+)/loss(-) vs drawings":n2(r.varDwg),"% vs drawings":n2(r.varDwgPct),
+    "RTS theo. (budget)":h(r,r.rtsTheoB),"RTS theo. (drawings)":h(r,r.rtsTheoD),"RTS real":r.adjusted?r2(r.rtsReal):"","EOS":r2(r.eac),"Budget − EOS":r2(r.eacVar),"Drawings − EOS":n2(r.eacVarDwg),"Explanation":(conCutoffLine(c,r.wbs.id)||{}).note||"","Budget comment":r.wbs.theoNote||""};});
   var det=[];
   rows.forEach(function(r){st.forEach(function(t){var b=r.byType[t.id];if(!b||(b.theo<=CON_EPS&&b.real<=CON_EPS&&b.dwg<=CON_EPS))return;
-    det.push({"Code":r.wbs.code,"Type":t.name,"Budget":r2(b.theo),"Drawings":b.dwg>CON_EPS?r2(b.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,b.earned),"Poured":r2(b.real),"Loss(+)/gain(-) vs budget":h(r,b.real-b.earned),"Loss(+)/gain(-) vs drawings":r.hasPct&&b.dwg>CON_EPS?r2(b.real-b.earnedDwg):"","RTS theo. (budget)":h(r,b.rtsTheoB),"RTS theo. (drawings)":h(r,b.rtsTheoD),"RTS real":b.adjusted?r2(b.rtsReal):"","EOS":r2(b.real+(b.rtsReal||0)),"EOS − budget":r2(b.real+(b.rtsReal||0)-b.theo)});});});
+    det.push({"Code":r.wbs.code,"Type":t.name,"Budget":r2(b.theo),"Drawings":b.dwg>CON_EPS?r2(b.dwg):"","Progress %":r.hasPct?r.pct:"","Earned":h(r,b.earned),"Poured":r2(b.real),"Gain(+)/loss(-) vs budget":h(r,b.earned-b.real),"Gain(+)/loss(-) vs drawings":r.hasPct&&b.dwg>CON_EPS?r2(b.earnedDwg-b.real):"","RTS theo. (budget)":h(r,b.rtsTheoB),"RTS theo. (drawings)":h(r,b.rtsTheoD),"RTS real":b.adjusted?r2(b.rtsReal):"","EOS":r2(b.real+(b.rtsReal||0)),"Budget − EOS":r2(b.theo-b.real-(b.rtsReal||0))});});});
   var wb=window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(sum),"Per WBS");
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(det),"Per WBS and type");
   if(gp&&gp.groups.length){var n2=function(v){return v===null||v===undefined?"":r2(v);};
-    window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(gp.groups.concat(gp.groups.length>1?[gp.total]:[]).map(function(g){return{"Group":g.label,"Types":(g.names||[]).join(", "),"Measured on":g.basis||"","Measured qty":n2(g.basisQty),"Done":n2(g.basisEarned),"Progress %":g.pct===null?"":r2(g.pct*100),"Items at 0%":g.nNoPct||"","Budget":r2(g.budget),"Budget typed by hand":g.budMan?"Y":"","Budget unlocked":n2(g.budgetEarned),"Poured":r2(g.poured),"Loss(+)/gain(-) vs budget":n2(g.variance),"% vs budget":n2(g.varPct),"Drawings":r2(g.dwg),"Loss(+)/gain(-) vs drawings":n2(g.varDwg),"RTS":n2(g.rts),"EOS":n2(g.eac),"EOS − budget":n2(g.eacVar)};})),"Per group");}
+    window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(gp.groups.concat(gp.groups.length>1?[gp.total]:[]).map(function(g){return{"Group":g.label,"Types":(g.names||[]).join(", "),"Measured on":g.basis||"","Measured qty":n2(g.basisQty),"Done":n2(g.basisEarned),"Progress %":g.pct===null?"":r2(g.pct*100),"Items at 0%":g.nNoPct||"","Budget":r2(g.budget),"Budget typed by hand":g.budMan?"Y":"","Budget unlocked":n2(g.budgetEarned),"Poured":r2(g.poured),"Gain(+)/loss(-) vs budget":n2(g.variance),"% vs budget":n2(g.varPct),"Drawings":r2(g.dwg),"Gain(+)/loss(-) vs drawings":n2(g.varDwg),"RTS":n2(g.rts),"EOS":n2(g.eac),"Budget − EOS":n2(g.eacVar)};})),"Per group");}
   window.XLSX.writeFile(wb,"Concrete cut-off "+c.date+".xlsx");
 }
 // A split moves a WBS's quantities to new lines. In CLOSED cut-offs the new lines keep the % that
