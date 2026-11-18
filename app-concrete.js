@@ -414,7 +414,7 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
 }
 
 // ---------------------------------------------------------------- overview
-function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,onGo}){
+function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones,cutoffs,saveCutoffs,onGo}){
   const [typeId,setTypeId]=useState("");
   const [zone,setZone]=useState("");
   const [showTable,setShowTable]=useState(false);
@@ -468,7 +468,7 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
       <InvBig label="Estimate at completion" value={last?last.eac+last.theoNoPct:null} unit={unit} colour={last?conVarCol(last.eacPct):null}
         sub={last?"cut-off "+fmtDate(last.date)+(last.nNoPct?" · "+last.nNoPct+" WBS without % at budget":""):"from the cut-off"}/>
     </div>
-    <ConTheoEditor types={types} list={list} rawWbs={rawWbs||wbs} saveWbs={saveWbs} edit={edit} realIx={realIx} typeId={typeId}/>
+    <ConTheoEditor types={types} list={list} rawWbs={rawWbs||wbs} saveWbs={saveWbs} edit={edit} realIx={realIx} typeId={typeId} pours={pours} savePours={savePours} cutoffs={cutoffs} saveCutoffs={saveCutoffs}/>
     {last&&last.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ At the cut-off of {fmtDate(last.date)}, {last.nNoPct} WBS have no progress % ({conFmt(last.theoNoPct)} {unit} budget, {conFmt(last.realNoPct)} {unit} poured): they are left out of the loss / gain.</div>}
     {!last&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>The loss or gain of concrete is measured only at a cut-off, against the progress % typed for each WBS. <button className="btn btn-sm" onClick={function(){onGo("cutoff");}}>Go to the cut-offs</button></div>}
     {s.months.length>0?<>
@@ -547,11 +547,37 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,realIx,zones,cutoffs,o
   </div>;
 }
 // Theoretical m³ per WBS and per type, typed straight in the overview (no dialog). Empty = none.
+// The code and description of each WBS are typed in the same table; tick two WBS or more to merge
+// them (budget and pours together, ConMergeModal).
 // The theoretical is never taken from an imported workbook; the WBS created by an import carry
 // "Created by the import" in their note, and their theoretical can be cleared here in one go.
-function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId}){
+function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,savePours,cutoffs,saveCutoffs}){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
+  const [sel,setSel]=useState({});
+  const [merging,setMerging]=useState(false);
+  pours=pours||[];cutoffs=cutoffs||[];
+  var selIds=Object.keys(sel).filter(function(id){return sel[id]&&rawWbs.some(function(w){return w.id===id;});});
+  function toggle(id){setSel(function(o){var n=Object.assign({},o);if(n[id])delete n[id];else n[id]=1;return n;});}
+  // Rename: code (unique, required) or description. Returns false when refused.
+  function rename(id,field,v){
+    if(blockIfReadOnly())return false;
+    var w=rawWbs.find(function(x){return x.id===id;});if(!w)return false;
+    var d=Object.assign({},w);d[field]=v;
+    var err=field==="code"?conWbsError(Object.assign({},d,{start:"",finish:""}),rawWbs):"";
+    if(err){safeAlert(err);return false;}
+    saveWbs(rawWbs.map(function(x){return x.id===id?Object.assign({},d,{updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""}):x;}));
+    return true;
+  }
+  function applyMerge(keepId,ids,code,name){
+    if(blockIfReadOnly())return;
+    var res=conApplyMerge(keepId,ids,code,name,rawWbs,pours,cutoffs,types.map(function(t){return t.id;}));
+    if(res.moved&&savePours)savePours(res.pours);
+    if(saveCutoffs&&res.cutoffs.some(function(c,i){return c!==cutoffs[i];}))saveCutoffs(res.cutoffs);
+    saveWbs(res.wbs);
+    conMergeImpMap(keepId,ids);
+    setSel({});setMerging(false);
+  }
   var cols=conSortTypes(types).filter(function(t){
     if(typeId)return t.id===typeId;
     return !t.archived||list.some(function(w){return _invNum((w.theo||{})[t.id])>0;});
@@ -578,18 +604,27 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId}){
     <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
       <button type="button" onClick={function(){setOpen(!open);}} style={{background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:14,padding:0,fontFamily:"inherit"}}>
         {open?"▾":"▸"} Theoretical per WBS</button>
-      <span style={{fontSize:12,color:"#888"}}>{rows.length} WBS · {conFmt(rows.reduce(function(s,w){return s+conSum(w.theo,cols.map(function(t){return t.id;}));},0))} {CON_UNIT}{edit?" · type the m³ in the cells, empty = none":""}</span>
-      {edit&&imported.length>0&&<button className="btn btn-sm" style={{marginLeft:"auto",color:"#b3302a"}} onClick={clearImported}
+      <span style={{fontSize:12,color:"#888"}}>{rows.length} WBS · {conFmt(rows.reduce(function(s,w){return s+conSum(w.theo,cols.map(function(t){return t.id;}));},0))} {CON_UNIT}{edit?" · type the m³ in the cells, empty = none · code and description editable · tick WBS to merge them":""}</span>
+      {edit&&open&&<button className="btn btn-sm" style={{marginLeft:"auto"}} disabled={selIds.length<2}
+        title={selIds.length<2?"Tick two WBS or more in the table to merge them":"Merge the ticked WBS into one: budget added up, pours moved"}
+        onClick={function(){setMerging(true);}}>⇄ Merge {selIds.length>=2?selIds.length+" ":""}WBS</button>}
+      {edit&&open&&selIds.length>0&&<button className="btn btn-sm" onClick={function(){setSel({});}}>Clear selection ({selIds.length})</button>}
+      {edit&&imported.length>0&&<button className="btn btn-sm" style={{marginLeft:open?undefined:"auto",color:"#b3302a"}} onClick={clearImported}
         title="These WBS got their theoretical from the workbook's Theo Qty at an earlier import">✕ Clear the theoretical of {imported.length} imported WBS</button>}
     </div>
     {open&&<div style={{marginTop:10}}>
       <input type="text" placeholder="Search code, description…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:220,marginBottom:8}}/>
       <div style={{overflowX:"auto",maxHeight:"60vh",overflowY:"auto"}}><table className="tbl">
-        <thead><tr><th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R}>{t.name}</th>;})}<th style={R}>Total</th><th style={R}>Poured</th></tr></thead>
+        <thead><tr>{edit&&<th style={{width:24}}/>}<th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R}>{t.name}</th>;})}<th style={R}>Total</th><th style={R}>Poured</th></tr></thead>
         <tbody>{rows.map(function(w){
           var tot=conSum(w.theo,cols.map(function(t){return t.id;}));
-          return <tr key={w.id}>
-            <td><b>{w.code}</b> {w.name}</td>
+          return <tr key={w.id} style={sel[w.id]?{background:"var(--brand-soft)"}:undefined}>
+            {edit&&<td><input type="checkbox" checked={!!sel[w.id]} onChange={function(){toggle(w.id);}} title="Tick to merge with other WBS"/></td>}
+            {edit?<td style={{minWidth:300}}><div style={{display:"flex",gap:4}}>
+                <ConTextCell value={w.code} width={96} bold={true} title="WBS code (unique) — Enter to save, Esc to cancel" onCommit={function(v){rename(w.id,"code",v);}}/>
+                <ConTextCell value={w.name} placeholder="Description" title="Description — Enter to save, Esc to cancel" onCommit={function(v){rename(w.id,"name",v);}}/>
+              </div></td>
+            :<td><b>{w.code}</b> {w.name}</td>}
             {cols.map(function(t){var v=_invNum((w.theo||{})[t.id]);
               return <td key={t.id} style={R}>{edit
                 ?<ConNumCell value={v||null} width={74} placeholder="—" title={"Theoretical m³ — "+t.name+" · empty = none"} onCommit={function(nv){setTheo(w.id,t.id,nv);}}/>
@@ -599,7 +634,139 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId}){
           </tr>;
         })}</tbody></table></div>
     </div>}
+    {merging&&<ConMergeModal ids={selIds} wbs={rawWbs} types={types} realIx={realIx} pours={pours} cutoffs={cutoffs}
+      onApply={applyMerge} onClose={function(){setMerging(false);}}/>}
   </div>;
+}
+// ---------------------------------------------------------------- merge WBS
+// Several WBS become one, budget and spending together: the kept WBS takes the summed
+// theoretical per type, every pour of the others (moved, never copied), the union of the
+// schedule links, the earliest start / latest finish, and one line per cut-off. At a cut-off
+// the merged progress % is weighted by the theoretical of each WBS, so the earned volume does
+// not move; it stays empty when a WBS with a budget had no % there (nothing is invented).
+// An adjusted remain-to-be-spent is kept as the sum of each WBS's own (adjusted or theoretical).
+function conMergeCutoffs(cutoffs,keepId,ids,wbsById,typeIds){
+  var inSet={};ids.forEach(function(id){inSet[id]=1;});
+  var lost=0;
+  var out=(cutoffs||[]).map(function(c){
+    var mine=(c.lines||[]).filter(function(l){return inSet[l.id];});
+    if(!mine.length)return c;
+    var byId={};mine.forEach(function(l){byId[l.id]=l;});
+    var num=0,den=0,all=true,anyPct=false;
+    ids.forEach(function(id){
+      var th=conSum((wbsById[id]||{}).theo,typeIds),l=byId[id];
+      if(l&&_invHas(l.pct)){anyPct=true;num+=th*conClampPct(l.pct);den+=th;}
+      else if(th>CON_EPS)all=false;
+    });
+    var ln={id:keepId};
+    if(anyPct&&all){
+      ln.pct=den>CON_EPS?Math.round(num/den*100)/100:conClampPct(mine.filter(function(l){return _invHas(l.pct);})[0].pct);
+      var rts={},adj=false;
+      typeIds.forEach(function(t){
+        var s=0,a=false;
+        ids.forEach(function(id){
+          var l=byId[id]||{},th=_invNum(((wbsById[id]||{}).theo||{})[t]),p=_invHas(l.pct)?conClampPct(l.pct):0;
+          if(l.rts&&_invHas(l.rts[t])){a=true;s+=_invNum(l.rts[t]);}else s+=th-th*p/100;
+        });
+        if(a){adj=true;rts[t]=Math.round(s*1000)/1000;}
+      });
+      if(adj)ln.rts=rts;
+    }else if(anyPct)lost++;
+    var notes=mine.map(function(l){return String(l.note||"").trim();}).filter(Boolean);
+    if(notes.length)ln.note=notes.join(" · ");
+    ln.updatedAt=new Date().toISOString();ln.updatedBy=window._currentUser?window._currentUser.name:"";
+    var lines=(c.lines||[]).filter(function(l){return !inSet[l.id];}).concat([ln]);
+    return Object.assign({},c,{lines:lines});
+  });
+  return{cutoffs:out,lost:lost};
+}
+function conApplyMerge(keepId,ids,code,name,wbs,pours,cutoffs,typeIds){
+  var wbsById={};wbs.forEach(function(w){wbsById[w.id]=w;});
+  var inSet={};ids.forEach(function(id){inSet[id]=1;});
+  var parts=ids.map(function(id){return wbsById[id];}).filter(Boolean);
+  var keep=wbsById[keepId];
+  var theo={};parts.forEach(function(w){Object.keys(w.theo||{}).forEach(function(t){var v=_invNum(w.theo[t]);if(v)theo[t]=Math.round(((theo[t]||0)+v)*1000)/1000;});});
+  var starts=parts.map(function(w){return w.start;}).filter(Boolean).sort(),fins=parts.map(function(w){return w.finish;}).filter(Boolean).sort();
+  var links=[],seen={};
+  parts.forEach(function(w){(w.schedLinks||[]).forEach(function(l){var k=l.schedId+"|"+l.rowId;if(!seen[k]){seen[k]=1;links.push(l);}});});
+  var others=parts.filter(function(w){return w.id!==keepId;});
+  var stamp="Merged from "+others.map(conWbsLabel).join(", ")+" ("+fmtDate(today())+")";
+  var merged=Object.assign({},keep,{code:code,name:name,theo:theo,start:starts[0]||"",finish:fins.length?fins[fins.length-1]:"",
+    done:parts.every(function(w){return !!w.done;}),schedLinks:links,
+    datesFromSched:links.length?parts.some(function(w){return !!w.datesFromSched;}):keep.datesFromSched,
+    note:[String(keep.note||"").trim(),stamp].filter(Boolean).join("\n"),
+    updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""});
+  if(!links.length)delete merged.schedLinks;
+  var newWbs=wbs.filter(function(w){return !inSet[w.id]||w.id===keepId;}).map(function(w){return w.id===keepId?merged:w;});
+  var moved=0;
+  var newPours=pours.map(function(p){if(inSet[p.wbsId]&&p.wbsId!==keepId){moved++;return Object.assign({},p,{wbsId:keepId});}return p;});
+  var mc=conMergeCutoffs(cutoffs,keepId,ids,wbsById,typeIds);
+  return{wbs:newWbs,pours:newPours,cutoffs:mc.cutoffs,moved:moved,lost:mc.lost};
+}
+// The Excel import remembers "description → WBS id" in this browser: point the merged ids to the kept one.
+function conMergeImpMap(keepId,ids){
+  var m=conImpMapLoad(),ch=false;
+  Object.keys(m).forEach(function(k){if(ids.indexOf(m[k])>=0&&m[k]!==keepId){m[k]=keepId;ch=true;}});
+  if(ch)conImpMapSave(m);
+}
+function ConMergeModal({ids,wbs,types,realIx,pours,cutoffs,onApply,onClose}){
+  var typeIds=types.map(function(t){return t.id;});
+  var parts=conSortWbs(wbs.filter(function(w){return ids.indexOf(w.id)>=0;}));
+  function nPoursOf(id){return pours.filter(function(p){return p.wbsId===id;}).length;}
+  var best=parts.slice().sort(function(a,b){return conSum(b.theo,typeIds)+conSum(realIx[b.id],typeIds)-conSum(a.theo,typeIds)-conSum(realIx[a.id],typeIds);})[0]||{};
+  const [keepId,setKeepId]=useState(best.id||"");
+  var keep=parts.find(function(w){return w.id===keepId;})||{};
+  const [code,setCode]=useState(keep.code||"");
+  const [name,setName]=useState(keep.name||"");
+  function pick(w){setKeepId(w.id);setCode(w.code||"");setName(w.name||"");}
+  var wbsById={};wbs.forEach(function(w){wbsById[w.id]=w;});
+  var preview=conMergeCutoffs(cutoffs,keepId,parts.map(function(w){return w.id;}),wbsById,typeIds);
+  var nCut=(cutoffs||[]).filter(function(c){return (c.lines||[]).some(function(l){return ids.indexOf(l.id)>=0;});}).length;
+  var tById={};types.forEach(function(t){tById[t.id]=t;});
+  var theo={},real={};
+  parts.forEach(function(w){typeIds.forEach(function(t){theo[t]=(theo[t]||0)+_invNum((w.theo||{})[t]);real[t]=(real[t]||0)+_invNum((realIx[w.id]||{})[t]);});});
+  var shownT=conSortTypes(types).filter(function(t){return theo[t.id]>CON_EPS||real[t.id]>CON_EPS;});
+  var err=parts.length<2?"Select at least two WBS.":conWbsError({id:keepId,code:code,name:name},wbs.filter(function(w){return ids.indexOf(w.id)<0||w.id===keepId;}));
+  var R={textAlign:"right"};
+  return <InvModal title={"⇄ Merge "+parts.length+" WBS"} width={760} onClose={onClose} footer={<>
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn btn-pri" disabled={!!err} title={err} onClick={function(){onApply(keepId,parts.map(function(w){return w.id;}),code.trim(),name.trim());}}>Merge into 1 WBS</button>
+    </>}>
+    <div style={{fontSize:12,color:"#555",marginBottom:8}}>The budget (theoretical per type) is added up and every pour is moved to the WBS kept: nothing is lost. The other WBS are removed. Schedule links are put together, dates run from the earliest start to the latest finish.</div>
+    <table className="tbl" style={{fontSize:12,marginBottom:10}}>
+      <thead><tr><th>Keep</th><th>WBS</th><th style={R}>Budget</th><th style={R}>Poured</th><th style={R}>Pours</th></tr></thead>
+      <tbody>{parts.map(function(w){return <tr key={w.id} style={{cursor:"pointer"}} onClick={function(){pick(w);}}>
+        <td><input type="radio" checked={w.id===keepId} onChange={function(){pick(w);}}/></td>
+        <td><b>{w.code}</b> {w.name}</td>
+        <td style={R}>{conFmt(conSum(w.theo,typeIds))}</td><td style={R}>{conFmt(conSum(realIx[w.id],typeIds))}</td><td style={R}>{nPoursOf(w.id)}</td></tr>;})}</tbody>
+    </table>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+      <div className="fg" style={{flex:"0 0 160px"}}><label>Code of the merged WBS</label><input type="text" value={code} onChange={function(e){setCode(e.target.value);}}/></div>
+      <div className="fg" style={{flex:"1 1 260px"}}><label>Description</label><input type="text" value={name} onChange={function(e){setName(e.target.value);}}/></div>
+    </div>
+    <table className="tbl" style={{fontSize:12,marginBottom:8}}>
+      <thead><tr><th>Result</th>{shownT.map(function(t){return <th key={t.id} style={R}>{t.name}</th>;})}<th style={R}>Total</th></tr></thead>
+      <tbody>
+        <tr><td>Budget</td>{shownT.map(function(t){return <td key={t.id} style={R}>{conFmt(theo[t.id])}</td>;})}<td style={Object.assign({fontWeight:700},R)}>{conFmt(conSum(theo,typeIds))}</td></tr>
+        <tr><td>Poured</td>{shownT.map(function(t){return <td key={t.id} style={R}>{conFmt(real[t.id])}</td>;})}<td style={Object.assign({fontWeight:700},R)}>{conFmt(conSum(real,typeIds))}</td></tr>
+      </tbody>
+    </table>
+    {nCut>0&&<div style={{fontSize:12,color:"#555"}}>{nCut} cut-off{nCut>1?"s":""}: the progress % becomes one %, weighted by the budget of each WBS (the earned volume is unchanged).</div>}
+    {preview.lost>0&&<div style={{fontSize:12,color:"#ef6c00",marginTop:4}}>⚠ At {preview.lost} cut-off{preview.lost>1?"s":""}, one of these WBS with a budget has no progress %: the merged WBS will have no % there (to type again in Cut-off cost control).</div>}
+    {err&&<div style={{fontSize:12,color:"#b3302a",marginTop:6}}>{err}</div>}
+  </InvModal>;
+}
+// A text typed in a table cell, saved when the cell is left or on Enter; Escape cancels.
+function ConTextCell({value,onCommit,width,placeholder,title,bold}){
+  const [txt,setTxt]=useState(value||"");
+  const [focus,setFocus]=useState(false);
+  const cancel=useRef(false);
+  return <input type="text" value={focus?txt:(value||"")} placeholder={placeholder} title={title}
+    onFocus={function(){cancel.current=false;setTxt(value||"");setFocus(true);}}
+    onChange={function(e){setTxt(e.target.value);}}
+    onBlur={function(){setFocus(false);if(cancel.current)return;var s=txt.trim();if(s!==String(value||"").trim())onCommit(s);}}
+    onKeyDown={function(e){if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){cancel.current=true;e.target.blur();}}}
+    style={{width:width||"100%",padding:"4px 6px",fontWeight:bold?700:undefined}}/>;
 }
 // Cumulative curve: planned and poured month by month; real progress (earned) only as points
 // at the cut-offs, where a progress % was typed. No line is drawn between cut-offs. Plain SVG.
