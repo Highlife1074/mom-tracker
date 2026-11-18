@@ -2826,7 +2826,15 @@ function PpMultiDrop({allLabel,name,options,value,onChange,title}){
     </div>}
   </span>;
 }
-function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,saveContractors,onNavTender,onOpenTender,onNavZone,onQuickUpdate,actions,primary}){
+// WMS / ITP set to N/A (or back to "—") from the Package list: through TendersView's updateStep
+// when given (same path as the sheet and Quick update), else a direct patch of td.steps.
+function ppSetQualityNa(td,k,on,updateStep,upd){
+  if(blockIfReadOnly())return;
+  var v=on?"N/A":"—";
+  if(updateStep){updateStep(td.id,k,"status",v);return;}
+  var st=Object.assign({},td.steps||{});st[k]=v;upd(td,{steps:st});
+}
+function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,saveContractors,onNavTender,onOpenTender,onNavZone,onQuickUpdate,updateStep,actions,primary}){
   function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   const [q,setQ]=useState(function(){return lsGet("pp_procplan_q","");});
@@ -2992,6 +3000,17 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
             {c.kind==="none"&&<button className="btn btn-sm" style={{marginTop:4,marginLeft:4,fontSize:10,padding:"1px 6px"}} title="No shop drawing on this package: the SD cell turns green (N/A)"
               onClick={function(e){e.stopPropagation();upd(td,sdNaPatch(true));var nt=saveTasks&&sdNaTasks(td,tasks);if(nt)saveTasks(nt);}}>N/A</button>}
           </td>;
+          // WMS / ITP: N/A from the list while nothing has been submitted (same choice as the sheet / Quick update)
+          if((m==="sub_wms"||m==="sub_itp")&&!isReadOnly()){
+            var qk=m.slice(4),qNa=((td.steps||{})[qk]||"")==="N/A";
+            var qSub=false;try{qSub=tenderDocs(td).some(function(d){return d.kind===qk&&d.cycles&&d.cycles.length;});}catch(e){}
+            if(qNa||!qSub)return <td key={m} className={cls}>
+              <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
+              <button className="btn btn-sm" style={{marginTop:4,fontSize:10,padding:"1px 6px"}}
+                title={qNa?"Make the "+qk.toUpperCase()+" applicable again on this Package":"No "+qk.toUpperCase()+" on this Package: the cell turns grey (N/A), same as N/A in the sheet"}
+                onClick={function(e){e.stopPropagation();ppSetQualityNa(td,qk,!qNa,updateStep,upd);}}>{qNa?"↺ Undo N/A":"N/A"}</button>
+            </td>;
+          }
           if(m==="delivered"&&!ppCellDone(c)&&c.kind!=="na"&&!isReadOnly())return <td key={m} className={cls}>
             <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
             <button className="btn btn-sm" style={{marginTop:4,fontSize:10,padding:"1px 6px"}} title="Mark this Package as delivered on site (the DELIVERED ON date of the Package sheet)"
