@@ -632,6 +632,25 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
       return o;
     }));
   }
+  // Admin, one go: the budget and the drawings quantities change places on every WBS (e.g. the
+  // quantities typed as budget were in fact the drawings). Clicking again puts them back.
+  var isAdmin=isAppAdmin(window._currentUser&&window._currentUser.name);
+  var nSwap=rawWbs.filter(function(w){return Object.keys(w.theo||{}).length||Object.keys(w.dwg||{}).length;}).length;
+  function swapSets(){
+    if(blockIfReadOnly())return;
+    var allIds=types.map(function(t){return t.id;});
+    var bud=rawWbs.reduce(function(a,w){return a+conSum(w.theo,allIds);},0),dw=rawWbs.reduce(function(a,w){return a+conSum(w.dwg,allIds);},0);
+    if(!safeConfirm("Swap the budget and the drawings quantities on all "+nSwap+" WBS?\n\nBudget now: "+conFmt(bud)+" "+CON_UNIT+" → becomes the drawings.\nDrawings now: "+conFmt(dw)+" "+CON_UNIT+" → becomes the budget"+(dw>CON_EPS?"":" (empty: the budget is then to be typed)")+".\n\nPours, comments and cut-off % are not touched; the earned volumes of the cut-offs follow the new budget. Click the button again to swap back."))return;
+    var by=window._currentUser?window._currentUser.name:"",at=new Date().toISOString();
+    saveWbs(rawWbs.map(function(w){
+      var th=Object.assign({},w.theo||{}),d=Object.assign({},w.dwg||{});
+      if(!Object.keys(th).length&&!Object.keys(d).length)return w;
+      var o=Object.assign({},w,{theo:d,updatedAt:at,updatedBy:by});
+      if(Object.keys(th).length)o.dwg=th;else delete o.dwg;
+      return o;
+    }));
+    pickSet("theo");
+  }
   function clearImported(){
     if(blockIfReadOnly())return;
     if(!safeConfirm("Clear the theoretical m³ of the "+imported.length+" WBS created by an Excel import?\n\nTheir pours are kept; only the theoretical quantities are emptied, to be typed again in the app."))return;
@@ -649,6 +668,7 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
         title={selIds.length<2?"Tick two WBS or more in the table to merge them":"Merge the ticked WBS into one: budget added up, pours moved"}
         onClick={function(){setMerging(true);}}>⇄ Merge {selIds.length>=2?selIds.length+" ":""}WBS</button>}
       {edit&&open&&selIds.length>0&&<button className="btn btn-sm" onClick={function(){setSel({});}}>Clear selection ({selIds.length})</button>}
+      {edit&&isAdmin&&open&&nSwap>0&&<button className="btn btn-sm" onClick={swapSets} title="Admin: on every WBS, the budget becomes the drawings quantities and the drawings become the budget. Click again to swap back.">⇄ Swap budget ⇄ drawings</button>}
       {edit&&imported.length>0&&<button className="btn btn-sm" style={{marginLeft:open?undefined:"auto",color:"#b3302a"}} onClick={clearImported}
         title="These WBS got their theoretical from the workbook's Theo Qty at an earlier import">✕ Clear the theoretical of {imported.length} imported WBS</button>}
     </div>
