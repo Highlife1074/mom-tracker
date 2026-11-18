@@ -737,7 +737,21 @@ function sdAddPatch(td,o){
     if(main.length)list.push(sdWithCycles(newSDTransmission({description:"whole package (before split)"}),main));
   }
   list.push(newSDTransmission(o||{}));
-  return Object.assign({hasSD:true,sdTransmissions:list},_sdAggregate(list));
+  return Object.assign({hasSD:true,sdNa:false,sdTransmissions:list},_sdAggregate(list));
+}
+// Shop drawings not applicable on the Package (td.sdNa, set in the sheet or the list): no SD
+// document at all (hasSD off, old SD data kept hidden), shown GREEN "SD N/A" like an approved
+// milestone — never late. Ticking "Shop Drawing (SD)" again or "＋ SD" clears it.
+function sdIsNa(td){return !!(td&&td.sdNa);}
+function sdNaPatch(on){return on?{sdNa:true,hasSD:false}:{sdNa:false};}
+// The open automatic SD actions of the Package, closed when its SD is set to N/A (null: none).
+function sdNaTasks(td,tasks){
+  var ch=false,out=(tasks||[]).map(function(t){
+    if(t.tenderRef!==td.id||t.status==="done"||t.addedBy!=="System")return t;
+    if(!/(^|[^A-Za-z])SD([^A-Za-z]|$)|shop drawing/i.test(t.text||""))return t;
+    ch=true;return Object.assign({},t,{status:"done",completedAt:today()});
+  });
+  return ch?out:null;
 }
 function SDPanel({td,updTd,tenders,saveTenders,setSelTender,people,afterSave,focus}){
   var list=td.sdTransmissions||[];
@@ -2598,7 +2612,8 @@ function FlowDocDots({td}){
         ks==="planned"?"Kick off meeting planned"+(ksd.target?" "+fmtDate(ksd.target):""):"Kick off meeting: not planned";
       return <span key="kom" title={ktip} style={pillStyle(ks==="na"||ks==="held"?"approved":ks==="planned"?"pending":"none")}>{ks==="na"?"Kick off N/A":"Kick off"}</span>;
     }
-    // A WMS or ITP set to N/A has nothing left to do: green, like an approved one.
+    // A WMS or ITP set to N/A has nothing left to do: green, like an approved one. Same for SD.
+    if(k[0]==="sd"&&sdIsNa(td))return <span key="sd" title="Shop drawings: N/A" style={pillStyle("approved")}>SD N/A</span>;
     if((k[0]==="wms"||k[0]==="itp")&&((td.steps||{})[k[0]]||"")==="N/A")
       return <span key={k[0]} title={k[1]+": N/A"} style={pillStyle("approved")}>{k[1]} N/A</span>;
     if(k[0]==="ctr"){
@@ -4583,13 +4598,27 @@ function TendersView({tenders,saveTenders,packages,people,tasks,saveTasks,contra
           // or an approval date recorded — the clock stops.
           var sdAnswered=sdEff==="approved"||sdEff==="rejected"||!!td.sdApprovalDone;
           var sdOverdue=!sdAnswered&&sdDue14&&sdDue14<today();
-          return <div className="card" style={{marginBottom:10}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:600,fontSize:13,marginBottom:hasSd?10:0}}>
-              <input type="checkbox" checked={hasSd} onChange={function(e){updTd("hasSD",e.target.checked);}} style={{width:14,height:14}}/>
+          var sdNa=sdIsNa(td);
+          function setSdNa(on){
+            if(blockIfReadOnly())return;
+            if(on&&!safeConfirm("Shop drawings not applicable on this Package?\n\nThe SD milestone turns green (N/A), no SD document is followed and the open automatic SD actions are closed. Tick “Shop Drawing (SD)” again to follow them."))return;
+            updTd(sdNaPatch(on));
+            if(on&&saveTasks){var nt=sdNaTasks(td,tasks);if(nt)saveTasks(nt);}
+          }
+          return <div className="card" style={{marginBottom:10,background:sdNa?"var(--green-soft)":undefined}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:hasSd?10:0}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",textTransform:"none",letterSpacing:"normal",fontWeight:600,fontSize:13,margin:0}}>
+              <input type="checkbox" checked={hasSd} onChange={function(e){updTd(e.target.checked?{hasSD:true,sdNa:false}:{hasSD:false});}} style={{width:14,height:14}}/>
               📐 Shop Drawing (SD)
               {!hasSd?null:sdEff&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:8,background:"#e0f2f1",color:sdStatusColor(sdEff),fontWeight:700,marginLeft:4}}>{CYCLE_LABELS[sdEff]||sdEff}</span>}
               {hasSd&&sdOverdue&&<span style={{fontSize:10,color:"#b3302a",fontWeight:700}}>⚠️+{workingDaysDiff(sdDue14,today())}d</span>}
             </label>
+            {sdNa?<React.Fragment>
+                <span style={{fontSize:11,padding:"1px 8px",borderRadius:8,background:"#e6f2e9",color:"#1e6b3a",border:"1px solid #1e6b3a55",fontWeight:700}}>✓ N/A — no shop drawing</span>
+                <button className="btn btn-sm" style={{fontSize:10.5,padding:"1px 8px"}} onClick={function(){setSdNa(false);}} title="Shop drawings applicable again (then tick Shop Drawing (SD) to follow them)">↺ Undo N/A</button>
+              </React.Fragment>
+              :!hasSd&&<button className="btn btn-sm" style={{fontSize:10.5,padding:"1px 8px"}} onClick={function(){setSdNa(true);}} title="No shop drawing on this Package: the SD milestone turns green (N/A)">N/A</button>}
+            </div>
             {hasSd&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"8px 10px",background:"#e0f2f122",borderRadius:7,border:"1px solid #00695c33"}}>
               {(function(){
                 var sdDocs=tenderDocs(td).filter(function(d){return d.kind==="sd";});

@@ -4533,7 +4533,26 @@ function App(){
   const [currentUser,setCurrentUser]=useState(function(){try{var u=localStorage.getItem("pp_current_user");if(u)window._currentUser={name:u};return u||null;}catch(e){return null;}});
   // "procplan" (Procurement plan) is merged into the Package view: old ids land there.
   const [view,setViewState]=useState(function(){try{var v=localStorage.getItem("pp_view")||"global";return v==="procplan"?"tenders":v;}catch(e){return "global";}});
-  function setView(v){if(v==="procplan")v="tenders";setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}navLastNote(v);}
+  const viewRef0=useRef(view);
+  useEffect(function(){
+    try{window.history.replaceState({ppView:viewRef0.current},"");}catch(e){}
+    function onPop(e){var v=e&&e.state&&e.state.ppView;if(v)setView(v,true);}
+    window.addEventListener("popstate",onPop);
+    return function(){window.removeEventListener("popstate",onPop);};
+  },[]);
+  // Every change of view is also a browser history step: the browser's / mouse's Back button
+  // returns to the previous view (popstate below), e.g. Materials → the Package list.
+  function setView(v,fromHistory){
+    if(v==="procplan")v="tenders";
+    var cur=viewRef0.current;
+    if(!fromHistory&&v!==cur){
+      try{window.history.pushState({ppView:v},"");}catch(e){}
+      // Leaving the Package list (or a Package sheet) for another view: "↩ Back" banner there.
+      if(cur==="tenders"&&!backSkip.current)noteBackNav(cur,"");
+    }
+    viewRef0.current=v;
+    setViewState(v);try{localStorage.setItem("pp_view",v);}catch(e){}navLastNote(v);
+  }
   const [jumpOwner,setJumpOwner]=useState(null);
   window._navToTender=navToTender;
   const [newTasksPopup,setNewTasksPopup]=useState(null);
@@ -4546,20 +4565,28 @@ function App(){
   // "↩ Back" after a jump to the schedule from a package date (openScheduleStart): where we
   // were — the view, the package sheet or the list (TendersView keeps its own selection), the
   // scroll. Shown while in the zone view, dropped as soon as the user goes anywhere else.
+  // Also set when leaving the Package list for any other view (setView): the banner shows in the
+  // next view only, dropped once the user goes anywhere else (or back).
   const [backNav,setBackNav]=useState(null);
   const viewRef=useRef(view);viewRef.current=view;
+  const backSkip=useRef(false);
+  function noteBackNav(v,title){
+    var sheet=false;try{sheet=v==="tenders"&&!!localStorage.getItem("pp_tv_selTenderId");}catch(x){}
+    var c=document.querySelector(".content");
+    backSkip.current=true;
+    setBackNav({view:v,label:v==="tenders"?(sheet?(title||"the package"):"the Package list"):((NAV_VIEWS[v]||{}).label||v),
+      scroll:c?c.scrollTop:0,winY:window.scrollY||0});
+  }
   useEffect(function(){
-    function onBack(e){
-      var d=(e&&e.detail)||{},v=viewRef.current;
-      var sheet=false;try{sheet=v==="tenders"&&!!localStorage.getItem("pp_tv_selTenderId");}catch(x){}
-      var c=document.querySelector(".content");
-      setBackNav({view:v,label:v==="tenders"?(sheet?(d.title||"the package"):"the Package list"):((NAV_VIEWS[v]||{}).label||v),
-        scroll:c?c.scrollTop:0,winY:window.scrollY||0});
-    }
+    function onBack(e){var d=(e&&e.detail)||{};noteBackNav(viewRef.current,d.title||"");}
     window.addEventListener("pp-back-nav",onBack);
     return function(){window.removeEventListener("pp-back-nav",onBack);};
   },[]);
-  useEffect(function(){if(backNav&&view!=="zone")setBackNav(null);},[view]);
+  // The view change that set the banner keeps it; the next one (anywhere, or back) drops it.
+  useEffect(function(){
+    if(backSkip.current){backSkip.current=false;return;}
+    if(backNav)setBackNav(null);
+  },[view]);
   function goBackNav(){
     var b=backNav;if(!b)return;
     setBackNav(null);setView(b.view);
@@ -5360,11 +5387,11 @@ function App(){
         </div>
       </div>
       <div className="content">
-        {view==="zone"&&backNav&&<div className="sched-noprint" style={{position:"sticky",top:0,zIndex:60,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",
+        {backNav&&view!==backNav.view&&<div className="sched-noprint" style={{position:"sticky",top:0,zIndex:60,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",
           margin:"0 0 10px",padding:"7px 12px",borderRadius:8,background:"var(--brand-soft,#e9eff7)",border:"1px solid #c9d6e8",boxShadow:"0 2px 6px rgba(23,42,66,.08)"}}>
           <button className="btn btn-pri" onClick={goBackNav} title="Go back where you were, same list, filters and position" style={{fontSize:13,padding:"5px 14px"}}>↩ Back</button>
           <span style={{fontSize:12,color:"var(--brand-ink,#173b63)"}}>to <b>{backNav.label}</b></span>
-          <button className="btn btn-sm" onClick={function(){setBackNav(null);}} title="Stay in the schedule" style={{marginLeft:"auto"}}>✕</button>
+          <button className="btn btn-sm" onClick={function(){setBackNav(null);}} title="Stay here" style={{marginLeft:"auto"}}>✕</button>
         </div>}
         {view==="actions"&&<ActionsView tasks={tasks} setTasks={setTasks} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} trackers={trackers} saveT={saveT} tagrules={tagrules} pkgrules={pkgrules}/>}
         {view==="trackers"&&<TrackersView trackers={trackers} setTrackers={setTrackers} saveX={saveX} people={people} packages={packages} tags={tags} tenders={tenders} contractors={contractors} tagrules={tagrules} pkgrules={pkgrules} tasks={tasks} saveTasks={saveT} zones={zones}/>}
