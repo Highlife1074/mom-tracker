@@ -1043,7 +1043,7 @@ function ppSubCell(td,p,k,now){
   var cli=ppClientDue(docs,now);
   if(cli)tip+="\n"+cli.tip;
   if(lat)tip+="\nTo do: "+act.toLowerCase()+" by "+fmtDate(due)+"\n\n"+(qd?ppQualityTip(p,k,qd):ppChainTip(p,ms,(nn||ret)?k:"",due));
-  return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip,refs:refs,refsFull:refsFull},now);
+  return ppTodoCell(p,ms,act,due,real,{cli:cli,tip:tip,refs:refs,refsFull:refsFull,own:!!qd},now);
 }
 // The column sets shown, as "plan,finance,follow" (any one, two or three; "all" = the three).
 var PP_COLKEYS=["plan","finance","follow"];
@@ -1239,8 +1239,13 @@ function ppTodoCell(p,ms,act,due,real,o,now){
   var c={act:act,real:real||"",realFg:o.realFg||"",why:o.why||"",cli:o.cli||null,tip:o.tip||"",refs:o.refs||"",refsFull:o.refsFull||""};
   if(!isValidDate(due)){c.kind="none";c.due="";return c;}
   var n=_ppDaysTo(due,now);
-  c.due="by "+ppDay(due)+(p.status==="past"?"":" · "+ppDaysText(n));
-  if(ppShownNext(p)===ms){
+  c.due="by "+ppDay(due)+(p.status==="past"&&!o.own?"":" · "+ppDaysText(n));
+  // WMS / ITP (o.own): off the chain, never the "next" milestone, but their own deadline still
+  // shows — red once late, amber within 14 d — even after the start on site (that is when they matter).
+  if(o.own&&p.status!=="cancelled"&&n<=14){
+    var so=PP_STATUS[n<0?"late":"soon"];
+    c.kind="next";c.fg=so.fg;c.bg=so.bg;
+  }else if(ppShownNext(p)===ms){
     var st=PP_STATUS[n<0?"late":n<=14?"soon":"ok"];
     c.kind="next";c.fg=st.fg;c.bg=st.bg;
   }else c.kind="todo";
