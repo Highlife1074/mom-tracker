@@ -569,6 +569,16 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
     saveWbs(rawWbs.map(function(x){return x.id===id?Object.assign({},d,{updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""}):x;}));
     return true;
   }
+  function setNote(id,v){
+    if(blockIfReadOnly())return;
+    saveWbs(rawWbs.map(function(w){
+      if(w.id!==id)return w;
+      var o=Object.assign({},w,{theoNote:v,theoNoteBy:window._currentUser?window._currentUser.name:"",theoNoteAt:new Date().toISOString()});
+      if(!v){delete o.theoNote;delete o.theoNoteBy;delete o.theoNoteAt;}
+      return o;
+    }));
+  }
+  var nNotes=list.filter(function(w){return String(w.theoNote||"").trim();}).length;
   function applyMerge(keepId,ids,code,name){
     if(blockIfReadOnly())return;
     var res=conApplyMerge(keepId,ids,code,name,rawWbs,pours,cutoffs,types.map(function(t){return t.id;}));
@@ -605,6 +615,7 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
       <button type="button" onClick={function(){setOpen(!open);}} style={{background:"none",border:"none",cursor:"pointer",fontWeight:700,fontSize:14,padding:0,fontFamily:"inherit"}}>
         {open?"▾":"▸"} Theoretical per WBS</button>
       <span style={{fontSize:12,color:"#888"}}>{rows.length} WBS · {conFmt(rows.reduce(function(s,w){return s+conSum(w.theo,cols.map(function(t){return t.id;}));},0))} {CON_UNIT}{edit?" · type the m³ in the cells, empty = none · code and description editable · tick WBS to merge them":""}</span>
+      {nNotes>0&&<span className="pill" style={{background:"var(--gold-soft)",color:"var(--gold-ink)",cursor:"pointer"}} onClick={function(){setOpen(true);}} title="WBS with a comment on their budget">💬 {nNotes} comment{nNotes>1?"s":""}</span>}
       {edit&&open&&<button className="btn btn-sm" style={{marginLeft:"auto"}} disabled={selIds.length<2}
         title={selIds.length<2?"Tick two WBS or more in the table to merge them":"Merge the ticked WBS into one: budget added up, pours moved"}
         onClick={function(){setMerging(true);}}>⇄ Merge {selIds.length>=2?selIds.length+" ":""}WBS</button>}
@@ -615,7 +626,7 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
     {open&&<div style={{marginTop:10}}>
       <input type="text" placeholder="Search code, description…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:220,marginBottom:8}}/>
       <div style={{overflowX:"auto",maxHeight:"60vh",overflowY:"auto"}}><table className="tbl">
-        <thead><tr>{edit&&<th style={{width:24}}/>}<th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R}>{t.name}</th>;})}<th style={R}>Total</th><th style={R}>Poured</th></tr></thead>
+        <thead><tr>{edit&&<th style={{width:24}}/>}<th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R}>{t.name}</th>;})}<th style={R}>Total</th><th style={R}>Poured</th><th title="Comment on the budget, e.g. a gap between the drawings and the budget">Comment</th></tr></thead>
         <tbody>{rows.map(function(w){
           var tot=conSum(w.theo,cols.map(function(t){return t.id;}));
           return <tr key={w.id} style={sel[w.id]?{background:"var(--brand-soft)"}:undefined}>
@@ -631,6 +642,9 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
                 :(v?conFmt(v):"—")}</td>;})}
             <td style={Object.assign({fontWeight:700},R)}>{conFmt(tot)}</td>
             <td style={Object.assign({color:"#555"},R)}>{conFmt(conSum(realIx[w.id],cols.map(function(t){return t.id;})))}</td>
+            <td style={{minWidth:240}} title={conTheoNoteTip(w)}>{edit
+              ?<ConTextCell value={w.theoNote||""} placeholder="Comment, e.g. drawings rev C = +12 m³ vs budget" title={conTheoNoteTip(w)||"Comment on the budget — Enter to save, Esc to cancel"} onCommit={function(v){setNote(w.id,v);}}/>
+              :<span style={{fontSize:12,color:"#555",whiteSpace:"pre-wrap"}}>{w.theoNote||""}</span>}</td>
           </tr>;
         })}</tbody></table></div>
     </div>}
@@ -697,6 +711,9 @@ function conApplyMerge(keepId,ids,code,name,wbs,pours,cutoffs,typeIds){
     note:[String(keep.note||"").trim(),stamp].filter(Boolean).join("\n"),
     updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""});
   if(!links.length)delete merged.schedLinks;
+  var tn=parts.filter(function(w){return String(w.theoNote||"").trim();});
+  if(tn.length){merged.theoNote=tn.length===1?tn[0].theoNote:tn.map(function(w){return (w.code||w.name)+": "+String(w.theoNote).trim();}).join(" · ");
+    merged.theoNoteBy=window._currentUser?window._currentUser.name:"";merged.theoNoteAt=new Date().toISOString();}
   var newWbs=wbs.filter(function(w){return !inSet[w.id]||w.id===keepId;}).map(function(w){return w.id===keepId?merged:w;});
   var moved=0;
   var newPours=pours.map(function(p){if(inSet[p.wbsId]&&p.wbsId!==keepId){moved++;return Object.assign({},p,{wbsId:keepId});}return p;});
@@ -955,7 +972,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
       <tbody>{list.map(function(f){
         var w=f.wbs;
         var rows=[<tr key={w.id} onClick={function(){setEditing(w);}} style={{cursor:"pointer"}}>
-          <td title="Open the WBS (code, name, zone, schedule links)"><b>{w.code}</b> {w.name}{w.splitFrom&&<div style={{fontSize:10,color:"#888"}}>split from {w.splitFrom}</div>}</td>
+          <td title="Open the WBS (code, name, zone, schedule links)"><b>{w.code}</b> {w.name}{w.splitFrom&&<div style={{fontSize:10,color:"#888"}}>split from {w.splitFrom}</div>}{w.theoNote&&<div style={{fontSize:11,color:"var(--gold-ink)",fontStyle:"italic"}} title={conTheoNoteTip(w)}>💬 {w.theoNote}</div>}</td>
           <td>{w.zone}</td>
           <td style={{fontSize:12,whiteSpace:"nowrap"}} onClick={edit?function(e){e.stopPropagation();}:undefined}>{(function(){var e=effById[w.id]||w;var n=(w.schedLinks||[]).length;
             var inl=edit&&!e._schedDates;
@@ -1027,6 +1044,9 @@ function conWbsError(d,wbs){
   if(d.start&&d.finish&&d.finish<d.start)return"The finish is before the start.";
   return"";
 }
+// Comment on the budget of a WBS (e.g. a gap between the quantities on the drawings and the
+// budget), typed in Overview › Theoretical per WBS. theoNote + who / when; separate from note.
+function conTheoNoteTip(w){return w&&w.theoNote?w.theoNote+(w.theoNoteBy?"\n— "+w.theoNoteBy+(w.theoNoteAt?", "+fmtDate(String(w.theoNoteAt).slice(0,10)):""):""):"";}
 function conCleanTheo(m){var o={};Object.keys(m||{}).forEach(function(k){var v=_invNum(m[k]);if(v)o[k]=v;});return o;}
 function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onSave,onDelete,onClose}){
   const [d,setD]=useState(Object.assign({},w,{theo:Object.assign({},w.theo||{})}));
@@ -1420,7 +1440,7 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal){
   }
   var wRows=figs.map(function(f){
     var st={done:"complete",progress:"in progress",todo:"not started"}[f.status],r=cut[f.wbs.id];
-    return"<tr><td><b>"+E(f.wbs.code)+"</b> "+E(f.wbs.name)+"</td><td>"+E(f.wbs.zone||"")+"</td><td>"+E(f.wbs.start||f.wbs.finish?fmtDate(f.wbs.start)+" → "+fmtDate(f.wbs.finish):"")+"</td><td>"+st+"</td>"
+    return"<tr><td><b>"+E(f.wbs.code)+"</b> "+E(f.wbs.name)+(f.wbs.theoNote?"<div style=\"font-size:10px;color:#6b5a1e;font-style:italic\">💬 "+E(f.wbs.theoNote)+"</div>":"")+"</td><td>"+E(f.wbs.zone||"")+"</td><td>"+E(f.wbs.start||f.wbs.finish?fmtDate(f.wbs.start)+" → "+fmtDate(f.wbs.finish):"")+"</td><td>"+st+"</td>"
       +td(conFmt(f.theo))+td(conFmt(f.real))
       +(last?(r&&r.hasPct?td(r.pct.toFixed(0)+"%")+td(conFmt(r.earned))+td(sg(r.variance),true,conLossCol(r.variance)):td("—")+td("—")+td("—")):"")+"</tr>";
   }).join("");
@@ -1460,6 +1480,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
       o[t.name+" theor."]=r2(tf.theo);o[t.name+" poured"]=r2(tf.real);
     });
     o["Total theor."]=r2(f.theo);o["Total poured"]=r2(f.real);
+    o["Budget comment"]=w.theoNote||"";
     if(lc){var r=cut[w.id];var k=" @"+lc.date;
       o["Progress %"+k]=r&&r.hasPct?r.pct:"";o["Earned"+k]=r&&r.hasPct?r2(r.earned):"";o["Loss(+)/gain(-)"+k]=r&&r.hasPct?r2(r.variance):"";}
     return o;
