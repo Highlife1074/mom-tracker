@@ -1015,6 +1015,8 @@ function ppSubCell(td,p,k,now){
     return {kind:"na",act:"N/A",due:"",real:"",tip:lab+" not applicable"};
   if(p.closed&&!tenderDocs(td).some(function(d){return d.kind===k;}))
     return {kind:"na",act:"N/A",due:"",real:"",tip:lab+": procurement closed — "+procClosedLabel(p.closed)};
+  // SD set to N/A in the sheet: nothing to wait for — green, like an approved milestone.
+  if(k==="sd"&&sdIsNa(td)){var nc=ppDoneCell("✓ N/A","","","no shop drawing",lab+" not applicable on this Package");return nc;}
   var docs=[];
   try{docs=tenderDocs(td).filter(function(d){return d.kind===k;});}catch(e){}
   if(!docs.length)return {kind:"none",act:"",due:"",real:"",tip:"No "+lab+" on this package"};
@@ -2982,6 +2984,8 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
             <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
             <button className="btn btn-sm" style={{marginTop:4,fontSize:10,padding:"1px 6px"}} title="Add a shop drawing to this package (several SD per package, each followed on its own; record its submission in Quick update or the sheet)"
               onClick={function(e){e.stopPropagation();upd(td,sdAddPatch(td));}}>＋ SD</button>
+            {c.kind==="none"&&<button className="btn btn-sm" style={{marginTop:4,marginLeft:4,fontSize:10,padding:"1px 6px"}} title="No shop drawing on this package: the SD cell turns green (N/A)"
+              onClick={function(e){e.stopPropagation();upd(td,sdNaPatch(true));var nt=saveTasks&&sdNaTasks(td,tasks);if(nt)saveTasks(nt);}}>N/A</button>}
           </td>;
           if(m==="delivered"&&!ppCellDone(c)&&c.kind!=="na"&&!isReadOnly())return <td key={m} className={cls}>
             <div dangerouslySetInnerHTML={{__html:ppMsCellHtml(c)}}/>
