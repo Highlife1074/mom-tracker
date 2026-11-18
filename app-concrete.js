@@ -437,7 +437,7 @@ function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveC
 }
 
 // ---------------------------------------------------------------- overview
-function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones,cutoffs,saveCutoffs,onGo}){
+function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones,cutoffs,saveCutoffs,onGo}){
   const [typeId,setTypeId]=useState("");
   const [zone,setZone]=useState("");
   const [showTable,setShowTable]=useState(false);
@@ -449,6 +449,9 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones
   var typeIds=typeId?[typeId]:types.map(function(t){return t.id;});
   var list=wbs.filter(function(w){return !zone||w.zone===zone;});
   var tot=conTotals(list.map(function(w){return conWbsFigures(w,realIx,typeIds);}));
+  // A project total typed by hand (no detail per WBS) counts in the theoretical shown, whole project only.
+  var budTot=!zone?conSetTotals(types,list,"theo",typeIds):null;
+  var theoShown=budTot&&budTot.manualOn?budTot.shown:tot.theo;
   var t0=today();
   var plannedToDate=conPlannedToDate(list,pours,typeIds,t0,pastReal);
   var ep=conEarnedPoints(cutoffs,list,pours,typeIds);
@@ -481,7 +484,7 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones
       <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal);}}>Report</button>
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
-      <InvBig label="Theoretical" value={tot.theo} unit={unit} sub={s.unscheduled>CON_EPS?conFmt(s.unscheduled)+" "+unit+" without dates":list.length+" WBS"}/>
+      <InvBig label="Theoretical" value={theoShown} unit={unit} sub={(budTot&&budTot.manualOn?"project total typed · "+conFmt(tot.theo)+" split on the WBS · ":"")+(s.unscheduled>CON_EPS?conFmt(s.unscheduled)+" "+unit+" without dates":list.length+" WBS")}/>
       <InvBig label="Planned to date" value={plannedToDate} unit={unit} sub={pastReal?"= poured, never above the theoretical of each WBS":"theoretical spread over the WBS dates"}/>
       <InvBig label="Poured to date" value={tot.real} unit={unit} sub="real volume (pours)"/>
       <InvBig label="Real progress (earned)" value={last?last.earned:null} unit={unit} colour={CON_COL_EARN}
@@ -491,11 +494,11 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones
       <InvBig label="Estimate at completion" value={last?last.eac+last.theoNoPct:null} unit={unit} colour={last?conVarCol(last.eacPct):null}
         sub={last?"cut-off "+fmtDate(last.date)+(last.nNoPct?" · "+last.nNoPct+" WBS without % at budget":""):"from the cut-off"}/>
     </div>
-    <ConTheoEditor types={types} list={list} rawWbs={rawWbs||wbs} saveWbs={saveWbs} edit={edit} realIx={realIx} typeId={typeId} pours={pours} savePours={savePours} cutoffs={cutoffs} saveCutoffs={saveCutoffs}/>
+    <ConTheoEditor types={types} saveTypes={saveTypes} allShown={!zone} list={list} rawWbs={rawWbs||wbs} saveWbs={saveWbs} edit={edit} realIx={realIx} typeId={typeId} pours={pours} savePours={savePours} cutoffs={cutoffs} saveCutoffs={saveCutoffs}/>
     {last&&last.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ At the cut-off of {fmtDate(last.date)}, {last.nNoPct} WBS have no progress % ({conFmt(last.theoNoPct)} {unit} budget, {conFmt(last.realNoPct)} {unit} poured): they are left out of the loss / gain.</div>}
     {!last&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>The loss or gain of concrete is measured only at a cut-off, against the progress % typed for each WBS. <button className="btn btn-sm" onClick={function(){onGo("cutoff");}}>Go to the cut-offs</button></div>}
     {s.months.length>0?<>
-      <ConCurve s={s} theoTotal={tot.theo} earned={ep}/>
+      <ConCurve s={s} theoTotal={theoShown} earned={ep}/>
       <ConMonthly s={s}/>
       <div style={{margin:"4px 0 14px"}}><button className="btn btn-sm" onClick={function(){setShowTable(!showTable);}}>{showTable?"Hide":"Show"} the month-by-month table</button></div>
       {showTable&&<div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
@@ -574,7 +577,7 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones
 // them (budget and pours together, ConMergeModal).
 // The theoretical is never taken from an imported workbook; the WBS created by an import carry
 // "Created by the import" in their note, and their theoretical can be cleared here in one go.
-function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,savePours,cutoffs,saveCutoffs}){
+function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx,typeId,pours,savePours,cutoffs,saveCutoffs}){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
   const [sel,setSel]=useState({});
@@ -621,6 +624,30 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
   var colIds=cols.map(function(t){return t.id;});
   var ql=q.trim().toLowerCase();
   var rows=conSortWbs(list).filter(function(w){return !ql||[w.code,w.name].join(" ").toLowerCase().indexOf(ql)>=0;});
+  // Totals at the bottom. The project total of a type can be typed by hand (no detail per WBS),
+  // only when the whole project is shown (no zone filter, no search).
+  var whole=!!allShown&&!ql;
+  var totB=conSetTotals(types,rows,"theo",colIds),totD=conSetTotals(types,rows,"dwg",colIds);
+  var totCur=qset==="dwg"?totD:totB;
+  function projOf(T){return whole?T.shown:T.detail;}
+  function setManual(tid,v){
+    if(blockIfReadOnly()||!saveTypes)return;
+    var k=conManualKey(qset);
+    saveTypes(types.map(function(t){
+      if(t.id!==tid)return t;
+      var o=Object.assign({},t);
+      if(v===null)delete o[k];else if(v<0){safeAlert("A total cannot be negative.");return t;}else o[k]=v;
+      return o;
+    }));
+  }
+  var realTot=rows.reduce(function(a,w){return a+conSum(realIx[w.id],colIds);},0);
+  // Drawings − budget in total: on the WBS that have drawings quantities (like each line), unless a
+  // total was typed by hand, then project total against project total.
+  var gapManual=whole&&(totB.manualOn||totD.manualOn);
+  var gapD=0,gapB=0;
+  rows.forEach(function(w){var d=conSum(w.dwg,colIds);if(d>CON_EPS){gapD+=d;gapB+=conSum(w.theo,colIds);}});
+  if(gapManual){gapD=projOf(totD);gapB=projOf(totB);}
+  var gapTot=gapD>CON_EPS?gapD-gapB:null;
   var imported=rawWbs.filter(function(w){return /Created by the import/i.test(w.note||"")&&conSum(w.theo,types.map(function(t){return t.id;}))>CON_EPS;});
   function setTheo(id,tid,v){
     if(blockIfReadOnly())return;
@@ -679,7 +706,7 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
         <button className={"fchip"+(qset==="theo"?" on":"")} onClick={function(){pickSet("theo");}} title="The type columns show and edit the budget">Budget</button>
         <button className={"fchip"+(qset==="dwg"?" on":"")} onClick={function(){pickSet("dwg");}} title="The type columns show and edit the quantities measured on the drawings">Drawings (plans)</button>
       </div>
-      <div style={{overflowX:"auto",maxHeight:"60vh",overflowY:"auto"}}><table className="tbl">
+      <div style={{overflow:"auto",maxHeight:"65vh",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}><table className="tbl con-sticky" style={{overflow:"visible",border:"none"}}>
         <thead><tr>{edit&&<th style={{width:24}}/>}<th>WBS</th>{cols.map(function(t){return <th key={t.id} style={R} title={(qset==="dwg"?"Drawings":"Budget")+" m³ — "+t.name}>{t.name}<div style={{fontSize:9,fontWeight:400,color:qset==="dwg"?"var(--blue)":"#888"}}>{qset==="dwg"?"drawings":"budget"}</div></th>;})}
           <th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Drawings − budget: > 0 the drawings need more than the budget">Drawings − budget</th><th style={R}>Poured</th><th title="Comment on the budget, e.g. a gap between the drawings and the budget">Comment</th></tr></thead>
         <tbody>{rows.map(function(w){
@@ -703,7 +730,25 @@ function ConTheoEditor({types,list,rawWbs,saveWbs,edit,realIx,typeId,pours,saveP
               ?<ConTextCell value={w.theoNote||""} placeholder="Comment, e.g. drawings rev C = +12 m³ vs budget" title={conTheoNoteTip(w)||"Comment on the budget — Enter to save, Esc to cancel"} onCommit={function(v){setNote(w.id,v);}}/>
               :<span style={{fontSize:12,color:"#555",whiteSpace:"pre-wrap"}}>{w.theoNote||""}</span>}</td>
           </tr>;
-        })}</tbody></table></div>
+        })}</tbody>
+        <tfoot><tr>
+          {edit&&<td/>}
+          <td style={{fontWeight:700}}>Total — {rows.length} WBS{!whole&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>sum of the WBS shown{allShown?"":" (zone)"}</div>}</td>
+          {cols.map(function(t){var x=totCur.byType[t.id]||{detail:0,manual:null,shown:0};
+            var canType=edit&&whole&&!!saveTypes;
+            return <td key={t.id} style={R}>
+              {canType?<ConNumCell key={qset+t.id} value={x.manual} width={84} placeholder={conFmt(x.detail)} highlight={x.manual!==null}
+                  title={"Total "+(qset==="dwg"?"drawings":"budget")+" — "+t.name+": type the project total if you do not have the detail per WBS. Empty = the sum of the WBS ("+conFmt(x.detail)+")."}
+                  onCommit={function(v){setManual(t.id,v);}}/>
+                :<b>{conFmt(whole?x.shown:x.detail)}</b>}
+              {whole&&x.manual!==null&&<div style={{fontSize:10,color:"var(--gold-ink)"}} title="Typed by hand; the WBS detail is below">typed · WBS {conFmt(x.detail)}{Math.abs(x.manual-x.detail)>CON_EPS?" · not split "+(x.manual-x.detail>0?"+":"")+conFmt(x.manual-x.detail):""}</div>}
+            </td>;})}
+          <td style={Object.assign({fontWeight:700},R)}>{conFmt(projOf(totB))}{whole&&totB.manualOn&&<div style={{fontSize:10,fontWeight:400,color:"var(--gold-ink)"}}>WBS {conFmt(totB.detail)}</div>}</td>
+          <td style={Object.assign({fontWeight:700},R)}>{projOf(totD)>CON_EPS?conFmt(projOf(totD)):"—"}{whole&&totD.manualOn&&<div style={{fontSize:10,fontWeight:400,color:"var(--gold-ink)"}}>WBS {conFmt(totD.detail)}</div>}</td>
+          <td style={Object.assign({fontWeight:700,color:gapTot!==null&&gapB>CON_EPS?conVarCol(gapTot/gapB*100):undefined},R)} title={gapManual?"Project totals (typed by hand) compared":"On the WBS with drawings quantities only"}>{gapTot!==null?<>{(gapTot>0?"+":"")+conFmt(gapTot)}{gapB>CON_EPS&&<div style={{fontSize:10,fontWeight:400}}>{conPct(gapTot/gapB*100)}</div>}{!gapManual&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>on WBS with drawings</div>}</>:"—"}</td>
+          <td style={Object.assign({fontWeight:700,color:"#555"},R)}>{conFmt(realTot)}</td>
+          <td style={{fontSize:11,color:"#888"}}>{edit&&whole?"Type a type's total by hand when the detail per WBS is missing; clear it to go back to the sum.":""}</td>
+        </tr></tfoot></table></div>
     </div>}
     {merging&&<ConMergeModal ids={selIds} wbs={rawWbs} types={types} realIx={realIx} pours={pours} cutoffs={cutoffs}
       onApply={applyMerge} onClose={function(){setMerging(false);}}/>}
@@ -1106,6 +1151,21 @@ function conWbsError(d,wbs){
 // Comment on the budget of a WBS (e.g. a gap between the quantities on the drawings and the
 // budget), typed in Overview › Theoretical per WBS. theoNote + who / when; separate from note.
 function conTheoNoteTip(w){return w&&w.theoNote?w.theoNote+(w.theoNoteBy?"\n— "+w.theoNoteBy+(w.theoNoteAt?", "+fmtDate(String(w.theoNoteAt).slice(0,10)):""):""):"";}
+// Project total per type typed by hand (when the detail per WBS is not known): stored on the
+// type, t.budgetTotal (budget) / t.dwgTotal (drawings). Empty = the sum of the WBS.
+function conManualKey(set){return set==="dwg"?"dwgTotal":"budgetTotal";}
+function conManualTotal(t,set){var v=t?t[conManualKey(set)]:null;return _invHas(v)?_invNum(v):null;}
+// Per type over the given WBS: detail (sum of the WBS), manual (typed or null), shown (manual, else detail).
+function conSetTotals(types,list,set,typeIds){
+  var out={detail:0,shown:0,manualOn:false,byType:{}};
+  (types||[]).forEach(function(t){
+    if(typeIds.indexOf(t.id)<0)return;
+    var d=list.reduce(function(a,w){return a+_invNum((w[set]||{})[t.id]);},0),m=conManualTotal(t,set);
+    out.byType[t.id]={detail:d,manual:m,shown:m===null?d:m};
+    out.detail+=d;out.shown+=(m===null?d:m);if(m!==null)out.manualOn=true;
+  });
+  return out;
+}
 function conCleanTheo(m){var o={};Object.keys(m||{}).forEach(function(k){var v=_invNum(m[k]);if(v)o[k]=v;});return o;}
 function ConWbsEditor({w,types,wbs,pours,realIx,zones,edit,schedIx,schedules,onSave,onDelete,onClose}){
   const [d,setD]=useState(Object.assign({},w,{theo:Object.assign({},w.theo||{})}));
