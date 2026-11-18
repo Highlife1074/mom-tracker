@@ -637,11 +637,19 @@ body:has(.sched-fs) .leftnav,body:has(.sched-fs) .rsidebar,body:has(.sched-fs) .
   function run(){
     // "no-cache" = always ask the server, which answers "not modified" when a file did not
     // change: always the latest version, without downloading 1.8 MB on every load.
-    Promise.all(APP_PARTS.map(function(f){
-      return fetch(f,{cache:"no-cache"}).then(function(r){
-        if(!r.ok)throw new Error(f+" — HTTP "+r.status);
+    // A host hiccup (HTTP 5xx, 429, network drop) is retried a few times with a growing
+    // pause before the error screen is shown; a 404 fails at once.
+    function getPart(f,tries){
+      return fetch(f,{cache:tries?"reload":"no-cache"}).then(function(r){
+        if(!r.ok){var e=new Error(f+" — HTTP "+r.status);e.retry=r.status>=500||r.status===429;throw e;}
         return r.text();
-      }).then(function(t){return{file:f,text:t};});
+      },function(e){e.retry=true;throw e;}).catch(function(e){
+        if(!e.retry||tries>=4)throw e;
+        return new Promise(function(res){setTimeout(res,800*(tries+1));}).then(function(){return getPart(f,tries+1);});
+      });
+    }
+    Promise.all(APP_PARTS.map(function(f){
+      return getPart(f,0).then(function(t){return{file:f,text:t};});
     }))
     .then(function(parts){
       // Report which file is at fault instead of a line number in a 12,000-line bundle.
