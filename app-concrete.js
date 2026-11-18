@@ -144,11 +144,39 @@ function conShareUpTo(qty,from,to,date){
   if(date>=r.b)return qty;
   return qty*(_conDays(r.a,date)+1)/(_conDays(r.a,r.b)+1);
 }
-// Planned up to date: the theoretical spread over the WBS dates, or (pastReal) what was poured by then.
+// pastReal planned of one WBS, as pieces {q, from, to}. The planned NEVER follows the real: in
+// total it is always the WBS's theoretical. The pours make the planned of the past, oldest first,
+// but only up to the theoretical (an over-pour is a loss, not more planned). What is left of the
+// theoretical is spread from tomorrow (or the start, if later) to the finish; on a WBS marked
+// complete, or whose finish is past, it is put on its finish (or last pour) so the planned still
+// reaches the theoretical. rem = what could not be dated (no dates at all).
+function conPastRealPieces(w,pours,typeIds,tm){
+  var theo=conSum(w.theo,typeIds),acc=0,out=[],last="";
+  (pours||[]).filter(function(p){return p.wbsId===w.id;}).sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:0;}).forEach(function(p){
+    var q=Math.min(conPourQty(p,typeIds),Math.max(0,theo-acc));
+    if(p.date>last)last=p.date;
+    if(q>CON_EPS){acc+=q;out.push({q:q,from:p.from||p.date,to:p.date});}
+  });
+  var left=theo-acc;
+  if(left>CON_EPS){
+    if(!w.done&&_conRange(w.start,w.finish)&&(!w.finish||w.finish>=tm)){
+      var a=w.start&&w.start>tm?w.start:tm,b=w.finish&&w.finish>tm?w.finish:a;
+      out.push({q:left,from:a,to:b});left=0;
+    }else{
+      var d=w.finish||last||w.start;
+      if(d){out.push({q:left,from:d,to:d});left=0;}
+    }
+  }
+  return{pieces:out,rem:Math.max(0,left)};
+}
+// Planned up to date: the theoretical spread over the WBS dates, or (pastReal) what was poured
+// by then, capped at each WBS's theoretical (conPastRealPieces).
 function conPlannedToDate(list,pours,typeIds,date,pastReal){
   if(pastReal){
-    var ids={};list.forEach(function(w){ids[w.id]=1;});
-    return(pours||[]).reduce(function(a,p){return ids[p.wbsId]?a+conShareUpTo(conPourQty(p,typeIds),p.from||p.date,p.date,date):a;},0);
+    var tm=_conTomorrow();
+    return list.reduce(function(a,w){
+      return a+conPastRealPieces(w,pours,typeIds,tm).pieces.reduce(function(s,x){return s+conShareUpTo(x.q,x.from,x.to,date);},0);
+    },0);
   }
   return list.reduce(function(a,w){return a+conShareUpTo(conSum(w.theo,typeIds),w.start,w.finish,date);},0);
 }
@@ -158,30 +186,23 @@ function conFmtMonth(k){
 }
 function _conNextMonth(k){var y=Number(k.slice(0,4)),m=Number(k.slice(5,7));m++;if(m>12){m=1;y++;}return y+"-"+(m<10?"0":"")+m;}
 // Month by month: planned (theoretical spread over the WBS dates) and real (pours).
-// pastReal ("Planned = real for the past"): the planned of the past is what was poured, and
-// what each WBS still has to receive (theoretical − poured, 0 once done) is spread from
-// tomorrow (or its start, if later) to its finish.
+// pastReal ("Planned = real for the past"): the planned of the past is what was poured (up to
+// the theoretical), and what is left of each WBS's theoretical is spread from tomorrow (or its
+// start, if later) to its finish — the planned total always stays the theoretical.
 function _conTomorrow(){var d=parseISODate(today());d.setDate(d.getDate()+1);return toISO(d);}
-function conPlanRemain(w,pours,typeIds){
-  if(w.done)return 0;
-  var r=(pours||[]).reduce(function(a,p){return p.wbsId===w.id?a+conPourQty(p,typeIds):a;},0);
-  return Math.max(0,conSum(w.theo,typeIds)-r);
-}
 function conSeries(wbsList,pours,typeIds,extraMonths,pastReal){
   var plan={},real={},unscheduled=0,inList={};
   var tm=pastReal?_conTomorrow():"";
   wbsList.forEach(function(w){
     inList[w.id]=true;
     if(pastReal){
-      var rem=conPlanRemain(w,pours,typeIds);
-      if(!_conRange(w.start,w.finish)){unscheduled+=rem;return;}
-      var a=w.start&&w.start>tm?w.start:tm,b=w.finish&&w.finish>tm?w.finish:a;
-      conSpread(rem,a,b,plan);return;
+      var pr=conPastRealPieces(w,pours,typeIds,tm);
+      pr.pieces.forEach(function(x){conSpread(x.q,x.from,x.to,plan);});
+      unscheduled+=pr.rem;return;
     }
     var q=conSum(w.theo,typeIds);
     if(!conSpread(q,w.start,w.finish,plan))unscheduled+=q;
   });
-  if(pastReal)(pours||[]).forEach(function(p){if(inList[p.wbsId])conSpread(conPourQty(p,typeIds),p.from||p.date,p.date,plan);});
   (pours||[]).forEach(function(p){
     if(!inList[p.wbsId])return;
     conSpread(conPourQty(p,typeIds),p.from||p.date,p.date,real);
@@ -452,14 +473,14 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones
       <span style={{fontSize:12,color:"#888"}}>{list.length} WBS · {label}</span>
       <div style={{flex:1}}/>
       <button className={"btn btn-sm"+(pastReal?" btn-pri":"")} onClick={togglePastReal}
-        title={pastReal?"On: the planned of the past = what was poured; what each WBS still needs (theoretical − poured) is spread from tomorrow to its finish. Click to go back to the theoretical spread over the WBS dates.":"Set the planned of the past equal to the real pours, and spread what remains of each WBS from tomorrow to its finish."}>
+        title={pastReal?"On: the planned of the past = what was poured; what each WBS still needs (theoretical − poured) is spread from tomorrow to its finish. The planned of a WBS always adds up to its theoretical, never to the poured. Click to go back to the theoretical spread over the WBS dates.":"Set the planned of the past equal to the real pours, and spread what remains of each WBS from tomorrow to its finish."}>
         {pastReal?"✓ ":""}Planned = real (past)</button>
       <button className="btn btn-sm" onClick={function(){conExportXlsx(types,list,pours,realIx,cutoffs,pastReal);}}>⤓ Excel</button>
       <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal);}}>Report</button>
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
       <InvBig label="Theoretical" value={tot.theo} unit={unit} sub={s.unscheduled>CON_EPS?conFmt(s.unscheduled)+" "+unit+" without dates":list.length+" WBS"}/>
-      <InvBig label="Planned to date" value={plannedToDate} unit={unit} sub={pastReal?"= poured (planned = real for the past)":"theoretical spread over the WBS dates"}/>
+      <InvBig label="Planned to date" value={plannedToDate} unit={unit} sub={pastReal?"= poured, never above the theoretical of each WBS":"theoretical spread over the WBS dates"}/>
       <InvBig label="Poured to date" value={tot.real} unit={unit} sub="real volume (pours)"/>
       <InvBig label="Real progress (earned)" value={last?last.earned:null} unit={unit} colour={CON_COL_EARN}
         sub={last?"cut-off "+fmtDate(last.date)+" · "+(last.theoAll>0?(last.earned/last.theoAll*100).toFixed(1)+"% of budget":""):"needs a cut-off with progress % typed"}/>
@@ -543,7 +564,7 @@ function ConOverview({types,wbs,rawWbs,saveWbs,edit,pours,savePours,realIx,zones
             <td style={Object.assign({fontWeight:700,color:conLossCol(r.variance)},R)}>{(r.variance>0?"+":"")+conFmt(r.variance)}</td><td style={Object.assign({color:conLossCol(r.variance)},R)}>{conPct(r.varPct)}</td></tr>;
         })}</tbody></table></div>
     </>}
-    <div style={{fontSize:11,color:"#888"}}>Nothing here estimates progress. The loss or gain of concrete exists only at a cut-off: earned = budget × the progress % typed for each WBS, against the volume poured up to that date, on the WBS that have a %. {pastReal?"Planned = real for the past: up to today the planned is what was poured; what each WBS still needs (theoretical − poured, nothing once it is done) is spread evenly from tomorrow, or its start if later, to its finish.":"Planned = theoretical spread evenly between each WBS's start and finish."} Poured = the pours.</div>
+    <div style={{fontSize:11,color:"#888"}}>Nothing here estimates progress. The loss or gain of concrete exists only at a cut-off: earned = budget × the progress % typed for each WBS, against the volume poured up to that date, on the WBS that have a %. {pastReal?"Planned = real for the past: up to today the planned is what was poured; what is left of each WBS's theoretical (theoretical − poured) is spread evenly from tomorrow, or its start if later, to its finish — on its finish for a complete WBS; an over-pour never raises the planned, which always adds up to the theoretical.":"Planned = theoretical spread evenly between each WBS's start and finish."} Poured = the pours.</div>
   </div>;
 }
 // Theoretical m³ per WBS and per type, typed straight in the overview (no dialog). Empty = none.
