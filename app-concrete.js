@@ -781,8 +781,8 @@ function conMergeCutoffs(cutoffs,keepId,ids,wbsById,typeIds){
         var s=0,a=false;
         ids.forEach(function(id){
           var l=byId[id]||{},th=_invNum(((wbsById[id]||{}).theo||{})[t]),p=_invHas(l.pct)?conClampPct(l.pct):0;
-          var dw=_invNum(((wbsById[id]||{}).dwg||{})[t]);
-          if(l.rts&&_invHas(l.rts[t])){a=true;s+=_invNum(l.rts[t]);}else s+=conRtsBasis(c)==="dwg"&&dw>CON_EPS?dw-dw*p/100:th-th*p/100;
+          var dw=_invNum(((wbsById[id]||{}).dwg||{})[t]),wd=conSum((wbsById[id]||{}).dwg,typeIds);
+          if(l.rts&&_invHas(l.rts[t])){a=true;s+=_invNum(l.rts[t]);}else s+=conRtsBasis(c)==="dwg"&&wd>CON_EPS?dw-dw*p/100:th-th*p/100;
         });
         if(a){adj=true;rts[t]=Math.round(s*1000)/1000;}
       });
@@ -1732,14 +1732,19 @@ function conCutoffRows(c,wbs,pours,typeIds){
   return conSortWbs(wbs).map(function(w){
     var ln=conCutoffLine(c,w.id)||{};
     var has=_invHas(ln.pct),pct=has?conClampPct(ln.pct):0;
+    var wDwg=conSum(w.dwg,typeIds);
     var r={wbs:w,line:ln,hasPct:has,pct:pct,theo:0,earned:0,real:0,rtsTheo:0,rtsTheoB:0,rtsTheoD:0,rtsReal:0,adjusted:false,byType:{},dwg:0,earnedDwg:0};
     typeIds.forEach(function(t){
       var th=_invNum((w.theo||{})[t]),re=_invNum((realAt[w.id]||{})[t]),dw=_invNum((w.dwg||{})[t]);
       // RTS theo. on the chosen basis: drawings when typed for this type (else budget), or budget.
       // rtB on the budget, rtD on the drawings (budget when this type has no drawings quantities).
-      var ea=th*pct/100,ed=dw*pct/100,rtB=th-ea,rtD=dw>CON_EPS?dw-ed:rtB,onD=onDwgBasis&&dw>CON_EPS,rt=onDwgBasis?rtD:rtB;
+      // On the drawings: a WBS WITH drawings quantities counts only them (a type budgeted but not
+      // on the drawings = 0 — the budget and the drawings may use different concrete types, so
+      // mixing them per type would count the same concrete twice); a WBS without any drawings
+      // quantities falls back to the budget.
+      var ea=th*pct/100,ed=dw*pct/100,rtB=th-ea,rtD=wDwg>CON_EPS?(dw>CON_EPS?dw-ed:0):rtB,onD=onDwgBasis&&wDwg>CON_EPS,rt=onDwgBasis?rtD:rtB;
       if(onD)r.rtsOnDwg=true;
-      if(dw>CON_EPS)r.rtsDwgAny=true;else if(th>CON_EPS)r.rtsDwgFallback=true;
+      if(wDwg>CON_EPS)r.rtsDwgAny=true;else if(th>CON_EPS)r.rtsDwgFallback=true;
       // RTS real: typed by hand only. Nothing left in theory (100 %, no quantity) = 0, not missing.
       var adj=!!(ln.rts&&_invHas(ln.rts[t]));
       var miss=has&&!adj&&rt>CON_EPS;
@@ -2065,7 +2070,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
     var all=conCutoffRows(cur,wbs,pours,allIds).filter(function(r){return r.hasPct;});
     if(!all.length){safeAlert("Type the progress % of the WBS first: the RTS is worked out from it.");return;}
     var nTyped=all.filter(function(r){return r.adjusted;}).length;
-    if(!safeConfirm("Fill the RTS real of the "+all.length+" WBS with a progress % with the RTS calculated on the "+(from==="dwg"?"drawings (drawings − drawings × %; budget − earned where no drawings are typed)":"budget (budget − earned)")+"?"+
+    if(!safeConfirm("Fill the RTS real of the "+all.length+" WBS with a progress % with the RTS calculated on the "+(from==="dwg"?"drawings (drawings − drawings × %; budget − earned on a WBS without drawings)":"budget (budget − earned)")+"?"+
       (nTyped?"\n\n"+nTyped+" WBS already have an RTS real typed: they are overwritten too.":"")+"\n\nYou can then change any cell."))return;
     var lines=(cur.lines||[]).slice(),stamp={updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""};
     all.forEach(function(r){
@@ -2155,7 +2160,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           <InvBig bg={tD} label="Drawings × progress" value={tot.nDwg?tot.earnedDwg:null} unit={CON_UNIT} sub={tot.nDwg?tot.nDwg+" WBS with % and drawings":""}/>
           <InvBig bg={tD} label={"Concrete "+(tot.nDwg?conLossWord(tot.varDwg):"loss / gain")+" vs drawings"} value={tot.nDwg?Math.abs(tot.varDwg):null} unit={CON_UNIT} colour={tot.nDwg?conLossCol(tot.varDwg):null}
             sub={tot.nDwg?"poured "+conFmt(tot.realDwg)+" − drawings × % "+conFmt(tot.earnedDwg)+" ("+conPct(tot.varDwgPct)+")":""}/>
-          <InvBig bg={tD} label="RTS theo. on the drawings" value={tot.nPct?tot.rtsTheoD:null} unit={CON_UNIT} sub="drawings − drawings × % (budget − earned where no drawings)"/>
+          <InvBig bg={tD} label="RTS theo. on the drawings" value={tot.nPct?tot.rtsTheoD:null} unit={CON_UNIT} sub="drawings − drawings × % (budget − earned on a WBS without drawings)"/>
           <InvBig bg={tD} label="EOS − drawings" value={tot.eacVarDwg} unit={CON_UNIT} colour={conVarCol(tot.eacDwgPct)} sub={tot.eacVarDwg!==null?conPct(tot.eacDwgPct)+" · WBS with drawings and RTS real":"needs drawings and the RTS real"}/>
         </>)}
       </div>;
@@ -2214,7 +2219,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
             <td className="cd" style={D}>{r.hasPct&&r.hasDwg?conFmt(r.earnedDwg):dash}</td>
             <td className="cd" style={dS({fontWeight:700,color:r.varDwg!==null?conLossCol(r.varDwg):"#bbb"})}>{r.varDwg!==null?sg(r.varDwg):"—"}</td>
             <td className="cd" style={dS({color:r.varDwg!==null?conLossCol(r.varDwg):"#bbb"})}>{r.varDwg!==null?conPct(r.varDwgPct):""}</td>
-            <td className="cd" style={dS(r.hasPct&&!r.rtsDwgAny?{color:"#999",fontStyle:"italic"}:null)} title={r.hasPct&&!r.rtsDwgAny?"No drawings quantities: budget − earned":r.rtsDwgFallback?"Types without drawings quantities counted on the budget":""}>{r.hasPct?conFmt(r.rtsTheoD):dash}</td>
+            <td className="cd" style={dS(!r.rtsDwgAny?{color:"#999",fontStyle:"italic"}:null)} title={!r.rtsDwgAny?"No drawings quantities on this WBS: budget − earned":"Drawings − drawings × progress % (only the types on the drawings)"}>{r.hasPct?conFmt(r.rtsTheoD):dash}</td>
             <td className="cd" style={dS({fontWeight:700,color:conVarCol(r.eacDwgPct)})}>{r.eacVarDwg!==null?<>{sg(r.eacVarDwg)}<div style={{fontSize:10,fontWeight:400}}>{conPct(r.eacDwgPct)}</div></>:dash}</td>
           </>}
           <td style={Object.assign({background:r.hasPct&&r.rtsMissing?"#fdf1e0":undefined},R)}>{ro?<span>{r.rtsMissing?<span style={{color:"#b35c00"}}>not typed</span>:r.adjusted?conFmt(r.rtsReal):dash}</span>
