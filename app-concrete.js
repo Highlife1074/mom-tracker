@@ -630,13 +630,13 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
   var totB=conSetTotals(types,rows,"theo",colIds),totD=conSetTotals(types,rows,"dwg",colIds);
   var totCur=qset==="dwg"?totD:totB;
   function projOf(T){return whole?T.shown:T.detail;}
-  function setManual(tid,v){
+  function setManual(tid,v,f){
     if(blockIfReadOnly()||!saveTypes)return;
     var k=conManualKey(qset);
     saveTypes(types.map(function(t){
       if(t.id!==tid)return t;
       var o=Object.assign({},t);
-      if(v===null)delete o[k];else if(v<0){safeAlert("A total cannot be negative.");return t;}else o[k]=v;
+      if(v===null){delete o[k];delete o[k+"F"];}else if(v<0){safeAlert("A total cannot be negative.");return t;}else{o[k]=v;if(f)o[k+"F"]=f;else delete o[k+"F"];}
       return o;
     }));
   }
@@ -649,13 +649,14 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
   if(gapManual){gapD=projOf(totD);gapB=projOf(totB);}
   var gapTot=gapD>CON_EPS?gapD-gapB:null;
   var imported=rawWbs.filter(function(w){return /Created by the import/i.test(w.note||"")&&conSum(w.theo,types.map(function(t){return t.id;}))>CON_EPS;});
-  function setTheo(id,tid,v){
+  function setTheo(id,tid,v,f){
     if(blockIfReadOnly())return;
     saveWbs(rawWbs.map(function(w){
       if(w.id!==id)return w;
       var t=Object.assign({},w[qset]||{});if(v===null||!(v>0))delete t[tid];else t[tid]=v;
       var o=Object.assign({},w);o[qset]=t;
       if(qset==="dwg"&&!Object.keys(t).length)delete o.dwg;
+      conSetFormula(o,qset,tid,v===null||!(v>0)?null:f);
       return o;
     }));
   }
@@ -674,6 +675,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
       if(!Object.keys(th).length&&!Object.keys(d).length)return w;
       var o=Object.assign({},w,{theo:d,updatedAt:at,updatedBy:by});
       if(Object.keys(th).length)o.dwg=th;else delete o.dwg;
+      var tf=w.theoF,df=w.dwgF;delete o.theoF;delete o.dwgF;if(df)o.theoF=df;if(tf)o.dwgF=tf;
       return o;
     }));
     pickSet("theo");
@@ -720,7 +722,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
             :<td><b>{w.code}</b> {w.name}</td>}
             {cols.map(function(t){var v=_invNum((w[qset]||{})[t.id]);
               return <td key={t.id} style={R}>{edit
-                ?<ConNumCell key={qset} value={v||null} width={74} placeholder="—" title={(qset==="dwg"?"Drawings":"Budget")+" m³ — "+t.name+" · empty = none"} onCommit={function(nv){setTheo(w.id,t.id,nv);}}/>
+                ?<ConNumCell key={qset} value={v||null} formula={(w[qset+"F"]||{})[t.id]} width={74} placeholder="—" title={(qset==="dwg"?"Drawings":"Budget")+" m³ — "+t.name+" · empty = none"} onCommit={function(nv,f){setTheo(w.id,t.id,nv,f);}}/>
                 :(v?conFmt(v):"—")}</td>;})}
             <td style={Object.assign({fontWeight:qset==="theo"?700:400},R)}>{conFmt(tot)}</td>
             <td style={Object.assign({fontWeight:qset==="dwg"?700:400},R)}>{hasDw?conFmt(dw):<span style={{color:"#bbb"}}>—</span>}</td>
@@ -737,9 +739,9 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
           {cols.map(function(t){var x=totCur.byType[t.id]||{detail:0,manual:null,shown:0};
             var canType=edit&&whole&&!!saveTypes;
             return <td key={t.id} style={R}>
-              {canType?<ConNumCell key={qset+t.id} value={x.manual} width={84} placeholder={conFmt(x.detail)} highlight={x.manual!==null}
+              {canType?<ConNumCell key={qset+t.id} value={x.manual} formula={t[conManualKey(qset)+"F"]} width={84} placeholder={conFmt(x.detail)} highlight={x.manual!==null}
                   title={"Total "+(qset==="dwg"?"drawings":"budget")+" — "+t.name+": type the project total if you do not have the detail per WBS. Empty = the sum of the WBS ("+conFmt(x.detail)+")."}
-                  onCommit={function(v){setManual(t.id,v);}}/>
+                  onCommit={function(v,f){setManual(t.id,v,f);}}/>
                 :<b>{conFmt(whole?x.shown:x.detail)}</b>}
               {whole&&x.manual!==null&&<div style={{fontSize:10,color:"var(--gold-ink)"}} title="Typed by hand; the WBS detail is below">typed · WBS {conFmt(x.detail)}{Math.abs(x.manual-x.detail)>CON_EPS?" · not split "+(x.manual-x.detail>0?"+":"")+conFmt(x.manual-x.detail):""}</div>}
             </td>;})}
@@ -815,6 +817,7 @@ function conApplyMerge(keepId,ids,code,name,wbs,pours,cutoffs,typeIds){
     updatedAt:new Date().toISOString(),updatedBy:window._currentUser?window._currentUser.name:""});
   if(!links.length)delete merged.schedLinks;
   if(Object.keys(dwg).length)merged.dwg=dwg;else delete merged.dwg;
+  delete merged.theoF;delete merged.dwgF;   // summed values: the formulas of the parts no longer apply
   var tn=parts.filter(function(w){return String(w.theoNote||"").trim();});
   if(tn.length){merged.theoNote=tn.length===1?tn[0].theoNote:tn.map(function(w){return (w.code||w.name)+": "+String(w.theoNote).trim();}).join(" · ");
     merged.theoNoteBy=window._currentUser?window._currentUser.name:"";merged.theoNoteAt=new Date().toISOString();}
@@ -1038,10 +1041,11 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     if(n.start&&n.finish&&n.start>n.finish){safeAlert("The start is after the finish.");return;}
     updW(w.id,{[k]:v||""});
   }
-  function setTheo(w,tid,v){
+  function setTheo(w,tid,v,f){
     var t=Object.assign({},w.theo||{});
     if(v===null||!(v>0))delete t[tid];else t[tid]=v;
-    updW(w.id,{theo:t});
+    var o=conSetFormula({theoF:w.theoF},"theo",tid,v===null||!(v>0)?null:f);
+    updW(w.id,{theo:t,theoF:o.theoF});
   }
   // The type whose theoretical the main row edits: the filtered type, or the WBS's only type.
   function rowType(w){
@@ -1094,7 +1098,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
             var rt=edit?rowType(w):"";
             if(!rt)return <span title={edit?"Several types: edit them with “Detail per type”":""}>{conFmt(f.theo)}</span>;
             return <span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
-              <ConNumCell value={_invNum((w.theo||{})[rt])||null} width={80} placeholder="m³" title={"Theoretical m³ — "+((types.find(function(t){return t.id===rt;})||{}).name||"")+" · empty = none"} onCommit={function(v){setTheo(w,rt,v);}}/>
+              <ConNumCell value={_invNum((w.theo||{})[rt])||null} formula={(w.theoF||{})[rt]} width={80} placeholder="m³" title={"Theoretical m³ — "+((types.find(function(t){return t.id===rt;})||{}).name||"")+" · empty = none"} onCommit={function(v,f){setTheo(w,rt,v,f);}}/>
               {!typeId&&<span style={{fontSize:10,color:"#888"}}>{(types.find(function(t){return t.id===rt;})||{}).name}</span>}
               {_invNum((w.theo||{})[rt])>0&&<button type="button" title="Delete this theoretical quantity" onClick={function(){setTheo(w,rt,null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
             </span>;})()}</td><td style={R}>{conFmt(f.real)}</td>
@@ -1107,7 +1111,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
           rows.push(<tr key={w.id+t.id} style={{fontSize:12,color:"#555",background:"#fbfaf7"}}>
             <td style={{paddingLeft:24}}>{t.name}</td><td/><td/><td/>
             <td style={R}>{edit?<span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
-              <ConNumCell value={_invNum((w.theo||{})[t.id])||null} width={80} placeholder="—" title={"Theoretical m³ — "+t.name+" · empty = none"} onCommit={function(v){setTheo(w,t.id,v);}}/>
+              <ConNumCell value={_invNum((w.theo||{})[t.id])||null} formula={(w.theoF||{})[t.id]} width={80} placeholder="—" title={"Theoretical m³ — "+t.name+" · empty = none"} onCommit={function(v,f){setTheo(w,t.id,v,f);}}/>
               {_invNum((w.theo||{})[t.id])>0&&<button type="button" title="Delete this theoretical quantity" onClick={function(){setTheo(w,t.id,null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#bbb",fontSize:13,padding:"0 2px"}}>✕</button>}
             </span>:conFmt(tf.theo)}</td><td style={R}>{conFmt(tf.real)}</td>
             {lc&&cutCells(conCutoffRows(lc,[w],pours,[t.id])[0])}<td/></tr>);
@@ -1154,6 +1158,14 @@ function conTheoNoteTip(w){return w&&w.theoNote?w.theoNote+(w.theoNoteBy?"\n— 
 // Project total per type typed by hand (when the detail per WBS is not known): stored on the
 // type, t.budgetTotal (budget) / t.dwgTotal (drawings). Empty = the sum of the WBS.
 function conManualKey(set){return set==="dwg"?"dwgTotal":"budgetTotal";}
+// Formulas typed in the quantity cells, kept next to their results: w.theoF / w.dwgF {typeId: "=…"}
+// and, for the typed project totals, t.budgetTotalF / t.dwgTotalF. Only the result is ever used.
+function conSetFormula(o,set,tid,f){
+  var k=set+"F",m=Object.assign({},o[k]||{});
+  if(f)m[tid]=f;else delete m[tid];
+  if(Object.keys(m).length)o[k]=m;else delete o[k];
+  return o;
+}
 function conManualTotal(t,set){var v=t?t[conManualKey(set)]:null;return _invHas(v)?_invNum(v):null;}
 // Per type over the given WBS: detail (sum of the WBS), manual (typed or null), shown (manual, else detail).
 function conSetTotals(types,list,set,typeIds){
@@ -1832,25 +1844,56 @@ function conSplitRts(row,typeIds,total){
   return out;
 }
 
+// A formula typed in a quantity cell, like a spreadsheet: "=12,5*3+4", "2*(3.5+1)", "120/4".
+// + − × ÷ and brackets, decimal point or comma, x / × for times, ÷ or : for divide. No eval:
+// a small parser. Returns the number, or null when the text is not a valid formula.
+function conEvalFormula(str){
+  var s=String(str||"").trim().replace(/^=/,"").replace(/\s+/g,"").replace(/[x×]/gi,"*").replace(/[÷:]/g,"/").replace(/−/g,"-").replace(/,/g,".");
+  if(!s||!/^[0-9.+\-*/()]+$/.test(s))return null;
+  var i=0;
+  function num(){var m=/^\d*\.?\d+|^\d+\.?/.exec(s.slice(i));if(!m)throw 0;i+=m[0].length;return Number(m[0]);}
+  function atom(){
+    if(s[i]==="-"){i++;return -atom();}
+    if(s[i]==="+"){i++;return atom();}
+    if(s[i]==="("){i++;var v=sum();if(s[i]!==")")throw 0;i++;return v;}
+    return num();
+  }
+  function prod(){var v=atom();while(s[i]==="*"||s[i]==="/"){var o=s[i++],r=atom();if(o==="/"){if(r===0)throw 0;v=v/r;}else v=v*r;}return v;}
+  function sum(){var v=prod();while(s[i]==="+"||s[i]==="-"){var o=s[i++],r=prod();v=o==="+"?v+r:v-r;}return v;}
+  try{var v=sum();if(i!==s.length||!isFinite(v))return null;return Math.round(v*1000)/1000;}catch(e){return null;}
+}
+// A formula, not a plain number? (a plain number may start with a minus sign)
+function conIsFormula(str){var t=String(str||"").trim();return /^=/.test(t)||/[0-9.,)]\s*[+\-*/x×÷:]/i.test(t)||/[()]/.test(t);}
 // A number typed in a table cell, saved when the cell is left (not on every keystroke).
-function ConNumCell({value,onCommit,disabled,width,placeholder,highlight,title}){
-  const [txt,setTxt]=useState(_invHas(value)?String(Math.round(_invNum(value)*1000)/1000):"");
+// A formula is accepted (conEvalFormula): its result is saved, and the formula text is passed as
+// the 2nd argument of onCommit (null for a plain number) so that it can be kept and shown again.
+function ConNumCell({value,onCommit,disabled,width,placeholder,highlight,title,formula}){
+  var plain=_invHas(value)?String(Math.round(_invNum(value)*1000)/1000):"";
+  function editText(){return formula?String(formula):plain;}
+  const [txt,setTxt]=useState(editText());
   const [focus,setFocus]=useState(false);
-  var shown=focus?txt:(_invHas(value)?String(Math.round(_invNum(value)*1000)/1000):"");
+  var shown=focus?txt:plain;
   function commit(){
     setFocus(false);
-    var s=txt.trim().replace(",",".");
+    var raw=txt.trim(),nv,f=null;
+    if(raw===""){nv=null;}
+    else if(conIsFormula(raw)){
+      nv=conEvalFormula(raw);
+      if(nv===null){safeAlert("“"+raw+"” is not a valid formula.\n\nUse numbers with + − * / and brackets, e.g. =12,5*3+4");return;}
+      f="="+raw.replace(/^=/,"").trim();
+    }else{nv=Number(raw.replace(/\s+/g,"").replace(",","."));if(!isFinite(nv)){safeAlert("“"+raw+"” is not a number.");return;}}
     var cur=_invHas(value)?_invNum(value):null;
-    var nv=s===""?null:Number(s);
-    if(nv!==null&&!isFinite(nv))return;
-    if(nv===cur)return;
-    onCommit(nv);
+    if(nv===cur&&(f||null)===(formula||null))return;
+    onCommit(nv,f);
   }
-  return <input type="text" inputMode="decimal" disabled={disabled} value={shown} placeholder={placeholder} title={title}
-    onFocus={function(){setTxt(_invHas(value)?String(Math.round(_invNum(value)*1000)/1000):"");setFocus(true);}}
+  return <input type="text" inputMode={formula?"text":"decimal"} disabled={disabled} value={shown} placeholder={placeholder}
+    title={(formula?formula+" = "+plain+(title?"\n":""):"")+(title||"")+(title&&!formula?"\nA formula is accepted, e.g. =12,5*3+4":"")}
+    onFocus={function(){setTxt(editText());setFocus(true);}}
     onChange={function(e){setTxt(e.target.value);}} onBlur={commit}
-    onKeyDown={function(e){if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){setTxt(_invHas(value)?String(value):"");e.target.blur();}}}
-    style={{width:width||70,textAlign:"right",fontVariantNumeric:"tabular-nums",padding:"4px 6px",background:highlight?"var(--gold-soft)":undefined,fontWeight:highlight?700:undefined}}/>;
+    onKeyDown={function(e){if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){setTxt(editText());e.target.blur();}}}
+    style={{width:width||70,textAlign:focus&&formula?"left":"right",fontVariantNumeric:"tabular-nums",padding:"4px 6px",
+      background:highlight?"var(--gold-soft)":formula?"#eef4fb":undefined,fontWeight:highlight?700:undefined,
+      borderBottom:formula&&!focus?"1.5px dotted var(--blue)":undefined}}/>;
 }
 
 function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
