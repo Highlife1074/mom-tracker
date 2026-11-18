@@ -362,7 +362,8 @@ function conApplySplit(parent,rows,wbsAll,poursAll,dropParent){
     left[p.id]=ls.length?Object.assign({},p,{lines:ls}):null;
   });
   var pours=poursAll.map(function(p){return p.wbsId===parent.id?left[p.id]:p;}).filter(Boolean).concat(newPours);
-  var parentEmpty=!Object.keys(theoLeft).length&&!pours.some(function(p){return p.wbsId===parent.id;});
+  // Drawings quantities are not split (they stay on the parent): a parent that still holds some is kept.
+  var parentEmpty=!Object.keys(theoLeft).length&&!pours.some(function(p){return p.wbsId===parent.id;})&&!(conSum(parent.dwg,Object.keys(parent.dwg||{}))>CON_EPS);
   var wbs=wbsAll.map(function(w){return w.id===parent.id?Object.assign({},w,{theo:theoLeft}):w;});
   if(dropParent&&parentEmpty)wbs=wbs.filter(function(w){return w.id!==parent.id;});
   return{wbs:wbs.concat(children),pours:pours,parentEmpty:parentEmpty};
@@ -493,7 +494,7 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
       <InvBig label={"Concrete "+(last?conLossWord(last.variance):"loss / gain")} value={last?Math.abs(last.variance):null} unit={unit} colour={last?conLossCol(last.variance):null}
         sub={last?"poured "+conFmt(last.real)+" − earned "+conFmt(last.earned)+(last.varPct!==null?" ("+conPct(last.varPct)+")":"")+" · "+last.nPct+" WBS with progress":"real poured − earned, at a cut-off"}/>
       <InvBig label="EOS" value={last?last.eac:null} unit={unit} colour={last?conVarCol(last.eacPct):null}
-        sub={last?"cut-off "+fmtDate(last.date)+" · poured + RTS real"+(last.nRtsMissing?" · "+last.nRtsMissing+" WBS with % without RTS real":""):"from the cut-off"}/>
+        sub={last?"cut-off "+fmtDate(last.date)+" · poured + RTS real"+(last.nRtsMissing?" · ⚠ "+last.nRtsMissing+" WBS with something left and no RTS real":""):"from the cut-off"}/>
     </div>
     <ConTheoEditor types={types} saveTypes={saveTypes} allShown={!zone} list={list} rawWbs={rawWbs||wbs} saveWbs={saveWbs} edit={edit} realIx={realIx} typeId={typeId} pours={pours} savePours={savePours} cutoffs={cutoffs} saveCutoffs={saveCutoffs}/>
     {last&&last.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ At the cut-off of {fmtDate(last.date)}, {last.nNoPct} WBS have no progress % ({conFmt(last.theoNoPct)} {unit} budget, {conFmt(last.realNoPct)} {unit} poured): they are left out of the loss / gain.</div>}
@@ -759,7 +760,7 @@ function ConTheoEditor({types,saveTypes,allShown,list,rawWbs,saveWbs,edit,realIx
 // schedule links, the earliest start / latest finish, and one line per cut-off. At a cut-off
 // the merged progress % is weighted by the theoretical of each WBS, so the earned volume does
 // not move; it stays empty when a WBS with a budget had no % there (nothing is invented).
-// An adjusted remain-to-be-spent is kept as the sum of each WBS's own (adjusted or theoretical).
+// The RTS real typed is kept as the sum of what was typed on each WBS (untyped = 0, as in the EOS).
 function conMergeCutoffs(cutoffs,keepId,ids,wbsById,typeIds){
   var inSet={};ids.forEach(function(id){inSet[id]=1;});
   var lost=0;
@@ -774,20 +775,17 @@ function conMergeCutoffs(cutoffs,keepId,ids,wbsById,typeIds){
       else if(th>CON_EPS)all=false;
     });
     var ln={id:keepId};
-    if(anyPct&&all){
-      ln.pct=den>CON_EPS?Math.round(num/den*100)/100:conClampPct(mine.filter(function(l){return _invHas(l.pct);})[0].pct);
-      var rts={},adj=false;
-      typeIds.forEach(function(t){
-        var s=0,a=false;
-        ids.forEach(function(id){
-          var l=byId[id]||{},th=_invNum(((wbsById[id]||{}).theo||{})[t]),p=_invHas(l.pct)?conClampPct(l.pct):0;
-          var dw=_invNum(((wbsById[id]||{}).dwg||{})[t]),wd=conSum((wbsById[id]||{}).dwg,typeIds);
-          if(l.rts&&_invHas(l.rts[t])){a=true;s+=_invNum(l.rts[t]);}else s+=conRtsBasis(c)==="dwg"&&wd>CON_EPS?dw-dw*p/100:th-th*p/100;
-        });
-        if(a){adj=true;rts[t]=Math.round(s*1000)/1000;}
-      });
-      if(adj)ln.rts=rts;
-    }else if(anyPct)lost++;
+    if(anyPct&&all)ln.pct=den>CON_EPS?Math.round(num/den*100)/100:conClampPct(mine.filter(function(l){return _invHas(l.pct);})[0].pct);
+    else if(anyPct)lost++;
+    // RTS real: the sum of what was TYPED on the parts (an untyped part counts 0, as in the EOS),
+    // kept even when the % cannot be merged — so the EOS of the merged WBS = Σ EOS of the parts.
+    var rts={},adj=false;
+    typeIds.forEach(function(t){
+      var s=0,a=false;
+      ids.forEach(function(id){var l=byId[id]||{};if(l.rts&&_invHas(l.rts[t])){a=true;s+=_invNum(l.rts[t]);}});
+      if(a){adj=true;rts[t]=Math.round(s*1000)/1000;}
+    });
+    if(adj)ln.rts=rts;
     var notes=mine.map(function(l){return String(l.note||"").trim();}).filter(Boolean);
     if(notes.length)ln.note=notes.join(" · ");
     ln.updatedAt=new Date().toISOString();ln.updatedBy=window._currentUser?window._currentUser.name:"";
@@ -1163,7 +1161,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
       onApply={function(res){
         var kids=res.wbs.filter(function(w){return !wbs.some(function(x){return x.id===w.id;});}).map(function(w){return w.id;});
         var gone=!res.wbs.some(function(w){return w.id===splitting.id;});
-        if(cutoffs&&cutoffs.length&&saveCutoffs)saveCutoffs(conSplitCutoffs(cutoffs,splitting.id,kids,gone));
+        if(cutoffs&&cutoffs.length&&saveCutoffs)saveCutoffs(conSplitCutoffs(cutoffs,splitting.id,kids,gone,res.wbs));
         saveWbs(res.wbs);savePours(res.pours);setSplitting(null);}}
       onClose={function(){setSplitting(null);}}/>}
     {past&&<ConPastModal types={types} wbs={wbs} pours={pours} zones={zones}
@@ -1747,7 +1745,9 @@ function conCutoffRows(c,wbs,pours,typeIds){
       if(wDwg>CON_EPS)r.rtsDwgAny=true;else if(th>CON_EPS)r.rtsDwgFallback=true;
       // RTS real: typed by hand only. Nothing left in theory (100 %, no quantity) = 0, not missing.
       var adj=!!(ln.rts&&_invHas(ln.rts[t]));
-      var miss=has&&!adj&&rt>CON_EPS;
+      // Missing: something is left in theory (budget / drawings − % done; everything when no % is
+      // typed) and no RTS real typed. Counted 0 in the EOS, but flagged on every WBS.
+      var miss=!adj&&rt>CON_EPS;
       var rr=adj?_invNum(ln.rts[t]):0;
       r.byType[t]={theo:th,earned:ea,real:re,rtsTheo:rt,rtsTheoB:rtB,rtsTheoD:rtD,rtsReal:miss?null:rr,adjusted:adj,missing:miss,dwg:dw,earnedDwg:ed};
       r.theo+=th;r.earned+=ea;r.real+=re;r.rtsTheo+=rt;r.rtsTheoB+=rtB;r.rtsTheoD+=rtD;r.rtsReal+=rr;if(adj)r.adjusted=true;if(miss)r.rtsMissing=true;
@@ -1775,16 +1775,15 @@ function conCutoffRows(c,wbs,pours,typeIds){
     return r;
   }).filter(function(r){return r.theo>CON_EPS||r.real>CON_EPS||r.hasPct||r.hasDwg;});
 }
-// Totals. theoAll / realAll cover every WBS; the measured figures (earned, real, loss / gain,
-// remain to be spent, EOS) cover only the WBS with a progress %.
-// Totals. theoAll / realAll cover every WBS; the measured figures (earned, real, loss / gain,
-// remain to be spent, EOS) cover only the WBS with a progress %.
+// Totals. theoAll / realAll, the RTS real and the EOS cover every WBS; the measured figures
+// (earned, real, loss / gain, RTS theo.) cover only the WBS with a progress %.
 function conCutoffTotals(rows){
   var t={dwgAll:0,nDwg:0,dwg:0,earnedDwg:0,realDwg:0,eacDwg:0,dwgEac:0,theoDwg:0,theoAll:0,realAll:0,theo:0,earned:0,real:0,rtsTheo:0,rtsReal:0,eac:0,theoEac:0,nEac:0,nRtsMissing:0,n:rows.length,nPct:0,nNoPct:0,theoNoPct:0,realNoPct:0,nAdj:0};
   rows.forEach(function(r){
     t.theoAll+=r.theo;t.realAll+=r.real;t.dwgAll+=r.dwg;
     // EOS on every WBS (with or without %): poured + RTS real.
     t.eac+=r.eac;t.theoEac+=r.theo;t.nEac++;t.rtsReal+=r.rtsReal||0;
+    if(r.rtsMissing){t.nRtsMissing++;t.theoRtsMissing=(t.theoRtsMissing||0)+r.theo;t.rtsTheoMissing=(t.rtsTheoMissing||0)+r.rtsTheo;}
     if(r.hasDwg){t.eacDwg+=r.eac;t.dwgEac+=r.dwg;}
     if(r.hasPct&&r.hasDwg){t.nDwg++;t.dwg+=r.dwg;t.earnedDwg+=r.earnedDwg;t.realDwg+=r.real;t.theoDwg+=r.theo;}
     if(!r.hasPct){
@@ -1793,14 +1792,13 @@ function conCutoffTotals(rows){
     }
     t.nPct++;
     t.theo+=r.theo;t.earned+=r.earned;t.real+=r.real;t.rtsTheo+=r.rtsTheo;t.rtsTheoB=(t.rtsTheoB||0)+r.rtsTheoB;t.rtsTheoD=(t.rtsTheoD||0)+r.rtsTheoD;
-    if(r.rtsMissing){t.nRtsMissing++;t.theoRtsMissing=(t.theoRtsMissing||0)+r.theo;}
     if(r.adjusted)t.nAdj++;
     if(r.rtsOnDwg)t.nRtsDwg=(t.nRtsDwg||0)+1;
   });
   t.pct=t.theoAll>CON_EPS?t.earned/t.theoAll*100:null;
   t.variance=t.real-t.earned;
   t.varPct=t.earned>CON_EPS?t.variance/t.earned*100:null;
-  // EOS: the WBS whose RTS real is typed only (eac, theoEac); null when none.
+  // EOS on every WBS (poured + RTS real); null when there is no WBS at all.
   if(!t.nEac)t.eac=null;
   t.eacVar=t.nEac?t.eac-t.theoEac:null;
   t.eacPct=t.nEac&&t.theoEac>CON_EPS?t.eacVar/t.theoEac*100:null;
@@ -2107,6 +2105,14 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
     if(!zone&&!ql&&(Math.abs(rp.theo-tot.theo)>0.5||Math.abs(rp.earned-tot.earned)>0.5||Math.abs(rp.real-tot.real)>0.5))drift=rp;
   }
   var label=typeId?(types.find(function(t){return t.id===typeId;})||{}).name:"all types";
+  // Reconciliation: every m³ in the pour register up to the cut-off must sit in a WBS row of a
+  // known type. A gap = pours on a deleted WBS / type or without a type: shown, never hidden.
+  var recon=(function(){
+    var ra=conRealAt(pours,cur.date),all=0;
+    Object.keys(ra).forEach(function(k){Object.keys(ra[k]).forEach(function(t){all+=ra[k][t];});});
+    var inRows=conCutoffTotals(conCutoffRows(cur,wbs,pours,allIds)).realAll;
+    return Math.abs(all-inRows)>0.5?{all:all,inRows:inRows}:null;
+  })();
   return <div>
     <div className="filter-bar">
       <select value={cur.id} onChange={function(e){setCurId(e.target.value);}} style={{width:"auto",fontWeight:700}}>
@@ -2145,7 +2151,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           <InvBig label="Poured at cut-off" value={tot.realAll} unit={CON_UNIT} sub={"to "+fmtDate(cur.date)+(prevTot?" · +"+conFmt(tot.realAll-prevTot.realAll)+" in the period":"")}/>
           <InvBig label="Remain to be spent, real" value={tot.nAdj?tot.rtsReal:null} unit={CON_UNIT} colour={tot.nRtsMissing?"#b35c00":null}
             sub={"typed by hand · "+tot.nAdj+" WBS"+(tot.nRtsMissing?" · "+tot.nRtsMissing+" WBS still to type (no EOS)":"")}/>
-          <InvBig label="EOS" value={tot.nEac?tot.eac:null} unit={CON_UNIT} sub={"poured "+conFmt(tot.realAll)+" + RTS real "+conFmt(tot.rtsReal)+(tot.nRtsMissing?" · "+tot.nRtsMissing+" WBS with % without RTS real":"")}/>
+          <InvBig label="EOS" value={tot.nEac?tot.eac:null} unit={CON_UNIT} sub={"poured "+conFmt(tot.realAll)+" + RTS real "+conFmt(tot.rtsReal)+(tot.nRtsMissing?" · ⚠ "+tot.nRtsMissing+" WBS with something left and no RTS real (counted 0; RTS theo. "+conFmt(tot.rtsTheoMissing||0)+")":"")}/>
         </div>
         {showB&&box(CON_BG_BUD,"Analysis vs budget",<>
           <InvBig bg={tB} label="Budget (theoretical)" value={tot.theoAll} unit={CON_UNIT} sub={rows.length+" WBS · "+label}/>
@@ -2167,6 +2173,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
     })()}
     <ConGroupProgress gp={gp} whole={!zone&&!ql} basis={basis}/>
     {tot.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ {tot.nNoPct} WBS have no progress % at this cut-off ({conFmt(tot.theoNoPct)} {CON_UNIT} budget, {conFmt(tot.realNoPct)} {CON_UNIT} poured): they are left out of the loss / gain, the remain to be spent and the EOS until a % is typed.</div>}
+    {recon&&<div style={{fontSize:12,color:"#b3302a",marginBottom:8}}>⚠ Reconciliation: the pour register holds {conFmt(recon.all)} {CON_UNIT} up to {fmtDate(cur.date)}, the WBS of this cut-off {conFmt(recon.inRows)} {CON_UNIT} — {conFmt(recon.all-recon.inRows)} {CON_UNIT} are on a deleted WBS or type, or on a line without a type (Pours tab).</div>}
     {drift&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ Figures moved since the cut-off was closed (pours or theoretical quantities edited): at closing, budget {conFmt(drift.theo)}, earned {conFmt(drift.earned)}, real {conFmt(drift.real)} {CON_UNIT}.</div>}
     {(function(){
       // Columns grouped by analysis: common (WBS, progress, poured), vs budget (blue), vs drawings
@@ -2334,13 +2341,32 @@ function conCutoffXlsx(c,types,wbs,pours,gp){
 // A split moves a WBS's quantities to new lines. In CLOSED cut-offs the new lines keep the % that
 // was typed for the WBS they come from, so a closed situation does not move. Open cut-offs are
 // left alone: the % of the new lines is typed by hand there.
-function conSplitCutoffs(cutoffs,parentId,childIds,parentGone){
+// In every cut-off where the parent had a progress % or an RTS real: each new line takes the
+// parent's %, and the RTS real typed on the parent is shared, type by type, between the parent
+// (what it keeps) and the new lines in proportion to their budget of that type — so the EOS
+// and the earned volume of the cut-off do not move. wbsAfter: the WBS list after the split.
+function conSplitCutoffs(cutoffs,parentId,childIds,parentGone,wbsAfter){
+  var byId={};(wbsAfter||[]).forEach(function(w){byId[w.id]=w;});
   return(cutoffs||[]).map(function(c){
-    if(!c.closed)return c;
     var pl=conCutoffLine(c,parentId);
-    if(!pl||!_invHas(pl.pct))return c;
-    var lines=(c.lines||[]).filter(function(l){return !(parentGone&&l.id===parentId)&&childIds.indexOf(l.id)<0;});
-    childIds.forEach(function(id){lines.push({id:id,pct:pl.pct});});
+    if(!pl||!(_invHas(pl.pct)||pl.rts))return c;
+    var holders=(parentGone?[]:[parentId]).concat(childIds);
+    var rtsOf={};holders.forEach(function(id){rtsOf[id]={};});
+    Object.keys(pl.rts||{}).forEach(function(t){
+      if(!_invHas(pl.rts[t]))return;
+      var tot=_invNum(pl.rts[t]),w=holders.map(function(id){return _invNum(((byId[id]||{}).theo||{})[t]);});
+      var sw=w.reduce(function(a,b){return a+b;},0);
+      if(sw<=CON_EPS){w=holders.map(function(_,i){return i===0?1:0;});sw=1;}
+      var acc=0;
+      holders.forEach(function(id,i){var v=i===holders.length-1?Math.round((tot-acc)*1000)/1000:Math.round(tot*w[i]/sw*1000)/1000;acc+=v;rtsOf[id][t]=v;});
+    });
+    var lines=(c.lines||[]).filter(function(l){return l.id!==parentId&&childIds.indexOf(l.id)<0;});
+    holders.forEach(function(id){
+      var base=id===parentId?Object.assign({},pl):{id:id};
+      if(id!==parentId&&_invHas(pl.pct))base.pct=pl.pct;
+      if(pl.rts)base.rts=Object.keys(rtsOf[id]).length?rtsOf[id]:undefined;
+      lines.push(base);
+    });
     return Object.assign({},c,{lines:lines});
   });
 }
