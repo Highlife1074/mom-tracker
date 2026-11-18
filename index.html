@@ -262,6 +262,27 @@ table td,table th{font-variant-numeric:tabular-nums}
 .con-sticky thead th{position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--brand-line)}
 .con-sticky tfoot td{position:sticky;bottom:0;z-index:3;background:#f3f1ea;border-top:2px solid var(--brand-line);box-shadow:0 -1px 0 var(--brand-line);vertical-align:top}
 .con-sticky tfoot tr:hover td{background:#f3f1ea}
+/* Concrete cut-off tables: frozen 2-row header and total, grid lines, zebra rows, blue = vs budget, salmon = vs drawings */
+.con-cut{border-collapse:separate;border-spacing:0}
+.con-cut th,.con-cut td{border-right:1px solid #d6d0c2;border-bottom:1px solid #d6d0c2}
+.con-cut th:first-child,.con-cut td:first-child{border-left:none}
+.con-cut thead th{position:sticky;z-index:3;background:var(--brand-soft,#e9eff7)}
+.con-cut thead tr:first-child th{top:0;height:26px;box-sizing:border-box;padding-top:4px;padding-bottom:4px}
+.con-cut thead tr:nth-child(2) th{top:26px;border-bottom:2px solid #b9b2a2}
+.con-cut thead tr:only-child th{top:0}
+.con-cut thead th.cb{background:#d6e3f6}
+.con-cut thead th.cd{background:#f9d6c8}
+.con-cut tbody tr:nth-child(odd) td{background:#fff}
+.con-cut tbody tr:nth-child(even) td{background:#f3f1ec}
+.con-cut tbody tr:nth-child(odd) td.cb{background:#ecf2fc}
+.con-cut tbody tr:nth-child(even) td.cb{background:#dae6f7}
+.con-cut tbody tr:nth-child(odd) td.cd{background:#fdeee7}
+.con-cut tbody tr:nth-child(even) td.cd{background:#f8dccf}
+.con-cut tbody tr:hover td{box-shadow:inset 0 1px 0 #8aa4c8,inset 0 -1px 0 #8aa4c8}
+.con-cut tfoot td{position:sticky;bottom:0;z-index:3;background:#ebe8df;border-top:2px solid #b9b2a2;font-weight:700}
+.con-cut tfoot td.cb{background:#cfdcf2}
+.con-cut tfoot td.cd{background:#f5cfbf}
+
 .tbl-tenders th+th,.tbl-tenders td+td{border-left:1px solid var(--rule-2)}
 .tbl-tenders .tcol-sep{border-left:2px solid #d9d2c3 !important}
 .tbl-tenders .tgroup-hdr th{background:#dfe8f3;color:var(--brand-ink);text-align:center;padding:5px 12px;border-bottom:1px solid var(--rule)}
