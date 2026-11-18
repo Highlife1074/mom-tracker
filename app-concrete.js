@@ -409,6 +409,7 @@ function ConTypeQtyInputs({types,map,onChange,ro,realMap}){
 // ---------------------------------------------------------------- main view
 function ConcreteView({types,saveTypes,wbs,saveWbs,pours,savePours,cutoffs,saveCutoffs,schedules,zones,canEdit,currentUser}){
   types=types||[];wbs=wbs||[];pours=pours||[];cutoffs=cutoffs||[];
+  conNoteLive(wbs);
   var schedIx=conSchedIndex(schedules);
   var wbsEff=conEffectiveWbs(wbs,schedIx);
   const [tab,setTab]=useState(wbs.length?"overview":types.length?"wbs":"types");
@@ -1704,6 +1705,34 @@ function newConCutoff(o){return Object.assign({id:uuid(),date:today(),label:"",c
 function conRtsBasis(c){return c&&(c.rtsBasis==="dwg"||c.rtsBasis==="both")?c.rtsBasis:"budget";}
 // Background of each analysis, screen and print: blue = against the budget, salmon = against the drawings.
 var CON_BG_BUD="#e8f0fb",CON_BG_DWG="#fde9e1";
+// ---- frozen cut-offs. Closing a cut-off stores a snapshot (c.snap) of everything its figures
+// are made of: each WBS (code, name, zone, budget, drawings, complete), the m³ poured per WBS and
+// type up to its date, its lines (% and RTS real), and the project totals typed on the types.
+// While it is closed, every figure of that cut-off (table, tiles, groups, report, Excel, the
+// Overview history) is read from the snapshot: editing a budget, a pour, or merging / splitting
+// WBS afterwards changes nothing in a closed cut-off. Reopening drops the snapshot.
+// A cut-off closed before snapshots existed stays live until it is reopened and closed again.
+var _conLive={ids:{},n:0};
+function conNoteLive(wbs){var ids={};(wbs||[]).forEach(function(w){ids[w.id]=1;});_conLive={ids:ids,n:(wbs||[]).length};}
+function conMakeSnap(c,wbs,pours,types){
+  var real={},ra=conRealAt(pours,c.date);
+  Object.keys(ra).forEach(function(k){var m={};Object.keys(ra[k]).forEach(function(t){var v=Math.round(ra[k][t]*1e6)/1e6;if(v)m[t]=v;});if(Object.keys(m).length)real[k]=m;});
+  var tt={};(types||[]).forEach(function(t){var b=conManualTotal(t,"theo"),d=conManualTotal(t,"dwg");if(b!==null||d!==null)tt[t.id]={theo:b,dwg:d};});
+  return{at:new Date().toISOString(),by:window._currentUser?window._currentUser.name:"",
+    wbs:(wbs||[]).map(function(w){var o={id:w.id,code:w.code||"",name:w.name||"",zone:w.zone||"",theo:Object.assign({},w.theo||{}),done:!!w.done};if(w.dwg)o.dwg=Object.assign({},w.dwg);return o;}),
+    real:real,lines:JSON.parse(JSON.stringify(c.lines||[])),typeTotals:tt};
+}
+// The snapshot view of a closed cut-off for the WBS list a caller passes (null = live figures).
+// The caller's WBS are matched by id; a WBS of the snapshot that no longer exists at all
+// (deleted, merged away) is kept when the caller passes the whole register.
+function conSnapView(c,wbs){
+  var sn=c&&c.closed&&c.snap;
+  if(!sn)return null;
+  var pass={};(wbs||[]).forEach(function(w){pass[w.id]=1;});
+  var full=(wbs||[]).length>=_conLive.n;
+  return{wbs:sn.wbs.filter(function(e){return pass[e.id]||(full&&!_conLive.ids[e.id]);}),real:sn.real||{},
+    c:Object.assign({},c,{lines:sn.lines||[]}),typeTotals:sn.typeTotals||{}};
+}
 function conCutoffLine(c,wbsId){return(c.lines||[]).find(function(l){return l.id===wbsId;})||null;}
 function conClampPct(v){var n=_invNum(v);return Math.max(0,Math.min(100,n));}
 // The cut-off before this one (by date), to show what moved in the period.
@@ -1725,8 +1754,11 @@ function conRealAt(pours,date){
   return ix;
 }
 // One row per WBS with figures for the given types.
-function conCutoffRows(c,wbs,pours,typeIds){
-  var realAt=conRealAt(pours,c.date),onDwgBasis=conRtsBasis(c)==="dwg";
+function conCutoffRows(c,wbs,pours,typeIds,opt){
+  // closed cut-off with a snapshot: frozen figures (opt.live = recompute from today's data)
+  var sv=opt&&opt.live?null:conSnapView(c,wbs);
+  if(sv){wbs=sv.wbs;c=sv.c;}
+  var realAt=sv?sv.real:conRealAt(pours,c.date),onDwgBasis=conRtsBasis(c)==="dwg";
   return conSortWbs(wbs).map(function(w){
     var ln=conCutoffLine(c,w.id)||{};
     var has=_invHas(ln.pct),pct=has?conClampPct(ln.pct):0;
@@ -1823,7 +1855,11 @@ var CON_GROUPS=[{key:"lean",label:"Lean concrete"},{key:"other",label:"Other con
 // Without any drawings quantities in a group, its WBS budget lines are the basis instead.
 // whole: no zone / search filter → typed project totals (budgetTotal / dwgTotal) are used.
 function conGroupProgress(c,types,wbs,pours,whole){
-  var realAt=conRealAt(pours,c.date);
+  var sv=conSnapView(c,wbs);
+  if(sv){wbs=sv.wbs;c=sv.c;}
+  var realAt=sv?sv.real:conRealAt(pours,c.date);
+  // typed project totals: frozen with the cut-off too
+  function manTot(t,set){if(sv){var x=sv.typeTotals[t.id];return x&&x[set]!==null&&x[set]!==undefined?x[set]:null;}return conManualTotal(t,set);}
   function one(ids){
     // Every WBS weighs in the progress, so the % always means something: measured on its
     // drawings quantities when it has some, else on its budget lines. A WBS without a % = 0 %.
@@ -1841,7 +1877,7 @@ function conGroupProgress(c,types,wbs,pours,whole){
     var budget=0,dwgP=0,budMan=false,dwgMan=false;
     (types||[]).forEach(function(t){if(ids.indexOf(t.id)<0)return;
       var bd=wbs.reduce(function(a,w){return a+_invNum((w.theo||{})[t.id]);},0),dd=wbs.reduce(function(a,w){return a+_invNum((w.dwg||{})[t.id]);},0);
-      var bm=whole?conManualTotal(t,"theo"):null,dm=whole?conManualTotal(t,"dwg"):null;
+      var bm=whole?manTot(t,"theo"):null,dm=whole?manTot(t,"dwg"):null;
       budget+=bm===null?bd:bm;dwgP+=dm===null?dd:dm;if(bm!==null)budMan=true;if(dm!==null)dwgMan=true;});
     var poured=0;Object.keys(realAt).forEach(function(k){poured+=conSum(realAt[k],ids);});
     var r={ids:ids,basis:basis,basisQty:basis==="drawings"?dwgD:theoD,basisEarned:basis==="drawings"?earnD:earnT,pct:pct,nNoPct:nNoPct,
@@ -2093,16 +2129,23 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       all.forEach(function(r){if(!r.hasPct)return;var b=r.byType[t];x.theo+=b.theo;x.earned+=b.earned;x.real+=b.real;x.rtsReal+=b.rtsReal;});
       if(x.theo>CON_EPS||x.real>CON_EPS)rep[t]=x;
     });
-    setCur({closed:true,closedAt:new Date().toISOString(),closedBy:window._currentUser?window._currentUser.name:"",reported:rep});
+    setCur({closed:true,closedAt:new Date().toISOString(),closedBy:window._currentUser?window._currentUser.name:"",reported:rep,
+      snap:conMakeSnap(cur,wbs,pours,types)});
   }
-  function reopen(){if(confirm("Reopen this cut-off? The progress and the remain to be spent become editable again; the figures frozen at closing are dropped."))setCur({closed:false,reported:undefined,closedAt:undefined,closedBy:undefined});}
+  function reopen(){if(confirm("Reopen this cut-off? The progress and the remain to be spent become editable again, and its frozen figures are dropped: it is recalculated from today's budgets, drawings and pours until it is closed again."))setCur({closed:false,reported:undefined,closedAt:undefined,closedBy:undefined,snap:undefined});}
   function del(){
     if(!confirm("Delete the cut-off of "+fmtDate(cur.date)+" with all its progress figures? There is no undo."))return;
     saveCutoffs(cutoffs.filter(function(c){return c.id!==cur.id;}));setCurId("");
   }
   // What was frozen at closing, against today's recalculation (a pour or a theoretical changed since).
-  var drift=null;
-  if(cur.closed&&cur.reported){
+  var drift=null,frozenDiff=null;
+  if(cur.closed&&cur.snap&&!zone&&!ql){
+    // What today's data would give: shown for information, the frozen figures stay the reference.
+    var lv=conCutoffTotals(conCutoffRows(cur,wbs,pours,typeIds,{live:true}));
+    var d1=Math.abs(lv.theoAll-tot.theoAll)>0.5||Math.abs(lv.realAll-tot.realAll)>0.5||Math.abs((lv.eac||0)-(tot.eac||0))>0.5||Math.abs(lv.earned-tot.earned)>0.5||Math.abs(lv.dwgAll-tot.dwgAll)>0.5;
+    if(d1)frozenDiff=lv;
+  }
+  if(cur.closed&&cur.reported&&!cur.snap){
     var rp={theo:0,earned:0,real:0};
     typeIds.forEach(function(t){var x=cur.reported[t];if(x){rp.theo+=x.theo;rp.earned+=x.earned;rp.real+=x.real;}});
     if(!zone&&!ql&&(Math.abs(rp.theo-tot.theo)>0.5||Math.abs(rp.earned-tot.earned)>0.5||Math.abs(rp.real-tot.real)>0.5))drift=rp;
@@ -2113,7 +2156,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
   var recon=(function(){
     var ra=conRealAt(pours,cur.date),all=0;
     Object.keys(ra).forEach(function(k){Object.keys(ra[k]).forEach(function(t){all+=ra[k][t];});});
-    var inRows=conCutoffTotals(conCutoffRows(cur,wbs,pours,allIds)).realAll;
+    var inRows=conCutoffTotals(conCutoffRows(cur,wbs,pours,allIds,{live:true})).realAll;
     return Math.abs(all-inRows)>0.5?{all:all,inRows:inRows}:null;
   })();
   return <div>
@@ -2177,6 +2220,9 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
     <ConGroupProgress gp={gp} whole={!zone&&!ql} basis={basis}/>
     {tot.nNoPct>0&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ {tot.nNoPct} WBS have no progress % at this cut-off ({conFmt(tot.theoNoPct)} {CON_UNIT} budget, {conFmt(tot.realNoPct)} {CON_UNIT} poured): they are left out of the loss / gain, the remain to be spent and the EOS until a % is typed.</div>}
     {recon&&<div style={{fontSize:12,color:"#b3302a",marginBottom:8}}>⚠ Reconciliation: the pour register holds {conFmt(recon.all)} {CON_UNIT} up to {fmtDate(cur.date)}, the WBS of this cut-off {conFmt(recon.inRows)} {CON_UNIT} — {conFmt(recon.all-recon.inRows)} {CON_UNIT} are on a deleted WBS or type, or on a line without a type (Pours tab).</div>}
+    {cur.closed&&cur.snap&&<div style={{fontSize:12,color:"#0f5299",marginBottom:8}}>🔒 Frozen figures: this cut-off shows the budgets, drawings, pours, progress and RTS as they were when it was closed{cur.snap.by?" by "+cur.snap.by:""}{cur.snap.at?" on "+fmtDate(cur.snap.at.slice(0,10)):""}. Later edits do not change it; reopen it to recalculate.</div>}
+    {frozenDiff&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>ℹ Since the closing the data moved (budget, drawings or pours edited, WBS merged / split): recalculated today this cut-off would give budget {conFmt(frozenDiff.theoAll)} (frozen {conFmt(tot.theoAll)}), drawings {conFmt(frozenDiff.dwgAll)} ({conFmt(tot.dwgAll)}), poured {conFmt(frozenDiff.realAll)} ({conFmt(tot.realAll)}), budget unlocked {conFmt(frozenDiff.earned)} ({conFmt(tot.earned)}), EOS {conFmt(frozenDiff.eac)} ({conFmt(tot.eac)}) {CON_UNIT}.</div>}
+    {cur.closed&&!cur.snap&&<div style={{fontSize:12,color:"#888",marginBottom:8}}>This cut-off was closed before the figures were frozen at closing: it is still recalculated from today's data. Reopen and close it again to freeze it.</div>}
     {drift&&<div style={{fontSize:12,color:"#ef6c00",marginBottom:8}}>⚠ Figures moved since the cut-off was closed (pours or theoretical quantities edited): at closing, budget {conFmt(drift.theo)}, earned {conFmt(drift.earned)}, real {conFmt(drift.real)} {CON_UNIT}.</div>}
     {(function(){
       // Columns grouped by analysis: common (WBS, progress, poured), vs budget (blue), vs drawings
