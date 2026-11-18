@@ -2775,20 +2775,64 @@ function PpOwnerCell({td,people,upd}){
     </select>
   </span>;
 }
+// Multi-select filter value: [] = everything. Read the old single value ("all" or one key) too.
+function ppMultiLoad(raw){
+  if(raw==null||raw===""||raw==="all")return [];
+  try{var a=JSON.parse(raw);if(Array.isArray(a))return a.filter(function(x){return typeof x==="string";});}catch(e){}
+  return [String(raw)];
+}
+// Drop-down list with a check box per option. options: [{k,label}]; value: list of keys ([] = all).
+function PpMultiDrop({allLabel,name,options,value,onChange,title}){
+  const [open,setOpen]=useState(false);
+  const [fq,setFq]=useState("");
+  const boxRef=useRef(null);
+  useEffect(function(){
+    if(!open)return;
+    function down(e){if(boxRef.current&&!boxRef.current.contains(e.target))setOpen(false);}
+    function key(e){if(e.key==="Escape")setOpen(false);}
+    document.addEventListener("mousedown",down);document.addEventListener("keydown",key);
+    return function(){document.removeEventListener("mousedown",down);document.removeEventListener("keydown",key);};
+  },[open]);
+  var sel=value||[];
+  var lab=function(k){var o=options.find(function(x){return x.k===k;});return o?o.label:k;};
+  var txt=!sel.length?allLabel:sel.length===1?name+": "+lab(sel[0]):name+" ("+sel.length+")";
+  var f=fq.trim().toLowerCase();
+  var shown=options.filter(function(o){return !f||String(o.label).toLowerCase().indexOf(f)>=0;});
+  function toggle(k){onChange(sel.indexOf(k)>=0?sel.filter(function(x){return x!==k;}):sel.concat([k]));}
+  return <span ref={boxRef} style={{position:"relative",display:"inline-block"}}>
+    <button type="button" className={"fchip"+(sel.length?" on":"")} title={(title||"")+(sel.length>1?"\n"+sel.map(lab).join(", "):"")}
+      onClick={function(){setOpen(!open);setFq("");}} style={{maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{txt} ▾</button>
+    {open&&<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:60,background:"var(--surface,#fff)",border:"1px solid var(--rule,#ddd)",borderRadius:8,
+      boxShadow:"0 6px 20px rgba(0,0,0,.15)",minWidth:220,maxWidth:320,padding:6}}>
+      {options.length>8&&<input autoFocus value={fq} onChange={function(e){setFq(e.target.value);}} placeholder="Search…" style={{width:"100%",fontSize:12,padding:"4px 6px",marginBottom:4,boxSizing:"border-box"}}/>}
+      <div style={{display:"flex",gap:6,marginBottom:4}}>
+        <button type="button" className="btn btn-sm" onClick={function(){var add=shown.map(function(o){return o.k;}).filter(function(k){return sel.indexOf(k)<0;});onChange(sel.concat(add));}}>Select all</button>
+        <button type="button" className="btn btn-sm" disabled={!sel.length} onClick={function(){onChange([]);}}>Clear</button>
+      </div>
+      <div style={{maxHeight:300,overflowY:"auto"}}>
+        {shown.map(function(o){var on=sel.indexOf(o.k)>=0;
+          return <label key={o.k} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 4px",margin:0,cursor:"pointer",fontSize:12,fontWeight:on?700:400,
+            textTransform:"none",letterSpacing:0,fontFamily:"inherit",color:"var(--ink)",fontStyle:o.special?"italic":"normal"}}>
+            <input type="checkbox" checked={on} onChange={function(){toggle(o.k);}} style={{width:"auto",margin:0}}/>{o.label}</label>;})}
+        {!shown.length&&<div style={{fontSize:12,color:"#9b968b",padding:4}}>No match</div>}
+      </div>
+    </div>}
+  </span>;
+}
 function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contractors,saveContractors,onNavTender,onOpenTender,onNavZone,onQuickUpdate,actions,primary}){
   function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   const [q,setQ]=useState(function(){return lsGet("pp_procplan_q","");});
-  const [typeF,setTypeF]=useState(function(){return lsGet("pp_procplan_type","all");});
-  const [deptF,setDeptF]=useState(function(){return lsGet("pp_procplan_dept","all");});
+  const [typeF,setTypeF]=useState(function(){return ppMultiLoad(lsGet("pp_procplan_type","all"));});   // [] = all types
+  const [deptF,setDeptF]=useState(function(){return ppMultiLoad(lsGet("pp_procplan_dept","all"));});
   const [horizon,setHorizon]=useState(function(){var h=lsGet("pp_procplan_horizon","all");return h==="4w"||h==="8w"?h:"all";});
   const [kpiF,setKpiF]=useState(function(){return lsGet("pp_procplan_kpi","");});                   // status tile used as a filter
   const [quickF,setQuickF]=useState(function(){return lsGet("pp_procplan_quick","");});               // With client / Late delivery / Not awarded
   const [mode,setMode]=useState(function(){return lsGet("pp_procplan_view","table")==="timeline"?"timeline":"table";});
   const [grouped,setGrouped]=useState(function(){return lsGet("pp_procplan_group","0")==="1";});
   const [cols,setCols]=useState(function(){return ppColsNorm(lsGet("pp_procplan_cols","plan"));});
-  const [ownerF,setOwnerF]=useState(function(){return lsGet("pp_procplan_owner","all");});            // package owner (ownerTender)
-  const [awdF,setAwdF]=useState(function(){return lsGet("pp_procplan_awd","all");});                  // awarded to (subcontractor)
+  const [ownerF,setOwnerF]=useState(function(){return ppMultiLoad(lsGet("pp_procplan_owner","all"));});            // package owner (ownerTender)
+  const [awdF,setAwdF]=useState(function(){return ppMultiLoad(lsGet("pp_procplan_awd","all"));});                  // awarded to (subcontractor)
   const [tl,setTl]=useState(function(){return lsGet("pp_procplan_tl","1")!=="0";});
   const [leg,setLeg]=useState(function(){return lsGet("pp_procplan_leg","1")!=="0";});
   useEffect(function(){lsSet("pp_procplan_leg",leg?"1":"0");},[leg]);
@@ -2797,7 +2841,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
     return {k:"deadline",dir:1};
   });
   useEffect(function(){lsSet("pp_procplan_sort",JSON.stringify(sort));},[sort]);
-  useEffect(function(){lsSet("pp_procplan_owner",ownerF);lsSet("pp_procplan_awd",awdF);},[ownerF,awdF]);
+  useEffect(function(){lsSet("pp_procplan_owner",JSON.stringify(ownerF));lsSet("pp_procplan_awd",JSON.stringify(awdF));},[ownerF,awdF]);
   const [paste,setPaste]=useState(false);
   const [orderNew,setOrderNew]=useState(false);
   const [printOpen,setPrintOpen]=useState(false);
@@ -2806,7 +2850,7 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
   useEffect(function(){lsSet("pp_procplan_group",grouped?"1":"0");},[grouped]);
   useEffect(function(){lsSet("pp_procplan_cols",cols);},[cols]);
   useEffect(function(){lsSet("pp_procplan_tl",tl?"1":"0");},[tl]);
-  useEffect(function(){lsSet("pp_procplan_q",q);lsSet("pp_procplan_type",typeF);lsSet("pp_procplan_dept",deptF);lsSet("pp_procplan_kpi",kpiF);lsSet("pp_procplan_quick",quickF);},[q,typeF,deptF,kpiF,quickF]);
+  useEffect(function(){lsSet("pp_procplan_q",q);lsSet("pp_procplan_type",JSON.stringify(typeF));lsSet("pp_procplan_dept",JSON.stringify(deptF));lsSet("pp_procplan_kpi",kpiF);lsSet("pp_procplan_quick",quickF);},[q,typeF,deptF,kpiF,quickF]);
   var ro=isReadOnly();
   var now=today();
   var rows=(tenders||[]).filter(function(t){return !t.cancelled;}).map(function(t){return {td:t,p:ppPlan(t,now)};});
@@ -2815,11 +2859,11 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
   var awds=[...new Set([].concat.apply([],rows.map(function(r){return ppAwardedNames(r.td);})).filter(Boolean))].sort(function(a,b){return a.localeCompare(b);});
   // type / department / search / quick filter first: the tiles count what those filters leave
   var base=rows.filter(function(r){
-    if(typeF!=="all"&&ppType(r.td)!==typeF)return false;
-    if(deptF!=="all"&&(r.td.package||"")!==deptF)return false;
+    if(typeF.length&&typeF.indexOf(ppType(r.td))<0)return false;
+    if(deptF.length&&deptF.indexOf(r.td.package||"")<0)return false;
     if(quickF&&!tenderQuick(r.td,quickF))return false;
-    if(ownerF!=="all"){var ow=String(r.td.ownerTender||"").trim();if(ownerF==="—"?ow:ow!==ownerF)return false;}
-    if(awdF!=="all"){var an=ppAwardedNames(r.td);if(awdF==="—"?an.length:an.indexOf(awdF)<0)return false;}
+    if(ownerF.length){var ow=String(r.td.ownerTender||"").trim();if(ownerF.indexOf(ow||"—")<0)return false;}
+    if(awdF.length){var an=ppAwardedNames(r.td);if(!(an.length?an.some(function(n){return awdF.indexOf(n)>=0;}):awdF.indexOf("—")>=0))return false;}
     if(q){
       var s=q.toLowerCase();
       if(String(r.td.title||"").toLowerCase().indexOf(s)<0&&String(r.td.package||"").toLowerCase().indexOf(s)<0&&String(r.td.ownerTender||"").toLowerCase().indexOf(s)<0
@@ -2861,8 +2905,9 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
     if(kpiF)f.push((PP_KPIS.find(function(k){return k.k===kpiF;})||{}).label);
     if(horizon!=="all")f.push((HZ.find(function(h){return h[0]===horizon;})||[0,""])[1]);
     if(quickF)f.push((QF.find(function(x){return x[0]===quickF;})||[0,""])[1]);
-    if(typeF!=="all")f.push(ppTypeLabel(typeF));if(deptF!=="all")f.push(deptF);
-    if(ownerF!=="all")f.push("Owner: "+(ownerF==="—"?"none":ownerF));if(awdF!=="all")f.push("Awarded to: "+(awdF==="—"?"nobody":awdF));
+    if(typeF.length)f.push(typeF.map(ppTypeLabel).join(", "));if(deptF.length)f.push(deptF.join(", "));
+    if(ownerF.length)f.push("Owner: "+ownerF.map(function(o){return o==="—"?"none":o;}).join(", "));
+    if(awdF.length)f.push("Awarded to: "+awdF.map(function(o){return o==="—"?"nobody":o;}).join(", "));
     if(q)f.push('"'+q+'"');
     return f.join(" · ");
   }
@@ -3026,28 +3071,20 @@ function ProcPlanView({tenders,saveTenders,packages,people,tasks,saveTasks,contr
       </span>
     </div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
-      <button className={chip(typeF==="all")} onClick={function(){setTypeF("all");}}>All types</button>
-      {PP_TYPES.map(function(t){return <button key={t.k} className={chip(typeF===t.k)} onClick={function(){setTypeF(typeF===t.k?"all":t.k);}}>{t.label}</button>;})}
-      <select value={deptF} onChange={function(e){setDeptF(e.target.value);}} style={{fontSize:12,padding:"4px 8px",marginLeft:8,width:"auto"}}>
-        <option value="all">All departments</option>
-        {depts.map(function(d){return <option key={d} value={d}>{d}</option>;})}
-      </select>
-      <select value={ownerF} onChange={function(e){setOwnerF(e.target.value);}} title="Owner of the package" style={{fontSize:12,padding:"4px 8px",width:"auto",maxWidth:200}}>
-        <option value="all">All owners</option>
-        {owners.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-        <option value="—">No owner</option>
-      </select>
-      <select value={awdF} onChange={function(e){setAwdF(e.target.value);}} title="Subcontractor / supplier the package is awarded to" style={{fontSize:12,padding:"4px 8px",width:"auto",maxWidth:200}}>
-        <option value="all">All awarded to</option>
-        {awds.map(function(o){return <option key={o} value={o}>{o}</option>;})}
-        <option value="—">Not awarded</option>
-      </select>
+      <PpMultiDrop allLabel="All types" name="Type" value={typeF} onChange={setTypeF} title="Type of contract"
+        options={PP_TYPES.map(function(t){return {k:t.k,label:t.label};})}/>
+      <PpMultiDrop allLabel="All departments" name="Department" value={deptF} onChange={setDeptF} title="Department"
+        options={depts.map(function(d){return {k:d,label:d};})}/>
+      <PpMultiDrop allLabel="All owners" name="Owner" value={ownerF} onChange={setOwnerF} title="Owner of the package"
+        options={owners.map(function(o){return {k:o,label:o};}).concat([{k:"—",label:"No owner",special:true}])}/>
+      <PpMultiDrop allLabel="All subcontractors" name="Subcontractor" value={awdF} onChange={setAwdF} title="Subcontractor / supplier the package is awarded to"
+        options={awds.map(function(o){return {k:o,label:o};}).concat([{k:"—",label:"Not awarded",special:true}])}/>
       <button className={chip(grouped)} onClick={function(){setGrouped(!grouped);}} title="Group the packages by department">By department</button>
       {mode==="table"&&dl&&<label className="phone-hide" title="A strip under each package: the plan chain (latest dates), the milestones reached, the need on site, the delivery forecast and today"
         style={{display:"inline-flex",alignItems:"center",gap:6,margin:"0 0 0 6px",cursor:"pointer",fontSize:12,fontWeight:600,textTransform:"none",letterSpacing:0,fontFamily:"inherit",color:"var(--ink)"}}>
         <input type="checkbox" checked={tl} onChange={function(e){setTl(e.target.checked);}} style={{width:"auto",margin:0}}/>Timelines</label>}
       {(mode==="timeline"||(tl&&dl))&&<button className={chip(leg)} onClick={function(){setLeg(!leg);}} title="Show / hide the legend of the timelines">{leg?"Hide legend":"Legend"}</button>}
-      {(kpiF||horizon!=="all"||quickF||typeF!=="all"||deptF!=="all"||ownerF!=="all"||awdF!=="all"||q)&&<button className="btn btn-sm" onClick={function(){setKpiF("");setHorizon("all");setQuickF("");setTypeF("all");setDeptF("all");setOwnerF("all");setAwdF("all");setQ("");}}>Clear filters</button>}
+      {(kpiF||horizon!=="all"||quickF||typeF.length||deptF.length||ownerF.length||awdF.length||q)&&<button className="btn btn-sm" onClick={function(){setKpiF("");setHorizon("all");setQuickF("");setTypeF([]);setDeptF([]);setOwnerF([]);setAwdF([]);setQ("");}}>Clear filters</button>}
       <span style={{fontSize:11,color:"#9b968b",marginLeft:"auto"}}>{vis.length} / {rows.length} packages{fin?" · "+ppMoney(budgetVis)+" budget":""}</span>
     </div>
     {leg&&(mode==="timeline"||model)&&<div style={{marginBottom:10}} dangerouslySetInnerHTML={{__html:ppLegendHtml(mode==="timeline"?"gantt":"strip")}}></div>}
