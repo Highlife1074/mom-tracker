@@ -191,11 +191,33 @@ function mpBudgetRate(b){return b&&mpHas(b.rate)&&Number(b.rate)>0?Number(b.rate
 // budget lines of that WBS only (the alignment on the real is the whole project's: left out).
 // The total never changes: the weeks aligned on the real take the real hours and what is left of the
 // budget (total − aligned) is spread evenly over the other weeks (never below 0).
-function mpBudgetWeeks(b,wbs){
+// Shape (b.shape): "plan" (default) = the hours left follow the planned curve (planW = planned
+// hours per week, mpPlanWeeks), so budget and planned have the same profile and differ only by the
+// ratio of their totals; "even" = spread evenly over the working days between start and end. No
+// planned hours on the weeks left → even spread.
+function mpPlanWeeks(plan){
+  var out={};
+  (plan||[]).forEach(function(l){
+    if(!isValidDate(l.start)||!isValidDate(l.end))return;
+    var hpw=mpLineHpw(l);
+    mpWeeksBetween(l.start,l.end).forEach(function(w){var h=mpLineWorkers(l,w)*hpw;if(h)out[w]=(out[w]||0)+h;});
+  });
+  return out;
+}
+function mpBudgetFollowsPlan(b){return !!b&&b.shape!=="even";}
+function mpBudgetWeeks(b,wbs,planW){
   var out={};if(!b)return out;
   var al={};
   if(!wbs)Object.keys(b.byWeek||{}).forEach(function(w){if(mpHas(b.byWeek[w]))al[w]=Number(b.byWeek[w]);});
-  if(isValidDate(b.start)&&isValidDate(b.end)&&b.end>=b.start){
+  var pw=null,P=0;
+  if(planW&&mpBudgetFollowsPlan(b)){
+    pw={};Object.keys(planW).forEach(function(w){if(!(w in al)&&planW[w]>0){pw[w]=planW[w];P+=planW[w];}});
+  }
+  if(pw&&P>0){
+    var Hp=mpBudgetHours(b,wbs),Ap=Object.keys(al).reduce(function(s,w){return s+al[w];},0),leftP=Math.max(0,Hp-Ap);
+    Object.keys(pw).forEach(function(w){out[w]=leftP*pw[w]/P;});
+  }
+  else if(isValidDate(b.start)&&isValidDate(b.end)&&b.end>=b.start){
     var H=mpBudgetHours(b,wbs),ws=mpWeeksBetween(b.start,b.end),days={},D=0;
     var A=Object.keys(al).reduce(function(s,w){return s+al[w];},0),left=Math.max(0,H-A);
     ws.forEach(function(w){var n=0;if(!(w in al))for(var d=0;d<MP_WORK_DAYS;d++){var x=addCalDays(w,d);if(x>=b.start&&x<=b.end)n++;}days[w]=n;D+=n;});
@@ -376,12 +398,12 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
   const [fSrc,setFSrc]=useState("");         // filter: activity name in the imported file
   var can=canEdit&&!window._ppReadOnly;
   var bRec=mpBudgetRec(meta);
-  var M0=mpModel(plan,weeks,{bgt:bRec?mpBudgetWeeks(bRec):null});
+  var M0=mpModel(plan,weeks,{bgt:bRec?mpBudgetWeeks(bRec,"",mpPlanWeeks(plan)):null});
   var filtered=!!(fWbs||fSrc);
   var F=mpFilter(plan,weeks,fWbs,fSrc);
   // the € budget is the whole project's: a filtered view compares real to planned only
   // a WBS filter keeps the budget lines of that WBS, when there are some
-  var fBgt=fWbs&&!fSrc&&bRec&&mpBudgetAmount(bRec,fWbs)>0?mpBudgetWeeks(bRec,fWbs):null;
+  var fBgt=fWbs&&!fSrc&&bRec&&mpBudgetAmount(bRec,fWbs)>0?mpBudgetWeeks(bRec,fWbs,mpPlanWeeks(F.plan)):null;
   var M=filtered?mpModel(F.plan,F.weeks,{cutoff:M0.tot.cutoff,bgt:fBgt}):M0;
   // ---- planned = real on the past (admin), with undo
   var planAlign=meta.find(function(x){return x&&x.kind==="planAlign";})||null;
@@ -598,9 +620,13 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,onAlignPlan,bRec,me
     past.forEach(function(r){bw[r.week]=Math.round(r.real*100)/100;});
     _invUpsert(meta,saveMeta,Object.assign({},bRec,{byWeek:bw,alignedTo:co,alignedBy:currentUser||"",alignedAt:today()}));
   }
+  function toggleShape(){
+    if(!isAdmin||blockIfReadOnly()||!bRec)return;
+    _invUpsert(meta,saveMeta,Object.assign({},bRec,{shape:mpBudgetFollowsPlan(bRec)?"even":"plan"}));
+  }
   function resetAlign(){
     if(!isAdmin||blockIfReadOnly()||!bRec)return;
-    if(!safeConfirm("Remove the adjustments and spread the budget evenly again over its duration?"))return;
+    if(!safeConfirm("Remove the weeks aligned on the real? The whole budget is spread again ("+(mpBudgetFollowsPlan(bRec)?"like the planned hours":"evenly over its duration")+")."))return;
     _invUpsert(meta,saveMeta,Object.assign({},bRec,{byWeek:{},alignedTo:"",alignedBy:"",alignedAt:""}));
   }
   // ---- notes
@@ -635,8 +661,9 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,onAlignPlan,bRec,me
         {bRec?<span style={{fontSize:12.5,color:"#444"}}>
           {mpBudgetAmount(bRec,"","awarded")>0&&<span>{invFmt(mpBudgetAmount(bRec,"","gross"),0)} € − awarded {invFmt(mpBudgetAmount(bRec,"","awarded"),0)} € = </span>}
           <b>{invFmt(mpBudgetAmount(bRec),0)} €</b> ÷ <b>{invFmt(rate,2)} €/h</b> = <b style={{color:MP_COL_BGT}}>{invFmt(mpBudgetHours(bRec),0)} h</b>
-          {" "}spread from {fmtDate(bRec.start)} to {fmtDate(bRec.end)}
+          {" "}{mpBudgetFollowsPlan(bRec)?<span>spread week by week <b>like the planned hours</b> (same curve, scaled to the budget total)</span>:<span>spread evenly from {fmtDate(bRec.start)} to {fmtDate(bRec.end)}</span>}
           {nAligned>0&&<span style={{color:"#b35c00"}}> · aligned on the real up to W{mpIsoWeek(bRec.alignedTo)} ({nAligned} week{nAligned!==1?"s":""}): {invFmt(mpAlignedSum(bRec),0)} h spent, {invFmt(Math.max(0,mpBudgetHours(bRec)-mpAlignedSum(bRec)),0)} h left spread over the weeks after</span>}
+          {mpBudgetFollowsPlan(bRec)&&Math.abs(mpBudgetHours(bRec)-M0.tot.budget)>=1&&<span style={{color:"#b35c00"}}> · totals differ: budget {invFmt(mpBudgetHours(bRec),0)} h vs planned {invFmt(M0.tot.budget,0)} h ({mpSigned(mpBudgetHours(bRec)-M0.tot.budget)} h) — complete the plan or the budget lines to make them equal</span>}
         </span>:<span style={{fontSize:12,color:"#888"}}>No budget yet: give the amount in €, the hourly rate and the duration — the hours are spread evenly over the working days.</span>}
         <span style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}}>
           {isAdmin&&<button className="btn btn-sm" onClick={function(){var m=_flowMonday(today());var init=Object.assign({rate:"",start:M0.tot.start||m,end:M0.tot.end?addCalDays(M0.tot.end,5):addCalDays(m,365)},bRec||{});
@@ -644,7 +671,8 @@ function MpOverview({M,M0,filtered,fWbs,knownActs,onOpenWeek,onAlignPlan,bRec,me
             setEditB(init);}}>{bRec?"✎ Edit budget":"＋ Set the budget"}</button>}
           {isAdmin&&bRec&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={alignOnReal} title="The real hours become the budget of every week up to the cut-off; the rest of the budget is spread again over the weeks after (the total does not change)">⇆ Budget = real on the past</button>}
           {isAdmin&&M0.tot.cutoff&&<button className="btn btn-sm" onClick={onAlignPlan} title="The real hours become the planned hours of every week up to the cut-off, WBS by WBS">⇆ Planned = real on the past</button>}
-          {isAdmin&&nAligned>0&&<button className="btn btn-sm" onClick={resetAlign} title="Spread the budget evenly again">↺ Reset adjustments</button>}
+          {isAdmin&&bRec&&<button className="btn btn-sm" onClick={toggleShape} title={mpBudgetFollowsPlan(bRec)?"Spread the budget evenly over its duration instead":"Spread the budget week by week like the planned hours (the total does not change)"}>{mpBudgetFollowsPlan(bRec)?"Spread: like the plan":"Spread: even"}</button>}
+          {isAdmin&&nAligned>0&&<button className="btn btn-sm" onClick={resetAlign} title="Remove the weeks aligned on the real">↺ Reset adjustments</button>}
         </span>
       </div>
       {bRec&&<table className="tbl" style={{fontSize:12,marginTop:8}}>
