@@ -101,6 +101,54 @@ function mpMonthShares(w){
   return m;
 }
 
+// Weeks touching a month ("2026-11") with their working days (Mon–Sat) inside it.
+function mpMonthWeeks(month){
+  var first=month+"-01";if(!isValidDate(first))return [];
+  var d=parseISODate(first),last=toISO(new Date(d.getFullYear(),d.getMonth()+1,0));
+  return mpWeeksBetween(first,last).map(function(w){
+    var n=0;for(var i=0;i<MP_WORK_DAYS;i++){if(addCalDays(w,i).slice(0,7)===month)n++;}
+    return {week:w,days:n};
+  }).filter(function(x){return x.days>0;});
+}
+// Real hours typed for a whole month: each line (company, activity, hours) is spread over the
+// weeks of the month by working day and stored in the weekly entries tagged mon:"YYYY-MM", so the
+// Months tab counts them in that month exactly and the other tabs see them week by week. The lines
+// of that month already stored are replaced; a week without an entry gets one.
+function mpApplyMonth(weeks,month,lines,user){
+  var mw=mpMonthWeeks(month),D=mw.reduce(function(s,x){return s+x.days;},0);
+  var add={};mw.forEach(function(x){add[x.week]=[];});
+  (lines||[]).forEach(function(l){
+    var h=_invNum(l.hours);if(!h&&!String(l.company||"").trim())return;
+    var left=h;
+    mw.forEach(function(x,i){
+      var part=i===mw.length-1?Math.round(left*100)/100:Math.round(h*x.days/D*100)/100;left-=part;
+      var o={company:String(l.company||"").trim(),activity:String(l.activity||"").trim(),hours:part,mon:month};
+      add[x.week].push(o);
+    });
+  });
+  var seen={},out=(weeks||[]).map(function(e){
+    if(!isValidDate(e.week))return e;
+    var w=_flowMonday(e.week),had=(e.real||[]).some(function(r){return r.mon===month;});
+    if(!add[w]&&!had)return e;
+    seen[w]=1;
+    var rs=(e.real||[]).filter(function(r){return r.mon!==month;}).concat(add[w]||[]);
+    return Object.assign({},e,{real:rs,updatedBy:user||"",updatedAt:today()});
+  });
+  mw.forEach(function(x){if(!seen[x.week]&&add[x.week].length)out.push(newManpowerWeek({week:x.week,real:add[x.week],updatedBy:user||"",updatedAt:today()}));});
+  return out;
+}
+// Month lines already stored: the weekly parts added back up by company + activity.
+function mpMonthLines(weeks,month){
+  var out=[];
+  (weeks||[]).forEach(function(e){(e.real||[]).forEach(function(r){
+    if(r.mon!==month)return;
+    var hit=out.find(function(x){return mpCompanyKey(x.company)===mpCompanyKey(r.company)&&mpActKey(x.activity)===mpActKey(r.activity);});
+    if(hit)hit.hours=Math.round((_invNum(hit.hours)+_invNum(r.hours))*100)/100;
+    else out.push({company:r.company||"",activity:r.activity||"",hours:_invNum(r.hours)});
+  });});
+  return out;
+}
+
 // "Company<TAB>hours" or "Company<TAB>activity<TAB>hours" lines, as copied from Excel or from the
 // time-keeping app's export. The same company + activity twice is added up; a header line or a
 // line without a number is skipped.
@@ -202,6 +250,10 @@ function mpModel(plan,weeks,opt){
     var src=covered?"plan":"";
     if(!covered&&e&&mpHas(e.approved)){budget=Number(e.approved);src="manual";}
     var hasR=!!(e&&((e.real||[]).length||e._had)),real=hasR?mpReal(e):0;
+    // real typed for a whole month (Months tab) is spread over its weeks but counted in that month only
+    var monReal={},weekly=false;
+    if(hasR)(e.real||[]).forEach(function(r){if(r.mon)monReal[r.mon]=(monReal[r.mon]||0)+_invNum(r.hours);else weekly=true;});
+    if(hasR&&!(e.real||[]).length)weekly=true;
     if(hasR)(e.real||[]).forEach(function(r){
       var h=_invNum(r.hours),c=C(r.company);c.real+=h;c.weeks[w]=(c.weeks[w]||0)+h;
       var a=A(r.activity);a.real+=h;a.weeks[w]=(a.weeks[w]||0)+h;
@@ -216,7 +268,7 @@ function mpModel(plan,weeks,opt){
     if(workers>peak){peak=workers;peakWeek=w;}
     rows.push({week:w,entry:e,workers:workers,budget:budget,src:src,real:real,hasR:hasR,toDate:toDate,
       diff:hasR?real-budget:null,pct:hasR&&budget?Math.round((real-budget)/budget*100):null,cumB:cB,cumR:cR,cumBd:cBd,
-      bgt:bgt,cumG:cG,cumGd:cGd});
+      bgt:bgt,cumG:cG,cumGd:cGd,monReal:monReal,weekly:weekly});
   });
   // months: each week split over its working days
   var mon={};
@@ -226,7 +278,14 @@ function mpModel(plan,weeks,opt){
       var m=mon[k]||(mon[k]={month:k,budget:0,budgetToDate:0,real:0,hasR:false,bgt:0,bgtToDate:0});
       m.budget+=r.budget*sh[k];m.bgt+=r.bgt*sh[k];if(r.toDate)m.bgtToDate+=r.bgt*sh[k];
       if(r.toDate)m.budgetToDate+=r.budget*sh[k];
-      if(r.hasR){m.real+=r.real*sh[k];m.hasR=true;}
+      if(r.hasR&&r.weekly){
+        var wr=r.real-Object.keys(r.monReal).reduce(function(s,x){return s+r.monReal[x];},0);
+        m.real+=wr*sh[k];m.weekReal=(m.weekReal||0)+wr*sh[k];m.hasR=true;
+      }
+    });
+    Object.keys(r.monReal||{}).forEach(function(k){
+      var m=mon[k]||(mon[k]={month:k,budget:0,budgetToDate:0,real:0,hasR:false,bgt:0,bgtToDate:0});
+      m.real+=r.monReal[k];m.monthReal=(m.monthReal||0)+r.monReal[k];m.hasR=true;
     });
   });
   var months=Object.keys(mon).sort().map(function(k){return mon[k];});
@@ -311,6 +370,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
   weeks=weeks||[];plan=plan||[];meta=meta||[];saveMeta=saveMeta||function(){};
   const [tab,setTab]=useState(plan.length||weeks.length?"overview":"plan");
   const [edit,setEdit]=useState(null);       // week entry being edited
+  const [editMonth,setEditMonth]=useState(""); // month whose real hours are typed (Months tab)
   const [importing,setImporting]=useState(false);
   const [fWbs,setFWbs]=useState("");         // filter: webapp WBS (activity / plan line name)
   const [fSrc,setFSrc]=useState("");         // filter: activity name in the imported file
@@ -389,9 +449,19 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
         var act=String(r.activity||"").trim(),hit=act?plan.find(function(l){return l.label&&mpActKey(l.label)===mpActKey(act);}):null;
         var o={company:String(r.company||"").trim(),activity:hit?hit.label:act,hours:mpHas(r.hours)?Number(r.hours):0};
         if(String(r.src||"").trim())o.src=String(r.src).trim();
+        if(r.mon)o.mon=r.mon;
         return o;}),
       updatedBy:currentUser||"",updatedAt:today()});
     _invUpsert(weeks,saveWeeks,doc);setEdit(null);
+  }
+  function saveMonth(month,lines){
+    if(blockIfReadOnly())return;
+    // activity matching a plan line takes the plan line's exact name, as in the week editor
+    var ls=lines.map(function(r){
+      var act=String(r.activity||"").trim(),hit=act?plan.find(function(l){return l.label&&mpActKey(l.label)===mpActKey(act);}):null;
+      return {company:r.company,activity:hit?hit.label:act,hours:mpHas(r.hours)?Number(r.hours):0};
+    }).filter(function(r){return String(r.company||"").trim()||r.hours;});
+    saveWeeks(mpApplyMonth(weeks,month,ls,currentUser));setEditMonth("");
   }
   function delWeek(w){
     if(!invCanDelete()){safeAlert("Deleting is not allowed for your account.");return;}
@@ -458,12 +528,14 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
     {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M0} can={can} known={known} isAdmin={!!isAdmin&&!window._ppReadOnly}
       onAlign={alignPlanOnReal} onUndoAlign={planAlign?undoPlanAlign:null} planAlign={planAlign}/>}
     {!empty&&tab==="weeks"&&<MpWeeks M={M} onOpen={openWeek} can={can}/>}
-    {!empty&&tab==="months"&&<MpMonths M={M}/>}
+    {!empty&&tab==="months"&&<MpMonths M={M} can={can} onOpen={setEditMonth}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
     {!empty&&tab==="activities"&&<MpActivities M={M} onPick={function(k,v){if(k==="wbs"){setFWbs(v);setFSrc("");}else setFSrc(v);}}/>}
     {empty&&tab==="overview"&&!bRec&&!isAdmin&&<div className="empty"><div className="empty-ico">👷</div>
       <div className="empty-txt">Nothing yet. Start with the plan: one line per trade or team, the number of workers and the weeks.</div></div>}
     {importing&&<MpImportModal weeks={weeks} saveWeeks={saveWeeks} plan={plan} savePlan={savePlan} knownActs={knownActs} currentUser={currentUser} onClose={function(){setImporting(false);}}/>}
+    {editMonth&&<MpMonthEditor month={editMonth} lines={mpMonthLines(weeks,editMonth)} M={M0} known={known} knownActs={knownActs} can={can}
+      onSave={function(ls){saveMonth(editMonth,ls);}} onClose={function(){setEditMonth("");}}/>}
     {edit&&<MpWeekEditor w={edit} known={known} knownActs={knownActs} can={can} M={M0} isNew={!weeks.some(function(x){return x.id===edit.id;})}
       onSave={saveWeek} onDelete={function(){delWeek(edit);}} onClose={function(){setEdit(null);}}/>}
   </div>;
@@ -1045,7 +1117,7 @@ function MpWeeks({M,onOpen,can}){
 }
 
 // ---------------------------------------------------------------- months
-function MpMonths({M}){
+function MpMonths({M,can,onOpen}){
   var t=M.tot;
   var max=Math.max.apply(null,M.months.map(function(m){return Math.max(m.budget,m.real,m.bgt);}).concat([1]));
   var hasB=t.hasBgt;
@@ -1062,7 +1134,11 @@ function MpMonths({M}){
               {hasB&&<td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(m.bgt,0)}</td>}
               <td data-l="Planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{invFmt(m.budget,0)}</td>
               <td data-l="Planned to date" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{m.budgetToDate?invFmt(m.budgetToDate,0):"—"}</td>
-              <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL}}>{m.hasR?invFmt(m.real,0):"—"}</td>
+              <td data-l="Real" onClick={function(){onOpen(m.month);}}
+                title={(can?"Click to type the real hours of the month":"Click to see the real hours of the month")+(m.monthReal&&m.weekReal?" — "+invFmt(m.monthReal,0)+" h typed for the month + "+invFmt(m.weekReal,0)+" h from the weeks":"")}
+                style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL,cursor:"pointer"}}>
+                {m.hasR?invFmt(m.real,0):(can?<span style={{fontWeight:400,color:"#b8b2a4",fontSize:11}}>＋ enter</span>:"—")}
+                {m.monthReal?<span title="Typed for the whole month" style={{fontSize:9,color:"#8b8578",marginLeft:3}}>M</span>:null}</td>
               <td data-l="Variance" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:600,color:mpVarCol(m.pct)}}>{m.diff===null?"—":mpSigned(m.diff)}{m.pct!==null?<span style={{fontSize:10,marginLeft:4}}>{(m.pct>0?"+":"")+m.pct}%</span>:null}</td>
               {hasB&&<td data-l="Cumul. budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(m.cumG,0)}</td>}
               <td data-l="Cumul. planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{invFmt(m.cumB,0)}</td>
@@ -1086,7 +1162,7 @@ function MpMonths({M}){
         </tbody>
       </table>
     </div>
-    <div style={{fontSize:11,color:"#9b968b"}}>A week across two months is split by working day (Mon–Sat). Variance = real − planned hours of the weeks up to the cut-off (W{t.cutoff?mpIsoWeek(t.cutoff):"—"}).</div>
+    <div style={{fontSize:11,color:"#9b968b"}}>{can?"Click a Real cell to type the real hours of the month (by company and activity): they are spread over the weeks of the month by working day; “M” = typed for the month. ":""}A week across two months is split by working day (Mon–Sat). Variance = real − planned hours of the weeks up to the cut-off (W{t.cutoff?mpIsoWeek(t.cutoff):"—"}).</div>
   </div>;
 }
 
@@ -1679,7 +1755,8 @@ function MpWeekEditor({w,known,knownActs,can,isNew,M,onSave,onDelete,onClose}){
           return <tr key={i}>
             <td><input type="text" list="mp-companies" value={r.company||""} disabled={!can} onChange={function(e){setRow(i,"company",e.target.value);}} placeholder="Company of the workers" style={{width:"100%",padding:"4px 6px"}}/></td>
             <td><input type="text" list="mp-activities" value={r.activity||""} disabled={!can} onChange={function(e){setRow(i,"activity",e.target.value);}} placeholder="Activity (plan line)" style={{width:"100%",padding:"4px 6px"}}/>
-              {r.src&&<div style={{fontSize:10,color:"#8b8578",marginTop:2}} title="Activity as named in the imported file">file: {r.src}</div>}</td>
+              {r.src&&<div style={{fontSize:10,color:"#8b8578",marginTop:2}} title="Activity as named in the imported file">file: {r.src}</div>}
+              {r.mon&&<div style={{fontSize:10,color:"#8b8578",marginTop:2}} title="Part of the hours typed for the whole month in the Months tab: change them there">from {mpMonthLabel(r.mon)} (Months tab)</div>}</td>
             <td><input type="number" min="0" value={r.hours} disabled={!can} onChange={function(e){setRow(i,"hours",e.target.value);}} style={{width:"100%",padding:"4px 6px",textAlign:"right"}}/></td>
             <td>{can&&<button onClick={function(){delRow(i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc"}}>✕</button>}</td>
           </tr>;
@@ -1693,3 +1770,75 @@ function MpWeekEditor({w,known,knownActs,can,isNew,M,onSave,onDelete,onClose}){
   </InvModal>;
 }
 
+// Real hours of a whole month, by company and activity (Months tab). Saved spread over the weeks
+// of the month (mpApplyMonth); the hours typed week by week are shown, not changed.
+function MpMonthEditor({month,lines,M,known,knownActs,can,onSave,onClose}){
+  const [rows,setRows]=useState(function(){return lines.length?lines.map(function(r){return Object.assign({},r);}):[{company:"",activity:"",hours:""}];});
+  const [paste,setPaste]=useState("");
+  const [showPaste,setShowPaste]=useState(false);
+  function setRow(i,k,v){setRows(function(o){return o.map(function(r,j){if(j!==i)return r;var u=Object.assign({},r);u[k]=v;return u;});});}
+  function addRow(){setRows(function(o){return o.concat([{company:"",activity:"",hours:""}]);});}
+  function delRow(i){setRows(function(o){return o.filter(function(_,j){return j!==i;});});}
+  function applyPaste(replace){
+    var res=mpParseCompanyPaste(paste);
+    if(!res.rows.length){safeAlert("Nothing recognised. One line per company: the company name, then the hours (tab or ; between them).");return;}
+    setRows(function(o){
+      var rs=replace?[]:o.filter(function(r){return String(r.company||"").trim()||mpHas(r.hours);}).map(function(r){return Object.assign({},r);});
+      res.rows.forEach(function(p){
+        var hit=rs.find(function(r){return mpCompanyKey(r.company)===mpCompanyKey(p.company)&&mpActKey(r.activity)===mpActKey(p.activity);});
+        if(hit)hit.hours=p.hours;else rs.push({company:p.company,activity:p.activity,hours:p.hours});
+      });
+      return rs;
+    });
+    setPaste("");setShowPaste(false);
+    if(res.skipped)safeAlert(res.skipped+" line(s) skipped (no company or no number).");
+  }
+  var mw=mpMonthWeeks(month),D=mw.reduce(function(s,x){return s+x.days;},0);
+  var m=(M&&M.months||[]).find(function(x){return x.month===month;})||null;
+  var weekReal=m?(m.weekReal||0):0;
+  var total=rows.reduce(function(s,r){return s+_invNum(r.hours);},0);
+  var future=mw.length&&mw[mw.length-1].week>_flowMonday(today());
+  var footer=<React.Fragment>
+    <button className="btn" onClick={onClose}>{can?"Cancel":"Close"}</button>
+    {can&&<button className="btn btn-pri" onClick={function(){
+      if(future&&total>0&&!safeConfirm("The month is not over: its hours will also go on the weeks still to come, and the cut-off moves to W"+mpIsoWeek(mw[mw.length-1].week)+". Save anyway?"))return;
+      onSave(rows);}}>Save</button>}
+  </React.Fragment>;
+  return <InvModal title={"Real hours · "+mpMonthLabel(month)} width={680} onClose={onClose} footer={footer}>
+    <div style={{display:"flex",gap:18,flexWrap:"wrap",fontSize:12,marginBottom:8}}>
+      {m&&<span>Planned <b style={{color:MP_COL_BUDGET,fontFamily:"var(--font-mono)"}}>{invFmt(m.budget,0)} h</b></span>}
+      <span>Typed for the month <b style={{color:MP_COL_REAL,fontFamily:"var(--font-mono)"}}>{invFmt(total,0)} h</b></span>
+      {weekReal>0&&<span title="Real hours entered week by week (Weeks tab, import): this month's share. Not changed here.">+ from the weeks <b style={{fontFamily:"var(--font-mono)"}}>{invFmt(weekReal,0)} h</b> = <b style={{color:MP_COL_REAL,fontFamily:"var(--font-mono)"}}>{invFmt(total+weekReal,0)} h</b></span>}
+      {can&&<button className="btn btn-sm" style={{marginLeft:"auto"}} onClick={function(){setShowPaste(!showPaste);}}>Paste from Excel</button>}
+    </div>
+    <div style={{fontSize:11,color:"#6f6b62",background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:"6px 10px",marginBottom:10}}>
+      Spread over {mw.length} week{mw.length!==1?"s":""} by working day (Mon–Sat, {D} days): {mw.map(function(x){return "W"+mpIsoWeek(x.week)+" "+x.days+"/"+D;}).join(" · ")}.
+      The month total stays in {mpMonthLabel(month)}, even for a week shared with the next or previous month.{weekReal>0?" Hours already entered week by week are kept as they are: do not type them twice.":""}</div>
+    {showPaste&&<div style={{background:"#faf9f6",border:"1px solid #ece9e1",borderRadius:8,padding:10,marginBottom:10}}>
+      <div style={{fontSize:11,color:"#6f6b62",marginBottom:6}}>One line per company: name, then hours — or name, activity, hours. The same company and activity twice are added up.</div>
+      <textarea value={paste} onChange={function(e){setPaste(e.target.value);}} rows={6} placeholder={"Glassco\tFormwork carpenters\t4 960\nSteelworks Ltd\tSteel fixers\t3 440"}
+        style={{width:"100%",fontFamily:"var(--font-mono)",fontSize:12,padding:6}}/>
+      <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
+        <button className="btn btn-sm" onClick={function(){applyPaste(false);}}>Merge</button>
+        <button className="btn btn-sm" onClick={function(){applyPaste(true);}}>Replace</button>
+      </div>
+    </div>}
+    <datalist id="mp-activities-m">{(knownActs||[]).map(function(n){return <option key={n} value={n}/>;})}</datalist>
+    <datalist id="mp-companies-m">{(known||[]).map(function(n){return <option key={n} value={n}/>;})}</datalist>
+    <table className="tbl" style={{fontSize:12}}>
+      <thead><tr><th>Company</th><th>Activity</th><th style={{textAlign:"right",width:120}}>Hours (month)</th><th style={{width:34}}></th></tr></thead>
+      <tbody>
+        {rows.length===0&&<tr><td colSpan={4} style={{color:"#9b968b"}}>No line: saving removes the hours typed for this month.</td></tr>}
+        {rows.map(function(r,i){
+          return <tr key={i}>
+            <td><input type="text" list="mp-companies-m" value={r.company||""} disabled={!can} onChange={function(e){setRow(i,"company",e.target.value);}} placeholder="Company of the workers" style={{width:"100%",padding:"4px 6px"}}/></td>
+            <td><input type="text" list="mp-activities-m" value={r.activity||""} disabled={!can} onChange={function(e){setRow(i,"activity",e.target.value);}} placeholder="Activity (plan line)" style={{width:"100%",padding:"4px 6px"}}/></td>
+            <td><input type="number" min="0" value={r.hours} disabled={!can} onChange={function(e){setRow(i,"hours",e.target.value);}} style={{width:"100%",padding:"4px 6px",textAlign:"right"}}/></td>
+            <td>{can&&<button onClick={function(){delRow(i);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc"}}>✕</button>}</td>
+          </tr>;
+        })}
+      </tbody>
+    </table>
+    {can&&<button className="btn btn-sm" style={{marginTop:6}} onClick={addRow}>＋ Line</button>}
+  </InvModal>;
+}
