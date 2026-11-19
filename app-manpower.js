@@ -463,6 +463,21 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
     }).filter(function(r){return String(r.company||"").trim()||r.hours;});
     saveWeeks(mpApplyMonth(weeks,month,ls,currentUser));setEditMonth("");
   }
+  // One figure for the month, typed in the Months table: one line → its hours; several lines
+  // (company / activity, from the detail window) → scaled so their sum is the new figure.
+  function saveMonthTotal(month,v){
+    if(blockIfReadOnly())return;
+    var ls=mpMonthLines(weeks,month),h=v===""?0:Number(v);
+    if(v===""||!h)ls=[];
+    else if(!ls.length)ls=[{company:"",activity:"",hours:h}];
+    else{
+      var old=ls.reduce(function(s,r){return s+_invNum(r.hours);},0),left=h;
+      ls=ls.map(function(r,i){var x=i===ls.length-1?Math.round(left*100)/100:Math.round((old?_invNum(r.hours)/old:1/ls.length)*h*100)/100;left-=x;return Object.assign({},r,{hours:x});});
+    }
+    var mw=mpMonthWeeks(month);
+    if(h&&mw.length&&mw[mw.length-1].week>_flowMonday(today())&&!safeConfirm("The month is not over: its hours will also go on the weeks still to come, and the cut-off moves to W"+mpIsoWeek(mw[mw.length-1].week)+". Save anyway?"))return;
+    saveWeeks(mpApplyMonth(weeks,month,ls,currentUser));
+  }
   function delWeek(w){
     if(!invCanDelete()){safeAlert("Deleting is not allowed for your account.");return;}
     if(_invRemove(weeks,saveWeeks,w,"the week of "+fmtDate(w.week)))setEdit(null);
@@ -528,7 +543,7 @@ function ManpowerView({weeks,saveWeeks,plan,savePlan,meta,saveMeta,isAdmin,contr
     {tab==="plan"&&<MpPlan plan={plan} savePlan={savePlan} M={M0} can={can} known={known} isAdmin={!!isAdmin&&!window._ppReadOnly}
       onAlign={alignPlanOnReal} onUndoAlign={planAlign?undoPlanAlign:null} planAlign={planAlign}/>}
     {!empty&&tab==="weeks"&&<MpWeeks M={M} onOpen={openWeek} can={can}/>}
-    {!empty&&tab==="months"&&<MpMonths M={M} can={can} onOpen={setEditMonth}/>}
+    {!empty&&tab==="months"&&<MpMonths M={M} can={can&&!filtered} onOpen={setEditMonth} onSetTotal={saveMonthTotal}/>}
     {!empty&&tab==="companies"&&<MpCompanies M={M}/>}
     {!empty&&tab==="activities"&&<MpActivities M={M} onPick={function(k,v){if(k==="wbs"){setFWbs(v);setFSrc("");}else setFSrc(v);}}/>}
     {empty&&tab==="overview"&&!bRec&&!isAdmin&&<div className="empty"><div className="empty-ico">👷</div>
@@ -877,7 +892,7 @@ function mpOpenReport(M,bRec,notes,filterLabel,bWbs){
   var past=M.rows.filter(function(r){return t.cutoff&&r.week<=t.cutoff;});
   if(past.length){
     html+='<h2>Weeks to the cut-off</h2><table><thead><tr><th>Week</th>'+(hasB?'<th>Budget</th>':'')+'<th>Planned</th><th>Real</th><th>Variance vs planned</th>'+(hasB?'<th>Cumul. budget</th>':'')+'<th>Cumul. planned</th><th>Cumul. real</th><th style="text-align:left">Note</th></tr></thead><tbody>';
-    past.forEach(function(r){html+='<tr><td>W'+mpIsoWeek(r.week)+' · '+fmtDate(r.week)+'</td>'+(hasB?'<td>'+h(r.bgt)+'</td>':'')+'<td>'+h(r.budget)+'</td><td>'+(r.hasR?h(r.real):"—")+'</td><td'+vc(r.diff,r.budget)+'>'+sg(r.diff)+'</td>'+(hasB?'<td>'+h(r.cumG)+'</td>':'')+'<td>'+h(r.cumB)+'</td><td>'+h(r.cumR)+'</td><td style="text-align:left;color:#666">'+esc((r.entry&&r.entry.note)||"")+'</td></tr>';});
+    past.forEach(function(r){html+='<tr><td>W'+mpIsoWeek(r.week)+' · '+fmtDate(r.week)+'</td>'+(hasB?'<td>'+h(r.bgt)+'</td>':'')+'<td>'+h(r.budget)+'</td><td>'+(r.hasR?h(r.real):"—")+'</td><td'+vc(r.diff,r.budget)+'>'+sg(r.diff)+'</td>'+(hasB?'<td>'+h(r.cumG)+'</td>':'')+'<td>'+h(r.cumB)+'</td><td>'+h(r.cumR)+'</td><td style="text-align:left;color:#666">'+(Object.keys(r.monReal||{}).length?'<i style="color:#2b6cb0">The amount is issued from data entered for the month ('+Object.keys(r.monReal).sort().map(mpMonthLabel).join(", ")+').</i> ':'')+esc((r.entry&&r.entry.note)||"")+'</td></tr>';});
     html+='</tbody></table>';
   }
   // WBS / activities
@@ -1108,8 +1123,11 @@ function MpWeeks({M,onOpen,can}){
           {vcell(r.diff,r.pct)}
           <td data-l="Cumulative" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888",whiteSpace:"nowrap"}}>{M.tot.hasBgt?<span style={{color:MP_COL_BGT}}>{invFmt(r.cumG,0)} / </span>:null}<span style={{color:MP_COL_BUDGET}}>{invFmt(r.cumB,0)}</span> / <span style={{color:MP_COL_REAL}}>{r.toDate?invFmt(r.cumR,0):"—"}</span></td>
           <td data-l="Cumul. var." style={{textAlign:"right",fontFamily:"var(--font-mono)",color:cd===null?"#ccc":mpVarCol(r.cumBd?cd/r.cumBd*100:null)}}>{cd===null?"—":mpSigned(cd)}</td>
-          <td data-l="Companies" style={{fontSize:11,color:"#555"}}>{real.slice(0,3).map(function(x){return (x.company||"?")+" "+invFmt(_invNum(x.hours),0);}).join(" · ")}{real.length>3?" · +"+(real.length-3):""}</td>
-          <td data-l="Note" style={{fontSize:11,color:"#888",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(r.entry&&r.entry.note)||""}</td>
+          <td data-l="Companies" style={{fontSize:11,color:"#555"}}>{real.slice(0,3).map(function(x){return (x.company||(x.mon?"month total":"?"))+" "+invFmt(_invNum(x.hours),0);}).join(" · ")}{real.length>3?" · +"+(real.length-3):""}</td>
+          <td data-l="Note" style={{fontSize:11,color:"#888",maxWidth:260}}>
+            {Object.keys(r.monReal||{}).length>0&&<div style={{color:"#2b6cb0",fontStyle:"italic",whiteSpace:"normal"}} title="Typed for the whole month in the Months tab and spread over its weeks by working day (Mon–Sat)">
+              {r.weekly&&r.real-Object.keys(r.monReal).reduce(function(a,k){return a+r.monReal[k];},0)>0?"Part of the amount":"The amount"} is issued from data entered for the month ({Object.keys(r.monReal).sort().map(mpMonthLabel).join(", ")}{r.weekly&&r.real-Object.keys(r.monReal).reduce(function(a,k){return a+r.monReal[k];},0)>0?": "+invFmt(Object.keys(r.monReal).reduce(function(a,k){return a+r.monReal[k];},0),0)+" h":""}).</div>}
+            <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(r.entry&&r.entry.note)||""}</div></td>
         </tr>;
       })}</tbody>
     </table>
@@ -1117,7 +1135,32 @@ function MpWeeks({M,onOpen,can}){
 }
 
 // ---------------------------------------------------------------- months
-function MpMonths({M,can,onOpen}){
+// Real of a month typed straight in the Months table: the hours typed for the month (not those
+// entered week by week, shown beside). Saved on leaving the field / Enter; Esc cancels.
+function MpMonthRealCell({month,onSet,onOpen}){
+  var m=month,cur=m.monthReal?String(Math.round(m.monthReal*100)/100):"";
+  const [v,setV]=useState(cur);
+  const [focus,setFocus]=useState(false);
+  useEffect(function(){if(!focus)setV(cur);},[cur,focus]);
+  function commit(){
+    setFocus(false);
+    var t=String(v).trim().replace(",",".");
+    if(t===cur)return;
+    if(t!==""&&!(isFinite(Number(t))&&Number(t)>=0)){setV(cur);return;}
+    onSet(t);
+  }
+  return <span style={{display:"inline-flex",alignItems:"center",gap:3,justifyContent:"flex-end"}}>
+    {m.weekReal>0&&<span title="Entered week by week (Weeks tab, import): kept as is" style={{fontWeight:400,fontSize:10,color:"#8b8578"}}>{invFmt(m.weekReal,0)} +</span>}
+    <input type="text" inputMode="decimal" value={v} placeholder="enter"
+      title="Real hours of the month: spread over its weeks by working day (Mon–Sat)"
+      onFocus={function(e){setFocus(true);e.target.select();}} onChange={function(e){setV(e.target.value);}} onBlur={commit}
+      onKeyDown={function(e){if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){setV(cur);setFocus(false);setTimeout(function(){e.target.blur();},0);}}}
+      style={{width:70,padding:"2px 5px",textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,fontSize:12,color:MP_COL_REAL,
+        border:"1px solid "+(m.monthReal?"#c9d8ec":"#e3dfd5"),borderRadius:4,background:m.monthReal?"#f2f7fd":"#fff"}}/>
+    <button className="btn btn-sm" onClick={onOpen} title="By company and activity" style={{padding:"0 5px",fontSize:11,lineHeight:"18px"}}>⋯</button>
+  </span>;
+}
+function MpMonths({M,can,onOpen,onSetTotal}){
   var t=M.tot;
   var max=Math.max.apply(null,M.months.map(function(m){return Math.max(m.budget,m.real,m.bgt);}).concat([1]));
   var hasB=t.hasBgt;
@@ -1134,11 +1177,12 @@ function MpMonths({M,can,onOpen}){
               {hasB&&<td data-l="Budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(m.bgt,0)}</td>}
               <td data-l="Planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{invFmt(m.budget,0)}</td>
               <td data-l="Planned to date" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:"#888"}}>{m.budgetToDate?invFmt(m.budgetToDate,0):"—"}</td>
-              <td data-l="Real" onClick={function(){onOpen(m.month);}}
-                title={(can?"Click to type the real hours of the month":"Click to see the real hours of the month")+(m.monthReal&&m.weekReal?" — "+invFmt(m.monthReal,0)+" h typed for the month + "+invFmt(m.weekReal,0)+" h from the weeks":"")}
-                style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL,cursor:"pointer"}}>
-                {m.hasR?invFmt(m.real,0):(can?<span style={{fontWeight:400,color:"#b8b2a4",fontSize:11}}>＋ enter</span>:"—")}
-                {m.monthReal?<span title="Typed for the whole month" style={{fontSize:9,color:"#8b8578",marginLeft:3}}>M</span>:null}</td>
+              <td data-l="Real" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:700,color:MP_COL_REAL,whiteSpace:"nowrap"}}
+                title={m.monthReal&&m.weekReal?invFmt(m.monthReal,0)+" h typed for the month + "+invFmt(m.weekReal,0)+" h entered week by week":""}>
+                {can
+                  ?<MpMonthRealCell month={m} onSet={function(v){onSetTotal(m.month,v);}} onOpen={function(){onOpen(m.month);}}/>
+                  :<span onClick={function(){onOpen(m.month);}} style={{cursor:"pointer"}}>{m.hasR?invFmt(m.real,0):"—"}</span>}
+                {!can&&m.monthReal?<span title="Typed for the whole month" style={{fontSize:9,color:"#8b8578",marginLeft:3}}>M</span>:null}</td>
               <td data-l="Variance" style={{textAlign:"right",fontFamily:"var(--font-mono)",fontWeight:600,color:mpVarCol(m.pct)}}>{m.diff===null?"—":mpSigned(m.diff)}{m.pct!==null?<span style={{fontSize:10,marginLeft:4}}>{(m.pct>0?"+":"")+m.pct}%</span>:null}</td>
               {hasB&&<td data-l="Cumul. budget" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BGT}}>{invFmt(m.cumG,0)}</td>}
               <td data-l="Cumul. planned" style={{textAlign:"right",fontFamily:"var(--font-mono)",color:MP_COL_BUDGET}}>{invFmt(m.cumB,0)}</td>
@@ -1162,7 +1206,7 @@ function MpMonths({M,can,onOpen}){
         </tbody>
       </table>
     </div>
-    <div style={{fontSize:11,color:"#9b968b"}}>{can?"Click a Real cell to type the real hours of the month (by company and activity): they are spread over the weeks of the month by working day; “M” = typed for the month. ":""}A week across two months is split by working day (Mon–Sat). Variance = real − planned hours of the weeks up to the cut-off (W{t.cutoff?mpIsoWeek(t.cutoff):"—"}).</div>
+    <div style={{fontSize:11,color:"#9b968b"}}>{can?"Type the real hours of a month in the Real column (⋯ = by company and activity): they are spread over the weeks of the month by working day and noted in the Weeks tab. ":""}A week across two months is split by working day (Mon–Sat). Variance = real − planned hours of the weeks up to the cut-off (W{t.cutoff?mpIsoWeek(t.cutoff):"—"}).</div>
   </div>;
 }
 
