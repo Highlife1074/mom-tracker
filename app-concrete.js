@@ -1012,38 +1012,93 @@ function ConCurve({s,theoTotal,earned}){
     </div>}
   </div>;
 }
-// Month by month: planned vs real volumes — what the supply has to deliver in the coming months.
+// Per period (month or week): planned vs real volumes — what the supply has to deliver next.
+// One column per period with a separator line, the value above each bar, the week number and a
+// month band below (weeks). Columns never shrink below a readable width: the chart scrolls
+// sideways (y axis fixed on the left) and opens on the current period.
+function _conWeekNo(k){var d=parseISODate(k),th=new Date(d.getFullYear(),d.getMonth(),d.getDate()+3),j1=new Date(th.getFullYear(),0,4);
+  return 1+Math.round(((th-j1)/86400000-3+((j1.getDay()+6)%7))/7);}
 function ConMonthly({s}){
   const [hi,setHi]=useState(null);
-  var n=s.months.length,W=760,H=180,L=58,Rm=18,T=12,B=28;
+  const [cw,setCw]=useState(760);
+  const boxRef=useRef(null),scRef=useRef(null);
+  useEffect(function(){
+    var el=boxRef.current;if(!el)return;
+    var upd=function(){if(el.clientWidth)setCw(el.clientWidth);};upd();
+    if(window.ResizeObserver){var ro=new ResizeObserver(upd);ro.observe(el);return function(){ro.disconnect();};}
+    window.addEventListener("resize",upd);return function(){window.removeEventListener("resize",upd);};
+  },[]);
+  var n=s.months.length,wk=!!s.week,H=270,L=52,Rm=10,T=22,B=wk?40:24;
+  var minSlot=wk?48:56;
+  var slot=Math.max(minSlot,(cw-L-Rm)/Math.max(1,n));
+  var Wp=Math.ceil(n*slot)+Rm;
+  useEffect(function(){
+    var el=scRef.current;if(!el||s.nowIdx<0)return;
+    el.scrollLeft=Math.max(0,s.nowIdx*slot-el.clientWidth*0.35);
+  },[n,wk,Math.round(slot)]);
   var max=_conNiceMax(Math.max.apply(null,s.plan.concat(s.real.filter(function(v){return v!==null;}),[1])));
-  var slot=(W-L-Rm)/n,bw=Math.max(0.8,Math.min(16,slot>8?(slot-6)/2:slot*0.42));
+  var bw=Math.max(4,Math.min(22,(slot-10)/2));
   var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
-  var every=Math.max(1,Math.ceil(n/12));
+  var grid=[0,.25,.5,.75,1];
+  var per=wk?"week":"month";
+  // value above a bar: horizontal when it fits, else written upwards
+  var val=function(v,cx,col){
+    if(!(v>CON_EPS))return null;
+    var t=invFmt(v,0),wide=t.length*5.4>bw+8,yy=y(v)-4;
+    return wide?<text x={cx+3} y={yy} fontSize="9.5" fill={col} fontWeight="600" transform={"rotate(-90 "+(cx+3)+" "+yy+")"}>{t}</text>
+      :<text x={cx} y={yy} fontSize="9.5" textAnchor="middle" fill={col} fontWeight="600">{t}</text>;
+  };
+  var M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var mi=hi!==null?hi:null;
   return <div className="card" style={{position:"relative",marginBottom:4}}>
-    <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4}}>
-      <b style={{color:"var(--ink)"}}>Per {s.week?"week":"month"} ({CON_UNIT})</b>
+    <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4,alignItems:"center"}}>
+      <b style={{color:"var(--ink)"}}>Per {per} ({CON_UNIT})</b>
       <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_PLAN,verticalAlign:"middle",marginRight:4}}/>Planned</span>
       <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_REAL,verticalAlign:"middle",marginRight:4}}/>Real</span>
+      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:"var(--gold-soft)",border:"1px solid #e0cf9a",verticalAlign:"middle",marginRight:4}}/>This {per}</span>
+      {Wp>cw-L&&<span style={{color:"#888"}}>← scroll sideways →</span>}
     </div>
-    <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",display:"block"}} onMouseLeave={function(){setHi(null);}}>
-      {[0,.5,1].map(function(g){return <g key={g}><line x1={L} x2={W-Rm} y1={y(max*g)} y2={y(max*g)} stroke="#eee"/><text x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text></g>;})}
-      {s.months.map(function(k,i){
-        var cx=L+slot*i+slot/2;
-        var hp=H-B-y(s.plan[i]),hr=s.real[i]===null?0:H-B-y(s.real[i]);
-        return <g key={k} opacity={hi===null||hi===i?1:.55}>
-          {hp>0&&<rect x={cx-bw-1} y={y(s.plan[i])} width={bw} height={hp} rx={Math.min(2,bw/2)} fill={CON_COL_PLAN}/>}
-          {hr>0&&<rect x={cx+1} y={y(s.real[i])} width={bw} height={hr} rx={Math.min(2,bw/2)} fill={CON_COL_REAL}/>}
-          {i%every===0&&<text x={cx} y={H-10} fontSize="10" textAnchor="middle" fill="#888">{conFmtPer(k,s.week,true)}</text>}
-          <rect x={cx-slot/2} y={T} width={slot} height={H-T-B} fill="transparent" onMouseEnter={function(){setHi(i);}}/>
-        </g>;
-      })}
-    </svg>
-    {hi!==null&&<div style={{position:"absolute",top:30,left:((L+slot*hi+slot/2)/W*100)+"%",transform:hi>n/2?"translateX(calc(-100% - 10px))":"translateX(10px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap"}}>
-      <b>{conFmtPer(s.months[hi],s.week)}</b>
-      <div>Planned: <b>{conFmt(s.plan[hi])}</b></div>
-      <div>Real: <b>{s.real[hi]===null?"—":conFmt(s.real[hi])}</b></div>
-    </div>}
+    <div ref={boxRef} style={{position:"relative",display:"flex"}}>
+      <svg width={L} height={H} style={{flex:"0 0 auto",display:"block"}}>
+        {grid.map(function(g){return <text key={g} x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text>;})}
+      </svg>
+      <div ref={scRef} style={{overflowX:"auto",overflowY:"hidden",flex:"1 1 auto",position:"relative"}}>
+        <div style={{position:"relative",width:Wp}}>
+        <svg width={Wp} height={H} style={{display:"block"}} onMouseLeave={function(){setHi(null);}}>
+          {s.nowIdx>=0&&<rect x={s.nowIdx*slot} y={T-14} width={slot} height={H-T-B+14} fill="var(--gold-soft)"/>}
+          {grid.map(function(g){return <line key={g} x1={0} x2={n*slot} y1={y(max*g)} y2={y(max*g)} stroke={g===0?"#bbb":"#eee"}/>;})}
+          {s.months.map(function(k,i){
+            var x0=i*slot,cx=x0+slot/2;
+            var hp=H-B-y(s.plan[i]),hr=s.real[i]===null?0:H-B-y(s.real[i]);
+            var d=wk?parseISODate(k):null;
+            var newMonth=wk?(i===0||parseISODate(s.months[i-1]).getMonth()!==d.getMonth()):(i===0||k.slice(5,7)==="01");
+            return <g key={k}>
+              <line x1={x0} x2={x0} y1={T-14} y2={H-(wk&&newMonth?2:B-(wk?16:0))} stroke={newMonth?"#b9b2a3":"#e6e2d8"} strokeWidth={newMonth?1.2:1}/>
+              <g opacity={hi===null||hi===i?1:.5}>
+                {hp>0&&<rect x={cx-bw-1} y={y(s.plan[i])} width={bw} height={hp} rx="2" fill={CON_COL_PLAN}/>}
+                {hr>0&&<rect x={cx+1} y={y(s.real[i])} width={bw} height={hr} rx="2" fill={CON_COL_REAL}/>}
+                {val(s.plan[i],cx-bw/2-1,"#7a6120")}
+                {s.real[i]!==null&&val(s.real[i],cx+bw/2+1,"#1f4f85")}
+              </g>
+              {wk?<>
+                <text x={cx} y={H-B+13} fontSize="10" textAnchor="middle" fill={i===s.nowIdx?"var(--ink)":"#777"} fontWeight={i===s.nowIdx?700:400}>W{_conWeekNo(k)}</text>
+                {newMonth&&<text x={x0+4} y={H-6} fontSize="10.5" fill="#555" fontWeight="600">{M[d.getMonth()]+" "+String(d.getFullYear()).slice(2)}</text>}
+              </>:<text x={cx} y={H-B+14} fontSize="10.5" textAnchor="middle" fill={i===s.nowIdx?"var(--ink)":"#666"} fontWeight={i===s.nowIdx||newMonth?700:400}>{conFmtMonth(k)}</text>}
+              <rect x={x0} y={T-14} width={slot} height={H-T-B+14} fill="transparent" onMouseEnter={function(){setHi(i);}}/>
+            </g>;
+          })}
+          <line x1={n*slot} x2={n*slot} y1={T-14} y2={H-B} stroke="#e6e2d8"/>
+          {wk&&<line x1={0} x2={n*slot} y1={H-B+18} y2={H-B+18} stroke="#e6e2d8"/>}
+        </svg>
+        {mi!==null&&<div style={{position:"absolute",top:6,left:mi*slot+slot/2,transform:mi*slot>Wp/2?"translateX(calc(-100% - 14px))":"translateX(14px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap",zIndex:2}}>
+          <b>{conFmtPer(s.months[mi],wk)}</b>
+          <div>Planned: <b>{conFmt(s.plan[mi])}</b></div>
+          <div>Real: <b>{s.real[mi]===null?"—":conFmt(s.real[mi])}</b>{s.real[mi]!==null&&<span style={{color:conLossCol(s.real[mi]-s.plan[mi])}}> ({s.real[mi]-s.plan[mi]>0?"+":""}{conFmt(s.real[mi]-s.plan[mi])})</span>}</div>
+          <div style={{color:"#888"}}>Cumulative: planned {conFmt(s.cumPlan[mi])} · poured {s.cumReal[mi]===null?"—":conFmt(s.cumReal[mi])}</div>
+        </div>}
+        </div>
+      </div>
+    </div>
   </div>;
 }
 
