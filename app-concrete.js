@@ -945,15 +945,41 @@ function ConTextCell({value,onCommit,width,placeholder,title,bold}){
 // cut-offs. Same column layout as the bars: one column per period with separators, the
 // cumulative value written at each point (planned above, poured below, or the other way round
 // when the poured is ahead), sideways scroll with the y axis fixed on the left. Plain SVG.
+// View settings (per viewer, localStorage pp_con_curve): fit = y axis fitted to the visible
+// periods (else from 0); h = height step; z = zoom step (column width; 0 = whole period).
+var CON_CURVE_H=[300,420,560];
+var CON_CURVE_Z={week:[0,14,22,32,48,72,110],month:[0,30,44,56,84,120]};
+function conCurvePrefs(){try{var o=JSON.parse(localStorage.getItem("pp_con_curve")||"{}");return o&&typeof o==="object"?o:{};}catch(e){return{};}}
 function ConCurve({s,theoTotal,earned}){
   const [hi,setHi]=useState(null);
+  const [pref,setPref]=useState(conCurvePrefs);
+  function setP(k,v){var o=Object.assign({},pref);o[k]=v;setPref(o);try{localStorage.setItem("pp_con_curve",JSON.stringify(o));}catch(e){}}
   earned=earned||[];
-  var n=s.months.length,wk=!!s.week,H=300,L=58,Rm=14,T=20,B=wk?40:24;
-  var lay=useConCols(n,wk,s.nowIdx,L,Rm),slot=lay.slot,Wp=lay.Wp;
-  var max=_conNiceMax(Math.max.apply(null,s.cumPlan.concat(s.cumReal.filter(function(v){return v!==null;}),earned.map(function(p){return Math.max(p.realAll,p.realAll-p.variance);}),[theoTotal||0,1])));
+  var n=s.months.length,wk=!!s.week,L=58,Rm=14,T=20,B=wk?40:24;
+  var hStep=pref.h>=0&&pref.h<CON_CURVE_H.length?pref.h:1,H=CON_CURVE_H[hStep];
+  var zl=CON_CURVE_Z[wk?"week":"month"],zKey=wk?"zw":"zm";
+  var zStep=pref[zKey]>=0&&pref[zKey]<zl.length?pref[zKey]:(wk?4:3);
+  var fit=pref.fit!==false;
+  var lay=useConCols(n,wk,s.nowIdx,L,Rm,zl[zStep]),slot=lay.slot,Wp=lay.Wp;
+  // y range: from 0 to the top of everything, or fitted to the periods in view
+  var lo=0,hiV=1,ii,vals=[];
+  var a0=fit?lay.i0:0,a1=fit?lay.i1:n-1;
+  for(ii=Math.max(0,a0-1);ii<=Math.min(n-1,a1);ii++){vals.push(s.cumPlan[ii]);if(s.cumReal[ii]!==null)vals.push(s.cumReal[ii]);}
+  earned.forEach(function(p){var k=s.months.indexOf(conPerKey(p.date,wk));if(k>=a0&&k<=a1){vals.push(p.realAll,p.realAll-p.variance);}});
+  if(!vals.length)vals=[0,1];
+  var vMax=Math.max.apply(null,vals),vMin=Math.min.apply(null,vals);
+  var rng;
+  if(fit){
+    if(theoTotal>0&&theoTotal<=vMax+(vMax-vMin)*0.35&&theoTotal>=vMin)vMax=Math.max(vMax,theoTotal);
+    rng=_conNiceRange(vMin,vMax);
+  }else{
+    var mx=_conNiceMax(Math.max(vMax,theoTotal||0,1));rng={lo:0,hi:mx,ticks:[0,.25,.5,.75,1].map(function(g){return mx*g;})};
+  }
+  lo=rng.lo;var max=rng.hi;
   // cumulative at the END of period i = right edge of its column
   var x=function(i){return (i+1)*slot;};
-  var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
+  var y=function(v){return T+(H-T-B)*(1-(v-lo)/(max-lo));};
+  var showVals=slot>=34;
   var xDate=function(d){
     var i=s.months.indexOf(conPerKey(d,wk));if(i<0)return null;
     var dt=parseISODate(d),frac;
@@ -964,11 +990,14 @@ function ConCurve({s,theoTotal,earned}){
   var ePts=earned.map(function(p){return{p:p,x:xDate(p.date)};}).filter(function(e){return e.x!==null;});
   var lastE=ePts.length?ePts[ePts.length-1]:null;
   var pts=function(arr){var o=[];if(arr.length&&arr[0]!==null)o.push("0,"+y(0));arr.forEach(function(v,i){if(v!==null)o.push(x(i)+","+y(v));});return o.join(" ");};
-  var grid=[0,.25,.5,.75,1];
+  var grid=rng.ticks;
+  var clipId="conclip"+(wk?"w":"m");
+  var bs={padding:"1px 7px",fontSize:11,minWidth:0};
   var per=wk?"week":"month";
   var hiCuts=hi===null?[]:ePts.filter(function(e){return conPerKey(e.p.date,wk)===s.months[hi];});
   // a value next to its point, inside its column (right-aligned on the point)
   var lab=function(v,i,above,col,bold){
+    if(!showVals||v<lo||v>max)return null;
     var yy=y(v)+(above?-6:13);if(yy<10)yy=y(v)+13;if(yy>H-B-2)yy=y(v)-6;
     return <text x={x(i)-3} y={yy} fontSize="9.5" textAnchor="end" fill={col} fontWeight={bold?700:600}>{invFmt(v,0)}</text>;
   };
@@ -982,9 +1011,21 @@ function ConCurve({s,theoTotal,earned}){
       {lastE&&<span style={{fontWeight:700,color:conLossCol(lastE.p.variance)}}>Concrete {conLossWord(lastE.p.variance)} at {fmtDate(lastE.p.date)}: {lastE.p.variance>0?"+":lastE.p.variance<0?"−":""}{conFmt(Math.abs(lastE.p.variance))} {CON_UNIT}</span>}
       {lay.scrolls&&<span style={{color:"#888"}}>← scroll sideways →</span>}
     </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",fontSize:11,color:"#666",margin:"2px 0 6px"}}>
+      <span>Vertical scale</span>
+      <button className={"fchip"+(fit?" on":"")} style={bs} onClick={function(){setP("fit",true);}} title="The scale fits the periods in view (it follows when you scroll): the slope shows">Fit to view</button>
+      <button className={"fchip"+(!fit?" on":"")} style={bs} onClick={function(){setP("fit",false);}} title="The scale starts at 0 and goes up to the theoretical total">From 0</button>
+      <span style={{marginLeft:10}}>Zoom</span>
+      <button className="btn btn-sm" style={bs} disabled={zStep<=0} onClick={function(){setP(zKey,zStep-1);}} title="Zoom out: more periods in view">−</button>
+      <button className="btn btn-sm" style={bs} disabled={zStep>=zl.length-1} onClick={function(){setP(zKey,zStep+1);}} title="Zoom in: wider columns">＋</button>
+      <button className={"fchip"+(zStep===0?" on":"")} style={bs} onClick={function(){setP(zKey,0);}} title="The whole period in view, no scrolling">All</button>
+      <span style={{marginLeft:10}}>Height</span>
+      {["S","M","L"].map(function(t,k){return <button key={t} className={"fchip"+(hStep===k?" on":"")} style={bs} onClick={function(){setP("h",k);}}>{t}</button>;})}
+    </div>
     <div ref={lay.boxRef} style={{position:"relative",display:"flex"}}>
       <svg width={L} height={H} style={{flex:"0 0 auto",display:"block"}}>
-        {grid.map(function(g){return <text key={g} x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text>;})}
+        {grid.map(function(g){return <text key={g} x={L-6} y={y(g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(g,0)}</text>;})}
+        {lo>0&&<text x={L-6} y={H-B+13} fontSize="9" textAnchor="end" fill="#b35c00">not from 0</text>}
       </svg>
       <div ref={lay.scRef} style={{overflowX:"auto",overflowY:"hidden",flex:"1 1 auto",position:"relative"}}>
         <div style={{position:"relative",width:Wp}}>
@@ -992,16 +1033,18 @@ function ConCurve({s,theoTotal,earned}){
           {s.months.map(function(k,i){return <ConColFrame key={k} s={s} i={i} slot={slot} top={T-10} base={H-B} H={H}/>;})}
           <line x1={n*slot} x2={n*slot} y1={T-10} y2={H-B} stroke="#e6e2d8"/>
           {wk&&<line x1={0} x2={n*slot} y1={H-B+18} y2={H-B+18} stroke="#e6e2d8"/>}
-          {grid.map(function(g){return <line key={g} x1={0} x2={n*slot} y1={y(max*g)} y2={y(max*g)} stroke={g===0?"#bbb":"#eee"}/>;})}
-          {theoTotal>0&&<g><line x1={0} x2={n*slot} y1={y(theoTotal)} y2={y(theoTotal)} stroke="#bbb" strokeDasharray="2 3"/>
+          <defs><clipPath id={clipId}><rect x={0} y={T-10} width={Wp} height={H-B-T+10}/></clipPath></defs>
+          {grid.map(function(g,k){return <line key={g} x1={0} x2={n*slot} y1={y(g)} y2={y(g)} stroke={k===0?"#bbb":"#eee"}/>;})}
+          <g clipPath={"url(#"+clipId+")"}>
+          {theoTotal>0&&theoTotal>=lo&&theoTotal<=max&&<g><line x1={0} x2={n*slot} y1={y(theoTotal)} y2={y(theoTotal)} stroke="#bbb" strokeDasharray="2 3"/>
             {s.months.map(function(k,i){var every=Math.max(1,Math.round(700/slot));return i%every===0?<text key={k} x={i*slot+6} y={y(theoTotal)-4} fontSize="10" fill="#888">theoretical total {conFmt(theoTotal)}</text>:null;})}</g>}
           <polyline points={pts(s.cumPlan)} fill="none" stroke={CON_COL_PLAN} strokeWidth="2" strokeLinejoin="round"/>
           <polyline points={pts(s.cumReal)} fill="none" stroke={CON_COL_REAL} strokeWidth="2" strokeLinejoin="round"/>
           {s.months.map(function(k,i){
             var p=s.cumPlan[i],r=s.cumReal[i],planUp=r===null||p>=r;
             return <g key={k} opacity={hi===null||hi===i?1:.45}>
-              <circle cx={x(i)} cy={y(p)} r="2.5" fill={CON_COL_PLAN}/>
-              {r!==null&&<circle cx={x(i)} cy={y(r)} r="2.5" fill={CON_COL_REAL}/>}
+              {slot>=12&&<circle cx={x(i)} cy={y(p)} r="2.5" fill={CON_COL_PLAN}/>}
+              {slot>=12&&r!==null&&<circle cx={x(i)} cy={y(r)} r="2.5" fill={CON_COL_REAL}/>}
               {lab(p,i,planUp,"#7a6120")}
               {r!==null&&lab(r,i,!planUp,"#1f4f85",i===s.nowIdx)}
             </g>;
@@ -1017,7 +1060,8 @@ function ConCurve({s,theoTotal,earned}){
               {big&&<text x={e.x-8} y={(yp+ye)/2+4} fontSize="10" textAnchor="end" fontWeight="700" fill={conLossCol(v)}>{conLossWord(v)} {v>0?"+":"−"}{conFmt(Math.abs(v))}</text>}
             </g>;
           })}
-          {hi!==null&&<g>
+          </g>
+          {hi!==null&&<g clipPath={"url(#"+clipId+")"}>
             <line x1={x(hi)} x2={x(hi)} y1={T-10} y2={H-B} stroke="#888"/>
             <circle cx={x(hi)} cy={y(s.cumPlan[hi])} r="4" fill={CON_COL_PLAN} stroke="#fff" strokeWidth="2"/>
             {s.cumReal[hi]!==null&&<circle cx={x(hi)} cy={y(s.cumReal[hi])} r="4" fill={CON_COL_REAL} stroke="#fff" strokeWidth="2"/>}
@@ -1045,8 +1089,9 @@ function ConCurve({s,theoTotal,earned}){
 // Column layout shared by the curve and the bars: one column per period, never narrower than
 // a readable width (48 px a week, 56 px a month) — wider charts scroll sideways, opened on the
 // current period.
-function useConCols(n,wk,nowIdx,L,Rm){
+function useConCols(n,wk,nowIdx,L,Rm,minSlot){
   const [cw,setCw]=useState(760);
+  const [sl,setSl]=useState(0);
   const boxRef=useRef(null),scRef=useRef(null);
   useEffect(function(){
     var el=boxRef.current;if(!el)return;
@@ -1054,12 +1099,32 @@ function useConCols(n,wk,nowIdx,L,Rm){
     if(window.ResizeObserver){var ro=new ResizeObserver(upd);ro.observe(el);return function(){ro.disconnect();};}
     window.addEventListener("resize",upd);return function(){window.removeEventListener("resize",upd);};
   },[]);
-  var slot=Math.max(wk?48:56,(cw-L-Rm)/Math.max(1,n));
+  var fit=(cw-L-Rm)/Math.max(1,n);
+  var slot=minSlot===0?fit:Math.max(minSlot||(wk?48:56),fit);
   useEffect(function(){
-    var el=scRef.current;if(!el||nowIdx<0)return;
-    el.scrollLeft=Math.max(0,nowIdx*slot-el.clientWidth*0.35);
+    var el=scRef.current;if(!el)return;
+    el.scrollLeft=nowIdx<0?0:Math.max(0,nowIdx*slot-el.clientWidth*0.35);
+    setSl(el.scrollLeft);
   },[n,wk,Math.round(slot)]);
-  return{boxRef:boxRef,scRef:scRef,slot:slot,cw:cw,Wp:Math.ceil(n*slot)+Rm,scrolls:Math.ceil(n*slot)+Rm>cw-L};
+  // the visible window, followed while scrolling (one update per frame)
+  useEffect(function(){
+    var el=scRef.current;if(!el)return;
+    var raf=0,on=function(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;setSl(el.scrollLeft);});};
+    el.addEventListener("scroll",on);return function(){el.removeEventListener("scroll",on);if(raf)cancelAnimationFrame(raf);};
+  },[]);
+  var vw=Math.max(1,cw-L);
+  var i0=Math.max(0,Math.floor(sl/slot)),i1=Math.min(n-1,Math.ceil((sl+vw)/slot)-1);
+  return{boxRef:boxRef,scRef:scRef,slot:slot,cw:cw,Wp:Math.ceil(n*slot)+Rm,scrolls:Math.ceil(n*slot)+Rm>cw-L+1,i0:i0,i1:i1};
+}
+// A nice y range around [lo, hi] (5 % margin), ticks on round steps; never below 0.
+function _conNiceRange(lo,hi){
+  if(!(hi>lo)){hi=lo+1;}
+  var pad=(hi-lo)*0.06;lo=Math.max(0,lo-pad);hi=hi+pad;
+  var raw=(hi-lo)/4,p=Math.pow(10,Math.floor(Math.log10(raw))),st=[1,2,2.5,5,10],step=10*p;
+  for(var i=0;i<st.length;i++)if(st[i]*p>=raw){step=st[i]*p;break;}
+  lo=Math.floor(lo/step)*step;hi=Math.ceil(hi/step)*step;
+  var t=[];for(var v=lo;v<=hi+step/2;v+=step)t.push(v);
+  return{lo:lo,hi:hi,ticks:t};
 }
 var CON_MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function _conNewMonth(s,i){
@@ -1070,14 +1135,19 @@ function _conNewMonth(s,i){
 // of one column. top / base = y of the plot area.
 function ConColFrame({s,i,slot,top,base,H}){
   var k=s.months[i],wk=!!s.week,x0=i*slot,cx=x0+slot/2,nm=_conNewMonth(s,i),now=i===s.nowIdx;
+  var lblEvery=Math.max(1,Math.ceil((wk?30:44)/slot));
+  var showLbl=now||(i%lblEvery===0&&(s.nowIdx<0||Math.abs(i-s.nowIdx)>=lblEvery));
+  // month band: no label when the next month starts too close (partial month, narrow columns)
+  var mLbl=nm;
+  if(wk&&nm)for(var j=1;j*slot<46&&i+j<s.months.length;j++)if(_conNewMonth(s,i+j)){mLbl=false;break;}
   var d=wk?parseISODate(k):null;
   return <g>
     {now&&<rect x={x0} y={top} width={slot} height={base-top} fill="var(--gold-soft)"/>}
-    <line x1={x0} x2={x0} y1={top} y2={wk&&nm?H-2:base+(wk?16:0)} stroke={nm?"#b9b2a3":"#e6e2d8"} strokeWidth={nm?1.2:1}/>
+    {(nm||slot>=10)&&<line x1={x0} x2={x0} y1={top} y2={wk&&nm?H-2:base+(wk?16:0)} stroke={nm?"#b9b2a3":"#e6e2d8"} strokeWidth={nm?1.2:1}/>}
     {wk?<>
-      <text x={cx} y={base+13} fontSize="10" textAnchor="middle" fill={now?"var(--ink)":"#777"} fontWeight={now?700:400}>W{_conWeekNo(k)}</text>
-      {nm&&<text x={x0+4} y={H-6} fontSize="10.5" fill="#555" fontWeight="600">{CON_MON[d.getMonth()]+" "+String(d.getFullYear()).slice(2)}</text>}
-    </>:<text x={cx} y={base+14} fontSize="10.5" textAnchor="middle" fill={now?"var(--ink)":"#666"} fontWeight={now||nm?700:400}>{conFmtMonth(k)}</text>}
+      {showLbl&&<text x={cx} y={base+13} fontSize="10" textAnchor="middle" fill={now?"var(--ink)":"#777"} fontWeight={now?700:400}>W{_conWeekNo(k)}</text>}
+      {mLbl&&<text x={x0+4} y={H-6} fontSize="10.5" fill="#555" fontWeight="600">{CON_MON[d.getMonth()]+" "+String(d.getFullYear()).slice(2)}</text>}
+    </>:showLbl&&<text x={cx} y={base+14} fontSize="10.5" textAnchor="middle" fill={now?"var(--ink)":"#666"} fontWeight={now||nm?700:400}>{conFmtMonth(k)}</text>}
   </g>;
 }
 function _conWeekNo(k){var d=parseISODate(k),th=new Date(d.getFullYear(),d.getMonth(),d.getDate()+3),j1=new Date(th.getFullYear(),0,4);
