@@ -940,86 +940,112 @@ function ConTextCell({value,onCommit,width,placeholder,title,bold}){
     onKeyDown={function(e){if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){cancel.current=true;e.target.blur();}}}
     style={{width:width||"100%",padding:"4px 6px",fontWeight:bold?700:undefined}}/>;
 }
-// Cumulative curve: planned and poured month by month; real progress (earned) only as points
-// at the cut-offs, where a progress % was typed. No line is drawn between cut-offs. Plain SVG.
+// Cumulative curve: planned and poured period by period (month or week); real progress (earned)
+// only as points at the cut-offs, where a progress % was typed. No line is drawn between
+// cut-offs. Same column layout as the bars: one column per period with separators, the
+// cumulative value written at each point (planned above, poured below, or the other way round
+// when the poured is ahead), sideways scroll with the y axis fixed on the left. Plain SVG.
 function ConCurve({s,theoTotal,earned}){
   const [hi,setHi]=useState(null);
   earned=earned||[];
-  var n=s.months.length,W=760,H=260,L=58,Rm=18,T=14,B=30;
+  var n=s.months.length,wk=!!s.week,H=300,L=58,Rm=14,T=20,B=wk?40:24;
+  var lay=useConCols(n,wk,s.nowIdx,L,Rm),slot=lay.slot,Wp=lay.Wp;
   var max=_conNiceMax(Math.max.apply(null,s.cumPlan.concat(s.cumReal.filter(function(v){return v!==null;}),earned.map(function(p){return Math.max(p.realAll,p.realAll-p.variance);}),[theoTotal||0,1])));
-  var x=function(i){return n===1?L+(W-L-Rm)/2:L+(W-L-Rm)*i/(n-1);};
+  // cumulative at the END of period i = right edge of its column
+  var x=function(i){return (i+1)*slot;};
   var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
-  // A date inside the period grid: period index i is plotted at the end of period i.
-  var step=n>1?(W-L-Rm)/(n-1):(W-L-Rm)/2;
   var xDate=function(d){
-    var i=s.months.indexOf(conPerKey(d,s.week));if(i<0)return null;
+    var i=s.months.indexOf(conPerKey(d,wk));if(i<0)return null;
     var dt=parseISODate(d),frac;
-    if(s.week)frac=(((dt.getDay()+6)%7)+1)/7;
+    if(wk)frac=(((dt.getDay()+6)%7)+1)/7;
     else frac=dt.getDate()/new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();
-    return Math.max(L,x(i)-step+step*frac);
+    return i*slot+slot*frac;
   };
   var ePts=earned.map(function(p){return{p:p,x:xDate(p.date)};}).filter(function(e){return e.x!==null;});
   var lastE=ePts.length?ePts[ePts.length-1]:null;
-  var pts=function(arr){return arr.map(function(v,i){return v===null?null:x(i)+","+y(v);}).filter(Boolean).join(" ");};
-  var every=Math.max(1,Math.ceil(n/12));
-  var ni=s.nowIdx;
-  var colW=n===1?(W-L-Rm):(W-L-Rm)/(n-1);
-  var lastReal=-1;s.cumReal.forEach(function(v,i){if(v!==null)lastReal=i;});
-  var hiCuts=hi===null?[]:ePts.filter(function(e){return conPerKey(e.p.date,s.week)===s.months[hi];});
+  var pts=function(arr){var o=[];if(arr.length&&arr[0]!==null)o.push("0,"+y(0));arr.forEach(function(v,i){if(v!==null)o.push(x(i)+","+y(v));});return o.join(" ");};
+  var grid=[0,.25,.5,.75,1];
+  var per=wk?"week":"month";
+  var hiCuts=hi===null?[]:ePts.filter(function(e){return conPerKey(e.p.date,wk)===s.months[hi];});
+  // a value next to its point, inside its column (right-aligned on the point)
+  var lab=function(v,i,above,col,bold){
+    var yy=y(v)+(above?-6:13);if(yy<10)yy=y(v)+13;if(yy>H-B-2)yy=y(v)-6;
+    return <text x={x(i)-3} y={yy} fontSize="9.5" textAnchor="end" fill={col} fontWeight={bold?700:600}>{invFmt(v,0)}</text>;
+  };
   return <div className="card" style={{position:"relative",marginBottom:10}}>
-    <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4}}>
-      <b style={{color:"var(--ink)"}}>Cumulative quantity ({CON_UNIT})</b>
+    <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4,alignItems:"center"}}>
+      <b style={{color:"var(--ink)"}}>Cumulative quantity ({CON_UNIT}) · per {per}</b>
       <span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke={CON_COL_PLAN} strokeWidth="2"/></svg> Planned (theoretical)</span>
       <span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke={CON_COL_REAL} strokeWidth="2"/></svg> Poured</span>
+      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:"var(--gold-soft)",border:"1px solid #e0cf9a",verticalAlign:"middle",marginRight:4}}/>This {per}</span>
       {ePts.length>0&&<span><svg width="12" height="10"><circle cx="6" cy="5" r="4" fill={CON_COL_EARN} stroke="#fff" strokeWidth="1.5"/></svg> Real progress at each cut-off — its gap to the poured volume is the loss / gain on the WBS with a %</span>}
       {lastE&&<span style={{fontWeight:700,color:conLossCol(lastE.p.variance)}}>Concrete {conLossWord(lastE.p.variance)} at {fmtDate(lastE.p.date)}: {lastE.p.variance>0?"+":lastE.p.variance<0?"−":""}{conFmt(Math.abs(lastE.p.variance))} {CON_UNIT}</span>}
+      {lay.scrolls&&<span style={{color:"#888"}}>← scroll sideways →</span>}
     </div>
-    <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",display:"block"}} onMouseLeave={function(){setHi(null);}}>
-      {[0,.25,.5,.75,1].map(function(g){return <g key={g}><line x1={L} x2={W-Rm} y1={y(max*g)} y2={y(max*g)} stroke="#eee"/><text x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text></g>;})}
-      {s.months.map(function(k,i){return i%every===0?<text key={k} x={x(i)} y={H-10} fontSize="10" textAnchor="middle" fill="#888">{conFmtPer(k,s.week,true)}</text>:null;})}
-      {theoTotal>0&&<g><line x1={L} x2={W-Rm} y1={y(theoTotal)} y2={y(theoTotal)} stroke="#bbb" strokeDasharray="2 3"/><text x={L+6} y={y(theoTotal)-4} fontSize="10" fill="#888">theoretical total {conFmt(theoTotal)}</text></g>}
-      {ni>=0&&ni<n&&<line x1={x(ni)} x2={x(ni)} y1={T} y2={H-B} stroke="#ccc" strokeDasharray="3 3"/>}
-      <polyline points={pts(s.cumPlan)} fill="none" stroke={CON_COL_PLAN} strokeWidth="2" strokeLinejoin="round"/>
-      <polyline points={pts(s.cumReal)} fill="none" stroke={CON_COL_REAL} strokeWidth="2" strokeLinejoin="round"/>
-      {n>0&&Math.abs(s.cumPlan[n-1]-theoTotal)>max*0.03&&<text x={x(n-1)-4} y={y(s.cumPlan[n-1])-6} fontSize="10" textAnchor="end" fill="var(--ink)">{conFmt(s.cumPlan[n-1])}</text>}
-      {lastReal>=0&&<g><circle cx={x(lastReal)} cy={y(s.cumReal[lastReal])} r="4" fill={CON_COL_REAL} stroke="#fff" strokeWidth="2"/>
-        <text x={x(lastReal)+6} y={y(s.cumReal[lastReal])+14} fontSize="10" fill="var(--ink)">{conFmt(s.cumReal[lastReal])}</text></g>}
-      {ePts.map(function(e){
-        // Drawn against the poured curve: the point sits at "poured − loss / gain", so the gap
-        // between the point and the poured volume IS the loss / gain measured on the WBS with a %.
-        var v=e.p.variance,yp=y(e.p.realAll),ye=y(e.p.realAll-v),big=Math.abs(ye-yp)>=18;
-        return <g key={e.p.date}>
-          <circle cx={e.x} cy={yp} r="3" fill={CON_COL_REAL} stroke="#fff" strokeWidth="1.5"/>
-          {Math.abs(v)>CON_EPS&&<line x1={e.x} x2={e.x} y1={yp} y2={ye} stroke={conLossCol(v)} strokeWidth="3" opacity=".6"/>}
-          <circle cx={e.x} cy={ye} r="4.5" fill={CON_COL_EARN} stroke="#fff" strokeWidth="2"><title>{"Cut-off "+fmtDate(e.p.date)+": on "+e.p.nPct+" WBS with a % typed, earned "+conFmt(e.p.earned)+", poured "+conFmt(e.p.real)+" → "+conLossWord(v)+" "+conFmt(Math.abs(v))}</title></circle>
-          {big&&<text x={e.x-8} y={(yp+ye)/2+4} fontSize="10" textAnchor="end" fontWeight="700" fill={conLossCol(v)}>{conLossWord(v)} {v>0?"+":"−"}{conFmt(Math.abs(v))}</text>}
-        </g>;
-      })}
-      {hi!==null&&<g>
-        <line x1={x(hi)} x2={x(hi)} y1={T} y2={H-B} stroke="#888"/>
-        <circle cx={x(hi)} cy={y(s.cumPlan[hi])} r="4" fill={CON_COL_PLAN} stroke="#fff" strokeWidth="2"/>
-        {s.cumReal[hi]!==null&&<circle cx={x(hi)} cy={y(s.cumReal[hi])} r="4" fill={CON_COL_REAL} stroke="#fff" strokeWidth="2"/>}
-      </g>}
-      {s.months.map(function(k,i){return <rect key={k} x={x(i)-colW/2} y={T} width={colW} height={H-T-B} fill="transparent" onMouseEnter={function(){setHi(i);}}/>;})}
-    </svg>
-    {hi!==null&&<div style={{position:"absolute",top:34,left:(x(hi)/W*100)+"%",transform:x(hi)>W/2?"translateX(calc(-100% - 10px))":"translateX(10px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap"}}>
-      <b>{conFmtPer(s.months[hi],s.week)}</b>
-      <div>Planned: <b>{conFmt(s.cumPlan[hi])}</b> <span style={{color:"#888"}}>(+{conFmt(s.plan[hi])} this {s.week?"week":"month"})</span></div>
-      <div>Poured: <b>{s.cumReal[hi]===null?"—":conFmt(s.cumReal[hi])}</b>{s.real[hi]!==null&&<span style={{color:"#888"}}> (+{conFmt(s.real[hi])} this {s.week?"week":"month"})</span>}</div>
-      {hiCuts.map(function(e){return <div key={e.p.date} style={{borderTop:"1px solid #eee",marginTop:4,paddingTop:4}}>
-        Cut-off {fmtDate(e.p.date)}: earned <b>{conFmt(e.p.earned)}</b>, poured <b>{conFmt(e.p.real)}</b>
-        <div>Concrete {conLossWord(e.p.variance)}: <b style={{color:conLossCol(e.p.variance)}}>{conFmt(Math.abs(e.p.variance))}</b> <span style={{color:"#888"}}>({e.p.nPct} WBS with %)</span></div></div>;})}
-    </div>}
+    <div ref={lay.boxRef} style={{position:"relative",display:"flex"}}>
+      <svg width={L} height={H} style={{flex:"0 0 auto",display:"block"}}>
+        {grid.map(function(g){return <text key={g} x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text>;})}
+      </svg>
+      <div ref={lay.scRef} style={{overflowX:"auto",overflowY:"hidden",flex:"1 1 auto",position:"relative"}}>
+        <div style={{position:"relative",width:Wp}}>
+        <svg width={Wp} height={H} style={{display:"block"}} onMouseLeave={function(){setHi(null);}}>
+          {s.months.map(function(k,i){return <ConColFrame key={k} s={s} i={i} slot={slot} top={T-10} base={H-B} H={H}/>;})}
+          <line x1={n*slot} x2={n*slot} y1={T-10} y2={H-B} stroke="#e6e2d8"/>
+          {wk&&<line x1={0} x2={n*slot} y1={H-B+18} y2={H-B+18} stroke="#e6e2d8"/>}
+          {grid.map(function(g){return <line key={g} x1={0} x2={n*slot} y1={y(max*g)} y2={y(max*g)} stroke={g===0?"#bbb":"#eee"}/>;})}
+          {theoTotal>0&&<g><line x1={0} x2={n*slot} y1={y(theoTotal)} y2={y(theoTotal)} stroke="#bbb" strokeDasharray="2 3"/>
+            {s.months.map(function(k,i){var every=Math.max(1,Math.round(700/slot));return i%every===0?<text key={k} x={i*slot+6} y={y(theoTotal)-4} fontSize="10" fill="#888">theoretical total {conFmt(theoTotal)}</text>:null;})}</g>}
+          <polyline points={pts(s.cumPlan)} fill="none" stroke={CON_COL_PLAN} strokeWidth="2" strokeLinejoin="round"/>
+          <polyline points={pts(s.cumReal)} fill="none" stroke={CON_COL_REAL} strokeWidth="2" strokeLinejoin="round"/>
+          {s.months.map(function(k,i){
+            var p=s.cumPlan[i],r=s.cumReal[i],planUp=r===null||p>=r;
+            return <g key={k} opacity={hi===null||hi===i?1:.45}>
+              <circle cx={x(i)} cy={y(p)} r="2.5" fill={CON_COL_PLAN}/>
+              {r!==null&&<circle cx={x(i)} cy={y(r)} r="2.5" fill={CON_COL_REAL}/>}
+              {lab(p,i,planUp,"#7a6120")}
+              {r!==null&&lab(r,i,!planUp,"#1f4f85",i===s.nowIdx)}
+            </g>;
+          })}
+          {ePts.map(function(e){
+            // Drawn against the poured curve: the point sits at "poured − loss / gain", so the gap
+            // between the point and the poured volume IS the loss / gain measured on the WBS with a %.
+            var v=e.p.variance,yp=y(e.p.realAll),ye=y(e.p.realAll-v),big=Math.abs(ye-yp)>=18;
+            return <g key={e.p.date}>
+              <circle cx={e.x} cy={yp} r="3" fill={CON_COL_REAL} stroke="#fff" strokeWidth="1.5"/>
+              {Math.abs(v)>CON_EPS&&<line x1={e.x} x2={e.x} y1={yp} y2={ye} stroke={conLossCol(v)} strokeWidth="3" opacity=".6"/>}
+              <circle cx={e.x} cy={ye} r="4.5" fill={CON_COL_EARN} stroke="#fff" strokeWidth="2"><title>{"Cut-off "+fmtDate(e.p.date)+": on "+e.p.nPct+" WBS with a % typed, earned "+conFmt(e.p.earned)+", poured "+conFmt(e.p.real)+" → "+conLossWord(v)+" "+conFmt(Math.abs(v))}</title></circle>
+              {big&&<text x={e.x-8} y={(yp+ye)/2+4} fontSize="10" textAnchor="end" fontWeight="700" fill={conLossCol(v)}>{conLossWord(v)} {v>0?"+":"−"}{conFmt(Math.abs(v))}</text>}
+            </g>;
+          })}
+          {hi!==null&&<g>
+            <line x1={x(hi)} x2={x(hi)} y1={T-10} y2={H-B} stroke="#888"/>
+            <circle cx={x(hi)} cy={y(s.cumPlan[hi])} r="4" fill={CON_COL_PLAN} stroke="#fff" strokeWidth="2"/>
+            {s.cumReal[hi]!==null&&<circle cx={x(hi)} cy={y(s.cumReal[hi])} r="4" fill={CON_COL_REAL} stroke="#fff" strokeWidth="2"/>}
+          </g>}
+          {s.months.map(function(k,i){return <rect key={k} x={i*slot} y={T-10} width={slot} height={H-T-B+10} fill="transparent" onMouseEnter={function(){setHi(i);}}/>;})}
+        </svg>
+        {hi!==null&&<div style={{position:"absolute",top:6,left:x(hi),transform:x(hi)>Wp/2?"translateX(calc(-100% - 12px))":"translateX(12px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap",zIndex:2}}>
+          <b>{conFmtPer(s.months[hi],wk)}</b> <span style={{color:"#888"}}>— cumulative at the end of the {per}</span>
+          <div>Planned: <b>{conFmt(s.cumPlan[hi])}</b> <span style={{color:"#888"}}>(+{conFmt(s.plan[hi])} this {per})</span></div>
+          <div>Poured: <b>{s.cumReal[hi]===null?"—":conFmt(s.cumReal[hi])}</b>{s.real[hi]!==null&&<span style={{color:"#888"}}> (+{conFmt(s.real[hi])} this {per})</span>}</div>
+          {s.cumReal[hi]!==null&&<div>Poured − planned: <b>{s.cumReal[hi]-s.cumPlan[hi]>0?"+":""}{conFmt(s.cumReal[hi]-s.cumPlan[hi])}</b></div>}
+          {hiCuts.map(function(e){return <div key={e.p.date} style={{borderTop:"1px solid #eee",marginTop:4,paddingTop:4}}>
+            Cut-off {fmtDate(e.p.date)}: earned <b>{conFmt(e.p.earned)}</b>, poured <b>{conFmt(e.p.real)}</b>
+            <div>Concrete {conLossWord(e.p.variance)}: <b style={{color:conLossCol(e.p.variance)}}>{conFmt(Math.abs(e.p.variance))}</b> <span style={{color:"#888"}}>({e.p.nPct} WBS with %)</span></div></div>;})}
+        </div>}
+        </div>
+      </div>
+    </div>
   </div>;
 }
 // Per period (month or week): planned vs real volumes — what the supply has to deliver next.
 // One column per period with a separator line, the value above each bar, the week number and a
 // month band below (weeks). Columns never shrink below a readable width: the chart scrolls
 // sideways (y axis fixed on the left) and opens on the current period.
-function _conWeekNo(k){var d=parseISODate(k),th=new Date(d.getFullYear(),d.getMonth(),d.getDate()+3),j1=new Date(th.getFullYear(),0,4);
-  return 1+Math.round(((th-j1)/86400000-3+((j1.getDay()+6)%7))/7);}
-function ConMonthly({s}){
-  const [hi,setHi]=useState(null);
+// Column layout shared by the curve and the bars: one column per period, never narrower than
+// a readable width (48 px a week, 56 px a month) — wider charts scroll sideways, opened on the
+// current period.
+function useConCols(n,wk,nowIdx,L,Rm){
   const [cw,setCw]=useState(760);
   const boxRef=useRef(null),scRef=useRef(null);
   useEffect(function(){
@@ -1028,14 +1054,38 @@ function ConMonthly({s}){
     if(window.ResizeObserver){var ro=new ResizeObserver(upd);ro.observe(el);return function(){ro.disconnect();};}
     window.addEventListener("resize",upd);return function(){window.removeEventListener("resize",upd);};
   },[]);
-  var n=s.months.length,wk=!!s.week,H=270,L=52,Rm=10,T=22,B=wk?40:24;
-  var minSlot=wk?48:56;
-  var slot=Math.max(minSlot,(cw-L-Rm)/Math.max(1,n));
-  var Wp=Math.ceil(n*slot)+Rm;
+  var slot=Math.max(wk?48:56,(cw-L-Rm)/Math.max(1,n));
   useEffect(function(){
-    var el=scRef.current;if(!el||s.nowIdx<0)return;
-    el.scrollLeft=Math.max(0,s.nowIdx*slot-el.clientWidth*0.35);
+    var el=scRef.current;if(!el||nowIdx<0)return;
+    el.scrollLeft=Math.max(0,nowIdx*slot-el.clientWidth*0.35);
   },[n,wk,Math.round(slot)]);
+  return{boxRef:boxRef,scRef:scRef,slot:slot,cw:cw,Wp:Math.ceil(n*slot)+Rm,scrolls:Math.ceil(n*slot)+Rm>cw-L};
+}
+var CON_MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function _conNewMonth(s,i){
+  if(i===0)return true;
+  return s.week?parseISODate(s.months[i-1]).getMonth()!==parseISODate(s.months[i]).getMonth():s.months[i].slice(5,7)==="01";
+}
+// Separators, period labels (week number + month band, or month) and the current-period band
+// of one column. top / base = y of the plot area.
+function ConColFrame({s,i,slot,top,base,H}){
+  var k=s.months[i],wk=!!s.week,x0=i*slot,cx=x0+slot/2,nm=_conNewMonth(s,i),now=i===s.nowIdx;
+  var d=wk?parseISODate(k):null;
+  return <g>
+    {now&&<rect x={x0} y={top} width={slot} height={base-top} fill="var(--gold-soft)"/>}
+    <line x1={x0} x2={x0} y1={top} y2={wk&&nm?H-2:base+(wk?16:0)} stroke={nm?"#b9b2a3":"#e6e2d8"} strokeWidth={nm?1.2:1}/>
+    {wk?<>
+      <text x={cx} y={base+13} fontSize="10" textAnchor="middle" fill={now?"var(--ink)":"#777"} fontWeight={now?700:400}>W{_conWeekNo(k)}</text>
+      {nm&&<text x={x0+4} y={H-6} fontSize="10.5" fill="#555" fontWeight="600">{CON_MON[d.getMonth()]+" "+String(d.getFullYear()).slice(2)}</text>}
+    </>:<text x={cx} y={base+14} fontSize="10.5" textAnchor="middle" fill={now?"var(--ink)":"#666"} fontWeight={now||nm?700:400}>{conFmtMonth(k)}</text>}
+  </g>;
+}
+function _conWeekNo(k){var d=parseISODate(k),th=new Date(d.getFullYear(),d.getMonth(),d.getDate()+3),j1=new Date(th.getFullYear(),0,4);
+  return 1+Math.round(((th-j1)/86400000-3+((j1.getDay()+6)%7))/7);}
+function ConMonthly({s}){
+  const [hi,setHi]=useState(null);
+  var n=s.months.length,wk=!!s.week,H=270,L=52,Rm=10,T=22,B=wk?40:24;
+  var lay=useConCols(n,wk,s.nowIdx,L,Rm),boxRef=lay.boxRef,scRef=lay.scRef,slot=lay.slot,Wp=lay.Wp,cw=lay.cw;
   var max=_conNiceMax(Math.max.apply(null,s.plan.concat(s.real.filter(function(v){return v!==null;}),[1])));
   var bw=Math.max(4,Math.min(22,(slot-10)/2));
   var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
@@ -1048,8 +1098,7 @@ function ConMonthly({s}){
     return wide?<text x={cx+3} y={yy} fontSize="9.5" fill={col} fontWeight="600" transform={"rotate(-90 "+(cx+3)+" "+yy+")"}>{t}</text>
       :<text x={cx} y={yy} fontSize="9.5" textAnchor="middle" fill={col} fontWeight="600">{t}</text>;
   };
-  var M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  var mi=hi!==null?hi:null;
+  var mi=hi;
   return <div className="card" style={{position:"relative",marginBottom:4}}>
     <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4,alignItems:"center"}}>
       <b style={{color:"var(--ink)"}}>Per {per} ({CON_UNIT})</b>
@@ -1065,25 +1114,18 @@ function ConMonthly({s}){
       <div ref={scRef} style={{overflowX:"auto",overflowY:"hidden",flex:"1 1 auto",position:"relative"}}>
         <div style={{position:"relative",width:Wp}}>
         <svg width={Wp} height={H} style={{display:"block"}} onMouseLeave={function(){setHi(null);}}>
-          {s.nowIdx>=0&&<rect x={s.nowIdx*slot} y={T-14} width={slot} height={H-T-B+14} fill="var(--gold-soft)"/>}
+          {s.months.map(function(k,i){return <ConColFrame key={k} s={s} i={i} slot={slot} top={T-14} base={H-B} H={H}/>;})}
           {grid.map(function(g){return <line key={g} x1={0} x2={n*slot} y1={y(max*g)} y2={y(max*g)} stroke={g===0?"#bbb":"#eee"}/>;})}
           {s.months.map(function(k,i){
             var x0=i*slot,cx=x0+slot/2;
             var hp=H-B-y(s.plan[i]),hr=s.real[i]===null?0:H-B-y(s.real[i]);
-            var d=wk?parseISODate(k):null;
-            var newMonth=wk?(i===0||parseISODate(s.months[i-1]).getMonth()!==d.getMonth()):(i===0||k.slice(5,7)==="01");
             return <g key={k}>
-              <line x1={x0} x2={x0} y1={T-14} y2={H-(wk&&newMonth?2:B-(wk?16:0))} stroke={newMonth?"#b9b2a3":"#e6e2d8"} strokeWidth={newMonth?1.2:1}/>
               <g opacity={hi===null||hi===i?1:.5}>
                 {hp>0&&<rect x={cx-bw-1} y={y(s.plan[i])} width={bw} height={hp} rx="2" fill={CON_COL_PLAN}/>}
                 {hr>0&&<rect x={cx+1} y={y(s.real[i])} width={bw} height={hr} rx="2" fill={CON_COL_REAL}/>}
                 {val(s.plan[i],cx-bw/2-1,"#7a6120")}
                 {s.real[i]!==null&&val(s.real[i],cx+bw/2+1,"#1f4f85")}
               </g>
-              {wk?<>
-                <text x={cx} y={H-B+13} fontSize="10" textAnchor="middle" fill={i===s.nowIdx?"var(--ink)":"#777"} fontWeight={i===s.nowIdx?700:400}>W{_conWeekNo(k)}</text>
-                {newMonth&&<text x={x0+4} y={H-6} fontSize="10.5" fill="#555" fontWeight="600">{M[d.getMonth()]+" "+String(d.getFullYear()).slice(2)}</text>}
-              </>:<text x={cx} y={H-B+14} fontSize="10.5" textAnchor="middle" fill={i===s.nowIdx?"var(--ink)":"#666"} fontWeight={i===s.nowIdx||newMonth?700:400}>{conFmtMonth(k)}</text>}
               <rect x={x0} y={T-14} width={slot} height={H-T-B+14} fill="transparent" onMouseEnter={function(){setHi(i);}}/>
             </g>;
           })}
