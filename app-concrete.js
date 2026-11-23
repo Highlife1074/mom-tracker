@@ -120,21 +120,39 @@ function _conRange(from,to){
   if(a>b){var x=a;a=b;b=x;}
   return{a:a,b:b};
 }
-// Spreads qty evenly (per day) over [from, to] into out[YYYY-MM]. False when there is no date.
-function conSpread(qty,from,to,out){
+// Period of a date: a month (key YYYY-MM) or, week=true, a Monday-to-Sunday week (key = the
+// Monday, YYYY-MM-DD).
+function _conPerStart(dt,week){
+  if(!week)return new Date(dt.getFullYear(),dt.getMonth(),1);
+  var d=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate());d.setDate(d.getDate()-((d.getDay()+6)%7));return d;
+}
+function _conPerNext(dt,week){
+  return week?new Date(dt.getFullYear(),dt.getMonth(),dt.getDate()+7):new Date(dt.getFullYear(),dt.getMonth()+1,1);
+}
+function _conPerKeyOf(dt,week){return week?toISO(dt):toISO(dt).slice(0,7);}
+// Key of the period holding an ISO date (YYYY-MM accepted = its 1st).
+function conPerKey(iso,week){
+  var d=String(iso||"");if(d.length===7)d+="-01";
+  var dt=parseISODate(d);if(!dt||isNaN(dt))return"";
+  return _conPerKeyOf(_conPerStart(dt,week),week);
+}
+// Spreads qty evenly (per day) over [from, to] into out[YYYY-MM] (or out[Monday] with week).
+// False when there is no date.
+function conSpread(qty,from,to,out,week){
   var r=_conRange(from,to);
   if(!r)return false;
   if(!qty)return true;
   var da=parseISODate(r.a),db=parseISODate(r.b);
   var days=_conDays(r.a,r.b)+1;
-  var cur=new Date(da.getFullYear(),da.getMonth(),1);
+  var cur=_conPerStart(da,week);
   while(cur<=db){
-    var mEnd=new Date(cur.getFullYear(),cur.getMonth()+1,0);
-    var s=cur<da?da:cur,e=mEnd>db?db:mEnd;
+    var nxt=_conPerNext(cur,week);
+    var pEnd=new Date(nxt.getFullYear(),nxt.getMonth(),nxt.getDate()-1);
+    var s=cur<da?da:cur,e=pEnd>db?db:pEnd;
     var n=Math.round((e-s)/86400000)+1;
-    var k=toISO(cur).slice(0,7);
+    var k=_conPerKeyOf(cur,week);
     out[k]=(out[k]||0)+qty*n/days;
-    cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+    cur=nxt;
   }
   return true;
 }
@@ -186,35 +204,48 @@ function conFmtMonth(k){
   var M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return M[Number(k.slice(5,7))-1]+" "+k.slice(2,4);
 }
+// Label of a period key: "Mar 26" for a month, "W12 · 16 Mar" for a week (ISO week number).
+function conFmtPer(k,week,short){
+  if(!week||k.length===7)return conFmtMonth(k);
+  var M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var d=parseISODate(k),th=new Date(d.getFullYear(),d.getMonth(),d.getDate()+3);
+  var j1=new Date(th.getFullYear(),0,4);
+  var wn=1+Math.round(((th-j1)/86400000-3+((j1.getDay()+6)%7))/7);
+  if(short)return d.getDate()+" "+M[d.getMonth()];
+  return "W"+wn+" · "+d.getDate()+" "+M[d.getMonth()]+" "+String(d.getFullYear()).slice(2);
+}
 function _conNextMonth(k){var y=Number(k.slice(0,4)),m=Number(k.slice(5,7));m++;if(m>12){m=1;y++;}return y+"-"+(m<10?"0":"")+m;}
 // Month by month: planned (theoretical spread over the WBS dates) and real (pours).
 // pastReal ("Planned = real for the past"): the planned of the past is what was poured (up to
 // the theoretical), and what is left of each WBS's theoretical is spread from tomorrow (or its
 // start, if later) to its finish — the planned total always stays the theoretical.
 function _conTomorrow(){var d=parseISODate(today());d.setDate(d.getDate()+1);return toISO(d);}
-function conSeries(wbsList,pours,typeIds,extraMonths,pastReal){
+// week=true: the same, week by week (keys = Mondays). extraDates: dates (or YYYY-MM) to include.
+function conSeries(wbsList,pours,typeIds,extraDates,pastReal,week){
   var plan={},real={},unscheduled=0,inList={};
   var tm=pastReal?_conTomorrow():"";
   wbsList.forEach(function(w){
     inList[w.id]=true;
     if(pastReal){
       var pr=conPastRealPieces(w,pours,typeIds,tm);
-      pr.pieces.forEach(function(x){conSpread(x.q,x.from,x.to,plan);});
+      pr.pieces.forEach(function(x){conSpread(x.q,x.from,x.to,plan,week);});
       unscheduled+=pr.rem;return;
     }
     var q=conSum(w.theo,typeIds);
-    if(!conSpread(q,w.start,w.finish,plan))unscheduled+=q;
+    if(!conSpread(q,w.start,w.finish,plan,week))unscheduled+=q;
   });
   (pours||[]).forEach(function(p){
     if(!inList[p.wbsId])return;
-    conSpread(conPourQty(p,typeIds),p.from||p.date,p.date,real);
+    conSpread(conPourQty(p,typeIds),p.from||p.date,p.date,real,week);
   });
-  var keys=Object.keys(plan).concat(Object.keys(real)).concat(extraMonths||[]).sort();
-  var nowK=today().slice(0,7);
-  var out={months:[],plan:[],real:[],cumPlan:[],cumReal:[],unscheduled:unscheduled,nowIdx:-1};
+  var keys=Object.keys(plan).concat(Object.keys(real)).concat((extraDates||[]).map(function(d){return conPerKey(d,week);}).filter(Boolean)).sort();
+  var nowK=conPerKey(today(),week);
+  // months: the period keys (months, or Mondays with week) — name kept for the callers.
+  var out={months:[],plan:[],real:[],cumPlan:[],cumReal:[],unscheduled:unscheduled,nowIdx:-1,week:!!week};
   if(!keys.length)return out;
   var cp=0,cr=0;
-  for(var k=keys[0];k<=keys[keys.length-1];k=_conNextMonth(k)){
+  var nextK=function(k){return week?toISO(_conPerNext(parseISODate(k),true)):_conNextMonth(k);};
+  for(var k=keys[0];k<=keys[keys.length-1];k=nextK(k)){
     var p=plan[k]||0,r=real[k]||0;
     cp+=p;cr+=r;
     out.months.push(k);out.plan.push(p);out.real.push(k<=nowK||r?r:null);
@@ -444,6 +475,8 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
   const [typeId,setTypeId]=useState("");
   const [zone,setZone]=useState("");
   const [showTable,setShowTable]=useState(false);
+  const [byWeek,setByWeek]=useState(function(){try{return localStorage.getItem("pp_con_period")==="week";}catch(e){return false;}});
+  function setPeriod(w){setByWeek(w);try{localStorage.setItem("pp_con_period",w?"week":"month");}catch(e){}}
   const [pastReal,setPastReal]=useState(function(){try{return localStorage.getItem("pp_con_pastreal")==="1";}catch(e){return false;}});
   function togglePastReal(){var v=!pastReal;setPastReal(v);try{localStorage.setItem("pp_con_pastreal",v?"1":"0");}catch(e){}}
   if(!wbs.length)return <div className="empty"><div className="empty-ico">🧱</div>
@@ -458,7 +491,7 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
   var t0=today();
   var plannedToDate=conPlannedToDate(list,pours,typeIds,t0,pastReal);
   var ep=conEarnedPoints(cutoffs,list,pours,typeIds);
-  var s=conSeries(list,pours,typeIds,ep.map(function(p){return p.date.slice(0,7);}),pastReal);
+  var s=conSeries(list,pours,typeIds,ep.map(function(p){return p.date;}),pastReal,byWeek);
   var last=ep.length?ep[ep.length-1]:null;
   var unit=CON_UNIT;
   var R={textAlign:"right"};
@@ -480,11 +513,15 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
       <ConZoneSelect zones={zoneList} value={zone} onChange={setZone} all/>
       <span style={{fontSize:12,color:"#888"}}>{list.length} WBS · {label}</span>
       <div style={{flex:1}}/>
+      <span style={{display:"inline-flex",gap:4}} title="Curve, bars and table month by month or week by week (Monday to Sunday)">
+        <button className={"fchip"+(!byWeek?" on":"")} onClick={function(){setPeriod(false);}}>Months</button>
+        <button className={"fchip"+(byWeek?" on":"")} onClick={function(){setPeriod(true);}}>Weeks</button>
+      </span>
       <button className={"btn btn-sm"+(pastReal?" btn-pri":"")} onClick={togglePastReal}
         title={pastReal?"On: the planned of the past = what was poured; what each WBS still needs (theoretical − poured) is spread from tomorrow to its finish. The planned of a WBS always adds up to its theoretical, never to the poured. Click to go back to the theoretical spread over the WBS dates.":"Set the planned of the past equal to the real pours, and spread what remains of each WBS from tomorrow to its finish."}>
         {pastReal?"✓ ":""}Planned = real (past)</button>
       <button className="btn btn-sm" onClick={function(){conExportXlsx(types,list,pours,realIx,cutoffs,pastReal);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal);}}>Report</button>
+      <button className="btn btn-sm" onClick={function(){conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal,byWeek);}}>Report</button>
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
       <InvBig label="Theoretical" value={theoShown} unit={unit} sub={(budTot&&budTot.manualOn?"project total typed · "+conFmt(tot.theo)+" split on the WBS · ":"")+(s.unscheduled>CON_EPS?conFmt(s.unscheduled)+" "+unit+" without dates":list.length+" WBS")}/>
@@ -503,11 +540,11 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
     {s.months.length>0?<>
       <ConCurve s={s} theoTotal={theoShown} earned={ep}/>
       <ConMonthly s={s}/>
-      <div style={{margin:"4px 0 14px"}}><button className="btn btn-sm" onClick={function(){setShowTable(!showTable);}}>{showTable?"Hide":"Show"} the month-by-month table</button></div>
+      <div style={{margin:"4px 0 14px"}}><button className="btn btn-sm" onClick={function(){setShowTable(!showTable);}}>{showTable?"Hide":"Show"} the {byWeek?"week-by-week":"month-by-month"} table</button></div>
       {showTable&&<div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
-        <thead><tr><th>Month</th><th style={R}>Planned</th><th style={R}>Poured</th><th style={R}>Cum. planned</th><th style={R}>Cum. poured</th></tr></thead>
+        <thead><tr><th>{byWeek?"Week":"Month"}</th><th style={R}>Planned</th><th style={R}>Poured</th><th style={R}>Cum. planned</th><th style={R}>Cum. poured</th></tr></thead>
         <tbody>{s.months.map(function(k,i){
-          return <tr key={k} style={{background:i===s.nowIdx?"var(--gold-soft)":undefined}}><td><b>{conFmtMonth(k)}</b></td>
+          return <tr key={k} style={{background:i===s.nowIdx?"var(--gold-soft)":undefined}}><td><b>{conFmtPer(k,s.week)}</b></td>
             <td style={R}>{conFmt(s.plan[i])}</td><td style={R}>{s.real[i]===null?"":conFmt(s.real[i])}</td>
             <td style={R}>{conFmt(s.cumPlan[i])}</td><td style={R}>{s.cumReal[i]===null?"":conFmt(s.cumReal[i])}</td></tr>;
         })}</tbody></table></div>}
@@ -912,12 +949,14 @@ function ConCurve({s,theoTotal,earned}){
   var max=_conNiceMax(Math.max.apply(null,s.cumPlan.concat(s.cumReal.filter(function(v){return v!==null;}),earned.map(function(p){return Math.max(p.realAll,p.realAll-p.variance);}),[theoTotal||0,1])));
   var x=function(i){return n===1?L+(W-L-Rm)/2:L+(W-L-Rm)*i/(n-1);};
   var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
-  // A date inside the month grid: month index i is plotted at the end of month i.
+  // A date inside the period grid: period index i is plotted at the end of period i.
   var step=n>1?(W-L-Rm)/(n-1):(W-L-Rm)/2;
   var xDate=function(d){
-    var i=s.months.indexOf(d.slice(0,7));if(i<0)return null;
-    var dt=parseISODate(d),dim=new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();
-    return Math.max(L,x(i)-step+step*dt.getDate()/dim);
+    var i=s.months.indexOf(conPerKey(d,s.week));if(i<0)return null;
+    var dt=parseISODate(d),frac;
+    if(s.week)frac=(((dt.getDay()+6)%7)+1)/7;
+    else frac=dt.getDate()/new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();
+    return Math.max(L,x(i)-step+step*frac);
   };
   var ePts=earned.map(function(p){return{p:p,x:xDate(p.date)};}).filter(function(e){return e.x!==null;});
   var lastE=ePts.length?ePts[ePts.length-1]:null;
@@ -926,7 +965,7 @@ function ConCurve({s,theoTotal,earned}){
   var ni=s.nowIdx;
   var colW=n===1?(W-L-Rm):(W-L-Rm)/(n-1);
   var lastReal=-1;s.cumReal.forEach(function(v,i){if(v!==null)lastReal=i;});
-  var hiCuts=hi===null?[]:ePts.filter(function(e){return e.p.date.slice(0,7)===s.months[hi];});
+  var hiCuts=hi===null?[]:ePts.filter(function(e){return conPerKey(e.p.date,s.week)===s.months[hi];});
   return <div className="card" style={{position:"relative",marginBottom:10}}>
     <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4}}>
       <b style={{color:"var(--ink)"}}>Cumulative quantity ({CON_UNIT})</b>
@@ -937,7 +976,7 @@ function ConCurve({s,theoTotal,earned}){
     </div>
     <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",display:"block"}} onMouseLeave={function(){setHi(null);}}>
       {[0,.25,.5,.75,1].map(function(g){return <g key={g}><line x1={L} x2={W-Rm} y1={y(max*g)} y2={y(max*g)} stroke="#eee"/><text x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text></g>;})}
-      {s.months.map(function(k,i){return i%every===0?<text key={k} x={x(i)} y={H-10} fontSize="10" textAnchor="middle" fill="#888">{conFmtMonth(k)}</text>:null;})}
+      {s.months.map(function(k,i){return i%every===0?<text key={k} x={x(i)} y={H-10} fontSize="10" textAnchor="middle" fill="#888">{conFmtPer(k,s.week,true)}</text>:null;})}
       {theoTotal>0&&<g><line x1={L} x2={W-Rm} y1={y(theoTotal)} y2={y(theoTotal)} stroke="#bbb" strokeDasharray="2 3"/><text x={L+6} y={y(theoTotal)-4} fontSize="10" fill="#888">theoretical total {conFmt(theoTotal)}</text></g>}
       {ni>=0&&ni<n&&<line x1={x(ni)} x2={x(ni)} y1={T} y2={H-B} stroke="#ccc" strokeDasharray="3 3"/>}
       <polyline points={pts(s.cumPlan)} fill="none" stroke={CON_COL_PLAN} strokeWidth="2" strokeLinejoin="round"/>
@@ -964,9 +1003,9 @@ function ConCurve({s,theoTotal,earned}){
       {s.months.map(function(k,i){return <rect key={k} x={x(i)-colW/2} y={T} width={colW} height={H-T-B} fill="transparent" onMouseEnter={function(){setHi(i);}}/>;})}
     </svg>
     {hi!==null&&<div style={{position:"absolute",top:34,left:(x(hi)/W*100)+"%",transform:x(hi)>W/2?"translateX(calc(-100% - 10px))":"translateX(10px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap"}}>
-      <b>{conFmtMonth(s.months[hi])}</b>
-      <div>Planned: <b>{conFmt(s.cumPlan[hi])}</b> <span style={{color:"#888"}}>(+{conFmt(s.plan[hi])} this month)</span></div>
-      <div>Poured: <b>{s.cumReal[hi]===null?"—":conFmt(s.cumReal[hi])}</b>{s.real[hi]!==null&&<span style={{color:"#888"}}> (+{conFmt(s.real[hi])} this month)</span>}</div>
+      <b>{conFmtPer(s.months[hi],s.week)}</b>
+      <div>Planned: <b>{conFmt(s.cumPlan[hi])}</b> <span style={{color:"#888"}}>(+{conFmt(s.plan[hi])} this {s.week?"week":"month"})</span></div>
+      <div>Poured: <b>{s.cumReal[hi]===null?"—":conFmt(s.cumReal[hi])}</b>{s.real[hi]!==null&&<span style={{color:"#888"}}> (+{conFmt(s.real[hi])} this {s.week?"week":"month"})</span>}</div>
       {hiCuts.map(function(e){return <div key={e.p.date} style={{borderTop:"1px solid #eee",marginTop:4,paddingTop:4}}>
         Cut-off {fmtDate(e.p.date)}: earned <b>{conFmt(e.p.earned)}</b>, poured <b>{conFmt(e.p.real)}</b>
         <div>Concrete {conLossWord(e.p.variance)}: <b style={{color:conLossCol(e.p.variance)}}>{conFmt(Math.abs(e.p.variance))}</b> <span style={{color:"#888"}}>({e.p.nPct} WBS with %)</span></div></div>;})}
@@ -978,12 +1017,12 @@ function ConMonthly({s}){
   const [hi,setHi]=useState(null);
   var n=s.months.length,W=760,H=180,L=58,Rm=18,T=12,B=28;
   var max=_conNiceMax(Math.max.apply(null,s.plan.concat(s.real.filter(function(v){return v!==null;}),[1])));
-  var slot=(W-L-Rm)/n,bw=Math.max(1,Math.min(16,(slot-6)/2));
+  var slot=(W-L-Rm)/n,bw=Math.max(0.8,Math.min(16,slot>8?(slot-6)/2:slot*0.42));
   var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
   var every=Math.max(1,Math.ceil(n/12));
   return <div className="card" style={{position:"relative",marginBottom:4}}>
     <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4}}>
-      <b style={{color:"var(--ink)"}}>Per month ({CON_UNIT})</b>
+      <b style={{color:"var(--ink)"}}>Per {s.week?"week":"month"} ({CON_UNIT})</b>
       <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_PLAN,verticalAlign:"middle",marginRight:4}}/>Planned</span>
       <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_REAL,verticalAlign:"middle",marginRight:4}}/>Real</span>
     </div>
@@ -995,13 +1034,13 @@ function ConMonthly({s}){
         return <g key={k} opacity={hi===null||hi===i?1:.55}>
           {hp>0&&<rect x={cx-bw-1} y={y(s.plan[i])} width={bw} height={hp} rx={Math.min(2,bw/2)} fill={CON_COL_PLAN}/>}
           {hr>0&&<rect x={cx+1} y={y(s.real[i])} width={bw} height={hr} rx={Math.min(2,bw/2)} fill={CON_COL_REAL}/>}
-          {i%every===0&&<text x={cx} y={H-10} fontSize="10" textAnchor="middle" fill="#888">{conFmtMonth(k)}</text>}
+          {i%every===0&&<text x={cx} y={H-10} fontSize="10" textAnchor="middle" fill="#888">{conFmtPer(k,s.week,true)}</text>}
           <rect x={cx-slot/2} y={T} width={slot} height={H-T-B} fill="transparent" onMouseEnter={function(){setHi(i);}}/>
         </g>;
       })}
     </svg>
     {hi!==null&&<div style={{position:"absolute",top:30,left:((L+slot*hi+slot/2)/W*100)+"%",transform:hi>n/2?"translateX(calc(-100% - 10px))":"translateX(10px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap"}}>
-      <b>{conFmtMonth(s.months[hi])}</b>
+      <b>{conFmtPer(s.months[hi],s.week)}</b>
       <div>Planned: <b>{conFmt(s.plan[hi])}</b></div>
       <div>Real: <b>{s.real[hi]===null?"—":conFmt(s.real[hi])}</b></div>
     </div>}
@@ -1607,11 +1646,11 @@ function ConTypeEditor({t,types,edit,onSave,onDelete,onClose}){
 }
 
 // ---------------------------------------------------------------- report & export
-function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal){
+function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal,byWeek){
   var E=esc,t0=today();
   var figs=conSortWbs(list).map(function(w){return conWbsFigures(w,realIx,typeIds);});
   var tot=conTotals(figs);
-  var s=conSeries(list,pours,typeIds,null,pastReal);
+  var s=conSeries(list,pours,typeIds,null,pastReal,byWeek);
   var plannedToDate=conPlannedToDate(list,pours,typeIds,t0,pastReal);
   var td=function(v,b,c){return'<td style="text-align:right;'+(b?"font-weight:700;":"")+(c?"color:"+c+";":"")+'">'+v+"</td>";};
   var sg=function(v){return(v>0?"+":"")+conFmt(v);};
@@ -1640,8 +1679,8 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal){
   var sAll=sNames.reduce(function(a,n){return a+bs[n]._total;},0);
   var sCols=conSortTypes(types).filter(function(t){return sNames.some(function(n){return bs[n][t.id];});});
   var sRows=sNames.map(function(n){return"<tr><td><b>"+E(n)+"</b></td>"+sCols.map(function(t){return td(bs[n][t.id]?conFmt(bs[n][t.id]):"");}).join("")+td(conFmt(bs[n]._total),true)+td(sAll>0?(bs[n]._total/sAll*100).toFixed(0)+"%":"")+td(bs[n]._month?conFmt(bs[n]._month):"")+"</tr>";}).join("");
-  var nowK=t0.slice(0,7);
-  var mRows=s.months.filter(function(k){return k>=nowK;}).slice(0,12).map(function(k){var i=s.months.indexOf(k);return"<tr><td>"+conFmtMonth(k)+"</td>"+td(conFmt(s.plan[i]))+td(conFmt(s.cumPlan[i]))+"</tr>";}).join("");
+  var nowK=conPerKey(t0,byWeek);
+  var mRows=s.months.filter(function(k){return k>=nowK;}).slice(0,byWeek?16:12).map(function(k){var i=s.months.indexOf(k);return"<tr><td>"+conFmtPer(k,byWeek)+"</td>"+td(conFmt(s.plan[i]))+td(conFmt(s.cumPlan[i]))+"</tr>";}).join("");
   var html="<h1>Concrete — theoretical vs real</h1><div class=\"sub\">Riviera Tower · "+E(label)+" · situation at "+E(fmtDate(t0))+(pastReal?" · planned = real for the past":"")+"</div>"
     +"<h2>Summary ("+CON_UNIT+")</h2><table><tr><th>Theoretical</th><th>Planned to date</th><th>Poured to date</th>"+(last?"<th>Earned at "+E(fmtDate(last.date))+"</th><th>Loss (+) / gain (−)</th><th>EOS</th>":"")+"</tr><tr>"
     +td(conFmt(tot.theo))+td(conFmt(plannedToDate))+td(conFmt(tot.real))
@@ -1651,7 +1690,7 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal){
       :"<h2>Loss / gain of concrete</h2><div>No cut-off with a progress % typed yet: the loss or gain is measured only at a cut-off.</div>")
     +(byType?"<h2>Per type, at the cut-off of "+E(fmtDate(last.date))+"</h2><table><tr><th>Type</th><th>Budget (WBS with %)</th><th>Earned</th><th>Poured</th><th>Loss (+) / gain (−)</th><th>%</th><th>RTS real</th><th>EOS</th><th>EOS − budget</th></tr>"+byType+"</table>":"")
     +(sRows?"<h2>Poured per supplier</h2><table><tr><th>Supplier</th>"+sCols.map(function(t){return"<th>"+E(t.name)+"</th>";}).join("")+"<th>Total</th><th>Share</th><th>This month</th></tr>"+sRows+"</table>":"")
-    +(mRows?"<h2>Planned quantities, coming months</h2><table><tr><th>Month</th><th>Planned</th><th>Cumulative planned</th></tr>"+mRows+"</table>":"")
+    +(mRows?"<h2>Planned quantities, coming "+(byWeek?"weeks":"months")+"</h2><table><tr><th>"+(byWeek?"Week":"Month")+"</th><th>Planned</th><th>Cumulative planned</th></tr>"+mRows+"</table>":"")
     +"<h2>Per WBS</h2><table><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th>Theoretical</th><th>Poured</th>"+(last?"<th>Progress "+E(fmtDate(last.date))+"</th><th>Earned</th><th>Loss (+) / gain (−)</th>":"")+"</tr>"+wRows+"</table>"
     +"<div style=\"font-size:10px;color:#8b8578\">No progress is estimated: the loss or gain = poured up to the cut-off − earned (budget × the progress % typed by hand), on the WBS that have a %. Poured = the pours, a volume.</div>";
   openReport("CONCRETE - "+t0,html);
@@ -1686,6 +1725,8 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
   var sr=Object.keys(bs).sort().map(function(n){var o={"Supplier":n};st.forEach(function(t){if(bs[n][t.id])o[t.name]=r2(bs[n][t.id]);});o["Total"]=r2(bs[n]._total);return o;});
   var s=conSeries(list,pours,allIds,null,pastReal);
   var mr=s.months.map(function(k,i){return{"Month":k,"Planned":r2(s.plan[i]),"Poured":s.real[i]===null?"":r2(s.real[i]),"Cum. planned":r2(s.cumPlan[i]),"Cum. poured":s.cumReal[i]===null?"":r2(s.cumReal[i])};});
+  var sw=conSeries(list,pours,allIds,null,pastReal,true);
+  var wr=sw.months.map(function(k,i){return{"Week (Monday)":k,"Week":conFmtPer(k,true),"Planned":r2(sw.plan[i]),"Poured":sw.real[i]===null?"":r2(sw.real[i]),"Cum. planned":r2(sw.cumPlan[i]),"Cum. poured":sw.cumReal[i]===null?"":r2(sw.cumReal[i])};});
   var cr=conEarnedPoints(cutoffs,list,pours,allIds).map(function(p){return{"Cut-off":p.date,"Label":p.label,"Closed":p.closed?"Y":"","Budget (WBS with %)":r2(p.theo),"Earned":r2(p.earned),"Poured":r2(p.real),"Loss(+)/gain(-)":r2(p.variance),"%":p.varPct===null?"":r2(p.varPct),"WBS without %":p.nNoPct};});
   var wb=window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(rows),"WBS");
@@ -1693,6 +1734,7 @@ function conExportXlsx(types,list,pours,realIx,cutoffs,pastReal){
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(pr),"Pours");
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(sr),"Suppliers");
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(mr),"Monthly");
+  window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(wr),"Weekly");
   window.XLSX.writeFile(wb,"Concrete "+today()+".xlsx");
 }
 
