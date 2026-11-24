@@ -539,7 +539,6 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
     {!last&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>The loss or gain of concrete is measured only at a cut-off, against the progress % typed for each WBS. <button className="btn btn-sm" onClick={function(){onGo("cutoff");}}>Go to the cut-offs</button></div>}
     {s.months.length>0?<>
       <ConCurve s={s} theoTotal={theoShown} earned={ep}/>
-      <ConMonthly s={s}/>
       <div style={{margin:"4px 0 14px"}}><button className="btn btn-sm" onClick={function(){setShowTable(!showTable);}}>{showTable?"Hide":"Show"} the {byWeek?"week-by-week":"month-by-month"} table</button></div>
       {showTable&&<div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
         <thead><tr><th>{byWeek?"Week":"Month"}</th><th style={R}>Planned</th><th style={R}>Poured</th><th style={R}>Cum. planned</th><th style={R}>Cum. poured</th></tr></thead>
@@ -1114,11 +1113,7 @@ function ConCurve({s,theoTotal,earned}){
     </div>
   </div>;
 }
-// Per period (month or week): planned vs real volumes — what the supply has to deliver next.
-// One column per period with a separator line, the value above each bar, the week number and a
-// month band below (weeks). Columns never shrink below a readable width: the chart scrolls
-// sideways (y axis fixed on the left) and opens on the current period.
-// Column layout shared by the curve and the bars: one column per period, never narrower than
+// Column layout of the cumulative curve (and its volume band): one column per period, never narrower than
 // a readable width (48 px a week, 56 px a month) — wider charts scroll sideways, opened on the
 // current period.
 function useConCols(n,wk,nowIdx,L,Rm,minSlot){
@@ -1184,67 +1179,6 @@ function ConColFrame({s,i,slot,top,base,H}){
 }
 function _conWeekNo(k){var d=parseISODate(k),th=new Date(d.getFullYear(),d.getMonth(),d.getDate()+3),j1=new Date(th.getFullYear(),0,4);
   return 1+Math.round(((th-j1)/86400000-3+((j1.getDay()+6)%7))/7);}
-function ConMonthly({s}){
-  const [hi,setHi]=useState(null);
-  var n=s.months.length,wk=!!s.week,H=270,L=52,Rm=10,T=22,B=wk?40:24;
-  var lay=useConCols(n,wk,s.nowIdx,L,Rm),boxRef=lay.boxRef,scRef=lay.scRef,slot=lay.slot,Wp=lay.Wp,cw=lay.cw;
-  var max=_conNiceMax(Math.max.apply(null,s.plan.concat(s.real.filter(function(v){return v!==null;}),[1])));
-  var bw=Math.max(4,Math.min(22,(slot-10)/2));
-  var y=function(v){return T+(H-T-B)*(1-Math.max(0,v)/max);};
-  var grid=[0,.25,.5,.75,1];
-  var per=wk?"week":"month";
-  // value above a bar: horizontal when it fits, else written upwards
-  var val=function(v,cx,col){
-    if(!(v>CON_EPS))return null;
-    var t=invFmt(v,0),wide=t.length*5.4>bw+8,yy=y(v)-4;
-    return wide?<text x={cx+3} y={yy} fontSize="9.5" fill={col} fontWeight="600" transform={"rotate(-90 "+(cx+3)+" "+yy+")"}>{t}</text>
-      :<text x={cx} y={yy} fontSize="9.5" textAnchor="middle" fill={col} fontWeight="600">{t}</text>;
-  };
-  var mi=hi;
-  return <div className="card" style={{position:"relative",marginBottom:4}}>
-    <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#555",marginBottom:4,alignItems:"center"}}>
-      <b style={{color:"var(--ink)"}}>Per {per} ({CON_UNIT})</b>
-      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_PLAN,verticalAlign:"middle",marginRight:4}}/>Planned</span>
-      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:CON_COL_REAL,verticalAlign:"middle",marginRight:4}}/>Real</span>
-      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:"var(--gold-soft)",border:"1px solid #e0cf9a",verticalAlign:"middle",marginRight:4}}/>This {per}</span>
-      {Wp>cw-L&&<span style={{color:"#888"}}>← scroll sideways →</span>}
-    </div>
-    <div ref={boxRef} style={{position:"relative",display:"flex"}}>
-      <svg width={L} height={H} style={{flex:"0 0 auto",display:"block"}}>
-        {grid.map(function(g){return <text key={g} x={L-6} y={y(max*g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(max*g,0)}</text>;})}
-      </svg>
-      <div ref={scRef} style={{overflowX:"auto",overflowY:"hidden",flex:"1 1 auto",position:"relative"}}>
-        <div style={{position:"relative",width:Wp}}>
-        <svg width={Wp} height={H} style={{display:"block"}} onMouseLeave={function(){setHi(null);}}>
-          {s.months.map(function(k,i){return <ConColFrame key={k} s={s} i={i} slot={slot} top={T-14} base={H-B} H={H}/>;})}
-          {grid.map(function(g){return <line key={g} x1={0} x2={n*slot} y1={y(max*g)} y2={y(max*g)} stroke={g===0?"#bbb":"#eee"}/>;})}
-          {s.months.map(function(k,i){
-            var x0=i*slot,cx=x0+slot/2;
-            var hp=H-B-y(s.plan[i]),hr=s.real[i]===null?0:H-B-y(s.real[i]);
-            return <g key={k}>
-              <g opacity={hi===null||hi===i?1:.5}>
-                {hp>0&&<rect x={cx-bw-1} y={y(s.plan[i])} width={bw} height={hp} rx="2" fill={CON_COL_PLAN}/>}
-                {hr>0&&<rect x={cx+1} y={y(s.real[i])} width={bw} height={hr} rx="2" fill={CON_COL_REAL}/>}
-                {val(s.plan[i],cx-bw/2-1,"#7a6120")}
-                {s.real[i]!==null&&val(s.real[i],cx+bw/2+1,"#1f4f85")}
-              </g>
-              <rect x={x0} y={T-14} width={slot} height={H-T-B+14} fill="transparent" onMouseEnter={function(){setHi(i);}}/>
-            </g>;
-          })}
-          <line x1={n*slot} x2={n*slot} y1={T-14} y2={H-B} stroke="#e6e2d8"/>
-          {wk&&<line x1={0} x2={n*slot} y1={H-B+18} y2={H-B+18} stroke="#e6e2d8"/>}
-        </svg>
-        {mi!==null&&<div style={{position:"absolute",top:6,left:mi*slot+slot/2,transform:mi*slot>Wp/2?"translateX(calc(-100% - 14px))":"translateX(14px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap",zIndex:2}}>
-          <b>{conFmtPer(s.months[mi],wk)}</b>
-          <div>Planned: <b>{conFmt(s.plan[mi])}</b></div>
-          <div>Real: <b>{s.real[mi]===null?"—":conFmt(s.real[mi])}</b>{s.real[mi]!==null&&<span style={{color:conLossCol(s.real[mi]-s.plan[mi])}}> ({s.real[mi]-s.plan[mi]>0?"+":""}{conFmt(s.real[mi]-s.plan[mi])})</span>}</div>
-          <div style={{color:"#888"}}>Cumulative: planned {conFmt(s.cumPlan[mi])} · poured {s.cumReal[mi]===null?"—":conFmt(s.cumReal[mi])}</div>
-        </div>}
-        </div>
-      </div>
-    </div>
-  </div>;
-}
 
 // ---------------------------------------------------------------- WBS
 function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,saveWbs,savePours,saveTypes,cutoffs,saveCutoffs}){
