@@ -980,6 +980,20 @@ function ConCurve({s,theoTotal,earned}){
   var x=function(i){return (i+1)*slot;};
   var y=function(v){return T+(H-T-B)*(1-(v-lo)/(max-lo));};
   var showVals=slot>=34;
+  // Volume of each period as bars in a band under the curves (own scale, fitted like the curves)
+  var bars=pref.bars!==false;
+  var curveBot=H-B,BH=bars?Math.round(H*0.3):0,bandTop=curveBot+(bars?16:0),bandBot=bandTop+BH,Htot=bandBot+B;
+  var bMax=1;
+  for(ii=Math.max(0,a0);ii<=Math.min(n-1,a1);ii++){bMax=Math.max(bMax,s.plan[ii]||0,s.real[ii]||0);}
+  bMax=_conNiceMax(bMax);
+  var yb=function(v){return bandBot-(BH-12)*Math.max(0,Math.min(v,bMax))/bMax;};
+  var bw=Math.max(1.5,Math.min(20,slot>8?(slot-8)/2:slot*0.4));
+  var bVal=function(v,cx,col){
+    if(!showVals||!(v>CON_EPS))return null;
+    var t=invFmt(v,0),wide=t.length*5.4>bw+8,yy=yb(v)-3;
+    return wide?<text x={cx+3} y={yy} fontSize="9" fill={col} fontWeight="600" transform={"rotate(-90 "+(cx+3)+" "+yy+")"}>{t}</text>
+      :<text x={cx} y={yy} fontSize="9" textAnchor="middle" fill={col} fontWeight="600">{t}</text>;
+  };
   var xDate=function(d){
     var i=s.months.indexOf(conPerKey(d,wk));if(i<0)return null;
     var dt=parseISODate(d),frac;
@@ -1021,18 +1035,36 @@ function ConCurve({s,theoTotal,earned}){
       <button className={"fchip"+(zStep===0?" on":"")} style={bs} onClick={function(){setP(zKey,0);}} title="The whole period in view, no scrolling">All</button>
       <span style={{marginLeft:10}}>Height</span>
       {["S","M","L"].map(function(t,k){return <button key={t} className={"fchip"+(hStep===k?" on":"")} style={bs} onClick={function(){setP("h",k);}}>{t}</button>;})}
+      <button className={"fchip"+(bars?" on":"")} style={Object.assign({},bs,{marginLeft:10})} onClick={function(){setP("bars",!bars);}} title={"Planned and poured volume of each "+per+", as bars under the curves"}>{bars?"✓ ":""}Volume per {per}</button>
     </div>
     <div ref={lay.boxRef} style={{position:"relative",display:"flex"}}>
-      <svg width={L} height={H} style={{flex:"0 0 auto",display:"block"}}>
+      <svg width={L} height={Htot} style={{flex:"0 0 auto",display:"block"}}>
         {grid.map(function(g){return <text key={g} x={L-6} y={y(g)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(g,0)}</text>;})}
-        {lo>0&&<text x={L-6} y={H-B+13} fontSize="9" textAnchor="end" fill="#b35c00">not from 0</text>}
+        {lo>0&&<text x={L-6} y={curveBot+(bars?12:13)} fontSize="9" textAnchor="end" fill="#b35c00">not from 0</text>}
+        {bars&&<g><text x={L-6} y={yb(bMax)+3} fontSize="10" textAnchor="end" fill="#888">{invFmt(bMax,0)}</text>
+          <text x={L-6} y={bandBot} fontSize="10" textAnchor="end" fill="#888">0</text>
+          <text x={4} y={bandTop+(BH)/2+3} fontSize="9.5" fill="#666" fontWeight="600" transform={"rotate(-90 9 "+(bandTop+BH/2)+")"}>per {per}</text></g>}
       </svg>
       <div ref={lay.scRef} style={{overflowX:"auto",overflowY:"hidden",flex:"1 1 auto",position:"relative"}}>
         <div style={{position:"relative",width:Wp}}>
-        <svg width={Wp} height={H} style={{display:"block"}} onMouseLeave={function(){setHi(null);}}>
-          {s.months.map(function(k,i){return <ConColFrame key={k} s={s} i={i} slot={slot} top={T-10} base={H-B} H={H}/>;})}
-          <line x1={n*slot} x2={n*slot} y1={T-10} y2={H-B} stroke="#e6e2d8"/>
-          {wk&&<line x1={0} x2={n*slot} y1={H-B+18} y2={H-B+18} stroke="#e6e2d8"/>}
+        <svg width={Wp} height={Htot} style={{display:"block"}} onMouseLeave={function(){setHi(null);}}>
+          {s.months.map(function(k,i){return <ConColFrame key={k} s={s} i={i} slot={slot} top={T-10} base={bandBot} H={Htot}/>;})}
+          <line x1={n*slot} x2={n*slot} y1={T-10} y2={bandBot} stroke="#e6e2d8"/>
+          {wk&&<line x1={0} x2={n*slot} y1={bandBot+18} y2={bandBot+18} stroke="#e6e2d8"/>}
+          {bars&&<g>
+            <line x1={0} x2={n*slot} y1={bandTop-8} y2={bandTop-8} stroke="#d8d2c4" strokeDasharray="4 3"/>
+            <line x1={0} x2={n*slot} y1={yb(bMax)} y2={yb(bMax)} stroke="#f0ede6"/>
+            {s.months.map(function(k,i){
+              var cx=i*slot+slot/2,p=s.plan[i]||0,r=s.real[i];
+              return <g key={k} opacity={hi===null||hi===i?1:.5}>
+                {p>CON_EPS&&<rect x={cx-bw-1} y={yb(p)} width={bw} height={bandBot-yb(p)} rx={Math.min(2,bw/2)} fill={CON_COL_PLAN} opacity=".85"/>}
+                {r!==null&&r>CON_EPS&&<rect x={cx+1} y={yb(r)} width={bw} height={bandBot-yb(r)} rx={Math.min(2,bw/2)} fill={CON_COL_REAL} opacity=".85"/>}
+                {bVal(p,cx-bw/2-1,"#7a6120")}
+                {r!==null&&bVal(r,cx+bw/2+1,"#1f4f85")}
+              </g>;
+            })}
+            <line x1={0} x2={n*slot} y1={bandBot} y2={bandBot} stroke="#bbb"/>
+          </g>}
           <defs><clipPath id={clipId}><rect x={0} y={T-10} width={Wp} height={H-B-T+10}/></clipPath></defs>
           {grid.map(function(g,k){return <line key={g} x1={0} x2={n*slot} y1={y(g)} y2={y(g)} stroke={k===0?"#bbb":"#eee"}/>;})}
           <g clipPath={"url(#"+clipId+")"}>
@@ -1066,7 +1098,7 @@ function ConCurve({s,theoTotal,earned}){
             <circle cx={x(hi)} cy={y(s.cumPlan[hi])} r="4" fill={CON_COL_PLAN} stroke="#fff" strokeWidth="2"/>
             {s.cumReal[hi]!==null&&<circle cx={x(hi)} cy={y(s.cumReal[hi])} r="4" fill={CON_COL_REAL} stroke="#fff" strokeWidth="2"/>}
           </g>}
-          {s.months.map(function(k,i){return <rect key={k} x={i*slot} y={T-10} width={slot} height={H-T-B+10} fill="transparent" onMouseEnter={function(){setHi(i);}}/>;})}
+          {s.months.map(function(k,i){return <rect key={k} x={i*slot} y={T-10} width={slot} height={bandBot-T+10} fill="transparent" onMouseEnter={function(){setHi(i);}}/>;})}
         </svg>
         {hi!==null&&<div style={{position:"absolute",top:6,left:x(hi),transform:x(hi)>Wp/2?"translateX(calc(-100% - 12px))":"translateX(12px)",background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:12,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,.08)",whiteSpace:"nowrap",zIndex:2}}>
           <b>{conFmtPer(s.months[hi],wk)}</b> <span style={{color:"#888"}}>— cumulative at the end of the {per}</span>
