@@ -35,6 +35,151 @@ function kpiWeeks(kpi){
   });
 }
 
+// ---- KPI breakdown by zone ------------------------------------------------
+// A KPI may be split into zones / areas, each with its own theoretical quantity
+// (kpi.parts [{id, name, target}]). The total target is then the sum of the zones,
+// and the weekly actuals are typed per zone (kpi.weeklyByPart {monday: {partId: qty}}).
+// kpi.weeklyActuals[monday] always holds the week's total, so the curve, the pace
+// figures and older KPIs without zones work unchanged. A week typed before the
+// breakdown existed keeps its total and shows as "Unallocated".
+function kpiParts(kpi){return Array.isArray(kpi&&kpi.parts)?kpi.parts:[];}
+function kpiNum(s){
+  var t=String(s==null?"":s).trim().replace(/[\s\u00a0\u202f']/g,"");
+  if(!t)return NaN;
+  // 4,719 / 4.719 / 12,345,678 → thousands separators (a quantity never has 3 decimals here)
+  if(/^-?\d{1,3}([.,]\d{3})+$/.test(t))return Number(t.replace(/[.,]/g,""));
+  return Number(t.replace(",","."));
+}
+// "1 ⇥ 802" lines (Excel copy, or "Zone 1; 802", "A: 12,5") → [{name, target}]
+function kpiParseParts(text){
+  var out=[];
+  String(text||"").split(/\r?\n/).forEach(function(line){
+    if(!line.trim())return;
+    var m=line.split("\t").length>1?line.split("\t"):line.split(/[;:]|\s{2,}/);
+    if(m.length<2){var mm=line.trim().match(/^(.*\S)\s+([-\d][\d\s.,']*)$/);m=mm?[mm[1],mm[2]]:[line];}
+    var cells=m.map(function(c){return c.trim();}).filter(function(c){return c!=="";});
+    if(cells.length<2)return;
+    var qty=kpiNum(cells[cells.length-1]);
+    var name=cells.slice(0,cells.length-1).join(" ");
+    if(!name||isNaN(qty))return;            // header lines ("Zone ⇥ lm") are skipped
+    out.push({name:name,target:qty});
+  });
+  return out;
+}
+function kpiPartsTotal(parts){return (parts||[]).reduce(function(s,p){return s+(Number(p.target)||0);},0);}
+// Done to date per zone, plus what was typed as a week total without zones.
+function kpiPartDone(kpi){
+  var done={},unalloc=0,byPart=kpi.weeklyByPart||{};
+  kpiParts(kpi).forEach(function(p){done[p.id]=0;});
+  Object.keys(kpi.weeklyActuals||{}).forEach(function(mon){
+    var wk=byPart[mon];
+    if(wk&&Object.keys(wk).length){
+      Object.keys(wk).forEach(function(pid){if(done[pid]!==undefined)done[pid]+=Number(wk[pid])||0;});
+    }else unalloc+=Number(kpi.weeklyActuals[mon])||0;
+  });
+  return{done:done,unalloc:unalloc};
+}
+// Recompute every week total from the per-zone figures (zones deleted → their quantities go).
+function kpiResync(kpi,parts){
+  var ids={};(parts||[]).forEach(function(p){ids[p.id]=1;});
+  var byPart={},wa=Object.assign({},kpi.weeklyActuals||{});
+  Object.keys(kpi.weeklyByPart||{}).forEach(function(mon){
+    var wk={},sum=0,any=false;
+    Object.keys(kpi.weeklyByPart[mon]||{}).forEach(function(pid){
+      if(!ids[pid])return;wk[pid]=Number(kpi.weeklyByPart[mon][pid])||0;sum+=wk[pid];any=true;
+    });
+    if(any){byPart[mon]=wk;wa[mon]=sum;}else delete wa[mon];
+  });
+  return Object.assign({},kpi,{parts:parts,weeklyByPart:byPart,weeklyActuals:wa,
+    totalTarget:(parts||[]).length?kpiPartsTotal(parts):kpi.totalTarget});
+}
+function kpiFmt(v){return (Number(v)||0).toLocaleString(undefined,{maximumFractionDigits:1});}
+
+// Breakdown editor + progress per zone, shown in an open KPI card.
+function KpiZonesPanel({kpi,onSave}){
+  const [paste,setPaste]=useState(null);       // null = closed, string = textarea open
+  const [mode,setMode]=useState("merge");
+  var parts=kpiParts(kpi);
+  var pd=kpiPartDone(kpi);
+  var total=kpiPartsTotal(parts);
+  function save(nextParts){onSave(kpiResync(kpi,nextParts));}
+  function setPart(id,patch){save(parts.map(function(p){return p.id===id?Object.assign({},p,patch):p;}));}
+  function delPart(p){
+    if((pd.done[p.id]||0)>0&&!safeConfirm("Delete zone \""+p.name+"\"? Its "+kpiFmt(pd.done[p.id])+" "+(kpi.unit||"")+" of weekly actuals will be removed too."))return;
+    save(parts.filter(function(x){return x.id!==p.id;}));
+  }
+  function addPart(){save(parts.concat([{id:uuid(),name:String(parts.length+1),target:0}]));}
+  function applyPaste(){
+    var rows=kpiParseParts(paste);
+    if(!rows.length){alert("Nothing recognised. Paste two columns: zone ⇥ quantity.");return;}
+    var next=mode==="replace"?[]:parts.slice();
+    rows.forEach(function(r){
+      var key=r.name.trim().toLowerCase();
+      var ex=(mode==="replace"?parts:next).find(function(p){return String(p.name).trim().toLowerCase()===key;});
+      var i=next.findIndex(function(p){return String(p.name).trim().toLowerCase()===key;});
+      if(i>=0)next[i]=Object.assign({},next[i],{target:r.target});
+      else next.push({id:ex?ex.id:uuid(),name:r.name,target:r.target});
+    });
+    if(mode==="replace"){
+      var lost=parts.filter(function(p){return !next.some(function(n){return n.id===p.id;})&&(pd.done[p.id]||0)>0;});
+      if(lost.length&&!safeConfirm("These zones are not in the pasted list and have weekly actuals, which will be removed: "+lost.map(function(p){return p.name;}).join(", ")+". Continue?"))return;
+    }
+    save(next);setPaste(null);
+  }
+  var u=kpi.unit||"";
+  var doneTot=parts.reduce(function(s,p){return s+(pd.done[p.id]||0);},0)+pd.unalloc;
+  return <div style={{marginBottom:14}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+      <div style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase"}}>Quantities per zone</div>
+      <span style={{fontSize:11,color:"var(--ink-3)"}}>{parts.length?parts.length+" zones · total "+kpiFmt(total)+" "+u:"No breakdown: the KPI uses its total target only"}</span>
+      <span style={{flex:1}}/>
+      <button className="btn btn-sm sched-noprint" onClick={function(){setPaste(paste===null?"":null);}}>{paste===null?"📋 Paste from Excel":"✕ Close paste"}</button>
+      <button className="btn btn-sm sched-noprint" onClick={addPart}>＋ Zone</button>
+    </div>
+    {paste!==null&&<div className="sched-noprint" style={{padding:"10px 12px",background:"#fafaf8",border:"1px solid #e8e6df",borderRadius:8,marginBottom:8}}>
+      <div style={{fontSize:11,color:"var(--ink-3)",marginBottom:6}}>Two columns copied from Excel: zone, then quantity ({u||"unit"}). One line per zone; a header line is ignored.</div>
+      <textarea value={paste} autoFocus onChange={function(e){setPaste(e.target.value);}} placeholder={"1\t802\n2\t4719\n3\t2397"} style={{width:"100%",minHeight:120,fontFamily:"monospace",fontSize:12,padding:6,boxSizing:"border-box"}}/>
+      {(function(){var rows=kpiParseParts(paste);return <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:6}}>
+        <span style={{fontSize:11,color:"var(--ink-3)"}}>{rows.length} zones · {kpiFmt(kpiPartsTotal(rows))} {u}</span>
+        {parts.length>0&&<label style={{fontSize:11,display:"flex",gap:4,alignItems:"center"}}><input type="radio" checked={mode==="merge"} onChange={function(){setMode("merge");}}/>Update / add (same name = update)</label>}
+        {parts.length>0&&<label style={{fontSize:11,display:"flex",gap:4,alignItems:"center"}}><input type="radio" checked={mode==="replace"} onChange={function(){setMode("replace");}}/>Replace the list</label>}
+        <span style={{flex:1}}/>
+        <button className="btn btn-sm btn-pri" disabled={!rows.length} onClick={applyPaste}>Apply</button>
+      </div>;})()}
+    </div>}
+    {parts.length>0&&<div style={{overflowX:"auto",border:"1px solid #e8e6df",borderRadius:8}}>
+      <table className="tbl" style={{fontSize:11}}>
+        <thead><tr><th>Zone</th><th style={{textAlign:"right"}}>Theoretical ({u})</th><th style={{textAlign:"right"}}>Share</th><th style={{textAlign:"right"}}>Done</th><th style={{width:130}}>Progress</th><th style={{textAlign:"right"}}>Remaining</th><th className="sched-noprint"></th></tr></thead>
+        <tbody>
+          {parts.map(function(p){
+            var d=pd.done[p.id]||0,t=Number(p.target)||0;
+            var pct=t>0?Math.min(100,Math.round(d/t*100)):(d>0?100:0);
+            return <tr key={p.id}>
+              <td><input type="text" defaultValue={p.name} key={p.id+"|"+p.name} onBlur={function(e){var v=e.target.value.trim();if(v&&v!==p.name)setPart(p.id,{name:v});else e.target.value=p.name;}} onKeyDown={function(e){if(e.key==="Enter")e.target.blur();}} style={{width:110,padding:"3px 6px",fontSize:11}}/></td>
+              <td style={{textAlign:"right"}}><input type="text" inputMode="decimal" defaultValue={p.target} key={p.id+"|t"+p.target} onBlur={function(e){var v=e.target.value.trim()===""?0:kpiNum(e.target.value);if(isNaN(v)){e.target.value=p.target;return;}if(v!==Number(p.target))setPart(p.id,{target:v});}} onKeyDown={function(e){if(e.key==="Enter")e.target.blur();}} style={{width:80,padding:"3px 6px",fontSize:11,textAlign:"right"}}/></td>
+              <td style={{textAlign:"right",color:"var(--ink-3)"}}>{total>0?Math.round(t/total*100)+"%":"—"}</td>
+              <td style={{textAlign:"right",fontWeight:700}}>{kpiFmt(d)}</td>
+              <td><div style={{display:"flex",alignItems:"center",gap:6}}><div className="meter" style={{flex:1}}><i className={pct>=100?"good":""} style={{width:pct+"%"}}/></div><span style={{minWidth:30,textAlign:"right"}}>{pct}%</span></div></td>
+              <td style={{textAlign:"right",color:t-d>0?"var(--ink)":"var(--green)"}}>{t-d>0?kpiFmt(t-d):"Done"}</td>
+              <td className="sched-noprint"><button className="btn btn-sm" title="Delete this zone" onClick={function(){delPart(p);}} style={{padding:"1px 6px"}}>✕</button></td>
+            </tr>;
+          })}
+          {pd.unalloc>0&&<tr style={{color:"var(--ink-3)"}}>
+            <td colSpan={3} title="Weekly totals typed before the breakdown by zone">Unallocated (weeks typed as a total)</td>
+            <td style={{textAlign:"right",fontWeight:700}}>{kpiFmt(pd.unalloc)}</td><td colSpan={3}></td>
+          </tr>}
+        </tbody>
+        <tfoot><tr style={{fontWeight:800,background:"var(--brand-soft)"}}>
+          <td>Total</td><td style={{textAlign:"right"}}>{kpiFmt(total)}</td><td></td>
+          <td style={{textAlign:"right"}}>{kpiFmt(doneTot)}</td>
+          <td>{total>0?Math.min(100,Math.round(doneTot/total*100))+"%":""}</td>
+          <td style={{textAlign:"right"}}>{kpiFmt(Math.max(0,total-doneTot))}</td><td className="sched-noprint"></td>
+        </tr></tfoot>
+      </table>
+    </div>}
+  </div>;
+}
+
 function ZoneActionRow({task,rooms,onUpdate,onDelete,onOpenRoomModal,people,tags,tenders,onAdopt}){
   const [editMode,setEditMode]=useState(false);
   var isBlocking=(task.tags||[]).includes("Blocking Point");
@@ -146,6 +291,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
   const [kpiTarget,setKpiTarget]=useState("");
   const [kpiStart,setKpiStart]=useState("");
   const [kpiEnd,setKpiEnd]=useState("");
+  const [kpiParts0,setKpiParts0]=useState("");
   const [expandedKpi,setExpandedKpi]=useState(null);
   const [showMeetingHistory,setShowMeetingHistory]=useState(false);
   const [showAttendance,setShowAttendance]=useState(false);
@@ -222,9 +368,10 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
 
   var zoneKpis=(kpis||[]).filter(function(k){return k.zone===curZone;});
   function addKpi(){
-    if(!kpiName.trim()||!kpiTarget||!kpiStart||!kpiEnd)return;
-    saveKpis([...(kpis||[]),newKPI({zone:curZone,name:kpiName.trim(),unit:kpiUnit.trim(),totalTarget:Number(kpiTarget),startDate:kpiStart,endDate:kpiEnd})]);
-    setKpiName("");setKpiUnit("");setKpiTarget("");setKpiStart("");setKpiEnd("");setShowKpiForm(false);
+    var parts0=kpiParseParts(kpiParts0).map(function(p){return {id:uuid(),name:p.name,target:p.target};});
+    if(!kpiName.trim()||(!kpiTarget&&!parts0.length)||!kpiStart||!kpiEnd)return;
+    saveKpis([...(kpis||[]),newKPI({zone:curZone,name:kpiName.trim(),unit:kpiUnit.trim(),totalTarget:parts0.length?kpiPartsTotal(parts0):Number(kpiTarget),startDate:kpiStart,endDate:kpiEnd,parts:parts0,weeklyByPart:{}})]);
+    setKpiName("");setKpiUnit("");setKpiTarget("");setKpiStart("");setKpiEnd("");setKpiParts0("");setShowKpiForm(false);
   }
   function delKpi(id){if(safeConfirm("Delete this KPI? All recorded weekly progress will be lost."))saveKpis((kpis||[]).filter(function(k){return k.id!==id;}));}
   function updateKpi(id,field,val){
@@ -238,6 +385,21 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
       return Object.assign({},k,{weeklyActuals:wa});
     }));
   }
+  // Per-zone weekly figure; the week total is the sum of its zones.
+  function setKpiWeekPart(kpiId,monday,partId,val){
+    saveKpis((kpis||[]).map(function(k){
+      if(k.id!==kpiId)return k;
+      var bp=Object.assign({},k.weeklyByPart||{});
+      var wk=Object.assign({},bp[monday]||{});
+      var n=String(val).trim()===""?null:kpiNum(val);
+      if(n===null||isNaN(n))delete wk[partId];else wk[partId]=n;
+      var wa=Object.assign({},k.weeklyActuals||{});
+      if(Object.keys(wk).length){bp[monday]=wk;wa[monday]=Object.keys(wk).reduce(function(s,p){return s+wk[p];},0);}
+      else{delete bp[monday];delete wa[monday];}
+      return Object.assign({},k,{weeklyByPart:bp,weeklyActuals:wa});
+    }));
+  }
+  function replaceKpi(next){saveKpis((kpis||[]).map(function(k){return k.id===next.id?next:k;}));}
 
   function addTask(){
     if(!qText.trim())return;
@@ -879,7 +1041,9 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
             </div>
             <div style={{flex:1,minWidth:100}}>
               <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase"}}>Total target</label>
-              <input type="number" value={kpiTarget} onChange={function(e){setKpiTarget(e.target.value);}} placeholder="0" style={{padding:"5px 8px",fontSize:12}}/>
+              {kpiParseParts(kpiParts0).length
+                ?<input type="text" readOnly value={kpiFmt(kpiPartsTotal(kpiParseParts(kpiParts0)))+" (Σ zones)"} style={{padding:"5px 8px",fontSize:12,background:"#f5f3ee"}}/>
+                :<input type="number" value={kpiTarget} onChange={function(e){setKpiTarget(e.target.value);}} placeholder="0" style={{padding:"5px 8px",fontSize:12}}/>}
             </div>
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
@@ -892,7 +1056,12 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
               <input type="date" min="1990-01-01" max="2200-12-31" value={kpiEnd} onChange={function(e){setKpiEnd(e.target.value);}} style={{padding:"5px 8px",fontSize:12}}/>
             </div>
           </div>
-          <button className="btn btn-pri" onClick={addKpi} disabled={!kpiName.trim()||!kpiTarget||!kpiStart||!kpiEnd}>＋ Create KPI</button>
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase"}}>Quantities per zone (optional)</label>
+            <textarea value={kpiParts0} onChange={function(e){setKpiParts0(e.target.value);}} placeholder={"Paste two columns from Excel: zone ⇥ quantity\n1\t802\n2\t4719"} style={{width:"100%",minHeight:70,fontFamily:"monospace",fontSize:12,padding:6,boxSizing:"border-box"}}/>
+            {kpiParseParts(kpiParts0).length>0&&<div style={{fontSize:11,color:"var(--ink-3)"}}>{kpiParseParts(kpiParts0).length} zones · total target = {kpiFmt(kpiPartsTotal(kpiParseParts(kpiParts0)))} {kpiUnit}</div>}
+          </div>
+          <button className="btn btn-pri" onClick={addKpi} disabled={!kpiName.trim()||(!kpiTarget&&!kpiParseParts(kpiParts0).length)||!kpiStart||!kpiEnd}>＋ Create KPI</button>
         </div>}
       </div>
 
@@ -911,7 +1080,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
               <span style={{fontSize:11,color:"var(--ink-3)"}}>{isOpen?"▾":"▸"}</span>
               <div style={{flex:1,minWidth:150}}>
                 <div style={{fontWeight:600,fontSize:13}}>{kpi.name}</div>
-                <div style={{fontSize:11,color:"var(--ink-3)"}}>{fmtDate(kpi.startDate)} → {fmtDate(kpi.endDate)} · target {Number(kpi.totalTarget).toLocaleString()} {kpi.unit}</div>
+                <div style={{fontSize:11,color:"var(--ink-3)"}}>{fmtDate(kpi.startDate)} → {fmtDate(kpi.endDate)} · target {Number(kpi.totalTarget).toLocaleString()} {kpi.unit}{kpiParts(kpi).length?" · "+kpiParts(kpi).length+" zones":""}</div>
               </div>
               <div className="meter" style={{width:140}}><i className={pctDone>=100?"good":behindSchedule?"bad":""} style={{width:pctDone+"%"}}/></div>
               <div style={{textAlign:"right",minWidth:110}}>
@@ -932,7 +1101,9 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                 </div>
                 <div style={{flex:1,minWidth:90}}>
                   <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase"}}>Total target</label>
-                  <input type="number" value={kpi.totalTarget||""} onChange={function(e){updateKpi(kpi.id,"totalTarget",Number(e.target.value));}} style={{padding:"4px 8px",fontSize:12}}/>
+                  {kpiParts(kpi).length
+                    ?<input type="text" readOnly title="Sum of the quantities per zone" value={kpiFmt(kpi.totalTarget)+" (Σ zones)"} style={{padding:"4px 8px",fontSize:12,background:"#f5f3ee"}}/>
+                    :<input type="number" value={kpi.totalTarget||""} onChange={function(e){updateKpi(kpi.id,"totalTarget",Number(e.target.value));}} style={{padding:"4px 8px",fontSize:12}}/>}
                 </div>
                 <div style={{flex:1,minWidth:120}}>
                   <label style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase"}}>Start</label>
@@ -945,6 +1116,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                 <button className="btn btn-sm btn-danger" onClick={function(){delKpi(kpi.id);}}>Delete</button>
               </div>
               <KPICurveChart kpi={kpi} weeks={weeks}/>
+              <KpiZonesPanel kpi={kpi} onSave={replaceKpi}/>
 
               {(function(){
                 if(!latestDone)return null;
@@ -985,9 +1157,9 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
               })()}
 
               <div style={{fontSize:10,fontWeight:800,color:"#aaa",textTransform:"uppercase",marginBottom:6}}>Weekly actuals</div>
-              <div style={{maxHeight:260,overflowY:"auto",border:"1px solid #e8e6df",borderRadius:8}}>
+              {(function(){var parts=kpiParts(kpi);var bp=kpi.weeklyByPart||{};return <div style={{maxHeight:parts.length?360:260,overflow:"auto",border:"1px solid #e8e6df",borderRadius:8}}>
                 <table className="tbl" style={{fontSize:11}}>
-                  <thead><tr><th>Week</th><th style={{textAlign:"right"}}>Planned cum.</th><th style={{textAlign:"right"}}>Actual this week</th><th style={{textAlign:"right"}}>Actual cum.</th><th style={{textAlign:"right"}}>Gap</th></tr></thead>
+                  <thead><tr><th>Week</th><th style={{textAlign:"right"}}>Planned cum.</th>{parts.map(function(p){return <th key={p.id} style={{textAlign:"right",whiteSpace:"nowrap"}} title={"Theoretical "+kpiFmt(p.target)+" "+(kpi.unit||"")}>{p.name}</th>;})}<th style={{textAlign:"right"}}>Actual this week</th><th style={{textAlign:"right"}}>Actual cum.</th><th style={{textAlign:"right"}}>Gap</th></tr></thead>
                   <tbody>
                     {weeks.map(function(w){
                       var hasData=w.isPast||w.isCurrent||(kpi.weeklyActuals||{})[w.monday]!==undefined;
@@ -995,8 +1167,13 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                       return <tr key={w.monday} style={{background:w.isCurrent?"#faf3e0":"#fff"}}>
                         <td style={{whiteSpace:"nowrap"}}>{fmtDate(w.monday)}{w.isCurrent?" (current)":""}</td>
                         <td style={{textAlign:"right",color:"#888"}}>{w.plannedCum.toLocaleString()}</td>
+                        {parts.map(function(p){var v=(bp[w.monday]||{})[p.id];return <td key={p.id} style={{textAlign:"right"}}>
+                          <input type="text" inputMode="decimal" defaultValue={v==null?"":v} key={w.monday+p.id+"|"+(v==null?"":v)} onBlur={function(e){var nv=e.target.value.trim();if(nv===(v==null?"":String(v)))return;if(nv!==""&&isNaN(kpiNum(nv))){e.target.value=v==null?"":v;return;}setKpiWeekPart(kpi.id,w.monday,p.id,nv);}} onKeyDown={function(e){if(e.key==="Enter")e.target.blur();}} placeholder="0" style={{width:58,padding:"4px 4px",fontSize:11,textAlign:"right"}}/>
+                        </td>;})}
                         <td style={{textAlign:"right"}}>
-                          <input type="number" value={(kpi.weeklyActuals||{})[w.monday]||""} onChange={function(e){setKpiWeekActual(kpi.id,w.monday,e.target.value);}} placeholder="0" style={{width:80,padding:"5px 5px",fontSize:11,textAlign:"right"}}/>
+                          {parts.length&&(bp[w.monday]||(kpi.weeklyActuals||{})[w.monday]===undefined)
+                            ?<b>{w.actualThis?kpiFmt(w.actualThis):""}</b>
+                            :<input type="number" value={(kpi.weeklyActuals||{})[w.monday]||""} title={parts.length?"Typed as a total before the breakdown by zone (unallocated)":""} onChange={function(e){setKpiWeekActual(kpi.id,w.monday,e.target.value);}} placeholder="0" style={{width:80,padding:"5px 5px",fontSize:11,textAlign:"right"}}/>}
                         </td>
                         <td style={{textAlign:"right",fontWeight:700,color:w.actualCum>=w.plannedCum?"#1e6b3a":"#b3302a"}}>{w.actualCum.toLocaleString()}</td>
                         <td style={{textAlign:"right",fontWeight:700,color:!hasData?"#ccc":gap>=0?"#1e6b3a":"#b3302a"}}>{!hasData?"—":(gap>0?"+":"")+gap.toLocaleString()}</td>
@@ -1004,7 +1181,7 @@ function ZoneView({tasks,saveTasks,rooms,saveRooms,zones,people,tags,memory,setM
                     })}
                   </tbody>
                 </table>
-              </div>
+              </div>;})()}
             </div>}
           </div>;
         })}
