@@ -475,6 +475,8 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
   const [typeId,setTypeId]=useState("");
   const [zone,setZone]=useState("");
   const [showTable,setShowTable]=useState(false);
+  // "Per type" table: types opened to show their WBS (positions)
+  const [openTypes,setOpenTypes]=useState({});
   const [byWeek,setByWeek]=useState(function(){try{return localStorage.getItem("pp_con_period")==="week";}catch(e){return false;}});
   function setPeriod(w){setByWeek(w);try{localStorage.setItem("pp_con_period",w?"week":"month");}catch(e){}}
   const [pastReal,setPastReal]=useState(function(){try{return localStorage.getItem("pp_con_pastreal")==="1";}catch(e){return false;}});
@@ -501,7 +503,10 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
   var byType=[],worst=[];
   if(last){
     byType=conSortTypes(types).filter(function(t){return typeIds.indexOf(t.id)>=0;}).map(function(t){
-      return{type:t,tot:conCutoffTotals(conCutoffRows(last.cutoff,list,pours,[t.id]))};
+      var rs=conCutoffRows(last.cutoff,list,pours,[t.id]);
+      // the WBS of this type: those with a budget, a pour or an RTS real typed in this type
+      var wr=rs.filter(function(r){return r.theo>CON_EPS||r.real>CON_EPS||(r.rtsReal||0)>CON_EPS;});
+      return{type:t,tot:conCutoffTotals(rs),rows:wr};
     }).filter(function(x){return x.tot.nPct>0&&(x.tot.theo>CON_EPS||x.tot.real>CON_EPS);});
     worst=conCutoffRows(last.cutoff,list,pours,typeIds).filter(function(r){return r.hasPct&&r.varPct!==null&&Math.abs(r.varPct)>CON_WARN_PCT;})
       .sort(function(a,b){return Math.abs(b.variance)-Math.abs(a.variance);}).slice(0,10);
@@ -568,14 +573,36 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
     </>}
 
     {byType.length>0&&<>
-      <div className="card-title" style={{fontSize:15}}>Per type, at the cut-off of {fmtDate(last.date)}</div>
+      <div className="card-title" style={{fontSize:15,display:"flex",alignItems:"center",gap:10}}>Per type, at the cut-off of {fmtDate(last.date)}
+        <span style={{flex:1}}/>
+        {(function(){var allOpen=byType.every(function(x){return openTypes[x.type.id];});
+          return <button className="btn btn-sm" onClick={function(){var o={};if(!allOpen)byType.forEach(function(x){o[x.type.id]=true;});setOpenTypes(o);}}>{allOpen?"▾ Collapse all":"▸ Show the WBS of every type"}</button>;})()}</div>
       <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
         <thead><tr><th>Type</th><th style={R}>Budget (WBS with %)</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Loss (+) / gain (−)</th><th style={R}>%</th><th style={R}>RTS real</th><th style={R}>EOS</th><th style={R}>EOS − budget</th></tr></thead>
         <tbody>{byType.map(function(x){
-          var t=x.tot;
-          return <tr key={x.type.id}><td><b>{x.type.name}</b></td><td style={R}>{conFmt(t.theo)}</td><td style={R}>{conFmt(t.earned)}</td><td style={R}>{conFmt(t.real)}</td>
+          var t=x.tot,op=!!openTypes[x.type.id];
+          var head=<tr key={x.type.id} style={{cursor:"pointer",background:op?"var(--brand-soft,#eef3fa)":undefined}} title={op?"Hide its WBS":"Show the WBS (positions) of this type"}
+            onClick={function(){var o=Object.assign({},openTypes);if(op)delete o[x.type.id];else o[x.type.id]=true;setOpenTypes(o);}}>
+            <td><span style={{display:"inline-block",width:14,color:"#888"}}>{op?"▾":"▸"}</span><b>{x.type.name}</b> <span style={{fontSize:11,color:"#888",fontWeight:400}}>{x.rows.length} WBS</span></td><td style={R}>{conFmt(t.theo)}</td><td style={R}>{conFmt(t.earned)}</td><td style={R}>{conFmt(t.real)}</td>
             <td style={Object.assign({fontWeight:700,color:conLossCol(t.variance)},R)}>{(t.variance>0?"+":"")+conFmt(t.variance)}</td><td style={Object.assign({color:conLossCol(t.variance)},R)}>{conPct(t.varPct)}</td>
             <td style={R}>{conFmt(t.rtsReal)}</td><td style={R}>{conFmt(t.eac)}</td><td style={Object.assign({color:conLossCol(t.eacVar)},R)}>{(t.eacVar>0?"+":"")+conFmt(t.eacVar)}</td></tr>;
+          if(!op)return head;
+          // the WBS of the type, same columns; a WBS without progress % has no earned / loss / gain
+          var sub=x.rows.map(function(r){
+            var w=r.wbs,h=r.hasPct,dash=<span style={{color:"#bbb"}}>—</span>;
+            return <tr key={x.type.id+"_"+w.id} style={{fontSize:12,color:"#444",background:"#fbfaf7"}}>
+              <td style={{paddingLeft:30}}><b>{w.code}</b> {w.name}
+                <span style={{marginLeft:6,fontSize:11,color:h?"#888":"#ef6c00"}}>{h?r.pct.toFixed(0)+"%":"no %"}</span>
+                {w.zone&&<span style={{marginLeft:6,fontSize:10.5,color:"#aaa"}}>{w.zone}</span>}</td>
+              <td style={Object.assign({color:h?undefined:"#aaa"},R)} title={h?"":"No progress % at this cut-off: not in the type's budget (WBS with %)"}>{conFmt(r.theo)}</td>
+              <td style={R}>{h?conFmt(r.earned):dash}</td><td style={R}>{conFmt(r.real)}</td>
+              <td style={Object.assign({fontWeight:700,color:h?conLossCol(r.variance):undefined},R)}>{h?(r.variance>0?"+":"")+conFmt(r.variance):dash}</td>
+              <td style={Object.assign({color:h?conLossCol(r.variance):undefined},R)}>{h?conPct(r.varPct):""}</td>
+              <td style={R}>{r.rtsMissing?<span style={{color:"#b35c00"}}>to type</span>:r.adjusted?conFmt(r.rtsReal):dash}</td>
+              <td style={R}>{conFmt(r.eac)}</td>
+              <td style={Object.assign({color:conLossCol(r.eacVar)},R)}>{(r.eacVar>0?"+":"")+conFmt(r.eacVar)}</td></tr>;
+          });
+          return [head].concat(sub);
         })}</tbody></table></div>
     </>}
 
