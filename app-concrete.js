@@ -2266,6 +2266,9 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
   const [zone,setZone]=useState("");
   const [q,setQ]=useState("");
   const [creating,setCreating]=useState(false);
+  // RTS basis shown on a closed (or read-only) cut-off: a view choice for this screen only, never
+  // stored — the closed cut-off keeps its figures. {id: cut-off id, b: "budget"|"dwg"|"both"}
+  const [viewBasis,setViewBasis]=useState(null);
   var cur=cutoffs.find(function(c){return c.id===curId;})||sorted[0]||null;
   var isAdmin=isAppAdmin(window._currentUser&&window._currentUser.name);
   if(!types.length||!wbs.length)return <div className="empty"><div className="empty-ico">💰</div><div className="empty-txt">Create the types and the WBS first.</div></div>;
@@ -2340,8 +2343,14 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
     setLine(r.wbs.id,{rts:Object.keys(rts).length?rts:undefined});
   }
   // RTS basis of this cut-off (Budget / Drawings), shared by everyone and kept with the cut-off.
-  var basis=conRtsBasis(cur);
-  function setBasis(b){if(ro||b===basis)return;setCur({rtsBasis:b});}
+  var basis=viewBasis&&viewBasis.id===cur.id?viewBasis.b:conRtsBasis(cur);
+  // Open cut-off: the basis is saved with it, for everyone. Closed / read-only: switches the view only.
+  function setBasis(b){
+    if(b===basis)return;
+    if(ro){setViewBasis({id:cur.id,b:b});return;}
+    setViewBasis(null);setCur({rtsBasis:b});
+  }
+  var curShown=basis===conRtsBasis(cur)?cur:Object.assign({},cur,{rtsBasis:basis});
   var showB=basis!=="dwg",showD=basis!=="budget";
   // "Fill RTS real": every WBS with a progress % (whole cut-off, every type, whatever the filters)
   // gets RTS real = RTS theo. on the current basis, in one write; any cell can be changed after.
@@ -2414,17 +2423,17 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       <ConZoneSelect zones={[...new Set((zones||[]).concat(wbsZones))]} value={zone} onChange={setZone} all/>
       <input type="text" placeholder="Search WBS…" value={q} onChange={function(e){setQ(e.target.value);}} style={{width:"auto",minWidth:150}}/>
       <div style={{flex:1}}/>
-      <span style={{display:"inline-flex",alignItems:"center",gap:4}} title="Basis of the RTS theo.: the budget (budget − earned) or the drawings (drawings − drawings × progress %). Kept with the cut-off, for everyone.">
+      <span style={{display:"inline-flex",alignItems:"center",gap:4}} title={ro?"Basis of the RTS theo. shown: this cut-off is closed, so the choice only changes what you see (not saved)":"Basis of the RTS theo.: the budget (budget − earned) or the drawings (drawings − drawings × progress %). Kept with the cut-off, for everyone."}>
         <span style={{fontSize:11,color:"#888",fontWeight:600}}>RTS on</span>
-        <button className={"fchip"+(basis==="budget"?" on":"")} disabled={ro} onClick={function(){setBasis("budget");}}>Budget</button>
-        <button className={"fchip"+(basis==="dwg"?" on":"")} disabled={ro} onClick={function(){setBasis("dwg");}}>Drawings</button>
-        <button className={"fchip"+(basis==="both"?" on":"")} disabled={ro} onClick={function(){setBasis("both");}} title="Both analyses side by side: blue = vs budget, salmon = vs drawings">Both</button>
+        <button className={"fchip"+(basis==="budget"?" on":"")} onClick={function(){setBasis("budget");}}>Budget</button>
+        <button className={"fchip"+(basis==="dwg"?" on":"")} onClick={function(){setBasis("dwg");}}>Drawings</button>
+        <button className={"fchip"+(basis==="both"?" on":"")} onClick={function(){setBasis("both");}} title="Both analyses side by side: blue = vs budget, salmon = vs drawings">Both</button>
       </span>
       {!ro&&basis!=="both"&&<button className="btn btn-sm" onClick={function(){fillRts();}} title="Copy the RTS theo. (on the basis chosen) into the RTS real of every WBS with a progress %, then change the cells you want">⇩ Fill RTS real</button>}
       {!ro&&basis==="both"&&<><button className="btn btn-sm" style={{background:CON_BG_BUD}} onClick={function(){fillRts("budget");}} title="RTS real of every WBS with a % = RTS theo. on the budget">⇩ Fill RTS real from budget</button>
         <button className="btn btn-sm" style={{background:CON_BG_DWG}} onClick={function(){fillRts("dwg");}} title="RTS real of every WBS with a % = RTS theo. on the drawings">⇩ Fill RTS real from drawings</button></>}
-      <button className="btn btn-sm" onClick={function(){conCutoffXlsx(cur,types,wbs,pours,gp);}}>⤓ Excel</button>
-      <button className="btn btn-sm" onClick={function(){conCutoffReport(cur,prev,rows,tot,prevTot,label,gp);}}>Report</button>
+      <button className="btn btn-sm" onClick={function(){conCutoffXlsx(curShown,types,wbs,pours,gp);}}>⤓ Excel</button>
+      <button className="btn btn-sm" onClick={function(){conCutoffReport(curShown,prev,rows,tot,prevTot,label,gp);}}>Report</button>
       {edit&&!cur.closed&&<button className="btn btn-sm" onClick={close} title="Freeze the progress and the remain to be spent of this cut-off">🔒 Close</button>}
       {cur.closed&&isAdmin&&!window._ppReadOnly&&<button className="btn btn-sm" onClick={reopen}>Reopen</button>}
       {edit&&invCanDelete()&&<button className="btn btn-sm" style={{color:"#b3302a"}} onClick={del}>Delete</button>}
