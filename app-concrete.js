@@ -1286,13 +1286,21 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
     </div>
     {!list.length?<div className="empty"><div className="empty-ico">🧱</div><div className="empty-txt">{wbs.length?"No WBS matches.":"No WBS yet. “Works to date” enters the past as one WBS; it can be split into detailed WBS later."}</div></div>:
     <div style={{overflowX:"auto"}}><table className="tbl">
-      <thead><tr><th>WBS</th><th>Zone</th><th>Planned</th><th>Status</th><th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Drawings − budget: > 0 the drawings need more than the budget">Drawings − budget</th><th style={R} title="Every pour recorded so far (the loss / gain uses the poured at the cut-off)">Poured to date</th>
+      <thead><tr><th>WBS</th><th>Zone</th><th title="Concrete types of the WBS: in its budget (B), its drawings (D) or its pours (P)">Concrete type</th><th>Planned</th><th>Status</th><th style={R}>Budget</th><th style={R} title="Quantities measured on the drawings">Drawings</th><th style={R} title="Drawings − budget: > 0 the drawings need more than the budget">Drawings − budget</th><th style={R} title="Every pour recorded so far (the loss / gain uses the poured at the cut-off)">Poured to date</th>
         {lc&&<><th style={R} title={"Progress % typed at the cut-off of "+fmtDate(lc.date)}>Progress {fmtDate(lc.date)}</th><th style={R} title="Concrete poured up to the cut-off date: the figure the loss / gain is measured on">Poured at cut-off</th><th style={R} title="Budget × progress %">Earned</th><th style={R} title="Poured up to the cut-off − budget × progress: > 0 loss, < 0 gain">vs budget<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th><th style={R} title="Poured up to the cut-off − drawings × progress: > 0 loss, < 0 gain">vs drawings<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th></>}<th/></tr></thead>
       <tbody>{list.map(function(f){
         var w=f.wbs;
         var rows=[<tr key={w.id} onClick={function(){setEditing(w);}} style={{cursor:"pointer"}}>
           <td title="Open the WBS (code, name, zone, schedule links)"><b>{w.code}</b> {w.name}{w.splitFrom&&<div style={{fontSize:10,color:"#888"}}>split from {w.splitFrom}</div>}{w.theoNote&&<div style={{fontSize:11,color:"var(--gold-ink)",fontStyle:"italic"}} title={conTheoNoteTip(w)}>💬 {w.theoNote}</div>}</td>
           <td>{w.zone}</td>
+          <td style={{fontSize:11}}>{(function(){
+            // Types used by the WBS: in its budget, its drawings or its pours (where each comes from in the tooltip)
+            var used=sortedTypes.filter(function(t){return (!typeId||t.id===typeId);}).map(function(t){
+              var b=_invNum((w.theo||{})[t.id])>CON_EPS,d=_invNum((w.dwg||{})[t.id])>CON_EPS,p=_invNum((realIx[w.id]||{})[t.id])>CON_EPS;
+              return b||d||p?{t:t,src:[b?"budget":"",d?"drawings":"",p?"pours":""].filter(Boolean).join(", ")}:null;}).filter(Boolean);
+            if(!used.length)return <span style={{color:"#ccc"}}>—</span>;
+            return <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{used.map(function(u){
+              return <span key={u.t.id} title={u.t.name+" — in the "+u.src} style={{padding:"1px 6px",borderRadius:9,background:"var(--brand-soft,#e8eef7)",color:"var(--brand-ink,#173b63)",fontWeight:600,whiteSpace:"nowrap"}}>{u.t.name}</span>;})}</div>;})()}</td>
           <td style={{fontSize:12,whiteSpace:"nowrap"}} onClick={edit?function(e){e.stopPropagation();}:undefined}>{(function(){var e=effById[w.id]||w;var n=(w.schedLinks||[]).length;
             var inl=edit&&!e._schedDates;
             return <span>{inl
@@ -1323,7 +1331,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
           var tdw=dwgOf(w,[t.id]);
           if(!edit&&tf.theo<=CON_EPS&&tf.real<=CON_EPS&&tdw<=CON_EPS)return;
           rows.push(<tr key={w.id+t.id} style={{fontSize:12,color:"#555",background:"#fbfaf7"}}>
-            <td style={{paddingLeft:24}}>{t.name}</td><td/><td/><td/>
+            <td style={{paddingLeft:24}}>{t.name}</td><td/><td/><td/><td/>
             <td style={R}>{edit?qtyCell(w,"theo",t.id,false):conFmt(tf.theo)}</td>
             <td style={R}>{edit?qtyCell(w,"dwg",t.id,false):(tdw>CON_EPS?conFmt(tdw):"—")}</td>
             {gapCell(tf.theo,tdw)}
@@ -1332,7 +1340,7 @@ function ConWbsList({types,wbs,wbsEff,schedIx,schedules,pours,realIx,zones,edit,
         });
         return rows;
       })}
-      <tr style={{fontWeight:700,background:"#f7f6f2"}}><td colSpan={4}>Total — {list.length} WBS</td>
+      <tr style={{fontWeight:700,background:"#f7f6f2"}}><td colSpan={5}>Total — {list.length} WBS</td>
         <td style={R}>{conFmt(tot.theo)}</td><td style={R}>{nDwg?conFmt(totDwg):"—"}{nDwg>0&&nDwg<list.length&&<div style={{fontSize:10,fontWeight:400,color:"#888"}}>{nDwg} WBS</div>}</td>
         {(function(){if(!nDwg)return <td style={R}>—</td>;var g=totDwg-tot.theo,p=tot.theo>CON_EPS?g/tot.theo*100:null;
           return <td style={Object.assign({color:conLossCol(g)},R)} title="Drawings total − Budget total">{(g>0?"+":"")+conFmt(g)}{p!==null&&<div style={{fontSize:10,fontWeight:400}}>{conPct(p)}</div>}</td>;})()}
