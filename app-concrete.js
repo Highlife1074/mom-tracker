@@ -272,7 +272,7 @@ function conEarnedPoints(cutoffs,wbsList,pours,typeIds){
       var t=conCutoffTotals(conCutoffRows(c,wbsList,pours,typeIds));
       return{cutoff:c,date:c.date,label:c.label||"",closed:!!c.closed,earned:t.earned,real:t.real,theo:t.theo,theoAll:t.theoAll,realAll:t.realAll,
         nPct:t.nPct,nNoPct:t.nNoPct,theoNoPct:t.theoNoPct,realNoPct:t.realNoPct,variance:t.variance,varPct:t.varPct,eac:t.eac,eacVar:t.eacVar,eacPct:t.eacPct,
-        nRtsMissing:t.nRtsMissing,theoRtsMissing:t.theoRtsMissing||0};
+        nRtsMissing:t.nRtsMissing,theoRtsMissing:t.theoRtsMissing||0,rtsReal:t.rtsReal,theoEac:t.theoEac};
     }).filter(function(p){return p.nPct>0;});
 }
 function conLatestCutoff(cutoffs){
@@ -552,13 +552,17 @@ function ConOverview({types,saveTypes,wbs,rawWbs,saveWbs,edit,pours,savePours,re
     {ep.length>0&&<>
       <div className="card-title" style={{fontSize:15}}>Loss / gain of concrete, per cut-off <span style={{fontSize:12,fontWeight:400,color:"#888"}}>— progress typed by hand</span></div>
       <div style={{overflowX:"auto",marginBottom:14}}><table className="tbl">
-        <thead><tr><th>Cut-off</th><th style={R}>Budget (WBS with %)</th><th style={R}>Progress</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Loss (+) / gain (−)</th><th style={R}>%</th><th style={R}>WBS without %</th></tr></thead>
+        <thead><tr><th>Cut-off</th><th style={R}>Budget (WBS with %)</th><th style={R}>Progress</th><th style={R}>Earned</th><th style={R}>Poured</th><th style={R}>Loss (+) / gain (−)</th><th style={R}>%</th>
+          <th style={R} title="Remain to be spent, real: typed by hand at the cut-off, on every WBS">RTS real</th><th style={R} title="Poured (all WBS) + RTS real">EOS</th><th style={R} title="EOS − budget of every WBS">EOS − budget</th><th style={R}>WBS without %</th></tr></thead>
         <tbody>{ep.slice().reverse().map(function(p){
           return <tr key={p.cutoff.id}><td><b>{fmtDate(p.date)}</b>{p.label?" — "+p.label:""}{p.closed?" 🔒":""}</td>
             <td style={R}>{conFmt(p.theo)}</td><td style={R}>{p.theo>0?(p.earned/p.theo*100).toFixed(1)+"%":"—"}</td>
             <td style={R}>{conFmt(p.earned)}</td><td style={R}>{conFmt(p.real)}</td>
             <td style={Object.assign({fontWeight:700,color:conLossCol(p.variance)},R)}>{(p.variance>0?"+":"")+conFmt(p.variance)}</td>
             <td style={Object.assign({color:conLossCol(p.variance)},R)}>{conPct(p.varPct)}</td>
+            <td style={Object.assign({color:p.nRtsMissing?"#b35c00":undefined},R)} title={p.nRtsMissing?p.nRtsMissing+" WBS with something left and no RTS real typed (counted 0)":""}>{conFmt(p.rtsReal||0)}{p.nRtsMissing?" ⚠":""}</td>
+            <td style={Object.assign({fontWeight:600},R)}>{p.eac===null?"—":conFmt(p.eac)}</td>
+            <td style={Object.assign({fontWeight:700,color:conLossCol(p.eacVar)},R)}>{p.eacVar===null?"—":<>{(p.eacVar>0?"+":"")+conFmt(p.eacVar)} <span style={{fontWeight:400,fontSize:11}}>{conPct(p.eacPct)}</span></>}</td>
             <td style={Object.assign({color:p.nNoPct?"#ef6c00":"#888"},R)}>{p.nNoPct?p.nNoPct+" ("+conFmt(p.realNoPct)+" poured)":"—"}</td></tr>;
         })}</tbody></table></div>
     </>}
@@ -1790,7 +1794,7 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal,by
   var ep=conEarnedPoints(cutoffs,list,pours,typeIds);
   var last=ep.length?ep[ep.length-1]:null;
   var eRows=ep.map(function(p){return"<tr><td>"+E(fmtDate(p.date))+(p.label?" — "+E(p.label):"")+(p.closed?" 🔒":"")+"</td>"+td(conFmt(p.theo))+td(p.theo>0?(p.earned/p.theo*100).toFixed(1)+"%":"—")+td(conFmt(p.earned))+td(conFmt(p.real))
-    +td(sg(p.variance)+" ("+conLossWord(p.variance)+")",true,conLossCol(p.variance))+td(conPct(p.varPct))+td(p.nNoPct?p.nNoPct+" WBS":"—")+"</tr>";}).join("");
+    +td(sg(p.variance)+" ("+conLossWord(p.variance)+")",true,conLossCol(p.variance))+td(conPct(p.varPct))+td(conFmt(p.rtsReal||0)+(p.nRtsMissing?" ⚠":""))+td(p.eac===null?"—":conFmt(p.eac),true)+td(p.eacVar===null?"—":sg(p.eacVar)+" ("+conPct(p.eacPct)+")",true,conLossCol(p.eacVar))+td(p.nNoPct?p.nNoPct+" WBS":"—")+"</tr>";}).join("");
   var byType="",cut={};
   if(last){
     byType=conSortTypes(types).filter(function(t){return typeIds.indexOf(t.id)>=0;}).map(function(t){
@@ -1819,7 +1823,7 @@ function conOpenReport(types,list,pours,realIx,typeIds,label,cutoffs,pastReal,by
     +td(conFmt(tot.theo))+td(conFmt(plannedToDate))+td(conFmt(tot.real))
     +(last?td(conFmt(last.earned))+td(sg(last.variance)+" ("+conPct(last.varPct)+")",true,conLossCol(last.variance))+td(conFmt(last.eac)):"")+"</tr></table>"
     +(last&&last.nNoPct?"<div style=\"font-size:11px;color:#b45309\">"+last.nNoPct+" WBS without progress % at that cut-off ("+conFmt(last.theoNoPct)+" budget, "+conFmt(last.realNoPct)+" poured) are left out of the loss / gain; they count at budget in the EOS.</div>":"")
-    +(eRows?"<h2>Loss / gain of concrete, per cut-off</h2><table><tr><th>Cut-off</th><th>Budget (WBS with %)</th><th>Progress</th><th>Earned</th><th>Poured</th><th>Loss (+) / gain (−)</th><th>%</th><th>Without %</th></tr>"+eRows+"</table>"
+    +(eRows?"<h2>Loss / gain of concrete, per cut-off</h2><table><tr><th>Cut-off</th><th>Budget (WBS with %)</th><th>Progress</th><th>Earned</th><th>Poured</th><th>Loss (+) / gain (−)</th><th>%</th><th>RTS real</th><th>EOS</th><th>EOS − budget</th><th>Without %</th></tr>"+eRows+"</table>"
       :"<h2>Loss / gain of concrete</h2><div>No cut-off with a progress % typed yet: the loss or gain is measured only at a cut-off.</div>")
     +(byType?"<h2>Per type, at the cut-off of "+E(fmtDate(last.date))+"</h2><table><tr><th>Type</th><th>Budget (WBS with %)</th><th>Earned</th><th>Poured</th><th>Loss (+) / gain (−)</th><th>%</th><th>RTS real</th><th>EOS</th><th>EOS − budget</th></tr>"+byType+"</table>":"")
     +(sRows?"<h2>Poured per supplier</h2><table><tr><th>Supplier</th>"+sCols.map(function(t){return"<th>"+E(t.name)+"</th>";}).join("")+"<th>Total</th><th>Share</th><th>This month</th></tr>"+sRows+"</table>":"")
