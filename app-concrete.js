@@ -2253,6 +2253,21 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
   var prevTot=prev?conCutoffTotals(conCutoffRows(prev,wbs.filter(function(w){return !zone||w.zone===zone;}),pours,typeIds)):null;
   var wbsZones=[...new Set(wbs.map(function(w){return w.zone;}).filter(Boolean))];
   var R={textAlign:"right"};
+  // Previous cut-off, per WBS: its progress % (shown next to the one being typed) and what it had
+  // unlocked, so each line shows the budget / drawings unlocked SINCE that cut-off
+  // (= unlocked now − unlocked then; frozen figures when the previous cut-off is closed).
+  var prevBy={};
+  if(prev)conCutoffRows(prev,wbs,pours,typeIds).forEach(function(r){prevBy[r.wbs.id]=r;});
+  function sinceOf(r){
+    var p=prevBy[r.wbs.id],pHas=!!(p&&p.hasPct);
+    return {pct:pHas?p.pct:null,
+      dPct:r.hasPct?r.pct-(pHas?p.pct:0):null,
+      dEarned:r.hasPct?r.earned-(pHas?p.earned:0):null,
+      dDwg:r.hasPct&&r.hasDwg?r.earnedDwg-(pHas&&p.hasDwg?p.earnedDwg:0):null};
+  }
+  var sinceTot={earned:0,dwg:0,n:0,nDwg:0};
+  rows.forEach(function(r){var x=sinceOf(r);if(x.dEarned!==null){sinceTot.earned+=x.dEarned;sinceTot.n++;}if(x.dDwg!==null){sinceTot.dwg+=x.dDwg;sinceTot.nDwg++;}});
+  var prevLbl=prev?fmtDate(prev.date):"";
 
   function setCur(patch){saveCutoffs(cutoffs.map(function(c){return c.id===cur.id?Object.assign({},c,patch):c;}));}
   function setLine(wbsId,patch){
@@ -2421,22 +2436,28 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       var bS=function(o){return Object.assign({},B,o||{});},dS=function(o){return Object.assign({},D,o||{});};
       var dash=<span style={{color:"#bbb"}}>—</span>;
       var sg=function(v){return (v>0?"+":"")+conFmt(v);};
-      var nB=7,nD=6;
+      var nB=prev?8:7,nD=prev?7:6,nC=prev?5:4;
+      // progress / quantity unlocked since the previous cut-off: green gained, red lost, grey none
+      var dCol=function(v){return v===null?"#bbb":v<-CON_EPS?"#b3302a":v>CON_EPS?"#1e6b3a":"#888";};
       return <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--rule)",borderRadius:"var(--r-sm)"}}><table className="tbl con-cut" style={{overflow:"visible",border:"none"}}>
       <thead>
         <tr>
-          <th colSpan={4} style={{borderBottom:"none"}}/>
+          <th colSpan={nC} style={{borderBottom:"none"}}/>
           {showB&&<th colSpan={nB} className="cb" style={{textAlign:"center",color:"var(--brand-ink,#173b63)"}}>Analysis vs budget</th>}
           {showD&&<th colSpan={nD} className="cd" style={{textAlign:"center",color:"#8a3a1c"}}>Analysis vs drawings</th>}
           <th colSpan={2} style={{textAlign:"center"}}>Remain &amp; forecast</th>
           <th style={{borderBottom:"none"}}/>
         </tr>
-        <tr><th>WBS</th><th style={R} title="Physical progress at the cut-off date">Progress %</th><th style={R} title="Progress of the linked schedule activities at the cut-off date — for reference only, never used in the figures">Sched. % (ref.)</th>
+        <tr><th>WBS</th><th style={R} title="Physical progress at the cut-off date">Progress %</th>
+        {prev&&<th style={R} title={"Progress % typed at the previous cut-off ("+prevLbl+"), and the progress gained since"}>Prev. %<div style={{fontSize:9,fontWeight:400}}>{prevLbl}</div></th>}
+        <th style={R} title="Progress of the linked schedule activities at the cut-off date — for reference only, never used in the figures">Sched. % (ref.)</th>
         <th style={R} title="Concrete poured up to the cut-off date">Poured at cut-off</th>
-        {showB&&<><th className="cb" style={B}>Budget</th><th className="cb" style={B} title="Budget × progress %">Budget unlocked</th><th className="cb" style={B} title="Poured ÷ budget, a volume ratio for reference — not a progress">Poured / budget</th>
+        {showB&&<><th className="cb" style={B}>Budget</th><th className="cb" style={B} title="Budget × progress %">Budget unlocked</th>
+          {prev&&<th className="cb" style={B} title={"Budget unlocked now − budget unlocked at the previous cut-off ("+prevLbl+")"}>Unlocked since<div style={{fontSize:9,fontWeight:400}}>{prevLbl}</div></th>}<th className="cb" style={B} title="Poured ÷ budget, a volume ratio for reference — not a progress">Poured / budget</th>
           <th className="cb" style={B} title="Poured − budget × progress %: > 0 loss, < 0 gain">vs budget<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th><th className="cb" style={B}>%</th>
           <th className="cb" style={B} title="Budget − earned">RTS theo.</th><th className="cb" style={B} title="EOS − budget">EOS − budget</th></>}
         {showD&&<><th className="cd" style={D} title="Quantities measured on the drawings (Overview › Theoretical per WBS › Drawings)">Drawings</th><th className="cd" style={D} title="Drawings × progress %">Drawings unlocked</th>
+          {prev&&<th className="cd" style={D} title={"Drawings unlocked now − drawings unlocked at the previous cut-off ("+prevLbl+")"}>Unlocked since<div style={{fontSize:9,fontWeight:400}}>{prevLbl}</div></th>}
           <th className="cd" style={D} title="Poured − drawings × progress %: > 0 loss, < 0 gain. Only on the WBS with drawings quantities.">vs drawings<div style={{fontSize:9,fontWeight:400}}>loss (+) / gain (−)</div></th><th className="cd" style={D}>%</th>
           <th className="cd" style={D} title="Drawings − drawings × progress % (budget − earned, in grey, where the WBS has no drawings quantities)">RTS theo.</th><th className="cd" style={D} title="EOS − drawings quantities">EOS − drawings</th></>}
         <th style={R} title="Remain to be spent, real: typed by hand. ⇩ Fill RTS real copies the RTS theo. into every cell.">RTS real</th>
@@ -2445,17 +2466,21 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
       <tbody>{rows.map(function(r){
         var w=r.wbs;
         var mismatch=r.hasPct&&r.realPct!==null&&Math.abs(r.realPct-r.pct)>25;
+        var si=sinceOf(r);
         return <tr key={w.id}>
           <td><b>{w.code}</b> {w.name}{w.done&&<span style={{fontSize:10,color:"#1e6b3a"}}> · complete</span>}
             {w.done&&r.hasPct&&r.pct<100&&<div style={{fontSize:10,color:"#ef6c00"}}>marked complete but below 100%</div>}</td>
           <td style={Object.assign({whiteSpace:"nowrap"},R)}>{ro?(r.hasPct?r.pct.toFixed(0)+"%":<span style={{color:"#ef6c00"}}>—</span>)
-            :<ConNumCell key={cur.id+w.id+"p"} value={r.line.pct} width={58} placeholder="—" onCommit={function(v){commitPct(r,v);}}/>}</td>
+            :<ConNumCell key={cur.id+w.id+"p"} value={r.line.pct} width={58} placeholder={si.pct!==null?si.pct.toFixed(0):"—"} onCommit={function(v){commitPct(r,v);}}/>}</td>
+          {prev&&<td style={Object.assign({whiteSpace:"nowrap",fontSize:12,color:"#888"},R)}>{si.pct===null?<span style={{color:"#ccc"}}>—</span>:si.pct.toFixed(0)+"%"}
+            {si.dPct!==null&&Math.abs(si.dPct)>CON_EPS&&<div style={{fontSize:10,fontWeight:700,color:dCol(si.dPct)}}>{(si.dPct>0?"+":"")+si.dPct.toFixed(0)+" pts"}</div>}</td>}
           <td style={Object.assign({fontSize:12},R)}>{schedPct[w.id]===undefined?<span style={{color:"#ccc"}}>{(w.schedLinks||[]).length?"—":""}</span>
             :<span style={{color:r.hasPct&&Math.abs(r.pct-schedPct[w.id])>10?"#ef6c00":"#888"}} title="Schedule progress, for reference only">{schedPct[w.id]}%</span>}</td>
           <td style={R}>{conFmt(r.real)}</td>
           {showB&&<>
             <td className="cb" style={B}>{conFmt(r.theo)}</td>
             <td className="cb" style={B}>{r.hasPct?conFmt(r.earned):dash}</td>
+            {prev&&<td className="cb" style={bS({fontWeight:600,color:dCol(si.dEarned)})}>{si.dEarned===null?dash:sg(si.dEarned)}</td>}
             <td className="cb" style={bS({color:mismatch?"#ef6c00":"#888",fontSize:12})} title={mismatch?"Volume progress far from the physical progress: check the % or the pours":""}>{r.realPct===null?"—":r.realPct.toFixed(0)+"%"}</td>
             <td className="cb" style={bS({fontWeight:700,color:r.hasPct?conLossCol(r.variance):"#bbb"})}>{r.hasPct?sg(r.variance):"—"}</td>
             <td className="cb" style={bS({color:r.hasPct?conLossCol(r.variance):"#bbb"})}>{r.hasPct?conPct(r.varPct):""}</td>
@@ -2465,6 +2490,7 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
           {showD&&<>
             <td className="cd" style={dS({color:"#555"})} title={r.hasDwg?"Drawings − budget: "+sg(r.dwg-r.theo):"No drawings quantities typed"}>{r.hasDwg?conFmt(r.dwg):<span style={{color:"#ccc"}}>—</span>}</td>
             <td className="cd" style={D}>{r.hasPct&&r.hasDwg?conFmt(r.earnedDwg):dash}</td>
+            {prev&&<td className="cd" style={dS({fontWeight:600,color:dCol(si.dDwg)})}>{si.dDwg===null?dash:sg(si.dDwg)}</td>}
             <td className="cd" style={dS({fontWeight:700,color:r.varDwg!==null?conLossCol(r.varDwg):"#bbb"})}>{r.varDwg!==null?sg(r.varDwg):"—"}</td>
             <td className="cd" style={dS({color:r.varDwg!==null?conLossCol(r.varDwg):"#bbb"})}>{r.varDwg!==null?conPct(r.varDwgPct):""}</td>
             <td className="cd" style={dS(!r.rtsDwgAny?{color:"#999",fontStyle:"italic"}:null)} title={!r.rtsDwgAny?"No drawings quantities on this WBS: budget − earned":"Drawings − drawings × progress % (only the types on the drawings)"}>{r.hasPct?conFmt(r.rtsTheoD):dash}</td>
@@ -2479,11 +2505,11 @@ function ConCutoff({types,wbs,pours,cutoffs,saveCutoffs,zones,edit,schedIx}){
         </tr>;
       })}
       </tbody><tfoot><tr style={{fontWeight:700}}><td>Total — {rows.length} WBS ({tot.nPct} with %{tot.nDwg?", "+tot.nDwg+" with drawings":""})</td>
-        <td style={R}>{tot.pct===null?"—":tot.pct.toFixed(1)+"%"}</td><td/><td style={R}>{conFmt(tot.realAll)}</td>
-        {showB&&<><td className="cb" style={B}>{conFmt(tot.theoAll)}</td><td className="cb" style={B}>{conFmt(tot.earned)}</td><td className="cb" style={B}>{tot.theoAll>CON_EPS?(tot.realAll/tot.theoAll*100).toFixed(0)+"%":"—"}</td>
+        <td style={R}>{tot.pct===null?"—":tot.pct.toFixed(1)+"%"}</td>{prev&&<td style={Object.assign({fontSize:12,color:"#888"},R)}>{prevTot&&prevTot.pct!==null?prevTot.pct.toFixed(1)+"%":"—"}</td>}<td/><td style={R}>{conFmt(tot.realAll)}</td>
+        {showB&&<><td className="cb" style={B}>{conFmt(tot.theoAll)}</td><td className="cb" style={B}>{conFmt(tot.earned)}</td>{prev&&<td className="cb" style={bS({color:dCol(sinceTot.n?sinceTot.earned:null)})}>{sinceTot.n?sg(sinceTot.earned):"—"}</td>}<td className="cb" style={B}>{tot.theoAll>CON_EPS?(tot.realAll/tot.theoAll*100).toFixed(0)+"%":"—"}</td>
           <td className="cb" style={bS({color:conLossCol(tot.variance)})}>{tot.nPct?sg(tot.variance):"—"}</td><td className="cb" style={bS({color:conLossCol(tot.variance)})}>{tot.nPct?conPct(tot.varPct):""}</td>
           <td className="cb" style={B}>{conFmt(tot.rtsTheoB)}</td><td className="cb" style={bS({color:conLossCol(tot.eacVar)})}>{tot.eacVar!==null?<>{sg(tot.eacVar)} <span style={{fontWeight:400,fontSize:11}}>{conPct(tot.eacPct)}</span></>:"—"}</td></>}
-        {showD&&<><td className="cd" style={D}>{tot.dwgAll>CON_EPS?conFmt(tot.dwgAll):"—"}</td><td className="cd" style={D}>{tot.nDwg?conFmt(tot.earnedDwg):"—"}</td>
+        {showD&&<><td className="cd" style={D}>{tot.dwgAll>CON_EPS?conFmt(tot.dwgAll):"—"}</td><td className="cd" style={D}>{tot.nDwg?conFmt(tot.earnedDwg):"—"}</td>{prev&&<td className="cd" style={dS({color:dCol(sinceTot.nDwg?sinceTot.dwg:null)})}>{sinceTot.nDwg?sg(sinceTot.dwg):"—"}</td>}
           <td className="cd" style={dS({color:conLossCol(tot.varDwg)})}>{tot.nDwg?sg(tot.varDwg):"—"}</td><td className="cd" style={dS({color:conLossCol(tot.varDwg)})}>{tot.nDwg?conPct(tot.varDwgPct):""}</td>
           <td className="cd" style={D}>{conFmt(tot.rtsTheoD)}</td><td className="cd" style={dS({color:conLossCol(tot.eacVarDwg)})}>{tot.eacVarDwg!==null?<>{sg(tot.eacVarDwg)} <span style={{fontWeight:400,fontSize:11}}>{conPct(tot.eacDwgPct)}</span></>:"—"}</td></>}
         <td style={R}>{conFmt(tot.rtsReal)}</td><td style={R}>{tot.eac===null?"—":conFmt(tot.eac)}</td><td/></tr>
