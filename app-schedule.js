@@ -2952,7 +2952,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
     var range=mem.range==="from"||mem.range==="custom"?mem.range:"all";
     var from=range==="from"&&mem.from?mem.from:range==="from"?printMonday(today()):(all[0]||"");
     setPrintOpts({risks:true,progress:false,range:range,from:from,to:all.length?printAddDays(all[all.length-1],6):"",size:"A4",sheets:0,
-      hideEmpty:mem.hideEmpty!==false,
+      hideEmpty:mem.hideEmpty!==false,links:mem.links!==false,
       pline:true,plDate:today(),plLbl:true,plShade:true,plCols:true,plSum:true});
   }
   // Progress line (as in Primavera): a vertical line at the data date that bends, on each
@@ -2995,8 +2995,76 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           pu<tu?{right:"calc("+((1-pu)*100)+"% + 3px)"}:{left:"calc("+(pu*100)+"% + 3px)"})}>{(g.v>0?"+":"")+g.v.toFixed(1)+" wk"}</span>
     ];
   }
+  // Link arrows on the printed table. The print table is laid out by the browser for the
+  // paper, so nothing can be measured: each link is drawn cell by cell, in % of the cells it
+  // crosses. From the end of the predecessor bar, a horizontal line along its row to 30 % of
+  // the successor's first week column, then down (or up) that column to the successor's row,
+  // arrowhead on the start of its bar. Rows = the printed rows (pr), columns = the printed
+  // weeks (pw, all sheets: each sheet draws the part of the line in its own columns).
+  // Red = the task starts earlier than the link (lag included) allows, as on screen.
+  // Returns {rowId|week: {h:[[x1,x2]], v:[[y1,y2,x]], a:[{x,up,bad}], bad}}.
+  function printLinkArt(pr,pw){
+    var out={};
+    if(!sc||!pw.length)return out;
+    var ri={};pr.forEach(function(r,i){ri[r.id]=i;});
+    var wi={};pw.forEach(function(w,i){wi[w]=i;});
+    var byId={};(sc.rows||[]).forEach(function(r){byId[r.id]=r;});
+    var hol=sc.holidayWeeks||[],wk2=wks.filter(function(w){return hol.indexOf(w)<0;});
+    var VX=0.3;
+    function at(rowIdx,col){var k=pr[rowIdx].id+"|"+pw[col];return out[k]||(out[k]={h:[],v:[],a:[]});}
+    pr.forEach(function(r){
+      if(r.kind==="category"||r.kind==="section")return;
+      predsOf(r).forEach(function(pl){
+        var p=byId[pl.id];
+        if(!p||ri[p.id]===undefined)return;
+        var ps=spanFromCells(p.cells,wks,null),ss=spanFromCells(r.cells,wks,null);
+        if(!ps.endWeek||!ss.startWeek)return;
+        var b=wi[ss.startWeek];
+        if(b===undefined)return;                          // successor starts outside the period
+        var x1;
+        if(wi[ps.endWeek]!==undefined)x1=wi[ps.endWeek]+1;
+        else if(ps.endWeek<pw[0])x1=0;                    // predecessor ended before the period
+        else return;
+        var ie=wk2.indexOf(ps.endWeek),is=wk2.indexOf(ss.startWeek);
+        var bad=ie<0||is<0?ss.startWeek<=ps.endWeek:is<ie+1+(pl.lag||0);
+        var i=ri[p.id],j=ri[r.id],x2=b+VX;
+        // horizontal part, on the predecessor's row
+        var lo=Math.min(x1,x2),hi=Math.max(x1,x2);
+        for(var c=Math.floor(lo);c<=Math.min(pw.length-1,Math.ceil(hi)-1);c++){
+          var a1=Math.max(lo,c)-c,a2=Math.min(hi,c+1)-c;
+          if(a2>a1){var o=at(i,c);o.h.push([a1,a2]);if(bad)o.bad=1;}
+        }
+        // vertical part, in the successor's first week column
+        var down=j>i;
+        for(var k=Math.min(i,j);k<=Math.max(i,j);k++){
+          var y1,y2;
+          if(k===i){y1=down?0.5:0;y2=down?1:0.5;}
+          else if(k===j){y1=down?0:0.85;y2=down?0.15:1;}
+          else{y1=0;y2=1;}
+          var o2=at(k,b);o2.v.push([y1,y2,VX]);if(bad)o2.bad=1;
+          if(k===j)o2.a.push({x:VX,up:!down,bad:bad});
+        }
+      });
+    });
+    return out;
+  }
+  function printLinkCellArt(g){
+    if(!g)return null;
+    var col=g.bad?"#c62828":"#37474f";
+    return [
+      <svg key="lk" viewBox="0 0 1 1" preserveAspectRatio="none" style={{position:"absolute",left:0,top:-1,width:"100%",height:"calc(100% + 2px)",overflow:"visible",pointerEvents:"none",zIndex:1}}>
+        {g.h.map(function(h,n){return <line key={"h"+n} x1={h[0]} y1={0.5} x2={h[1]} y2={0.5} stroke={col} strokeWidth={0.9} vectorEffect="non-scaling-stroke"/>;})}
+        {g.v.map(function(v,n){return <line key={"v"+n} x1={v[2]} y1={v[0]} x2={v[2]} y2={v[1]} stroke={col} strokeWidth={0.9} vectorEffect="non-scaling-stroke"/>;})}
+      </svg>
+    ].concat(g.a.map(function(a,n){
+      var c=a.bad?"#c62828":"#37474f";
+      return <span key={"a"+n} style={Object.assign({position:"absolute",left:(a.x*100)+"%",width:0,height:0,transform:"translateX(-50%)",zIndex:2,
+        borderLeft:"2.5px solid transparent",borderRight:"2.5px solid transparent"},
+        a.up?{bottom:"10%",borderBottom:"4px solid "+c}:{top:"10%",borderTop:"4px solid "+c})}></span>;
+    }));
+  }
   function runPrint(opts){
-    try{localStorage.setItem(SCHED_PRINT_LS,JSON.stringify({range:opts.range,from:opts.range==="from"?opts.from:"",hideEmpty:!!opts.hideEmpty}));}catch(e){}
+    try{localStorage.setItem(SCHED_PRINT_LS,JSON.stringify({range:opts.range,from:opts.range==="from"?opts.from:"",hideEmpty:!!opts.hideEmpty,links:opts.links!==false}));}catch(e){}
     setPrintOpts(null);
     setPrintPlan(opts);
     setTimeout(function(){
@@ -4577,6 +4645,8 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
           var pl=printPlan.pline?printProgressLine(printPlan):null;
           var plCols=!!(pl&&printPlan.plCols);
           var nFix=plCols?6:4;
+          var prRows=printRowsOf(visibleRows,pw,printPlan);
+          var lk=printPlan.links!==false?printLinkArt(prRows,pw):{};
           return <div className="sched-print-only">
             <style>{"@media print{@page{size:"+(printPlan.size==="A3"?"A3":"A4")+" landscape;margin:8mm}.sched-print-only *{-webkit-print-color-adjust:exact;print-color-adjust:exact}body.printing-schedule .sched-print-only td.pl-cell{position:relative!important}}"}</style>
             {chunks.map(function(ck,ci){
@@ -4612,7 +4682,7 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                     </tr>
                   </thead>
                   <tbody>
-                    {printRowsOf(visibleRows,pw,printPlan).map(function(r){
+                    {prRows.map(function(r){
                       var cat=r.kind==="category";
                       var risk=(!cat&&printPlan.risks)?procRisk(r):null;
                       return <tr key={r.id} style={{pageBreakInside:"avoid"}}>
@@ -4652,8 +4722,9 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
                           var bg=hol?"#e8e4da":before?"repeating-linear-gradient(45deg,#ef9a9a,#ef9a9a 2px,#e57373 2px,#e57373 4px)"
                                  :v==="plan"?planColor(r):v==="actual"?"#0f5299":v==="both"?"linear-gradient(180deg,"+planColor(r)+" 50%,#0f5299 50%)":"#fff";
                           var wp=printPlan.progress?((r.weekProgress||{})[w]):"";
-                          return <td key={w} className={pl?"pl-cell":undefined} style={{border:"1px solid #ccc",padding:0,height:11,background:bg,textAlign:"center",fontSize:6,color:"#fff",
-                            boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none",position:pl?"relative":undefined,transform:pl?"translate(0,0)":undefined}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}{pl&&plCellArt(pl.rows[r.id],w,printPlan)}</td>;
+                          var lg=lk[r.id+"|"+w],rel=pl||lg;
+                          return <td key={w} className={rel?"pl-cell":undefined} style={{border:"1px solid #ccc",padding:0,height:11,background:bg,textAlign:"center",fontSize:6,color:"#fff",
+                            boxShadow:feas?"inset 0 0 0 1.5px #e65100":"none",position:rel?"relative":undefined,transform:rel?"translate(0,0)":undefined}}>{wp!==undefined&&wp!==null&&wp!==""?wp:(feas&&!v?"▶":"")}{lg&&printLinkCellArt(lg)}{pl&&plCellArt(pl.rows[r.id],w,printPlan)}</td>;
                         })}
                       </tr>;
                     })}
@@ -4890,6 +4961,10 @@ function ScheduleView({curZone,schedules,saveSchedules,tasks,saveTasks,people,ta
               </div>;
             })()}
 
+            <label style={{display:"flex",gap:8,alignItems:"flex-start",cursor:"pointer",textTransform:"none",letterSpacing:"normal",marginBottom:10,color:"#333"}}>
+              <input type="checkbox" checked={printOpts.links!==false} onChange={function(e){setPrintOpts(Object.assign({},printOpts,{links:e.target.checked}));}} style={{width:14,height:14,marginTop:2}}/>
+              <span style={{fontSize:12,fontWeight:600}}>Link arrows<br/><span style={{fontSize:10,fontWeight:400,color:"#aaa"}}>the “starts after” links between tasks, red when a task starts before its link allows</span></span>
+            </label>
             <label style={{display:"flex",gap:8,alignItems:"flex-start",cursor:"pointer",textTransform:"none",letterSpacing:"normal",marginBottom:10,color:"#333"}}>
               <input type="checkbox" checked={printOpts.risks} onChange={function(e){setPrintOpts(Object.assign({},printOpts,{risks:e.target.checked}));}} style={{width:14,height:14,marginTop:2}}/>
               <span style={{fontSize:12,fontWeight:600}}>Procurement impact<br/><span style={{fontSize:10,fontWeight:400,color:"#aaa"}}>delivery arrows, red hatching and the ⇢ week</span></span>
